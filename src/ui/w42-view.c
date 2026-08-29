@@ -5,6 +5,8 @@
  */
 
 #include "w42-view.h"
+
+#include "w42-autocorrect.h"
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
@@ -19,6 +21,7 @@
 struct _W42View {
   GtkWidget      parent_instance;
   GtkWidget *context_menu;   /* the right-click menu, a popover */
+  gboolean   autocorrect;    /* Tools > Options: correct as you type */
 
   W42Document   *doc;
   W42Layout     *layout;
@@ -1114,6 +1117,21 @@ w42_view_line_count (W42View *self)
 /* ---------------------------------------------------------------------- */
 /* Spelling                                                                */
 /* ---------------------------------------------------------------------- */
+
+/* Tools > Options: correct as you type, or leave what is typed alone. */
+void
+w42_view_set_autocorrect (W42View *self, gboolean on)
+{
+  g_return_if_fail (W42_IS_VIEW (self));
+  self->autocorrect = on;
+}
+
+gboolean
+w42_view_get_autocorrect (W42View *self)
+{
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  return self->autocorrect;
+}
 
 void
 w42_view_set_spell (W42View *self, W42Spell *spell)
@@ -2821,11 +2839,70 @@ w42_view_select_all (W42View *self)
 /* Input                                                                   */
 /* ---------------------------------------------------------------------- */
 
+/* The text of the caret's paragraph up to the caret: what AutoCorrect
+ * looks at.  A long paragraph is read from the end, since a correction
+ * never reaches further back than a word or two. */
+static char *
+text_before_caret (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  gsize start;
+
+  if (pt == NULL)
+    return NULL;
+  start = w42_pt_paragraph_start (pt, self->caret) + 1;
+  if (self->caret <= start)
+    return NULL;
+  if (self->caret - start > 64)
+    start = self->caret - 64;
+  return w42_pt_get_text (pt, start, self->caret - start);
+}
+
+/* Word 6 corrected as you typed, and so does this: the correction is
+ * worked out from the text behind the caret and put in as one undo step
+ * with the character that prompted it. */
+static void
+autocorrect_after_typing (W42View *self, const char *typed)
+{
+  W42PieceTable *pt = view_pt (self);
+  W42Correction fix;
+  char *before;
+  gunichar c;
+
+  if (pt == NULL || !self->autocorrect || typed == NULL || *typed == '\0')
+    return;
+  if (g_utf8_strlen (typed, -1) != 1)
+    return;                       /* pasted or composed text is left alone */
+
+  c = g_utf8_get_char (typed);
+  before = text_before_caret (self);
+  if (before == NULL)
+    return;
+
+  fix = w42_autocorrect (before, c);
+  g_free (before);
+
+  if (fix.back == 0 || fix.text == NULL || fix.back > self->caret)
+    return;
+
+  w42_pt_begin_group (pt);
+  w42_pt_delete (pt, self->caret - fix.back, fix.back);
+  self->caret -= fix.back;
+  w42_pt_insert_text (pt, self->caret, fix.text, view_effective_ap (self));
+  self->caret += g_utf8_strlen (fix.text, -1);
+  self->anchor = self->caret;
+  w42_pt_end_group (pt);
+  view_edited (self);
+}
+
 static void
 on_im_commit (GtkIMContext *im, const char *text, gpointer data)
 {
+  W42View *self = W42_VIEW (data);
+
   (void) im;
-  w42_view_insert_text (W42_VIEW (data), text);
+  w42_view_insert_text (self, text);
+  autocorrect_after_typing (self, text);
 }
 
 static gboolean

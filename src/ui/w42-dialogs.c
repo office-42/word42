@@ -6,6 +6,8 @@
 
 #include "w42-dialogs.h"
 
+#include "w42-autocorrect.h"
+
 #include "w42-settings.h"
 #include "w42-merge.h"
 #include "w42-shape.h"
@@ -1711,6 +1713,83 @@ w42_symbol_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
+/* AutoCorrect                                                             */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *on;
+} AutoBox;
+
+static void
+on_autocorrect_ok (GtkButton *button, gpointer data)
+{
+  AutoBox *box = data;
+  gboolean on = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->on));
+
+  (void) button;
+  w42_settings_set_bool ("auto-correct", on);
+  w42_view_set_autocorrect (box->view, on);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_autocorrect_dialog_show (GtkWindow *parent, W42View *view)
+{
+  AutoBox *box;
+  GtkWidget *content, *grid, *label, *list, *scroller;
+  const char *const *pairs = w42_autocorrect_replacements ();
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  box = g_new0 (AutoBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "AutoCorrect", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "As You Type");
+  box->on = gtk_check_button_new_with_mnemonic ("_Correct as you type");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->on),
+                               w42_view_get_autocorrect (view));
+  gtk_grid_attach (GTK_GRID (grid), box->on, 0, 0, 2, 1);
+
+  label = gtk_label_new ("Straight quotes become curly ones, two capitals at "
+                         "the start of a word become one, a sentence takes a "
+                         "capital, two hyphens become a dash, and the words "
+                         "below are put right.");
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 48);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_widget_add_css_class (label, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
+
+  grid = group (content, "Replace");
+  list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (list), GTK_SELECTION_NONE);
+  for (guint i = 0; pairs[i] != NULL; i += 2)
+    {
+      char *text = g_strdup_printf ("%-12s  %s", pairs[i], pairs[i + 1]);
+      GtkWidget *row = gtk_label_new (text);
+
+      gtk_label_set_xalign (GTK_LABEL (row), 0.0);
+      gtk_widget_set_margin_start (row, 4);
+      gtk_list_box_append (GTK_LIST_BOX (list), row);
+      g_free (text);
+    }
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), list);
+  gtk_widget_set_size_request (scroller, 260, 150);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 2, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_autocorrect_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
 /* Tabs                                                                    */
 /* ---------------------------------------------------------------------- */
 
@@ -2001,6 +2080,7 @@ typedef struct {
   GtkWidget *default_view;
   GtkWidget *zoom;
   GtkWidget *auto_spell;
+  GtkWidget *auto_correct;
   GtkWidget *user_name;
 } OptionsBox;
 
@@ -2027,6 +2107,12 @@ on_options_ok (GtkButton *button, gpointer data)
   if (zoom < G_N_ELEMENTS (ZOOM_VALUES))
     w42_settings_set_int ("zoom", ZOOM_VALUES[zoom]);
   w42_settings_set_bool ("auto-spell", want_spell);
+  {
+    gboolean want_correct = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->auto_correct));
+
+    w42_settings_set_bool ("auto-correct", want_correct);
+    w42_view_set_autocorrect (box->view, want_correct);
+  }
   /* The view and zoom chosen apply to this window now, not only to the
    * next one opened. */
   {
@@ -2122,6 +2208,11 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   }
 
   grid = group (content, "Spelling");
+  box->auto_correct = gtk_check_button_new_with_mnemonic ("Correct as you t_ype");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_correct),
+                               w42_settings_get_bool ("auto-correct", TRUE));
+  gtk_grid_attach (GTK_GRID (grid), box->auto_correct, 0, 1, 2, 1);
+
   box->auto_spell = gtk_check_button_new_with_mnemonic ("_Check spelling as you type");
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_spell),
                                w42_settings_get_bool ("auto-spell", TRUE));

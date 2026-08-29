@@ -24,7 +24,8 @@ is listed so the distance to the current product is honest.
 | Thesaurus | no | no | yes | yes |
 | Hyphenation (libhyphen patterns) | full | no (stub) | full | full |
 | Word count | full | full | full | full |
-| Autocorrect / AutoText | no | yes | yes | yes |
+| AutoCorrect as you type | full (quotes, capitals, dashes, misspellings) | partial | full | full |
+| AutoText | no | yes | yes | yes |
 | Formatting marks (¶, ·, →) | full | full | full | full |
 
 ## Character and paragraph formatting
@@ -270,3 +271,20 @@ Two more from the review of the interface:
     entries in the note.  It says where the caret has to be instead.
 
 The command counts are unchanged from the eighth round.
+
+## Since the tenth round
+
+**AutoCorrect.**  Word 6 put four things right as you typed them, and so
+does this: straight quotes take the shape that fits where they stand, two
+capitals at the start of a word become one, the first word of a sentence
+takes its capital, two hyphens become a dash, and a short list of
+misspellings is corrected.  Tools > AutoCorrect shows the list and the
+switch; Tools > Options has the switch too.  A correction and the
+character that prompted it are one undo step.
+
+**A right-to-left paragraph sits where it should.**  Alignment in this
+model is what the eye sees -- Left is the left margin, Right the right --
+and the Word formats, which keep it relative to the paragraph's
+direction, are turned round as they are read and written.  The Arabic
+paragraph in the showcase now sits against the right margin, where
+LibreOffice puts it.

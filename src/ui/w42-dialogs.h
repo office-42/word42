@@ -22,6 +22,7 @@ void w42_header_footer_dialog_show (GtkWindow *parent, W42View *view);
 void w42_page_numbers_dialog_show  (GtkWindow *parent, W42View *view);
 void w42_insert_table_dialog_show  (GtkWindow *parent, W42View *view);
 void w42_go_to_dialog_show         (GtkWindow *parent, W42View *view);
+void w42_autocorrect_dialog_show (GtkWindow *parent, W42View *view);
 void w42_tabs_dialog_show          (GtkWindow *parent, W42View *view);
 void w42_borders_dialog_show       (GtkWindow *parent, W42View *view);
 void w42_hyperlink_dialog_show     (GtkWindow *parent, W42View *view);

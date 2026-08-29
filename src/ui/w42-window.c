@@ -1971,6 +1971,16 @@ action_caption (GSimpleAction *action, GVariant *param, gpointer data)
   g_free (label);
 }
 
+/* Tools > AutoCorrect: what is put right as you type. */
+static void
+action_autocorrect (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_autocorrect_dialog_show (GTK_WINDOW (self), self->view);
+}
+
 static void
 action_bookmark (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -3589,6 +3599,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "insert-file",   action_insert_file,   NULL, NULL, NULL, { 0 } },
   { "full-screen",   action_full_screen,   NULL, "false", NULL, { 0 } },
   { "slide-show",    action_slide_show,    NULL, NULL, NULL, { 0 } },
+  { "autocorrect",   action_autocorrect,   NULL, NULL, NULL, { 0 } },
   { "export-pptx",   action_export_pptx,   NULL, NULL, NULL, { 0 } },
   { "arrange-all",   action_arrange_all,   NULL, NULL, NULL, { 0 } },
   { "window-go",     action_window_go,     "i",  NULL, NULL, { 0 } },
@@ -3748,6 +3759,9 @@ w42_window_init (W42Window *self)
   /* Check spelling as you type, when there is a dictionary to check it
    * against; otherwise the toggle is greyed out rather than lying. */
   w42_view_set_show_marks (self->view, FALSE);
+
+  /* Tools > Options: correct as you type, as it was left last time. */
+  w42_view_set_autocorrect (self->view, w42_settings_get_bool ("auto-correct", TRUE));
 
   {
     /* Table > Table Gridlines, as it was left last time. */

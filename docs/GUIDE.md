@@ -489,6 +489,23 @@ is not asked to judge Chinese, Russian or Arabic — and words with soft
 hyphens in them are checked as though the hyphens were not there. Without
 any dictionary at all, the box says so.
 
+### Tools ▸ AutoCorrect
+
+What is put right as you type, as Word 6 did it:
+
+- **Quotes** — a straight `"` or `'` becomes the opening or closing curly
+  one, whichever fits where it stands.
+- **TWo INitial CApitals** — the second capital goes.
+- **The first word of a sentence** — takes its capital.
+- **Two hyphens** — become a dash.
+- **Misspellings** — a short list of the ones a hand makes rather than a
+  head: teh, adn, thier, recieve, and a few more, with (c), (r) and (tm)
+  becoming ©, ® and ™.
+
+The dialog lists them and carries the switch; Tools ▸ Options has the
+switch as well. A correction and the character that prompted it are one
+undo step, so Ctrl+Z once puts back exactly what you typed.
+
 ### Tools ▸ Word Count
 
 Words, characters, paragraphs and pages, for the selection or the whole
@@ -524,6 +541,8 @@ survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
 - **User Info** — your name, which annotations and revisions carry into
   Word and OpenDocument files.
 - **Spelling** — check spelling as you type, on or off.
+- **Correct as you type** — the AutoCorrect switch, the same one the
+  AutoCorrect dialog carries.
 
 The settings live in a small file in your configuration directory, along
 with the toolbar and ruler switches from the View menu.

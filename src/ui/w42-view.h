@@ -55,6 +55,10 @@ void w42_view_insert_text (W42View *self, const char *utf8);
 
 /* Ctrl+Enter: a new paragraph that starts a new page. */
 void w42_view_insert_page_break (W42View *self);
+/* Tools > Options: the corrections made as you type. */
+void     w42_view_set_autocorrect   (W42View *self, gboolean on);
+gboolean w42_view_get_autocorrect   (W42View *self);
+
 /* Whether the caret is in a footnote's or endnote's text. */
 gboolean w42_view_caret_in_note     (W42View *self);
 

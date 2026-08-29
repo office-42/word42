@@ -261,6 +261,14 @@ Early, but real. Word42 today is a working word processor:
   many as you like). Beside a picture, a frame or a dropped letter the text
   is set line by line, and the rest of the paragraph at full width. Word,
   OpenDocument and HTML files carry both.
+- **AutoCorrect** — Word 6's four corrections, made as you type: straight
+  quotes become the curly ones that fit where they stand, TWo INitial
+  CApitals become one, the first word of a sentence takes its capital, two
+  hyphens become a dash, and a short list of misspellings — teh, adn,
+  recieve — is put right. Tools ▸ AutoCorrect shows the list, and the
+  switch is there and in Tools ▸ Options. The correction and the character
+  that prompted it undo together.
+
 - **Slides** — View ▸ Slide Show puts the document's outline on the screen
   as a talk: each heading and the lines under it are a slide, in type large
   enough for a room, the space bar or the arrow keys moving on and Escape

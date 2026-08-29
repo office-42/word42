@@ -30,6 +30,7 @@ w42_core_sources = files(
   'io/w42-odt.c',
   'io/w42-pptx.c',
   'model/w42-hyphenate.c',
+  'model/w42-autocorrect.c',
 )
 
 w42_core = static_library('w42core',
