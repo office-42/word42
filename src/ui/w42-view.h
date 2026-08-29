@@ -10,6 +10,7 @@
 
 #include "w42-document.h"
 #include "w42-layout.h"
+#include "w42-tableformat.h"
 
 G_BEGIN_DECLS
 
@@ -92,6 +93,9 @@ void     w42_view_cell_set_borders (W42View *self, int sides);
 void     w42_view_table_merge_cells (W42View *self);
 /* Splits the caret's merged cell back into single cells. */
 void     w42_view_table_split_cell (W42View *self);
+/* Table > Table AutoFormat: a ready-made look on the caret's table. */
+void     w42_view_table_autoformat (W42View *self, const W42TableFormat *fmt,
+                                    gboolean heading, gboolean first_column);
 
 /* Table > Select: the caret's row, or the whole table. */
 void     w42_view_table_select_row   (W42View *self);

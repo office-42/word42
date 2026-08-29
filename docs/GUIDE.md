@@ -354,6 +354,7 @@ header rows.
 | Merge Cells | Joins the selected cells of a row, keeping every cell's paragraphs; select down a column instead and the cells become one cell as tall as those rows. |
 | Split Cells | Undoes a merge, sideways or downwards. What a downward merge hid is still there and comes back. |
 | Split Table | Makes the caret's row the first row of a table of its own. |
+| Table AutoFormat | A list of ready-made looks -- rules, shading, a bold heading -- with a preview; the one chosen goes on the caret's table in a single undo step. |
 | Select Row / Select Table | Selects one or all of it. |
 
 Drag a cell's right edge to change the column widths.

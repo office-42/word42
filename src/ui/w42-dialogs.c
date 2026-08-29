@@ -7,6 +7,7 @@
 #include "w42-dialogs.h"
 
 #include "w42-autocorrect.h"
+#include "w42-tableformat.h"
 
 #include "w42-settings.h"
 #include "w42-merge.h"
@@ -3718,6 +3719,201 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
   }
 
   button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Table > Table AutoFormat                                                */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *list;
+  GtkWidget *preview;
+  GtkWidget *hint;
+  GtkWidget *heading;
+  GtkWidget *first_column;
+  int        chosen;
+} AutoFormatBox;
+
+static void
+autoformat_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+/* The look drawn small: four rows of three cells, the text of them a bar
+ * apiece, so that the rules and the shading are what the eye reads. */
+static void
+draw_autoformat (GtkDrawingArea *area, cairo_t *cr, int width, int height,
+                 gpointer data)
+{
+  const AutoFormatBox *box = data;
+  int n = 0;
+  const W42TableFormat *formats = w42_table_formats (&n);
+  const W42TableFormat *f = &formats[CLAMP (box->chosen, 0, n - 1)];
+  const int rows = 4, cols = 3;
+  gboolean heading = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->heading));
+  gboolean first_col = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->first_column));
+  double m = 8.0;
+  double w = (width - 2 * m) / cols, h = (height - 2 * m) / rows;
+
+  (void) area;
+  cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+  cairo_paint (cr);
+  cairo_set_line_width (cr, 1.0);
+
+  for (int r = 0; r < rows; r++)
+    for (int c = 0; c < cols; c++)
+      {
+        double x = m + c * w, y = m + r * h;
+        gboolean head = heading && r == 0;
+        int shade = head ? f->head_shading
+                         : (f->band_shading > 0 && (r % 2) == 1 ? f->band_shading : 0);
+        gboolean bold = (head && f->head_bold) ||
+                        (first_col && c == 0 && f->first_col_bold);
+
+        if (shade > 0)
+          {
+            double g = 1.0 - shade / 100.0;
+
+            cairo_set_source_rgb (cr, g, g, g);
+            cairo_rectangle (cr, x, y, w, h);
+            cairo_fill (cr);
+          }
+
+        /* The text: a bar, darker and thicker where it would be bold. */
+        cairo_set_source_rgb (cr, bold ? 0.1 : 0.45, bold ? 0.1 : 0.45, bold ? 0.1 : 0.45);
+        cairo_rectangle (cr, x + 4, y + h / 2 - (bold ? 2 : 1), w - 10, bold ? 4 : 2);
+        cairo_fill (cr);
+
+        cairo_set_source_rgb (cr, 0.0, 0.0, 0.0);
+        if (f->rules == W42_TF_RULES_GRID)
+          {
+            cairo_rectangle (cr, x + 0.5, y + 0.5, w, h);
+            cairo_stroke (cr);
+          }
+        else if (f->rules == W42_TF_RULES_BOX)
+          {
+            if (r == 0) { cairo_move_to (cr, x, y + 0.5); cairo_line_to (cr, x + w, y + 0.5); }
+            if (r == rows - 1) { cairo_move_to (cr, x, y + h + 0.5); cairo_line_to (cr, x + w, y + h + 0.5); }
+            if (heading && r == 0) { cairo_move_to (cr, x, y + h + 0.5); cairo_line_to (cr, x + w, y + h + 0.5); }
+            if (c == 0) { cairo_move_to (cr, x + 0.5, y); cairo_line_to (cr, x + 0.5, y + h); }
+            if (c == cols - 1) { cairo_move_to (cr, x + w + 0.5, y); cairo_line_to (cr, x + w + 0.5, y + h); }
+            cairo_stroke (cr);
+          }
+      }
+}
+
+static void
+autoformat_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  AutoFormatBox *box = data;
+  int n = 0;
+  const W42TableFormat *formats = w42_table_formats (&n);
+
+  (void) list;
+  if (row == NULL)
+    return;
+  box->chosen = CLAMP (gtk_list_box_row_get_index (row), 0, n - 1);
+  gtk_label_set_text (GTK_LABEL (box->hint), formats[box->chosen].hint);
+  gtk_widget_queue_draw (box->preview);
+}
+
+static void
+autoformat_switched (GtkCheckButton *button, gpointer data)
+{
+  AutoFormatBox *box = data;
+
+  (void) button;
+  gtk_widget_queue_draw (box->preview);
+}
+
+static void
+on_autoformat_ok (GtkButton *button, gpointer data)
+{
+  AutoFormatBox *box = data;
+  int n = 0;
+  const W42TableFormat *formats = w42_table_formats (&n);
+
+  (void) button;
+  w42_view_table_autoformat (box->view, &formats[CLAMP (box->chosen, 0, n - 1)],
+                             gtk_check_button_get_active (GTK_CHECK_BUTTON (box->heading)),
+                             gtk_check_button_get_active (GTK_CHECK_BUTTON (box->first_column)));
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view)
+{
+  AutoFormatBox *box;
+  GtkWidget *content, *grid, *scroller, *label;
+  int n = 0;
+  const W42TableFormat *formats = w42_table_formats (&n);
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (AutoFormatBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Table AutoFormat", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), autoformat_free, box);
+
+  grid = group (content, "Formats");
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
+  for (int i = 0; i < n; i++)
+    {
+      GtkWidget *item = gtk_label_new (formats[i].name);
+
+      gtk_label_set_xalign (GTK_LABEL (item), 0.0);
+      gtk_widget_set_margin_start (item, 6);
+      gtk_widget_set_margin_end (item, 6);
+      gtk_widget_set_margin_top (item, 2);
+      gtk_widget_set_margin_bottom (item, 2);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), item);
+    }
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 150, 130);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 1, 1);
+
+  box->preview = gtk_drawing_area_new ();
+  gtk_widget_set_size_request (box->preview, 170, 130);
+  gtk_grid_attach (GTK_GRID (grid), box->preview, 1, 0, 1, 1);
+
+  box->hint = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->hint), 0.0);
+  gtk_grid_attach (GTK_GRID (grid), box->hint, 0, 1, 2, 1);
+
+  grid = group (content, "Apply");
+  box->heading = gtk_check_button_new_with_mnemonic ("_Heading row");
+  box->first_column = gtk_check_button_new_with_mnemonic ("First _column");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->heading), TRUE);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->first_column), TRUE);
+  gtk_grid_attach (GTK_GRID (grid), box->heading, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->first_column, 1, 0, 1, 1);
+  g_signal_connect (box->heading, "toggled", G_CALLBACK (autoformat_switched), box);
+  g_signal_connect (box->first_column, "toggled", G_CALLBACK (autoformat_switched), box);
+
+  label = gtk_label_new ("The look goes on the table the caret is in.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_box_append (GTK_BOX (content), label);
+
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (box->preview),
+                                  draw_autoformat, box, NULL);
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (autoformat_chosen), box);
+  gtk_list_box_select_row (GTK_LIST_BOX (box->list),
+                           gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), 1));
+
+  button_row (content, box->window, G_CALLBACK (on_autoformat_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
 }
 

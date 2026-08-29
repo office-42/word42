@@ -31,6 +31,7 @@ w42_core_sources = files(
   'io/w42-pptx.c',
   'model/w42-hyphenate.c',
   'model/w42-autocorrect.c',
+  'model/w42-tableformat.c',
 )
 
 w42_core = static_library('w42core',

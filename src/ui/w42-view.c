@@ -4442,6 +4442,23 @@ w42_view_set_picture (W42View *self, int width, int height, W42Wrap wrap)
 }
 
 void
+w42_view_table_autoformat (W42View *self, const W42TableFormat *fmt,
+                           gboolean heading, gboolean first_column)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  g_return_if_fail (fmt != NULL);
+
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  if (w42_pt_table_autoformat (pt, table, fmt, heading, first_column))
+    view_edited (self);
+}
+
+void
 w42_view_table_split_cell (W42View *self)
 {
   W42PieceTable *pt;

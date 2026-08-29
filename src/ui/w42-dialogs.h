@@ -35,6 +35,7 @@ void w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view);
 void w42_drawing_dialog_show       (GtkWindow *parent, W42View *view);
 void w42_list_dialog_show          (GtkWindow *parent, W42View *view);
 void w42_table_properties_dialog_show (GtkWindow *parent, W42View *view);
+void w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view);
 void w42_picture_dialog_show (GtkWindow *parent, W42View *view);
 void w42_summary_dialog_show (GtkWindow *parent, W42View *view);
 void w42_drop_cap_dialog_show (GtkWindow *parent, W42View *view);

@@ -142,10 +142,10 @@ Pa = partial, M = missing.
 | Insert | 7/6/3 | Object, Index, Form Field | 11/2/2 | Text Box, Clip Art |
 | Format | 5/8/2 | AutoFormat, Style Gallery, one Font box | 14/4/4 | Language, Background |
 | Tools | 3/3/8 | Thesaurus, AutoCorrect, Grammar, Envelopes | 4/2/4 | Set Language, Compare |
-| Table | 10/2/3 | AutoFormat, Insert/Delete Cells, Select Column | 12/2/0 | -- |
+| Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
 | Help | 1/1/7 | Index and Search, Tip of the Day | 2/0/4 | Search, Report a Bug |
-| **Total** | **57/24/32** | | **76/11/20** | |
+| **Total** | **58/24/31** | | **77/11/20** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
@@ -305,3 +305,12 @@ Word (`w:vMerge`), RTF (`\clvmgf` and `\clvmrg`) and OpenDocument
 (`table:number-rows-spanned` with `<table:covered-table-cell/>`) carry
 the merge both ways, and LibreOffice reads all three of ours as the one
 tall cell they say.
+
+**Table AutoFormat.**  Word 6's Table menu offered a list of ready-made
+looks for a table and drew what each would do; so does this.  The looks
+are Word42's own -- Plain, Grid, Ruled, Ruled Bands, Shaded Heading,
+Columns, Report -- and each says how the cells are ruled, what shading
+the heading row and every other row take, and what is set in bold.  The
+preview draws the table small as the list is walked, the two switches say
+whether the heading row and the first column are singled out, and putting
+a look on is one undo step.

@@ -567,6 +567,10 @@
           <attribute name="action">win.gridlines</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">Table Auto_Format...</attribute>
+          <attribute name="action">win.table-autoformat</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Table _Properties...</attribute>
           <attribute name="action">win.table-properties</attribute>
         </item>

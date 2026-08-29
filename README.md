@@ -227,7 +227,9 @@ Early, but real. Word42 today is a working word processor:
   tall as the rows it covers — Split Cells gives them back, and what a merge
   hid comes back with them. Rows are as tall as their tallest cell and
   move to the next page whole. The marks that hold a table together cannot
-  be deleted by accident, only the text in the cells. RTF carries tables as
+  be deleted by accident, only the text in the cells.  Table AutoFormat
+  puts a ready-made look on a table -- rules, shading, a bold heading --
+  chosen from a list with a preview. RTF carries tables as
   `\trowd`…`\cell`…`\row`, both ways, column widths and merged cells
   included.
 - **Print Preview** — Word42's own window, not an external viewer: pages on

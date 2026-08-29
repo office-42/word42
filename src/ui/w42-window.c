@@ -1890,6 +1890,15 @@ action_table_properties (GSimpleAction *action, GVariant *param, gpointer data)
 }
 
 static void
+action_table_autoformat (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_table_autoformat_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+static void
 action_field (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
@@ -3449,7 +3458,7 @@ window_sync_state (W42Window *self)
     gboolean in_table = w42_view_in_table (self->view);
     static const char *table_actions[] = { "table-insert-rows", "table-delete-rows",
                                            "table-insert-cols", "table-delete-cols", "table-split",
-                                           "table-merge", "table-properties",
+                                           "table-merge", "table-properties", "table-autoformat",
                                            "table-select", "table-split-table", "table-sort" };
 
     for (guint i = 0; i < G_N_ELEMENTS (table_actions); i++)
@@ -3549,6 +3558,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "table-insert-cols", action_table_insert_column, NULL, NULL, NULL, { 0 } },
   { "table-delete-cols", action_table_delete_column, NULL, NULL, NULL, { 0 } },
   { "table-properties", action_table_properties, NULL, NULL, NULL, { 0 } },
+  { "table-autoformat", action_table_autoformat, NULL, NULL, NULL, { 0 } },
   { "format-picture", action_format_picture, NULL, NULL, NULL, { 0 } },
   { "drop-cap", action_drop_cap, NULL, NULL, NULL, { 0 } },
   { "frame", action_frame, NULL, NULL, NULL, { 0 } },
