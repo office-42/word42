@@ -55,6 +55,22 @@ nearest_highlight (const char *hex)
   return best;
 }
 
+/* Word stores a paragraph's alignment relative to its direction: in a
+ * right-to-left paragraph "left" means the start of the line, which is
+ * the right-hand margin.  Word42 keeps alignment as what the eye sees,
+ * so the two are turned round on the way in and on the way out. */
+static W42Align
+mirror_align (W42Align align, gboolean rtl)
+{
+  if (!rtl)
+    return align;
+  if (align == W42_ALIGN_LEFT)
+    return W42_ALIGN_RIGHT;
+  if (align == W42_ALIGN_RIGHT)
+    return W42_ALIGN_LEFT;
+  return align;
+}
+
 static int
 highlight_index (const char *name)
 {
@@ -1555,7 +1571,12 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       d->fld_state = 0;
     }
   else if (g_str_equal (tag, "pPr"))
-    d->in_ppr = FALSE;
+    {
+      /* Word's alignment is relative to the paragraph's direction, and
+       * both are known only now that its properties have been read. */
+      d->in_ppr = FALSE;
+      d->b.pa.align = mirror_align (d->b.pa.align, d->b.pa.rtl);
+    }
   else if (g_str_equal (tag, "pBdr"))
     d->in_pbdr = FALSE;
   else if (g_str_equal (tag, "rPr"))
@@ -2263,11 +2284,17 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
       if (pa->indent_first < 0) g_string_append_printf (out, " w:hanging=\"%d\"", -pa->indent_first);
       g_string_append (out, "/>");
     }
-  switch (pa->align)
+  switch (mirror_align (pa->align, pa->rtl))
     {
     case W42_ALIGN_CENTER:  g_string_append (out, "<w:jc w:val=\"center\"/>"); break;
     case W42_ALIGN_RIGHT:   g_string_append (out, "<w:jc w:val=\"right\"/>"); break;
     case W42_ALIGN_JUSTIFY: g_string_append (out, "<w:jc w:val=\"both\"/>"); break;
+    case W42_ALIGN_LEFT:
+      /* In a right-to-left paragraph Word's "left" is the right margin,
+       * so it is worth saying even though it is the default. */
+      if (pa->rtl)
+        g_string_append (out, "<w:jc w:val=\"left\"/>");
+      break;
     default: break;
     }
   if (ends_section)

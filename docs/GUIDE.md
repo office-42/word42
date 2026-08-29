@@ -203,10 +203,14 @@ so are the four buttons on the formatting toolbar and Format ▸ Alignment.
 
 ### Format ▸ Paragraph
 
-- **Alignment** and **Direction** — the second sets a right-to-left
-  paragraph, for Arabic and Hebrew. Arabic and Hebrew text shapes and runs
-  right-to-left of its own accord; the setting makes the whole paragraph
-  read that way, including where its first line starts.
+- **Alignment** and **Direction** — two settings that mean two things.
+  Alignment says which margin the lines sit against: Left is the left
+  margin and Right the right one, whichever way the writing runs.
+  Direction sets the paragraph right-to-left, for Arabic and Hebrew: the
+  text shapes and orders itself that way, and a right-to-left paragraph is
+  normally set flush right. Word's file formats keep alignment the other
+  way round, relative to the direction; Word42 turns it round when it
+  reads and writes them, so a document looks the same in both.
 - **Indents** — left, right, and a special first line: none, first line
   indented **By** so much, or a hanging indent.
 - **Spacing** — before and after the paragraph, in points.

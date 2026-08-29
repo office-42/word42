@@ -900,9 +900,13 @@ build_block_layout (W42Layout      *self,
   pango_layout_set_indent (layout,
     (int) ((w42_twips_to_px (pa->indent_first) + extra_indent) * PANGO_SCALE));
 
-  /* Alignment is relative to the paragraph's direction, as in Word: a
-   * right-to-left paragraph aligned "left" sits against the right edge.
-   * With auto_dir off Pango's alignment is absolute, so the swap is here. */
+  /* Alignment is what it says: Left is the left edge and Right the right
+   * edge, whichever way the paragraph runs.  Format > Paragraph offers
+   * Alignment and Direction as two settings, so they mean two things --
+   * the direction shapes and orders the text, the alignment says which
+   * margin the lines sit against.  Word's file formats store alignment
+   * the other way, relative to the direction; the readers and writers
+   * turn it round, not the page. */
   if (pa->rtl)
     pango_layout_set_auto_dir (layout, FALSE);
   switch (pa->align)
@@ -911,7 +915,7 @@ build_block_layout (W42Layout      *self,
       pango_layout_set_alignment (layout, PANGO_ALIGN_CENTER);
       break;
     case W42_ALIGN_RIGHT:
-      pango_layout_set_alignment (layout, pa->rtl ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
+      pango_layout_set_alignment (layout, PANGO_ALIGN_RIGHT);
       break;
     case W42_ALIGN_JUSTIFY:
       pango_layout_set_alignment (layout, pa->rtl ? PANGO_ALIGN_RIGHT : PANGO_ALIGN_LEFT);
@@ -919,7 +923,7 @@ build_block_layout (W42Layout      *self,
       break;
     case W42_ALIGN_LEFT:
     default:
-      pango_layout_set_alignment (layout, pa->rtl ? PANGO_ALIGN_RIGHT : PANGO_ALIGN_LEFT);
+      pango_layout_set_alignment (layout, PANGO_ALIGN_LEFT);
       break;
     }
 

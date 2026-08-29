@@ -187,10 +187,26 @@ write_para_props (GString *out, const W42ParaFmt *pa, W42StyleSheet *styles)
 
 /* Alignment, indents and spacing: the part of a paragraph's formatting that
  * a stylesheet entry and a paragraph both carry. */
+/* RTF, like Word, keeps a paragraph's alignment relative to its
+ * direction: \\ql in a \\rtlpar paragraph is the right-hand margin.
+ * Word42 keeps alignment as what the eye sees, so the two are turned
+ * round on the way in and on the way out. */
+static W42Align
+rtf_mirror_align (W42Align align, gboolean rtl)
+{
+  if (!rtl)
+    return align;
+  if (align == W42_ALIGN_LEFT)
+    return W42_ALIGN_RIGHT;
+  if (align == W42_ALIGN_RIGHT)
+    return W42_ALIGN_LEFT;
+  return align;
+}
+
 static void
 write_para_body (GString *out, const W42ParaFmt *pa)
 {
-  switch (pa->align)
+  switch (rtf_mirror_align (pa->align, pa->rtl != 0))
     {
     case W42_ALIGN_CENTER:  g_string_append (out, "\\qc"); break;
     case W42_ALIGN_RIGHT:   g_string_append (out, "\\qr"); break;
@@ -1846,11 +1862,24 @@ formatting:
       r->sect_cols = 1;
       r->sect_gap = 0;
     }
-  else if (g_str_equal (word, "ql")) st->pa.align = W42_ALIGN_LEFT;
-  else if (g_str_equal (word, "rtlpar")) st->pa.rtl = 1;
+  else if (g_str_equal (word, "ql"))
+    st->pa.align = rtf_mirror_align (W42_ALIGN_LEFT, st->pa.rtl != 0);
+  else if (g_str_equal (word, "rtlpar"))
+    {
+      /* The direction may be read after the alignment, so what was read
+       * as an alignment is turned round now. */
+      st->pa.align = rtf_mirror_align (st->pa.align, TRUE);
+      st->pa.rtl = 1;
+    }
+  else if (g_str_equal (word, "ltrpar"))
+    {
+      st->pa.align = rtf_mirror_align (st->pa.align, st->pa.rtl != 0);
+      st->pa.rtl = 0;
+    }
   else if (g_str_equal (word, "ltrpar")) st->pa.rtl = 0;
   else if (g_str_equal (word, "qc")) st->pa.align = W42_ALIGN_CENTER;
-  else if (g_str_equal (word, "qr")) st->pa.align = W42_ALIGN_RIGHT;
+  else if (g_str_equal (word, "qr"))
+    st->pa.align = rtf_mirror_align (W42_ALIGN_RIGHT, st->pa.rtl != 0);
   else if (g_str_equal (word, "qj")) st->pa.align = W42_ALIGN_JUSTIFY;
   else if (g_str_equal (word, "li") && has_param) st->pa.indent_left = param;
   else if (g_str_equal (word, "ri") && has_param) st->pa.indent_right = param;
