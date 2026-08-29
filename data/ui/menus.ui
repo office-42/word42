@@ -611,6 +611,28 @@
           <attribute name="label" translatable="yes">_Contents</attribute>
           <attribute name="action">win.help-contents</attribute>
         </item>
+        <item>
+          <attribute name="label" translatable="yes">_Search for Help on...</attribute>
+          <attribute name="action">win.help-search</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Index</attribute>
+          <attribute name="action">win.help-index</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Tip of the Day...</attribute>
+          <attribute name="action">win.tip-of-the-day</attribute>
+        </item>
+      </section>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">Word42 on the _Web</attribute>
+          <attribute name="action">win.help-web</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Report a _Bug</attribute>
+          <attribute name="action">win.report-bug</attribute>
+        </item>
       </section>
       <section>
         <item>

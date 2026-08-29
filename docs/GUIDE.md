@@ -25,8 +25,9 @@ at the end lists every shortcut, and the section headings follow the menus.
 13. [Views and windows](#13-views-and-windows)
 14. [Printing and exporting](#14-printing-and-exporting)
 15. [Languages and scripts](#15-languages-and-scripts)
-16. [Keyboard reference](#16-keyboard-reference)
-17. [Where Word42 keeps things](#17-where-word42-keeps-things)
+16. [Help](#16-help)
+17. [Keyboard reference](#17-keyboard-reference)
+18. [Where Word42 keeps things](#18-where-word42-keeps-things)
 
 ---
 
@@ -699,7 +700,30 @@ world in one document:
 
 ---
 
-## 16. Keyboard reference
+## 16. Help
+
+**Help ▸ Contents** (F1) opens the help window: the sections of this
+guide on the left, the one chosen on the right. The guide travels inside
+the program, so the help is the same wherever Word42 is installed and
+whatever is on the machine.
+
+**Search for Help on...** puts the caret in the search box at the top:
+type a word and the list narrows to the sections that mention it, the
+ones with it in their title first. **Index** turns the list into every
+sub-heading in the guide, in alphabetical order.
+
+**Tip of the Day** shows one of the things worth knowing about the
+program, with **Next Tip** for another. Word 6 showed one at every start
+and so does this; the switch in the box, or Tools ▸ Options, turns
+that off. Word42 remembers which tip you last saw.
+
+**Word42 on the Web** and **Report a Bug** open word42.org and the
+project's issue list in whatever the desktop uses for the web. Nothing
+about the document is sent anywhere.
+
+---
+
+## 17. Keyboard reference
 
 ### Files
 
@@ -767,7 +791,7 @@ world in one document:
 
 ---
 
-## 17. Where Word42 keeps things
+## 18. Where Word42 keeps things
 
 | What | Where |
 | --- | --- |

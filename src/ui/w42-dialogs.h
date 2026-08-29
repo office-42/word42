@@ -48,8 +48,6 @@ void w42_field_dialog_show         (GtkWindow *parent, W42View *view);
 /* Tools > Options: units, default view and zoom, spelling as you type. */
 void w42_options_dialog_show       (GtkWindow *parent, W42View *view);
 
-/* Help > Contents: what word42 does and which keys do it. */
-void w42_help_dialog_show          (GtkWindow *parent);
 void w42_date_time_dialog_show     (GtkWindow *parent, W42View *view);
 void w42_symbol_dialog_show        (GtkWindow *parent, W42View *view);
 

@@ -3,7 +3,7 @@
 w42_resources = gnome.compile_resources(
   'w42-resources',
   'word42.gresource.xml',
-  source_dir: meson.current_source_dir(),
+  source_dir: [meson.current_source_dir(), meson.project_source_root() / 'docs'],
   c_name: 'w42',
 )
 

@@ -97,6 +97,12 @@ Early, but real. Word42 today is a working word processor:
   HTML back — a plain reading, with no CSS engine, that brings in what
   Word42 wrote and most pages that are text: headings, paragraphs, bold,
   italic, links, lists, tables, embedded pictures.
+- **Help** — the user guide travels inside the program: Help ▸ Contents
+  (F1) opens a window with the guide's sections on the left and the one
+  chosen on the right, Search for Help on... narrows the list to the
+  sections that mention a word, and Index lists every sub-heading
+  alphabetically. Help ▸ Tip of the Day shows one thing worth knowing,
+  at every start unless you turn it off.
 - **AutoText** — Edit ▸ AutoText keeps a piece of text under a name — a
   closing, an address — and puts it in wherever the caret is; typing the
   name and pressing Ctrl+F3 puts it in without the box. The entries are

@@ -7,6 +7,7 @@
 #include "w42-application.h"
 
 #include "w42-settings.h"
+#include "w42-help.h"
 
 #include "w42-window.h"
 
@@ -261,6 +262,26 @@ w42_application_startup (GApplication *app)
                                            ACCELS[i].accels);
 }
 
+/* Word 6 opened with a tip of the day, and so does this -- after the
+ * splash has had its moment, and only when no document was named on the
+ * command line. */
+static gboolean
+on_tip_time (gpointer data)
+{
+  GtkWindow *window = data;
+
+  if (GTK_IS_WINDOW (window))
+    w42_tip_of_the_day_show (window, TRUE);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+show_tip_after_splash (GtkWindow *parent)
+{
+  g_timeout_add_full (G_PRIORITY_DEFAULT_IDLE, SPLASH_MS + 400, on_tip_time,
+                      g_object_ref (parent), g_object_unref);
+}
+
 static void
 w42_application_activate (GApplication *app)
 {
@@ -280,6 +301,7 @@ w42_application_activate (GApplication *app)
   window = w42_window_new (GTK_APPLICATION (app));
   gtk_window_present (GTK_WINDOW (window));
   show_splash (GTK_WINDOW (window));
+  show_tip_after_splash (GTK_WINDOW (window));
 }
 
 static void

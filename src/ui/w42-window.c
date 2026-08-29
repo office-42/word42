@@ -31,6 +31,7 @@
 #include "w42-settings.h"
 #include "w42-spell-dialog.h"
 #include "w42-autotext.h"
+#include "w42-help.h"
 #include "w42-view.h"
 
 static const char *window_author_name (void);
@@ -939,8 +940,67 @@ action_help_contents (GSimpleAction *action, GVariant *param, gpointer data)
   W42Window *self = data;
 
   (void) action; (void) param;
-  w42_help_dialog_show (GTK_WINDOW (self));
+  w42_help_window_show (GTK_WINDOW (self), NULL);
 }
+
+static void
+action_help_search (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_help_window_show (GTK_WINDOW (self), "");
+}
+
+static void
+action_help_index (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_help_index_show (GTK_WINDOW (self));
+}
+
+static void
+action_tip_of_the_day (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_tip_of_the_day_show (GTK_WINDOW (self), FALSE);
+}
+
+/* The project's own pages, opened in whatever the desktop uses for the
+ * web.  Nothing about the document goes with it. */
+static void
+action_help_web (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  {
+    GtkUriLauncher *launcher = gtk_uri_launcher_new ("https://word42.org");
+
+    gtk_uri_launcher_launch (launcher, GTK_WINDOW (self), NULL, NULL, NULL);
+    g_object_unref (launcher);
+  }
+}
+
+static void
+action_report_bug (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  {
+    GtkUriLauncher *launcher =
+      gtk_uri_launcher_new ("https://github.com/office-42/word42/issues");
+
+    gtk_uri_launcher_launch (launcher, GTK_WINDOW (self), NULL, NULL, NULL);
+    g_object_unref (launcher);
+  }
+}
+
 
 static void
 action_new (GSimpleAction *action, GVariant *param, gpointer data)
@@ -3629,6 +3689,11 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "new-window",    action_new_window,    NULL, NULL, NULL, { 0 } },
   { "options",       action_options,       NULL, NULL, NULL, { 0 } },
   { "help-contents", action_help_contents, NULL, NULL, NULL, { 0 } },
+  { "help-search",  action_help_search,  NULL, NULL, NULL, { 0 } },
+  { "help-index",   action_help_index,   NULL, NULL, NULL, { 0 } },
+  { "tip-of-the-day", action_tip_of_the_day, NULL, NULL, NULL, { 0 } },
+  { "help-web",     action_help_web,     NULL, NULL, NULL, { 0 } },
+  { "report-bug",   action_report_bug,   NULL, NULL, NULL, { 0 } },
   { "tabs",          action_tabs,          NULL, NULL, NULL, { 0 } },
   { "borders",       action_borders,       NULL, NULL, NULL, { 0 } },
   { "insert-footnote", action_insert_footnote, NULL, NULL, NULL, { 0 } },

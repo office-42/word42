@@ -4,5 +4,6 @@
     <file preprocess="xml-stripblanks" alias="menus.ui">ui/menus.ui</file>
     <file>style.css</file>
     <file alias="about.png">icons/about.png</file>
+    <file alias="guide.md">GUIDE.md</file>
   </gresource>
 </gresources>

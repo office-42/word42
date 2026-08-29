@@ -144,13 +144,13 @@ Pa = partial, M = missing.
 | Tools | 5/3/6 | Thesaurus, Grammar, Envelopes | 6/2/2 | Compare, Document Statistics |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
-| Help | 1/1/7 | Index and Search, Tip of the Day | 2/0/4 | Search, Report a Bug |
-| **Total** | **60/24/29** | | **79/11/18** | |
+| Help | 5/1/3 | Quick Preview, Examples and Demos | 5/1/0 | -- |
+| **Total** | **64/24/25** | | **82/12/14** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
-| Word 6 | about 60 % | everything typed and formatted in the first hour is there -- fonts, paragraphs, tabs, lists, tables, pictures, frames, drop caps, headers and footers, spelling, find and replace, printing, RTF/DOCX/ODT/ABW/DOC/PDF -- but Outline view, templates and AutoText, a single tabbed Font box, thesaurus and grammar, table selection and sorting, and real help are not |
-| AbiWord | about 72 % | the same document model and daily editing set, ahead on mail merge, hyphenation, revisions, drop caps and period fidelity; behind on view modes, positioned text boxes, language per run, table selection, drag and drop |
+| Word 6 | about 65 % | everything typed and formatted in the first hour is there -- fonts, paragraphs, tabs, lists, tables, pictures, frames, drop caps, headers and footers, spelling, AutoText, find and replace, printing, a help window with contents, search and index, RTF/DOCX/ODT/ABW/DOC/PDF -- but Outline view, templates, a single tabbed Font box, thesaurus and grammar, and table selection are not |
+| AbiWord | about 76 % | the same document model and daily editing set, ahead on mail merge, hyphenation, revisions, drop caps and period fidelity; behind on view modes, positioned text boxes, table selection, drag and drop |
 
 Where the dialogs stop short of their Word 6 counterparts: Paragraph
 (no preview or Tabs button), Font (no underline styles, hidden text,
@@ -343,3 +343,18 @@ gaps the command-by-command count named, closed together.
     now the box Word 6 had: pages, words, characters with and without
     their spaces, paragraphs and lines, a switch for whether the notes
     are counted, and a column for the selection when there is one.
+
+**A help window, and the tip of the day.**  Help was the weakest menu
+against Word 6: one item where Word 6 had nine.  The user guide now
+travels inside the program, and the help window reads it: **Contents**
+lists the guide's sections and shows the one chosen, **Search for Help
+on...** narrows that list to the sections that mention a word (title
+matches first), and **Index** turns it into every sub-heading in the
+guide, alphabetically.  The guide is the only copy -- the help cannot
+drift from the documentation, because it is the documentation.
+
+**Tip of the Day** shows one thing worth knowing, with Next Tip for
+another; Word 6 showed one at every start and so does this, unless the
+switch in the box or in Tools > Options says otherwise.  **Word42 on the
+Web** and **Report a Bug** open the project's pages, which is what
+Word 6's Technical Support and AbiWord's bug report are for.

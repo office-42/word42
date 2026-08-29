@@ -1972,107 +1972,6 @@ w42_tabs_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Help                                                                    */
-/* ---------------------------------------------------------------------- */
-
-static const char *HELP_TEXT =
-  "<big><b>Word42</b></big>\n"
-  "A word processor in the classic style, built on GTK 4.\n\n"
-  "<b>Files</b>\n"
-  "Word42 reads and writes Rich Text Format (.rtf), Word documents (.docx), "
-  "OpenDocument (.odt), AbiWord documents (.abw, .zabw), web pages and plain text; reads "
-  "Word 97\u20132003 documents (.doc) and PDF; and writes PDF with "
-  "File \u25b8 Export as PDF. RTF and .docx keep everything the document "
-  "has and are read by other word processors.\n\n"
-  "<b>Views</b>\n"
-  "Normal view shows the text as one galley; Page Layout shows the pages "
-  "as they will print, with headers and footers. Print Preview shows whole "
-  "pages. Zoom is on the toolbar.\n\n"
-  "<b>Formatting</b>\n"
-  "The Formatting toolbar has styles, font, size, bold, italic, underline, "
-  "alignment, numbering and bullets. Format \u25b8 Paragraph sets indents "
-  "and spacing, Format \u25b8 Tabs the tab stops, Format \u25b8 Style the "
-  "style definitions. The ruler is live: drag the indent markers, click it "
-  "to set a tab stop, drag a stop to move it or off the ruler to remove "
-  "it; the box at its left cycles the kind of stop.\n\n"
-  "<b>Tables</b>\n"
-  "Table \u25b8 Insert Table. Tab and Shift+Tab move between cells, and "
-  "Tab past the last cell adds a row. Drag a cell edge to change the column "
-  "widths; select across cells and Merge Cells joins them.\n\n"
-  "<b>Pictures</b>\n"
-  "Insert \u25b8 Picture puts a picture in the text. Click it for handles; "
-  "drag a corner to resize it keeping its shape, a side to stretch it. "
-  "Format \u25b8 Picture sets its size exactly and can put it at the left "
-  "or right of its paragraph with the text running beside it. "
-  "Format \u25b8 Frame does the same for a paragraph of text, and "
-  "Format \u25b8 Drop Cap drops a paragraph's first letter over several lines.\n\n"
-  "<b>Spelling</b>\n"
-  "Words the dictionary does not know are underlined in red as you type. "
-  "Tools \u25b8 Spelling walks through them with suggestions.\n\n"
-  "<b>Long documents</b>\n"
-  "Insert ▸ Footnote and Endnote number themselves; Insert ▸ "
-  "Table of Contents lists the headings with their pages, and Update Table "
-  "of Contents makes it again. Insert ▸ Bookmark marks a place, "
-  "Cross-reference cites its page, Hyperlink links to it or the web. "
-  "Insert ▸ Section Break starts a section on a new page, and "
-  "Format ▸ Columns sets its columns; Insert ▸ Caption numbers a "
-  "figure.\n\n"
-  "<b>Reviewing</b>\n"
-  "Insert ▸ Annotation attaches a comment to the selection. Tools "
-  "▸ Revisions marks what is typed and struck out until Accept All or "
-  "Reject All. Tools ▸ Hyphenation puts soft hyphens in the words; "
-  "Format ▸ Change Case changes the selection's case. Tools ▸ "
-  "Mail Merge fills a letter from a CSV file, one copy per record.\n\n"
-  "<b>Keys</b>\n"
-  "<tt>Ctrl+N</tt> new   <tt>Ctrl+O</tt> open   <tt>Ctrl+S</tt> save   "
-  "<tt>Ctrl+P</tt> print\n"
-  "<tt>Ctrl+Z</tt> undo   <tt>Ctrl+Y</tt> redo   <tt>Ctrl+X/C/V</tt> cut, "
-  "copy, paste   <tt>Ctrl+A</tt> select all\n"
-  "<tt>Ctrl+B/I/U</tt> bold, italic, underline   <tt>Ctrl+D</tt> font\n"
-  "<tt>Ctrl+Shift+N</tt> Normal style   <tt>Ctrl+Alt+1/2/3</tt> Heading 1, "
-  "2, 3   <tt>Ctrl+Shift+L</tt> bullets\n"
-  "<tt>Ctrl+Return</tt> page break   <tt>Ctrl+F</tt> find   <tt>Ctrl+H</tt> "
-  "replace   <tt>F3</tt> find next   <tt>Ctrl+G</tt> go to\n"
-  "<tt>Ctrl+Alt+F/E</tt> footnote, endnote   <tt>Ctrl+K</tt> hyperlink   "
-  "<tt>Ctrl+Shift+F5</tt> bookmark   <tt>Ctrl+Alt+A</tt> annotation\n"
-  "<tt>Ctrl+Shift+E</tt> mark revisions   <tt>Shift+F3</tt> toggle case   "
-  "<tt>Alt+Shift+D</tt> date and time   <tt>F1</tt> this help\n";
-
-void
-w42_help_dialog_show (GtkWindow *parent)
-{
-  GtkWidget *window = gtk_window_new ();
-  GtkWidget *scroller = gtk_scrolled_window_new ();
-  GtkWidget *label = gtk_label_new (NULL);
-  GtkEventController *key = gtk_event_controller_key_new ();
-
-  gtk_window_set_title (GTK_WINDOW (window), "Word42 Help");
-  gtk_window_set_transient_for (GTK_WINDOW (window), parent);
-  gtk_window_set_destroy_with_parent (GTK_WINDOW (window), TRUE);
-  gtk_window_set_default_size (GTK_WINDOW (window), 620, 560);
-
-  g_signal_connect (key, "key-pressed", G_CALLBACK (on_dialog_key), window);
-  gtk_widget_add_controller (window, key);
-
-  gtk_label_set_markup (GTK_LABEL (label), HELP_TEXT);
-  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
-  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-  gtk_label_set_yalign (GTK_LABEL (label), 0.0);
-  gtk_widget_set_margin_start (label, 16);
-  gtk_widget_set_margin_end (label, 16);
-  gtk_widget_set_margin_top (label, 12);
-  gtk_widget_set_margin_bottom (label, 12);
-  gtk_widget_add_css_class (label, "w42-help");
-
-  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), label);
-  gtk_window_set_child (GTK_WINDOW (window), scroller);
-
-  gtk_window_present (GTK_WINDOW (window));
-}
-
-/* ---------------------------------------------------------------------- */
 /* Options                                                                 */
 /* ---------------------------------------------------------------------- */
 
@@ -2085,6 +1984,7 @@ typedef struct {
   GtkWidget *zoom;
   GtkWidget *auto_spell;
   GtkWidget *auto_correct;
+  GtkWidget *tips;
   GtkWidget *user_name;
 } OptionsBox;
 
@@ -2117,6 +2017,8 @@ on_options_ok (GtkButton *button, gpointer data)
     w42_settings_set_bool ("auto-correct", want_correct);
     w42_view_set_autocorrect (box->view, want_correct);
   }
+  w42_settings_set_bool ("tips-at-startup",
+                         gtk_check_button_get_active (GTK_CHECK_BUTTON (box->tips)));
   /* The view and zoom chosen apply to this window now, not only to the
    * next one opened. */
   {
@@ -2221,6 +2123,12 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_spell),
                                w42_settings_get_bool ("auto-spell", TRUE));
   gtk_grid_attach (GTK_GRID (grid), box->auto_spell, 0, 0, 2, 1);
+
+  grid = group (content, "Starting up");
+  box->tips = gtk_check_button_new_with_mnemonic ("Show the _tip of the day when Word42 starts");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->tips),
+                               w42_settings_get_bool ("tips-at-startup", TRUE));
+  gtk_grid_attach (GTK_GRID (grid), box->tips, 0, 0, 2, 1);
 
   button_row (content, box->window, G_CALLBACK (on_options_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
