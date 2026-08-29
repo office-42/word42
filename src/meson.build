@@ -36,6 +36,7 @@ w42_core_sources = files(
   'model/w42-tableformat.c',
   'model/w42-envelope.c',
   'model/w42-template.c',
+  'model/w42-autoformat.c',
 )
 
 w42_core = static_library('w42core',

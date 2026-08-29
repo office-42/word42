@@ -392,6 +392,10 @@
           </section>
         </submenu>
         <item>
+          <attribute name="label" translatable="yes">AutoFormat the _Whole Document...</attribute>
+          <attribute name="action">win.autoformat</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Bac_kground...</attribute>
           <attribute name="action">win.background</attribute>
         </item>

@@ -97,6 +97,9 @@ Early, but real. Word42 today is a working word processor:
   HTML back — a plain reading, with no CSS engine, that brings in what
   Word42 wrote and most pages that are text: headings, paragraphs, bold,
   italic, links, lists, tables, embedded pictures.
+- **AutoFormat** — Format ▸ AutoFormat the Whole Document turns typed
+  text into a formatted document: headings, lists, printer's quotes, and
+  runs of empty paragraphs tidied, all in one undo step.
 - **Index** — Insert ▸ Index ▸ Mark Entry marks words for the index,
   under themselves or under a term of your own; Build the Index gathers
   them alphabetically with the pages they are on. The marks go through

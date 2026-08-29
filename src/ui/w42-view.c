@@ -9,6 +9,7 @@
 #include "w42-autocorrect.h"
 #include "w42-autotext.h"
 #include "w42-index.h"
+#include "w42-autoformat.h"
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
@@ -605,6 +606,28 @@ view_insert_toc_entries (W42View *self)
       view_edited (self);
     }
   return made;
+}
+
+int
+w42_view_autoformat (W42View *self, const W42AutoFormat *what)
+{
+  W42PieceTable *pt;
+  int changed;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 0);
+  g_return_val_if_fail (what != NULL, 0);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return 0;
+
+  changed = w42_pt_autoformat (pt, what);
+  if (changed > 0)
+    {
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, self->caret);
+      view_edited (self);
+    }
+  return changed;
 }
 
 /* ---------------------------------------------------------------------- */

@@ -25,6 +25,7 @@ is listed so the distance to the current product is honest.
 | Hyphenation (libhyphen patterns) | full | no (stub) | full | full |
 | Word count | full | full | full | full |
 | AutoCorrect as you type | full (quotes, capitals, dashes, misspellings) | partial | full | full |
+| AutoFormat a whole document | full (headings, lists, quotes, blanks) | no | full | full |
 | AutoText | full (named entries, Ctrl+F3) | yes | yes | yes |
 | Formatting marks (¶, ·, →) | full | full | full | full |
 
@@ -144,12 +145,12 @@ Pa = partial, M = missing.
 | Edit | 12/1/2 | Repeat, Links | 13/0/1 | Paste Unformatted styles |
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
 | Insert | 8/6/2 | Object, Form Field | 12/2/2 | Text Box, Clip Art |
-| Format | 6/8/1 | AutoFormat, Style Gallery, one Font box | 16/4/2 | two the earlier review did not name |
+| Format | 7/8/1 | Style Gallery, one Font box | 17/4/2 | two the earlier review did not name |
 | Tools | 6/3/5 | Thesaurus, Grammar, Protect Document | 6/2/2 | Plugins and Scripts |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
 | Help | 5/1/3 | Quick Preview, Examples and Demos | 5/1/0 | -- |
-| **Total** | **68/24/22** | | **86/12/11** | |
+| **Total** | **69/24/22** | | **87/12/11** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
@@ -405,3 +406,12 @@ alphabetical index marks it has for the purpose.  LibreOffice reads all
 three of ours as its own index entries.  The gathering lives beside the
 layout rather than in the window, since the page numbers are the
 layout's -- which is also what lets it be checked without a window.
+
+**AutoFormat.**  Format > AutoFormat the Whole Document does for a
+finished document what AutoCorrect does as you type: a short line that
+stands alone becomes a heading, a line that starts with a dash or a
+number becomes an item of a list with the marker taken off, straight
+quotes take a printer's shapes, two hyphens become a dash, and a run of
+empty paragraphs becomes one.  The four are switches in the box, the
+whole pass is one undo step, and a second pass over the same document
+finds nothing left to do.  Tables and notes are left alone.

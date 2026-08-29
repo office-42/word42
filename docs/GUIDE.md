@@ -265,6 +265,24 @@ There is a tab stop every half inch until you set one of your own.
 The three markers on the ruler are the first-line indent (top), the left
 indent (bottom) and the right indent; drag them.
 
+### Format ▸ AutoFormat
+
+**Format ▸ AutoFormat the Whole Document** looks over a document that
+was typed as though on a typewriter and makes it a word processor's:
+
+- a short line that stands alone, with nothing before it and text after
+  it, becomes a heading;
+- a line that begins with a dash, a star or a bullet becomes an item of
+  a bulleted list, and one that begins with "1." or "a)" an item of a
+  numbered list, with the marker taken off;
+- straight quotes take the shapes a printer would set, two hyphens
+  become an en dash and three an em dash;
+- a run of empty paragraphs becomes one.
+
+The box says which of the four to apply and remembers what you chose.
+The whole pass is one undo step, so Ctrl+Z takes it all back if you do
+not like what it did. Text in tables and in notes is left alone.
+
 ### Format ▸ Background
 
 The colour behind the page: pick one from the list and the sample shows

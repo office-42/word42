@@ -11,6 +11,7 @@
 #include "w42-document.h"
 #include "w42-layout.h"
 #include "w42-tableformat.h"
+#include "w42-autoformat.h"
 
 G_BEGIN_DECLS
 
@@ -257,6 +258,10 @@ void     w42_view_change_case (W42View *self, W42CaseKind kind);
  * selected.  Insert > Index gathers the marked runs into an index at the
  * caret -- or replaces the index already there -- and returns how many
  * entries it made. */
+/* Format > AutoFormat: the whole document tidied, in one undo step.
+ * Returns how many paragraphs changed. */
+int      w42_view_autoformat (W42View *self, const W42AutoFormat *what);
+
 gboolean w42_view_mark_index_entry (W42View *self, const char *term);
 int      w42_view_insert_index     (W42View *self);
 

@@ -3636,6 +3636,106 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Format > AutoFormat                                                     */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *headings;
+  GtkWidget *lists;
+  GtkWidget *quotes;
+  GtkWidget *blanks;
+} AutoFormatDialog;
+
+static void
+autoformat_dialog_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+static void
+on_document_autoformat_ok (GtkButton *button, gpointer data)
+{
+  AutoFormatDialog *box = data;
+  W42AutoFormat what;
+  int changed;
+
+  (void) button;
+  what.headings = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->headings));
+  what.lists = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->lists));
+  what.quotes = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->quotes));
+  what.blanks = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->blanks));
+
+  w42_settings_set_bool ("autoformat-headings", what.headings);
+  w42_settings_set_bool ("autoformat-lists", what.lists);
+  w42_settings_set_bool ("autoformat-quotes", what.quotes);
+  w42_settings_set_bool ("autoformat-blanks", what.blanks);
+
+  changed = w42_view_autoformat (box->view, &what);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+
+  /* Word 6 said what it had done and offered to look through it; this
+   * says what it did, and Ctrl+Z takes the lot back. */
+  {
+    char *detail = changed > 0
+      ? g_strdup_printf ("%d paragraph%s changed.  Undo takes the whole "
+                         "thing back in one step.", changed, changed == 1 ? "" : "s")
+      : g_strdup ("Nothing needed changing.");
+
+    w42_message_show (gtk_window_get_transient_for (GTK_WINDOW (box->window)),
+                      "AutoFormat", detail);
+    g_free (detail);
+  }
+}
+
+void
+w42_autoformat_dialog_show (GtkWindow *parent, W42View *view)
+{
+  AutoFormatDialog *box;
+  GtkWidget *content, *grid, *label;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (AutoFormatDialog, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "AutoFormat", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), autoformat_dialog_free, box);
+
+  label = gtk_label_new ("Word42 will look over the whole document and put "
+                         "right what was typed as though on a typewriter.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_widget_set_size_request (label, 330, -1);
+  gtk_box_append (GTK_BOX (content), label);
+
+  grid = group (content, "Apply");
+  box->headings = gtk_check_button_new_with_mnemonic ("_Headings: short lines that stand alone");
+  box->lists = gtk_check_button_new_with_mnemonic ("_Lists: lines that start with a dash or a number");
+  box->quotes = gtk_check_button_new_with_mnemonic ("_Quotes and dashes as a printer sets them");
+  box->blanks = gtk_check_button_new_with_mnemonic ("_Empty paragraphs: a run of them becomes one");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->headings),
+                               w42_settings_get_bool ("autoformat-headings", TRUE));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->lists),
+                               w42_settings_get_bool ("autoformat-lists", TRUE));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->quotes),
+                               w42_settings_get_bool ("autoformat-quotes", TRUE));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->blanks),
+                               w42_settings_get_bool ("autoformat-blanks", TRUE));
+  gtk_grid_attach (GTK_GRID (grid), box->headings, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->lists, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->quotes, 0, 2, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->blanks, 0, 3, 1, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_document_autoformat_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
 /* Insert > Index Entry                                                    */
 /* ---------------------------------------------------------------------- */
 
