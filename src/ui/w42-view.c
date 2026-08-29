@@ -3954,7 +3954,8 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
   {
     /* Format > Background: the colour the paper is, white unless the
      * document says otherwise. */
-    const W42PageSetup *setup = w42_document_page_setup (self->doc);
+    const W42PageSetup *setup = self->doc != NULL
+                                  ? w42_document_page_setup (self->doc) : NULL;
     double pr = 1.0, pg = 1.0, pb = 1.0;
 
     if (setup != NULL && setup->has_background)

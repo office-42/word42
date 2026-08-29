@@ -125,7 +125,8 @@ draw_preview (GtkDrawingArea *area, cairo_t *cr, int width, int height,
 
       {
         /* The paper is white unless Format > Background says otherwise. */
-        const W42PageSetup *setup = w42_document_page_setup (self->doc);
+        const W42PageSetup *setup = self->doc != NULL
+                                      ? w42_document_page_setup (self->doc) : NULL;
 
         if (setup != NULL && setup->has_background)
           cairo_set_source_rgb (cr, ((setup->background >> 16) & 0xFF) / 255.0,
