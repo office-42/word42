@@ -1,0 +1,422 @@
+/* word42 - the chrome of a 1993 word processor.
+ *
+ * Copyright (C) 2026 Andreas Røsdal
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Word 6 predates theming, so word42 states its colours outright rather than
+ * inheriting the desktop's.  The palette is Windows 3.1's: a silver face,
+ * white and light grey for the lit edges of a control, mid and black grey for
+ * the shaded ones.  Every raised control is that four-tone bevel, and every
+ * field the same bevel turned inside out.  Getting those two right is most of
+ * what makes the period look.
+ *
+ * The document itself is always black on white paper and takes none of this.
+ */
+
+/* --- palette ---------------------------------------------------------- */
+
+:root {
+  --w42-face:        #c0c0c0;
+  --w42-light:       #dfdfdf;
+  --w42-highlight:   #ffffff;
+  --w42-shadow:      #808080;
+  --w42-dark:        #000000;
+  --w42-title:       #000080;
+  --w42-title-text:  #ffffff;
+  --w42-select:      #000080;
+}
+
+/* The whole of the chrome is set in one small sans, as the original was.
+ * The dialogs are chrome too: they are their own windows, so they do not
+ * inherit the main window's rule and are named here as well. */
+window.w42,
+window.w42 label,
+window.w42 button,
+.w42-dialog,
+.w42-dialog label,
+.w42-dialog button,
+.w42-dialog entry,
+.w42-dialog entry text,
+.w42-dialog checkbutton,
+.w42-dialog spinbutton,
+.w42-dialog dropdown,
+.w42-dialog dropdown label,
+.w42-titlebar label {
+  font-family: "MS Sans Serif", "Segoe UI", "DejaVu Sans", sans-serif;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+/* The menu bar and its drop-downs carry the most reading of any chrome in
+ * the window, so they get a size of their own rather than the smallest one
+ * that fits. */
+.w42-menubar,
+.w42-menubar > item,
+popover.menu contents modelbutton label {
+  font-size: 13px;
+}
+
+/* --- the raised bevel, shared by everything that can be pressed -------- */
+
+.w42-toolbar button,
+.w42-titlebar button,
+.w42-dialog button,
+.w42-about button {
+  background-color: var(--w42-face);
+  background-image: none;
+  color: var(--w42-dark);
+  border: 1px solid;
+  border-top-color: var(--w42-highlight);
+  border-left-color: var(--w42-highlight);
+  border-right-color: var(--w42-dark);
+  border-bottom-color: var(--w42-dark);
+  box-shadow: inset -1px -1px 0 var(--w42-shadow),
+              inset  1px  1px 0 var(--w42-light);
+  border-radius: 0;
+  padding: 1px;
+  margin: 0;
+  min-width: 22px;
+  min-height: 22px;
+  outline: none;
+}
+
+.w42-toolbar button:hover,
+.w42-titlebar button:hover,
+.w42-dialog button:hover,
+.w42-about button:hover {
+  background-color: var(--w42-light);
+}
+
+/* Pressed and toggled-on turn the bevel inside out, which is the whole of
+ * how a 1993 toolbar showed you that bold was on. */
+.w42-toolbar button:active,
+.w42-toolbar button:checked,
+.w42-titlebar button:active,
+.w42-dialog button:active,
+.w42-about button:active {
+  border-top-color: var(--w42-dark);
+  border-left-color: var(--w42-dark);
+  border-right-color: var(--w42-highlight);
+  border-bottom-color: var(--w42-highlight);
+  box-shadow: inset  1px  1px 0 var(--w42-shadow),
+              inset -1px -1px 0 var(--w42-light);
+  background-color: var(--w42-face);
+  padding: 2px 0 0 2px;
+}
+
+.w42-toolbar button:disabled,
+.w42-dialog button:disabled {
+  color: var(--w42-shadow);
+}
+
+.w42-toolbar button:disabled image {
+  opacity: 0.4;
+}
+
+/* --- title bar -------------------------------------------------------- */
+
+.w42-titlebar {
+  background-color: var(--w42-title);
+  background-image: none;
+  color: var(--w42-title-text);
+  border: none;
+  border-bottom: 1px solid var(--w42-dark);
+  min-height: 18px;
+  padding: 0 2px;
+}
+
+/* GtkWindowHandle and the headerbar slot around it both want a minimum
+ * height of their own; without these the caption ends up three times the
+ * height of the original. */
+windowhandle,
+window.w42 headerbar,
+window.w42 .titlebar {
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.w42-titlebar-label {
+  color: var(--w42-title-text);
+  font-weight: bold;
+  font-size: 11px;
+  padding: 0;
+  margin: 0;
+}
+
+.w42-titlebar button {
+  min-width: 16px;
+  min-height: 14px;
+  padding: 0;
+  margin: 1px 1px;
+}
+
+.w42-titlebar image {
+  margin: 0;
+}
+
+/* The window is inactive: Windows 3.1 greyed the bar rather than fading the
+ * text, and the difference is easy to miss if you do it the modern way. */
+.w42-titlebar:backdrop {
+  background-color: var(--w42-shadow);
+}
+
+/* --- menu bar --------------------------------------------------------- */
+
+.w42-menubar {
+  background-color: var(--w42-face);
+  color: var(--w42-dark);
+  border-bottom: 1px solid var(--w42-shadow);
+  padding: 0 2px;
+  min-height: 20px;
+}
+
+.w42-menubar > item {
+  color: var(--w42-dark);
+  padding: 2px 8px;
+  border-radius: 0;
+  background-image: none;
+}
+
+.w42-menubar > item:hover,
+.w42-menubar > item:selected {
+  background-color: var(--w42-select);
+  color: var(--w42-title-text);
+}
+
+popover.menu contents {
+  background-color: var(--w42-face);
+  color: var(--w42-dark);
+  border: 1px solid;
+  border-top-color: var(--w42-highlight);
+  border-left-color: var(--w42-highlight);
+  border-right-color: var(--w42-dark);
+  border-bottom-color: var(--w42-dark);
+  box-shadow: inset -1px -1px 0 var(--w42-shadow),
+              inset  1px  1px 0 var(--w42-light);
+  border-radius: 0;
+  padding: 2px;
+}
+
+popover.menu contents > arrow,
+popover.menu > arrow {
+  min-width: 0;
+  min-height: 0;
+  background: none;
+}
+
+popover.menu contents modelbutton {
+  border-radius: 0;
+  padding: 3px 10px;
+  min-height: 18px;
+  color: var(--w42-dark);
+}
+
+popover.menu contents modelbutton:hover {
+  background-color: var(--w42-select);
+  color: var(--w42-title-text);
+}
+
+popover.menu contents modelbutton:disabled {
+  color: var(--w42-shadow);
+}
+
+popover.menu contents separator {
+  background-color: var(--w42-shadow);
+  min-height: 1px;
+  margin: 2px 0;
+}
+
+/* --- toolbars --------------------------------------------------------- */
+
+.w42-toolbar {
+  background-color: var(--w42-face);
+  border-bottom: 1px solid var(--w42-shadow);
+  padding: 2px 3px;
+}
+
+.w42-toolbar separator {
+  background-color: var(--w42-shadow);
+  min-width: 1px;
+  margin: 2px 3px;
+}
+
+/* --- fields: the bevel turned inside out ------------------------------ */
+
+.w42-toolbar dropdown > button,
+.w42-dialog entry,
+.w42-dialog entry text {
+  background-color: var(--w42-highlight);
+  background-image: none;
+  color: var(--w42-dark);
+  border: 1px solid;
+  border-top-color: var(--w42-shadow);
+  border-left-color: var(--w42-shadow);
+  border-right-color: var(--w42-highlight);
+  border-bottom-color: var(--w42-highlight);
+  box-shadow: inset 1px 1px 0 var(--w42-dark);
+  border-radius: 0;
+  padding: 1px 2px;
+  min-height: 18px;
+  outline: none;
+}
+
+.w42-toolbar dropdown {
+  margin: 0 2px 0 0;
+}
+
+.w42-toolbar dropdown > button:hover,
+.w42-toolbar dropdown > button:active,
+.w42-toolbar dropdown > button:checked {
+  background-color: var(--w42-highlight);
+  padding: 1px 2px;
+  border-top-color: var(--w42-shadow);
+  border-left-color: var(--w42-shadow);
+  border-right-color: var(--w42-highlight);
+  border-bottom-color: var(--w42-highlight);
+  box-shadow: inset 1px 1px 0 var(--w42-dark);
+}
+
+/* The arrow at the right of a field is itself a little raised button. */
+.w42-toolbar dropdown > button > arrow {
+  background-color: var(--w42-face);
+  border: 1px solid;
+  border-top-color: var(--w42-highlight);
+  border-left-color: var(--w42-highlight);
+  border-right-color: var(--w42-dark);
+  border-bottom-color: var(--w42-dark);
+  box-shadow: inset -1px -1px 0 var(--w42-shadow),
+              inset  1px  1px 0 var(--w42-light);
+  min-width: 14px;
+  min-height: 16px;
+  margin: 0;
+  -gtk-icon-size: 10px;
+  color: var(--w42-dark);
+}
+
+.w42-dialog entry:focus,
+.w42-dialog entry text:focus {
+  outline: none;
+  box-shadow: inset 1px 1px 0 var(--w42-dark);
+}
+
+/* --- ruler ------------------------------------------------------------ */
+
+.w42-ruler {
+  background-color: var(--w42-face);
+  border-bottom: 1px solid var(--w42-shadow);
+}
+
+/* --- status bar ------------------------------------------------------- */
+
+.w42-statusbar {
+  background-color: var(--w42-face);
+  color: var(--w42-dark);
+  border-top: 1px solid var(--w42-highlight);
+  padding: 1px 4px;
+}
+
+/* Each reading sits in its own sunken well, as Word 6's did. */
+.w42-status-cell {
+  border: 1px solid;
+  border-top-color: var(--w42-shadow);
+  border-left-color: var(--w42-shadow);
+  border-right-color: var(--w42-highlight);
+  border-bottom-color: var(--w42-highlight);
+  padding: 0 6px;
+  min-height: 16px;
+}
+
+/* --- scrollbars ------------------------------------------------------- */
+
+scrollbar {
+  background-color: var(--w42-light);
+  border: none;
+  border-left: 1px solid var(--w42-shadow);
+  min-width: 16px;
+  min-height: 16px;
+}
+
+scrollbar slider {
+  background-color: var(--w42-face);
+  border: 1px solid;
+  border-top-color: var(--w42-highlight);
+  border-left-color: var(--w42-highlight);
+  border-right-color: var(--w42-dark);
+  border-bottom-color: var(--w42-dark);
+  box-shadow: inset -1px -1px 0 var(--w42-shadow),
+              inset  1px  1px 0 var(--w42-light);
+  border-radius: 0;
+  margin: 0;
+  min-width: 14px;
+  min-height: 20px;
+}
+
+scrollbar slider:hover,
+scrollbar slider:active {
+  background-color: var(--w42-light);
+}
+
+/* --- the canvas ------------------------------------------------------- */
+
+/* The view paints its own ground, page and paper; keep the widget background
+ * out of the way so nothing shows through at the edges. */
+w42view {
+  background-color: #ffffff;
+}
+
+/* --- dialogs ---------------------------------------------------------- */
+
+.w42-dialog,
+.w42-about {
+  background-color: var(--w42-face);
+  color: var(--w42-dark);
+}
+
+.w42-dialog checkbutton {
+  color: var(--w42-dark);
+}
+
+.w42-dialog-status {
+  color: #303030;
+  min-height: 20px;
+}
+
+.w42-about-version {
+  font-weight: bold;
+}
+
+.w42-about-licence {
+  color: #303030;
+}
+
+/* The Symbol box: a grid of characters, each its own little cell. */
+.w42-symbols {
+  background: #ffffff;
+  padding: 1px;
+}
+.w42-symbols flowboxchild {
+  padding: 0;
+  border: 1px solid #c0c0c0;
+  font-size: 13pt;
+}
+.w42-symbols flowboxchild:selected {
+  background: #000080;
+  color: #ffffff;
+}
+
+/* The help window reads like a page, not like chrome. */
+.w42-help {
+  background: #ffffff;
+  color: #000000;
+  font-size: 10.5pt;
+}
+
+/* The splash screen: a white card with the blue edge of the title bar. */
+.w42-splash {
+  background-color: #ffffff;
+  border: 2px solid #000080;
+}

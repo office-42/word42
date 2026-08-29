@@ -1,0 +1,53 @@
+{
+  "app-id": "org.word42.word42",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "48",
+  "sdk": "org.gnome.Sdk",
+  "command": "word42",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--device=dri",
+    "--filesystem=host",
+    "--socket=cups"
+  ],
+  "modules": [
+    {
+      "name": "enchant",
+      "buildsystem": "autotools",
+      "config-opts": [ "--disable-static", "--with-hunspell" ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/rrthomas/enchant/releases/download/v2.8.2/enchant-2.8.2.tar.gz",
+          "sha256": "8f19535adb5577b83b00e02f330fe9b9eb40dd21f19e2899636fc4d3a7696375"
+        }
+      ]
+    },
+    {
+      "name": "hyphen",
+      "buildsystem": "autotools",
+      "config-opts": [ "--disable-static" ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://downloads.sourceforge.net/hunspell/hyphen-2.8.8.tar.gz",
+          "sha256": "304636d4eccd81a14b6914d07b84c79ebb815288c76fe027b9ebff6ff24d5705"
+        }
+      ]
+    },
+    {
+      "name": "word42",
+      "buildsystem": "meson",
+      "config-opts": [ "--buildtype=release" ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/office-42/word42.git",
+          "branch": "main"
+        }
+      ]
+    }
+  ]
+}

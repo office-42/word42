@@ -1,0 +1,26 @@
+# Meson / Ninja
+/build*/
+!/build-aux/
+/builddir/
+*.o
+*.a
+*.so
+*.dll
+*.exe
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# Editors
+*.swp
+*~
+.vscode/
+.idea/
+
+# Generated
+*.gresource.c
+*.gresource.h
+
+# Generated only for looking at the icon work
+data/icons/contact-sheet.*
+.claude/settings.local.json

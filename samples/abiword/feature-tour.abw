@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE abiword PUBLIC "-//ABISOURCE//DTD AWML 1.0 Strict//EN" "http://www.abisource.com/awml.dtd">
+<abiword template="false" xmlns:fo="http://www.w3.org/1999/XSL/Format" xmlns:math="http://www.w3.org/1998/Math/MathML" xid-max="64" xmlns:dc="http://purl.org/dc/elements/1.1/" fileformat="1.1" xmlns:svg="http://www.w3.org/2000/svg" xmlns:awml="http://www.abisource.com/awml.dtd" xmlns="http://www.abisource.com/awml.dtd" xmlns:xlink="http://www.w3.org/1999/xlink" version="2.8.0" xml:space="preserve" props="dom-dir:ltr; document-footnote-restart-section:0; document-endnote-type:numeric; document-endnote-place-enddoc:1; document-endnote-initial:1; lang:nb-NO; document-endnote-restart-section:0; document-footnote-restart-page:0; document-footnote-type:numeric; document-footnote-initial:1; document-endnote-place-endsection:0">
+<!-- ======================================================================== -->
+<!-- This file is an AbiWord document.                                        -->
+<!-- AbiWord is a free, Open Source word processor.                           -->
+<!-- More information about AbiWord is available at http://www.abisource.com/ -->
+<!-- You should not edit this file by hand.                                   -->
+<!-- ======================================================================== -->
+
+<metadata>
+<m key="dc.format">application/x-abiword</m>
+<m key="abiword.generator">AbiWord</m>
+<m key="dc.subject">A document for reading back</m>
+<m key="dc.title">Word42 feature tour</m>
+<m key="dc.description">Written by Word42 so that other programs can write it out again.</m>
+<m key="dc.creator">Word42</m>
+</metadata>
+<history version="1" edit-time="0" last-saved="1788022342" uid="0134c044-a3ca-11f1-9da2-c594edf111b4">
+<version id="1" started="1788022342" uid="01350dec-a3ca-11f1-9da2-c594edf111b4" auto="0" top-xid="64"/>
+</history>
+<styles>
+<s type="P" name="Title" basedon="Standard" followedby="Standard" props="text-align:center; margin-top:0.1667in; font-size:16pt; margin-bottom:0.0417in; font-weight:bold; font-style:normal"/>
+<s type="P" name="Standard" followedby="Standard" props="text-align:left; font-size:10pt; font-weight:normal; font-style:normal"/>
+<s type="P" name="Heading 1" basedon="Standard" followedby="Standard" props="text-align:left; margin-top:0.1667in; font-size:14pt; margin-bottom:0.0833in; font-weight:bold; font-style:normal"/>
+<s type="P" name="Heading 2" basedon="Standard" followedby="Standard" props="text-align:left; margin-top:0.1667in; font-size:12pt; margin-bottom:0.0417in; font-weight:bold; font-style:italic"/>
+<s type="P" name="Caption" basedon="Standard" followedby="Standard" props="text-align:left; margin-top:0.0833in; font-size:9pt; margin-bottom:0.0833in; font-weight:bold; font-style:normal"/>
+<s type="P" name="Heading 3" basedon="Standard" followedby="Standard" props="text-align:left; margin-top:0.1667in; font-size:12pt; margin-bottom:0.0417in; font-weight:bold; font-style:normal"/>
+<s type="P" name="Normal" props="text-align:left; font-size:10pt; font-weight:normal; font-style:normal"/>
+</styles>
+<pagesize pagetype="Letter" orientation="portrait" width="8.500000" height="11.000000" units="in" page-scale="1.000000"/>
+<section footer="1" header="0" xid="2" props="page-margin-right:1.0000in; page-width:8.5000in; page-margin-header:1.0000in; page-margin-left:1.0000in; page-margin-footer:1.0000in; page-margin-bottom:3.810000cm; page-orientation:portrait; page-margin-top:3.810000cm; page-height:11.0000in">
+<p style="Title" xid="3" props="margin-bottom:0.0417in; margin-top:0.1667in">Word42 feature tour</p>
+<p style="Standard" xid="4">This document is here to be read back.  It uses what the model can hold, so that a program that writes it out again in its own hand gives a file worth reading.</p>
+<p style="Heading 1" xid="5" props="margin-bottom:0.0833in; margin-top:0.1667in">Character formatting</p>
+<p style="Standard" xid="6"><c props="font-weight:bold">Bold</c>, <c props="font-style:italic">italic</c>, <c props="text-decoration:underline">underline</c>, <c props="text-decoration:line-through">struck through</c>, <c props="color:#c00000">coloured</c>, <c props="bgcolor:#ffff00">highlighted</c>, small capitals, and a <c props="text-position:superscript">superscript</c>.</p>
+<p style="Heading 1" xid="7" props="margin-bottom:0.0833in; margin-top:0.1667in">Paragraphs and lists</p>
+<p style="Standard" xid="8" props="text-align:justify; margin-top:0.1667in; line-height:1.500000; text-indent:0.2500in; margin-left:0.5000in">This paragraph is justified, indented on the left, and set with space above it, so that a reader can tell whether those survived the trip through a file format and back again.</p>
+<p level="1" listid="1000" parentid="0" xid="9" props="margin-left:0.635000cm; font-size:10pt; text-indent:-0.635000cm; field-font:Symbol; font-weight:normal; list-style:Bullet List; text-align:left; font-style:normal"><field type="list_label" xid="10"></field>	The first item of a bulleted list</p>
+<p level="1" listid="1000" parentid="0" xid="11" props="margin-left:0.635000cm; font-size:10pt; text-indent:-0.635000cm; field-font:Symbol; font-weight:normal; list-style:Bullet List; text-align:left; font-style:normal"><field type="list_label" xid="12"></field>	The second item of a bulleted list</p>
+<p level="1" listid="1009" parentid="0" xid="13" props="margin-left:0.635000cm; font-size:10pt; text-indent:-0.635000cm; list-style:Numbered List; font-weight:normal; field-font:NULL; text-align:left; font-style:normal"><field type="list_label" xid="14"></field>	The first item of a numbered list</p>
+<p level="1" listid="1009" parentid="0" xid="15" props="margin-left:0.635000cm; font-size:10pt; text-indent:-0.635000cm; list-style:Numbered List; font-weight:normal; field-font:NULL; text-align:left; font-style:normal"><field type="list_label" xid="16"></field>	The second item of a numbered list</p>
+<p style="Heading 1" xid="17" props="margin-bottom:0.0833in; margin-top:0.1667in">Tabs and leaders</p>
+<p style="Standard" xid="18">Chapter one	7</p>
+<p style="Standard" xid="19">Chapter two	19</p>
+<p style="Heading 1" xid="20" props="margin-bottom:0.0833in; margin-top:0.1667in"><bookmark type="start" name="the-table" xid="21"/>A table<bookmark type="end" name="the-table" xid="22"/></p>
+<table xid="23" props="table-column-props:2.1667in/2.1667in/2.1667in/; table-row-heights:///; table-width:6.5000in">
+<cell xid="24" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:1; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:0; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:1; top-attach:0">
+<p style="Standard" xid="25">Format</p>
+</cell>
+<cell xid="26" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:2; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:1; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:1; top-attach:0">
+<p style="Standard" xid="27">Reads</p>
+</cell>
+<cell xid="28" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:3; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:2; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:1; top-attach:0">
+<p style="Standard" xid="29">Writes</p>
+</cell>
+<cell xid="30" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:1; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:0; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:2; top-attach:1">
+<p style="Standard" xid="31">OpenDocument</p>
+</cell>
+<cell xid="32" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:2; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:1; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:2; top-attach:1">
+<p style="Standard" xid="33">yes</p>
+</cell>
+<cell xid="34" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:3; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:2; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:2; top-attach:1">
+<p style="Standard" xid="35">yes</p>
+</cell>
+<cell xid="36" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:1; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:0; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:3; top-attach:2">
+<p style="Standard" xid="37">Rich Text</p>
+</cell>
+<cell xid="38" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:2; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:1; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:3; top-attach:2">
+<p style="Standard" xid="39">yes</p>
+</cell>
+<cell xid="40" props="right-color:#000000; left-color:#000000; bot-style:solid; bot-thickness:0.5pt; right-attach:3; top-thickness:0.5pt; right-thickness:0.5pt; top-color:#000000; bot-color:#000000; left-attach:2; top-style:solid; right-style:solid; left-style:solid; left-thickness:0.5pt; bot-attach:3; top-attach:2">
+<p style="Standard" xid="41">yes</p>
+</cell>
+</table>
+<p style="Standard" xid="42" props="bgcolor:#e6e6e6">After the table comes a p<a xlink:href="https://word42.org/" xid="43">ictu</a>re, a note, a link and a bookmark.<field type="footnote_ref" footnote-id="0" xid="45" props="text-position:superscript"></field><foot footnote-id="0" xid="46">
+<p style="Standard" xid="47"><field type="footnote_anchor" footnote-id="0" xid="48"></field>A footnote, at the foot of its page.</p>
+</foot></p>
+<p style="Standard" xid="49">A picture: <image dataid="0" xid="50" props="height:0.6667in; width:1.0000in"/></p>
+<p style="Heading 2" xid="51" props="margin-bottom:0.0417in; margin-top:0.1667in">The scripts of the world</p>
+<p style="Standard" xid="52">Russian Здравствуйте, Greek Καλημέρα, Chinese 你好世界, Japanese こんにちは, Korean 안녕하세요, Hebrew שלום, Thai สวัสดี.</p>
+<p style="Standard" xid="53" props="text-align:right; dom-dir:rtl">النص العربي يكتب من اليمين.</p>
+<p style="Standard" xid="54">The last paragraph.<field type="endnote_ref" endnote-id="0" xid="55" props="text-position:superscript"></field><endnote endnote-id="0" xid="56">
+<p style="Standard" xid="57"><field type="endnote_anchor" endnote-id="0" xid="58"></field>An endnote, after the text.</p>
+</endnote></p>
+</section>
+<section id="0" type="header" xid="59">
+<p xid="60" props="text-align:center">Word42 feature tour</p>
+</section>
+<section id="1" type="footer" xid="61">
+<p xid="62" props="text-align:center">Page <field type="page_number" xid="63"></field> of <field type="page_count" xid="64"></field></p>
+</section>
+<data>
+<d name="0" mime-type="image/png" base64="yes">
+iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAAAA3NCSVQICAjb4U/gAAAEFklE
+QVR4nO2cX0hTURzHz+51trY7/DP/ZNAfp4mpqUFa/v9TpCZFWT0UWQ8V1Ut/LOhFirQezeoh
+IYgCo14kfJC0P5bZbMl8sNBMpjMUFNu8KLtbM7tbDwMZm/NY7neu0Pk8jW18z9ln555/92yy
+wbFfiOIfRuoKrHSoIAxB848K99+TsB4rjY7m8+4HtAVhoIIwBPk+Nd+6/kN8+xnagjBQQRio
+IAxUEAYqCAMVhGGBYV4SpnibhbcJNgdCiFMpIjQqTZhK6kohJK0gftr27oPR0DvaNzAh2Ge9
+XuWUq7Ykrd2Wvq4oLyE8RClJDZFUgowm85Mmg+7TsOh0+XuPYJ/V94zoe0buP9Ll7dBWHsqM
+i40gWUk3pAVZBUfD467W9n6XXzPeiKKzo2uoUz+8Z1fymePZak4BWUFviHbSfQPjJy8+ffHm
+L+zM43S6Wl71nbr0rP/bBEDV/EJOkK7bVHWt+YdFWE7IpNl6ofr5O50xULXCQugS6+gaqq1r
+XaTHWTq/f4s3b7cxLFOQFbf8NCwkWlDfwPitOy8DYseN6HTdvN1G5loDF2QVHDV1bXNzYmBj
+5+bEmro2QXAENtYXcEENj7uW2e/4Y9JsfdD4ESLZE1hBRpO5tb0fLr/ldb/puwUuH0ELetJk
++IcRfek4na7GJgNgAaCC+Bm7rtsEl++mUz/MT9vg8gEFvX0/KIpOuHw37nk2XD6gIEPvGFy4
+Jz2fR+HCAQURWxN8+QpYEJSgKd7mu4MBhCA4+Bk7UDiUoB9TIHMfv8WZrUDJUIJ+2omeqrGD
+FUf3pDFACVqtDAZKXhCVchVQMpSgqAgOKJlwcVCCNGEqTgX1rXrBcYqwUKhdfcA+KCUxBi7c
+k9TNgAUBCsrYuh4unFhBgIKKcxNYFnyUZFmmIGcTXD7gBwgLVebt0MLlu8nPigO9rQj7DR87
+lMEwMrh8hpFVHs6Ey0fQguJjI8t2JsHl792dot2ggctHBGbSZ0/kREeqIZKjo9SnK7Mhkj0B
+F6TmFNcul8rlbGBjg+VB16+UEZhqkViLJSfGVF8qYQPXGbGMrLqqJClhTaACF4HQYrUgO/7G
+1fJgeQBu5MrlbHVVaT6R26qI5Go+d7u2vvbAMvuj6Cj13VsHi3IBJz5eEN3uSE6MeVh/ZF9J
+yj+M/Qwj21e65WH9UTJX1jykzwdxnKLqXPH+stTGJkOnfngptz1YlsnPiqs8nAk9oi+INCfM
+tBsjrl8p42fsHTpjT+/ol6/jgs3nCB6nSE2KyUjfUJgdD7dYxyLlGcXwEGVFeVpFeRpCiJ+x
+WyyCVXAghNScIlLDSSjFk5VyyjU8RCnhSc1FoHvSGKggDFQQBioIAxWEgQrCsMAwT38f7glt
+QRioIAwy+ucmi0NbEAYqCMMf7OkxD5f2ey8AAAAASUVORK5CYII=
+</d>
+</data>
+</abiword>

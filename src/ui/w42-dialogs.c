@@ -1,0 +1,3929 @@
+/* w42-dialogs.c - see w42-dialogs.h
+ *
+ * Copyright (C) 2026 Andreas Røsdal
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+#include "w42-dialogs.h"
+
+#include "w42-settings.h"
+#include "w42-merge.h"
+#include "w42-shape.h"
+#include "w42-window.h"
+
+#include <math.h>
+#include <string.h>
+
+/* Measurements are entered in the user's unit -- inches unless Tools >
+ * Options says centimetres -- and stored in twips, as Word 6 stored them. */
+#define TWIPS_PER_INCH 1440.0
+
+static double
+measure_from_twips (double twips)
+{
+  return w42_settings_from_twips ((int) twips);
+}
+
+static double
+twips_from_measure (double value)
+{
+  return w42_settings_to_twips (value);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Shared furniture                                                        */
+/* ---------------------------------------------------------------------- */
+
+/* Escape closes a dialog.  GtkWindow does not do that of its own accord, and
+ * a dialog that will not go away when you press Escape is the first thing a
+ * person notices. */
+static gboolean
+on_dialog_key (GtkEventControllerKey *controller, guint keyval,
+               guint keycode, GdkModifierType state, gpointer data)
+{
+  (void) controller; (void) keycode; (void) state;
+
+  if (keyval == GDK_KEY_Escape)
+    {
+      gtk_window_close (GTK_WINDOW (data));
+      return GDK_EVENT_STOP;
+    }
+
+  return GDK_EVENT_PROPAGATE;
+}
+
+/* When a dialog goes, the keyboard goes back to the document.  Left to
+ * itself GTK hands focus to whichever widget is next in the window, and the
+ * first Tab after closing a dialog then walks the toolbar instead of the
+ * table cell it was meant for. */
+static void
+on_dialog_destroy (GtkWidget *dialog, gpointer view)
+{
+  (void) dialog;
+
+  if (GTK_IS_WIDGET (view))
+    gtk_widget_grab_focus (GTK_WIDGET (view));
+}
+
+static GtkWidget *
+dialog_shell (GtkWindow *parent, const char *title, GtkWidget **content,
+              W42View *view)
+{
+  GtkWidget *window = gtk_window_new ();
+  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
+  GtkEventController *key = gtk_event_controller_key_new ();
+
+  g_signal_connect (key, "key-pressed", G_CALLBACK (on_dialog_key), window);
+  gtk_widget_add_controller (window, key);
+  /* Bound to the view's life: a box destroyed after its window's children
+   * must not reach into a view that is gone. */
+  g_signal_connect_object (window, "destroy", G_CALLBACK (on_dialog_destroy), view, 0);
+
+  gtk_window_set_title (GTK_WINDOW (window), title);
+  gtk_window_set_transient_for (GTK_WINDOW (window), parent);
+  gtk_window_set_destroy_with_parent (GTK_WINDOW (window), TRUE);
+  gtk_window_set_modal (GTK_WINDOW (window), TRUE);
+  gtk_window_set_resizable (GTK_WINDOW (window), FALSE);
+
+  /* A dialog is a window of its own, so it needs the chrome class the
+   * main window carries for the period font and colours to reach it. */
+  gtk_widget_add_css_class (window, "w42");
+  gtk_widget_add_css_class (box, "w42-dialog");
+  gtk_widget_set_margin_start (box, 14);
+  gtk_widget_set_margin_end (box, 14);
+  gtk_widget_set_margin_top (box, 14);
+  gtk_widget_set_margin_bottom (box, 14);
+  gtk_window_set_child (GTK_WINDOW (window), box);
+
+  *content = box;
+  return window;
+}
+
+/* A titled group of controls, the way every dialog of the period framed
+ * one. */
+static GtkWidget *
+group (GtkWidget *parent, const char *title)
+{
+  GtkWidget *frame = gtk_frame_new (title);
+  GtkWidget *grid = gtk_grid_new ();
+
+  gtk_grid_set_row_spacing (GTK_GRID (grid), 6);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 10);
+  gtk_widget_set_margin_start (grid, 10);
+  gtk_widget_set_margin_end (grid, 10);
+  gtk_widget_set_margin_top (grid, 8);
+  gtk_widget_set_margin_bottom (grid, 10);
+
+  gtk_frame_set_child (GTK_FRAME (frame), grid);
+  gtk_box_append (GTK_BOX (parent), frame);
+
+  return grid;
+}
+
+static GtkWidget *
+inches_row (GtkWidget *grid, int row, int col, const char *label, double value)
+{
+  GtkWidget *text = gtk_label_new_with_mnemonic (label);
+  gboolean cm = w42_settings_get_units () == W42_UNITS_CM;
+  GtkWidget *spin = gtk_spin_button_new_with_range (0.0, cm ? 56.0 : 22.0,
+                                                    cm ? 0.25 : 0.1);
+
+  gtk_label_set_xalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (text), spin);
+
+  gtk_spin_button_set_digits (GTK_SPIN_BUTTON (spin), 2);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (spin), value);
+  gtk_widget_set_size_request (spin, 84, -1);
+
+  /* Enter in a spinner presses OK, as Enter in a text field does.  GTK
+   * leaves that off by default, and a dialog that ignores Enter feels
+   * broken. */
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (spin), TRUE);
+
+  gtk_grid_attach (GTK_GRID (grid), text, col * 2, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), spin, col * 2 + 1, row, 1, 1);
+
+  return spin;
+}
+
+static GtkWidget *
+choice_row (GtkWidget *grid, int row, int col, const char *label,
+            const char * const *options, guint selected)
+{
+  GtkWidget *text = gtk_label_new_with_mnemonic (label);
+  GtkWidget *drop = options != NULL
+                      ? gtk_drop_down_new_from_strings (options)
+                      : gtk_drop_down_new (NULL, NULL);
+
+  gtk_label_set_xalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (text), drop);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (drop), selected);
+  gtk_widget_set_size_request (drop, 132, -1);
+
+  gtk_grid_attach (GTK_GRID (grid), text, col * 2, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), drop, col * 2 + 1, row, 1, 1);
+
+  return drop;
+}
+
+static GtkWidget *
+button_row (GtkWidget *parent, GtkWidget *window,
+            GCallback on_ok, gpointer data)
+{
+  GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  GtkWidget *ok = gtk_button_new_with_mnemonic ("_OK");
+  GtkWidget *cancel = gtk_button_new_with_mnemonic ("Cancel");
+
+  gtk_widget_set_halign (row, GTK_ALIGN_END);
+  gtk_widget_set_size_request (ok, 92, 26);
+  gtk_widget_set_size_request (cancel, 92, 26);
+
+  g_signal_connect (ok, "clicked", on_ok, data);
+  g_signal_connect_swapped (cancel, "clicked",
+                            G_CALLBACK (gtk_window_destroy), window);
+
+  gtk_box_append (GTK_BOX (row), ok);
+  gtk_box_append (GTK_BOX (row), cancel);
+  gtk_box_append (GTK_BOX (parent), row);
+
+  gtk_window_set_default_widget (GTK_WINDOW (window), ok);
+  return ok;
+}
+
+/* ---------------------------------------------------------------------- */
+/* A message box                                                           */
+/* ---------------------------------------------------------------------- */
+
+/* The system's alert dialog is styled and worded by the desktop -- its
+ * button says "Close" in the desktop's language, next to a program that
+ * is in English and drawn as 1993 -- so Word42 puts up its own, with the
+ * chrome the rest of the program wears and one OK button. */
+void
+w42_message_show (GtkWindow *parent, const char *heading, const char *detail)
+{
+  GtkWidget *window, *content, *label, *row, *ok;
+
+  g_return_if_fail (heading != NULL);
+
+  window = dialog_shell (parent, "Word42", &content, NULL);
+
+  label = gtk_label_new (heading);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 52);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_box_append (GTK_BOX (content), label);
+
+  if (detail != NULL && *detail != '\0')
+    {
+      GtkWidget *more = gtk_label_new (detail);
+
+      gtk_label_set_wrap (GTK_LABEL (more), TRUE);
+      gtk_label_set_max_width_chars (GTK_LABEL (more), 52);
+      gtk_label_set_xalign (GTK_LABEL (more), 0.0);
+      gtk_widget_add_css_class (more, "w42-dialog-status");
+      gtk_box_append (GTK_BOX (content), more);
+    }
+
+  row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  ok = gtk_button_new_with_mnemonic ("_OK");
+  gtk_widget_set_halign (row, GTK_ALIGN_END);
+  gtk_widget_set_size_request (ok, 92, 26);
+  g_signal_connect_swapped (ok, "clicked", G_CALLBACK (gtk_window_destroy), window);
+  gtk_box_append (GTK_BOX (row), ok);
+  gtk_box_append (GTK_BOX (content), row);
+  gtk_window_set_default_widget (GTK_WINDOW (window), ok);
+
+  gtk_window_present (GTK_WINDOW (window));
+  gtk_widget_grab_focus (ok);
+}
+
+/* The same, with a row of buttons: the answer comes back as the index of
+ * the button pressed, and dismissing the box -- Escape, or its close
+ * button -- answers with `cancel`, since a stray keypress must never be
+ * taken for "yes, throw the document away". */
+typedef struct {
+  W42ChoiceFunc func;
+  gpointer      data;
+  int           answer;
+  int           cancel;
+  gboolean      answered;
+} ChoiceBox;
+
+static void
+choice_free (gpointer data, GObject *gone)
+{
+  ChoiceBox *box = data;
+
+  (void) gone;
+  if (box->func != NULL)
+    box->func (box->answered ? box->answer : box->cancel, box->data);
+  g_free (box);
+}
+
+static void
+on_choice_clicked (GtkButton *button, gpointer data)
+{
+  ChoiceBox *box = data;
+
+  box->answer = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "w42-choice"));
+  box->answered = TRUE;
+  gtk_window_destroy (GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (button))));
+}
+
+void
+w42_choice_show (GtkWindow          *parent,
+                 const char         *heading,
+                 const char         *detail,
+                 const char * const *labels,
+                 int                 default_button,
+                 int                 cancel_button,
+                 W42ChoiceFunc       func,
+                 gpointer            data)
+{
+  GtkWidget *window, *content, *label, *row;
+  ChoiceBox *box;
+
+  g_return_if_fail (heading != NULL);
+  g_return_if_fail (labels != NULL && labels[0] != NULL);
+
+  box = g_new0 (ChoiceBox, 1);
+  box->func = func;
+  box->data = data;
+  box->cancel = cancel_button;
+
+  window = dialog_shell (parent, "Word42", &content, NULL);
+  g_object_weak_ref (G_OBJECT (window), choice_free, box);
+
+  label = gtk_label_new (heading);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 52);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_box_append (GTK_BOX (content), label);
+
+  if (detail != NULL && *detail != '\0')
+    {
+      GtkWidget *more = gtk_label_new (detail);
+
+      gtk_label_set_wrap (GTK_LABEL (more), TRUE);
+      gtk_label_set_max_width_chars (GTK_LABEL (more), 52);
+      gtk_label_set_xalign (GTK_LABEL (more), 0.0);
+      gtk_widget_add_css_class (more, "w42-dialog-status");
+      gtk_box_append (GTK_BOX (content), more);
+    }
+
+  row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_set_halign (row, GTK_ALIGN_END);
+  for (int i = 0; labels[i] != NULL; i++)
+    {
+      GtkWidget *button = gtk_button_new_with_mnemonic (labels[i]);
+
+      gtk_widget_set_size_request (button, 92, 26);
+      g_object_set_data (G_OBJECT (button), "w42-choice", GINT_TO_POINTER (i));
+      g_signal_connect (button, "clicked", G_CALLBACK (on_choice_clicked), box);
+      gtk_box_append (GTK_BOX (row), button);
+      if (i == default_button)
+        {
+          gtk_window_set_default_widget (GTK_WINDOW (window), button);
+          gtk_widget_grab_focus (button);
+        }
+    }
+  gtk_box_append (GTK_BOX (content), row);
+
+  gtk_window_present (GTK_WINDOW (window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Page Setup                                                              */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget   *window;
+  W42View     *view;
+  GtkWidget   *top, *bottom, *left, *right;
+  GtkWidget   *paper, *orientation;
+} PageSetupBox;
+
+/* Width and height in twips, portrait. */
+static const int PAPER_SIZES[][2] = {
+  { 12240, 15840 },   /* Letter    8.5 x 11    */
+  { 12240, 20160 },   /* Legal     8.5 x 14    */
+  { 11906, 16838 },   /* A4      210 x 297 mm  */
+  {  8391, 11906 },   /* A5      148 x 210 mm  */
+};
+
+static const char * const PAPER_NAMES[] = {
+  "Letter  8\302\275 x 11 in",
+  "Legal  8\302\275 x 14 in",
+  "A4  210 x 297 mm",
+  "A5  148 x 210 mm",
+  "Custom (as it is)", NULL
+};
+
+static const char * const ORIENTATIONS[] = { "Portrait", "Landscape", NULL };
+
+static void
+page_setup_free (gpointer data, GObject *gone)
+{
+  (void) gone;
+  g_free (data);
+}
+
+static void
+on_page_setup_ok (GtkButton *button, gpointer data)
+{
+  PageSetupBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42PageSetup page;
+  guint paper, landscape;
+
+  (void) button;
+
+  if (doc == NULL)
+    return;
+
+  page = *w42_document_page_setup (doc);
+
+  paper = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->paper));
+  landscape = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->orientation));
+
+  if (paper < G_N_ELEMENTS (PAPER_SIZES))
+    {
+      page.width  = PAPER_SIZES[paper][landscape == 1 ? 1 : 0];
+      page.height = PAPER_SIZES[paper][landscape == 1 ? 0 : 1];
+    }
+
+  page.margin_top =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->top))));
+  page.margin_bottom =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->bottom))));
+  page.margin_left =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->left))));
+  page.margin_right =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->right))));
+
+  /* Margins that meet in the middle would leave a text column of zero width
+   * and a document that cannot be laid out at all. */
+  if (page.margin_left + page.margin_right >= page.width - 720 ||
+      page.margin_top + page.margin_bottom >= page.height - 720)
+    {
+      w42_message_show (GTK_WINDOW (box->window),
+                        "The margins leave no room for text: an inch or less "
+                        "each, please.", NULL);
+      return;
+    }
+
+  w42_document_set_page_setup (doc, &page);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_page_setup_dialog_show (GtkWindow *parent, W42View *view)
+{
+  PageSetupBox *box;
+  GtkWidget *content, *margins, *paper;
+  W42Document *doc;
+  const W42PageSetup *page;
+  guint paper_index = 0;
+  gboolean landscape;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  doc = w42_view_get_document (view);
+  if (doc == NULL)
+    return;
+
+  page = w42_document_page_setup (doc);
+  landscape = page->width > page->height;
+
+  /* A size not in the list stays as it is: the last entry. */
+  paper_index = G_N_ELEMENTS (PAPER_SIZES);
+  for (guint i = 0; i < G_N_ELEMENTS (PAPER_SIZES); i++)
+    {
+      int w = PAPER_SIZES[i][landscape ? 1 : 0];
+      int h = PAPER_SIZES[i][landscape ? 0 : 1];
+
+      if (ABS (page->width - w) < 60 && ABS (page->height - h) < 60)
+        {
+          paper_index = i;
+          break;
+        }
+    }
+
+  box = g_new0 (PageSetupBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Page Setup", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), page_setup_free, box);
+
+  margins = group (content, "Margins");
+  box->top    = inches_row (margins, 0, 0, "_Top:",    measure_from_twips (page->margin_top));
+  box->bottom = inches_row (margins, 1, 0, "_Bottom:", measure_from_twips (page->margin_bottom));
+  box->left   = inches_row (margins, 0, 1, "_Left:",   measure_from_twips (page->margin_left));
+  box->right  = inches_row (margins, 1, 1, "_Right:",  measure_from_twips (page->margin_right));
+
+  paper = group (content, "Paper");
+  box->paper = choice_row (paper, 0, 0, "Paper _Size:", PAPER_NAMES, paper_index);
+  box->orientation = choice_row (paper, 1, 0, "Orie_ntation:", ORIENTATIONS,
+                                 landscape ? 1 : 0);
+
+  button_row (content, box->window, G_CALLBACK (on_page_setup_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Paragraph                                                               */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *align;
+  GtkWidget *direction;
+  GtkWidget *left, *right, *special, *by;
+  GtkWidget *before, *after, *spacing;
+  GtkWidget *keep_next, *keep_together, *widows;
+  GtkWidget *at;
+} ParagraphBox;
+
+static const char * const ALIGNMENTS[] = {
+  "Left", "Centered", "Right", "Justified", NULL
+};
+
+static const char * const DIRECTIONS[] = { "Left-to-right", "Right-to-left", NULL };
+
+static const char * const SPECIALS[] = {
+  "(none)", "First Line", "Hanging", NULL
+};
+
+static const char * const SPACINGS[] = {
+  "Single", "1.5 Lines", "Double", "Exactly", "Multiple", NULL
+};
+
+static const int SPACING_PCT[] = { 100, 150, 200 };
+
+static void
+paragraph_free (gpointer data, GObject *gone)
+{
+  (void) gone;
+  g_free (data);
+}
+
+static void
+on_special_changed (GtkDropDown *drop, GParamSpec *pspec, gpointer data)
+{
+  ParagraphBox *box = data;
+
+  (void) pspec;
+
+  /* "By" only means something once you have said what it is by. */
+  gtk_widget_set_sensitive (box->by,
+                            gtk_drop_down_get_selected (drop) != 0);
+}
+
+static void
+on_spacing_changed (GtkDropDown *drop, GParamSpec *pspec, gpointer data)
+{
+  ParagraphBox *box = data;
+
+  (void) pspec;
+  gtk_widget_set_sensitive (box->at, gtk_drop_down_get_selected (drop) >= 3);
+}
+
+static void
+on_paragraph_ok (GtkButton *button, gpointer data)
+{
+  ParagraphBox *box = data;
+  W42ParaFmt want;
+  guint special, spacing;
+  double by;
+
+  (void) button;
+
+  memset (&want, 0, sizeof want);
+
+  want.align = (W42Align) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->align));
+  want.rtl = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->direction)) == 1;
+  want.indent_left =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->left))));
+  want.indent_right =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->right))));
+
+  special = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->special));
+  by = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->by)));
+
+  /* A hanging indent is a negative first line: the first line starts left of
+   * the rest of the paragraph. */
+  if (special == 1)
+    want.indent_first = (int) lround (by);
+  else if (special == 2)
+    want.indent_first = -(int) lround (by);
+  else
+    want.indent_first = 0;
+
+  want.space_before = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->before)) * 20.0);
+  want.space_after = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->after)) * 20.0);
+
+  spacing = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->spacing));
+  if (spacing == 3)
+    {
+      /* Exactly: a leading in points, whatever the type size. */
+      want.line_spacing_pct = 0;
+      want.line_spacing = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->at)) * 20.0);
+    }
+  else if (spacing == 4)
+    {
+      want.line_spacing = 0;
+      want.line_spacing_pct = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->at)) * 100.0);
+    }
+  else
+    {
+      want.line_spacing = 0;
+      want.line_spacing_pct = (spacing < G_N_ELEMENTS (SPACING_PCT)) ? SPACING_PCT[spacing] : 100;
+    }
+
+  want.keep_next     = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->keep_next)) ? 1 : 0;
+  want.keep_together = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->keep_together)) ? 1 : 0;
+  want.widow_control = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->widows)) ? 1 : 0;
+
+  w42_view_apply_para_fmt (box->view,
+                           W42_PARA_ALIGN | W42_PARA_INDENT_LEFT |
+                           W42_PARA_INDENT_RIGHT | W42_PARA_INDENT_FIRST |
+                           W42_PARA_SPACE_BEFORE | W42_PARA_SPACE_AFTER |
+                           W42_PARA_LINE_SPACING | W42_PARA_LINE_SPACING_PCT |
+                           W42_PARA_FLOW,
+                           &want);
+
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_paragraph_dialog_show (GtkWindow *parent, W42View *view)
+{
+  ParagraphBox *box;
+  GtkWidget *content, *indent, *spacing_group;
+  W42ParaFmt now;
+  guint special = 0, spacing_index = 0;
+  double by = 0.0;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  w42_view_get_para_fmt (view, &now);
+
+  if (now.indent_first > 0)
+    {
+      special = 1;
+      by = measure_from_twips (now.indent_first);
+    }
+  else if (now.indent_first < 0)
+    {
+      special = 2;
+      by = measure_from_twips (-now.indent_first);
+    }
+
+  for (guint i = 0; i < G_N_ELEMENTS (SPACING_PCT); i++)
+    if (now.line_spacing_pct == SPACING_PCT[i])
+      spacing_index = i;
+  if (now.line_spacing > 0 && now.line_spacing_pct == 0)
+    spacing_index = 3;               /* Exactly */
+  else if (now.line_spacing_pct > 0 && now.line_spacing_pct != 100 && now.line_spacing_pct != 150 && now.line_spacing_pct != 200)
+    spacing_index = 4;               /* Multiple */
+
+  box = g_new0 (ParagraphBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Paragraph", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), paragraph_free, box);
+
+  indent = group (content, "Indentation");
+  box->align = choice_row (indent, 0, 0, "_Alignment:", ALIGNMENTS,
+                           (guint) now.align);
+  box->direction = choice_row (indent, 0, 1, "_Direction:", DIRECTIONS, now.rtl ? 1 : 0);
+  box->left  = inches_row (indent, 1, 0, "_Left:",
+                           measure_from_twips (now.indent_left));
+  box->right = inches_row (indent, 2, 0, "_Right:",
+                           measure_from_twips (now.indent_right));
+  box->special = choice_row (indent, 1, 1, "_Special:", SPECIALS, special);
+  box->by = inches_row (indent, 2, 1, "B_y:", by);
+  gtk_widget_set_sensitive (box->by, special != 0);
+  g_signal_connect (box->special, "notify::selected",
+                    G_CALLBACK (on_special_changed), box);
+
+  spacing_group = group (content, "Spacing");
+  /* Before and After in points, as the Style box and the classics had
+   * them: six points is a typical value and a tenth of an inch is not. */
+  box->before = inches_row (spacing_group, 0, 0, "Be_fore (pt):", now.space_before / 20.0);
+  box->after  = inches_row (spacing_group, 1, 0, "After (_pt):", now.space_after / 20.0);
+  for (int k = 0; k < 2; k++)
+    {
+      GtkSpinButton *sp = GTK_SPIN_BUTTON (k == 0 ? box->before : box->after);
+
+      gtk_spin_button_set_range (sp, 0, 720);
+      gtk_spin_button_set_increments (sp, 6, 12);
+      gtk_spin_button_set_digits (sp, 0);
+      gtk_spin_button_set_value (sp, (k == 0 ? now.space_before : now.space_after) / 20.0);
+    }
+  box->spacing = choice_row (spacing_group, 0, 1, "Li_ne Spacing:",
+                             SPACINGS, spacing_index);
+  {
+    /* "At:" -- points for Exactly, a multiple of the line for Multiple. */
+    double at = now.line_spacing_pct > 0 && spacing_index == 4 ? now.line_spacing_pct / 100.0
+              : now.line_spacing > 0 ? now.line_spacing / 20.0 : 12.0;
+
+    box->at = inches_row (spacing_group, 1, 1, "A_t:", at);
+    gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->at), 0.5, 720);
+    gtk_spin_button_set_increments (GTK_SPIN_BUTTON (box->at), 0.5, 6);
+    gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->at), 1);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->at), at);
+    gtk_widget_set_sensitive (box->at, spacing_index >= 3);
+    g_signal_connect (box->spacing, "notify::selected", G_CALLBACK (on_spacing_changed), box);
+  }
+
+  {
+    GtkWidget *flow = group (content, "Text Flow");
+
+    box->widows        = gtk_check_button_new_with_mnemonic ("_Widow/Orphan Control");
+    box->keep_together = gtk_check_button_new_with_mnemonic ("_Keep Lines Together");
+    box->keep_next     = gtk_check_button_new_with_mnemonic ("Keep with Ne_xt");
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->widows), now.widow_control);
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_together), now.keep_together);
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_next), now.keep_next);
+    gtk_grid_attach (GTK_GRID (flow), box->widows, 0, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (flow), box->keep_together, 1, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (flow), box->keep_next, 0, 1, 1, 1);
+  }
+
+  button_row (content, box->window, G_CALLBACK (on_paragraph_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Style                                                                   */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *styles;       /* the drop-down of names */
+  GtkStringList *names;
+  GtkWidget *family, *size, *bold, *italic, *align, *before, *after, *outline;
+  GtkWidget *kind;         /* "Paragraph style, based on X" */
+  GtkWidget *delete_button;
+  gboolean   loading;
+} StyleBox;
+
+static void
+style_free (gpointer data, GObject *gone)
+{
+  (void) gone;
+  g_free (data);
+}
+
+static W42StyleSheet *
+style_box_sheet (StyleBox *box)
+{
+  return w42_pt_stylesheet (w42_document_pt (w42_view_get_document (box->view)));
+}
+
+static const W42Style *
+style_box_current (StyleBox *box)
+{
+  guint index = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->styles));
+
+  return w42_stylesheet_get (style_box_sheet (box), index);
+}
+
+/* The fields show the selected style's definition. */
+static void
+style_box_load (StyleBox *box)
+{
+  const W42Style *style = style_box_current (box);
+
+  if (style == NULL)
+    return;
+
+  box->loading = TRUE;
+  gtk_editable_set_text (GTK_EDITABLE (box->family),
+                         style->ch.family != NULL ? style->ch.family : "");
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->size), style->ch.size / 2.0);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->bold), style->ch.bold);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->italic), style->ch.italic);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (box->align), (guint) style->pa.align);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->before),
+                             style->pa.space_before / 20.0);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->after),
+                             style->pa.space_after / 20.0);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->outline), style->outline);
+
+  /* A character style has no paragraph half to edit. */
+  gtk_widget_set_sensitive (box->align, !style->character);
+  gtk_widget_set_sensitive (box->before, !style->character);
+  gtk_widget_set_sensitive (box->after, !style->character);
+  gtk_widget_set_sensitive (box->outline, !style->character);
+  gtk_widget_set_sensitive (box->delete_button, g_ascii_strcasecmp (style->name, "Normal") != 0);
+  {
+    char *text = style->based_on != NULL
+      ? g_strdup_printf ("%s style, based on %s", style->character ? "Character" : "Paragraph", style->based_on)
+      : g_strdup_printf ("%s style", style->character ? "Character" : "Paragraph");
+
+    gtk_label_set_text (GTK_LABEL (box->kind), text);
+    g_free (text);
+  }
+  box->loading = FALSE;
+}
+
+static void style_box_store (StyleBox *box);
+
+/* New: a style made from the selected one, under a name of its own. */
+typedef struct {
+  StyleBox  *box;
+  GtkWidget *window;
+  GtkWidget *name;
+  GtkWidget *character;
+} NewStyleBox;
+
+static void
+on_new_style_ok (GtkButton *button, gpointer data)
+{
+  NewStyleBox *nb = data;
+  StyleBox *box = nb->box;
+  const W42Style *base = style_box_current (box);
+  const char *name = gtk_editable_get_text (GTK_EDITABLE (nb->name));
+  W42StyleSheet *sheet = style_box_sheet (box);
+  W42Style style;
+
+  (void) button;
+  if (base == NULL || name == NULL || *name == '\0' ||
+      w42_stylesheet_find (sheet, name) != NULL)
+    {
+      gtk_widget_grab_focus (nb->name);
+      return;
+    }
+
+  style_box_store (box);               /* the base as it stands in the fields */
+  base = style_box_current (box);      /* the store replaced the entry */
+  if (base == NULL)
+    return;
+  style = *base;
+  style.name = g_intern_string (name);
+  style.pa.style = style.name;
+  style.based_on = base->name;
+  style.character = gtk_check_button_get_active (GTK_CHECK_BUTTON (nb->character)) ? 1 : 0;
+  if (style.character)
+    style.outline = 0;
+  /* Nothing of its own yet: it follows its base until edited. */
+  style.pa_own = 0;
+  style.ch_own = 0;
+  w42_stylesheet_set (sheet, &style);
+
+  gtk_string_list_append (box->names, style.name);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (box->styles), w42_stylesheet_size (sheet) - 1);
+  w42_document_mark_unsaved (w42_view_get_document (box->view));
+  gtk_window_destroy (GTK_WINDOW (nb->window));
+}
+
+static void
+on_style_new (GtkButton *button, gpointer data)
+{
+  StyleBox *box = data;
+  NewStyleBox *nb = g_new0 (NewStyleBox, 1);
+  GtkWidget *content, *grid, *label;
+
+  (void) button;
+  nb->box = box;
+  nb->window = dialog_shell (GTK_WINDOW (box->window), "New Style", &content, box->view);
+  g_object_weak_ref (G_OBJECT (nb->window), style_free, nb);
+
+  grid = group (content, "New style");
+  label = gtk_label_new_with_mnemonic ("_Name:");
+  nb->name = gtk_entry_new ();
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), nb->name);
+  gtk_entry_set_activates_default (GTK_ENTRY (nb->name), TRUE);
+  gtk_widget_set_size_request (nb->name, 200, -1);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), nb->name, 1, 0, 1, 1);
+  nb->character = gtk_check_button_new_with_mnemonic ("_Character style (applies to selected text only)");
+  gtk_grid_attach (GTK_GRID (grid), nb->character, 0, 1, 2, 1);
+  {
+    const W42Style *base = style_box_current (box);
+    char *text = g_strdup_printf ("Based on %s.", base != NULL ? base->name : "Normal");
+
+    label = gtk_label_new (text);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 2, 1);
+    g_free (text);
+  }
+
+  button_row (content, nb->window, G_CALLBACK (on_new_style_ok), nb);
+  gtk_window_present (GTK_WINDOW (nb->window));
+  gtk_widget_grab_focus (nb->name);
+}
+
+static void
+on_style_delete (GtkButton *button, gpointer data)
+{
+  StyleBox *box = data;
+  const W42Style *style = style_box_current (box);
+  W42PieceTable *pt = w42_document_pt (w42_view_get_document (box->view));
+  guint index = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->styles));
+  const char *name;
+
+  (void) button;
+  if (style == NULL || g_ascii_strcasecmp (style->name, "Normal") == 0)
+    return;
+  name = style->name;                  /* interned: outlives the entry */
+  if (!style->character)
+    w42_pt_replace_style (pt, name, "Normal");
+  w42_stylesheet_remove (style_box_sheet (box), name);
+  gtk_string_list_remove (box->names, index);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (box->styles), 0);
+  w42_document_mark_unsaved (w42_view_get_document (box->view));
+  w42_document_touch (w42_view_get_document (box->view));
+}
+
+static void
+on_style_choice (GtkDropDown *drop, GParamSpec *pspec, gpointer data)
+{
+  (void) drop; (void) pspec;
+  style_box_load (data);
+}
+
+/* Writes the fields back into the stylesheet and re-styles every paragraph
+ * that uses the style, so the document follows the definition. */
+static void
+style_box_store (StyleBox *box)
+{
+  const W42Style *current = style_box_current (box);
+  W42Style style;
+  W42PieceTable *pt = w42_document_pt (w42_view_get_document (box->view));
+
+  if (current == NULL)
+    return;
+
+  style = *current;
+  style.ch.family = g_intern_string (gtk_editable_get_text (GTK_EDITABLE (box->family)));
+  style.ch.size   = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->size)) * 2.0);
+  style.ch.bold   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->bold)) ? 1 : 0;
+  style.ch.italic = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->italic)) ? 1 : 0;
+  style.pa.align  = (W42Align) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->align));
+  style.pa.space_before = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->before)) * 20.0);
+  style.pa.space_after  = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->after)) * 20.0);
+  style.outline   = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->outline));
+
+  /* Nothing changed: leave the paragraphs be, since restyling them puts
+   * the style's character formatting over any of their own. */
+  if (memcmp (&style, current, sizeof style) == 0)
+    return;
+
+  /* What differs from the base is the style's own; the rest follows the
+   * base, now and when the base changes. */
+  {
+    const W42Style *base = style.based_on != NULL ? w42_stylesheet_find (style_box_sheet (box), style.based_on) : NULL;
+    guint32 pa_own, ch_own;
+
+    w42_style_own_from_base (&style, base, &pa_own, &ch_own);
+    style.pa_own = pa_own | (style.pa_own & ~W42_STYLE_PA_ALL);
+    style.ch_own = ch_own;
+  }
+  w42_stylesheet_set (style_box_sheet (box), &style);
+  w42_stylesheet_follow (style_box_sheet (box), style.name);
+  w42_pt_restyle_tree (pt, style.name);
+  w42_document_mark_unsaved (w42_view_get_document (box->view));
+  w42_document_touch (w42_view_get_document (box->view));
+}
+
+static void
+on_style_apply (GtkButton *button, gpointer data)
+{
+  StyleBox *box = data;
+  const W42Style *style = style_box_current (box);
+  const char *name = style != NULL ? style->name : NULL;   /* interned: survives the store */
+
+  (void) button;
+
+  style_box_store (box);
+  if (name != NULL)
+    w42_view_apply_style (box->view, name);
+}
+
+static void
+on_style_ok (GtkButton *button, gpointer data)
+{
+  StyleBox *box = data;
+
+  (void) button;
+  style_box_store (box);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_style_dialog_show (GtkWindow *parent, W42View *view)
+{
+  StyleBox *box;
+  GtkWidget *content, *names, *fields, *buttons, *apply;
+  GtkStringList *list = gtk_string_list_new (NULL);
+  W42StyleSheet *sheet;
+  const char *current;
+  static const char * const aligns[] = { "Left", "Centered", "Right", "Justified", NULL };
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  sheet = w42_pt_stylesheet (w42_document_pt (w42_view_get_document (view)));
+  current = w42_view_get_style (view);
+
+  box = g_new0 (StyleBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Style", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), style_free, box);
+
+  for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
+    gtk_string_list_append (list, w42_stylesheet_get (sheet, i)->name);
+
+  names = group (content, "Styles");
+  box->styles = choice_row (names, 0, 0, "_Style:", NULL, 0);
+  box->names = list;
+  gtk_drop_down_set_model (GTK_DROP_DOWN (box->styles), G_LIST_MODEL (list));
+  {
+    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *new_button = gtk_button_new_with_mnemonic ("_New...");
+
+    box->delete_button = gtk_button_new_with_mnemonic ("_Delete");
+    g_signal_connect (new_button, "clicked", G_CALLBACK (on_style_new), box);
+    g_signal_connect (box->delete_button, "clicked", G_CALLBACK (on_style_delete), box);
+    gtk_box_append (GTK_BOX (row), new_button);
+    gtk_box_append (GTK_BOX (row), box->delete_button);
+    gtk_grid_attach (GTK_GRID (names), row, 0, 1, 2, 1);
+    box->kind = gtk_label_new ("");
+    gtk_label_set_xalign (GTK_LABEL (box->kind), 0.0);
+    gtk_widget_add_css_class (box->kind, "dim-label");
+    gtk_grid_attach (GTK_GRID (names), box->kind, 0, 2, 2, 1);
+  }
+  for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
+    if (g_ascii_strcasecmp (w42_stylesheet_get (sheet, i)->name, current) == 0)
+      gtk_drop_down_set_selected (GTK_DROP_DOWN (box->styles), i);
+
+  fields = group (content, "Definition");
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("_Font:");
+    box->family = gtk_entry_new ();
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->family);
+    gtk_widget_set_size_request (box->family, 160, -1);
+    gtk_grid_attach (GTK_GRID (fields), label, 0, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (fields), box->family, 1, 0, 1, 1);
+
+    label = gtk_label_new_with_mnemonic ("Si_ze (pt):");
+    box->size = gtk_spin_button_new_with_range (4, 144, 1);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->size);
+    gtk_grid_attach (GTK_GRID (fields), label, 2, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (fields), box->size, 3, 0, 1, 1);
+
+    box->bold = gtk_check_button_new_with_mnemonic ("_Bold");
+    box->italic = gtk_check_button_new_with_mnemonic ("_Italic");
+    gtk_grid_attach (GTK_GRID (fields), box->bold, 1, 1, 1, 1);
+    gtk_grid_attach (GTK_GRID (fields), box->italic, 3, 1, 1, 1);
+  }
+  box->align = choice_row (fields, 2, 0, "Ali_gnment:", aligns, 0);
+  box->before = inches_row (fields, 3, 0, "Space B_efore (pt):", 0.0);
+  box->after = inches_row (fields, 3, 1, "Space A_fter (pt):", 0.0);
+  gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->before), 0, 200);
+  gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->after), 0, 200);
+  gtk_spin_button_set_increments (GTK_SPIN_BUTTON (box->before), 6, 12);
+  gtk_spin_button_set_increments (GTK_SPIN_BUTTON (box->after), 6, 12);
+  gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->before), 0);
+  gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->after), 0);
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("Outline le_vel:");
+    box->outline = gtk_spin_button_new_with_range (0, 9, 1);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->outline);
+    gtk_widget_set_tooltip_text (box->outline,
+      "0 for body text; 1 to 9 for a heading of that level, which is what "
+      "Heading Numbering counts.");
+    gtk_grid_attach (GTK_GRID (fields), label, 0, 4, 1, 1);
+    gtk_grid_attach (GTK_GRID (fields), box->outline, 1, 4, 1, 1);
+  }
+
+  g_signal_connect (box->styles, "notify::selected",
+                    G_CALLBACK (on_style_choice), box);
+  style_box_load (box);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_set_halign (buttons, GTK_ALIGN_END);
+  apply = gtk_button_new_with_mnemonic ("_Apply");
+  gtk_widget_set_size_request (apply, 92, 26);
+  gtk_widget_set_tooltip_text (apply, "Save the definition and apply the "
+                               "style to the selected paragraphs.");
+  g_signal_connect (apply, "clicked", G_CALLBACK (on_style_apply), box);
+  gtk_box_append (GTK_BOX (buttons), apply);
+  gtk_box_append (GTK_BOX (content), buttons);
+  {
+    GtkWidget *ok = gtk_button_new_with_mnemonic ("_OK");
+    GtkWidget *cancel = gtk_button_new_with_mnemonic ("Cancel");
+    gtk_widget_set_size_request (ok, 92, 26);
+    gtk_widget_set_size_request (cancel, 92, 26);
+    g_signal_connect (ok, "clicked", G_CALLBACK (on_style_ok), box);
+    g_signal_connect_swapped (cancel, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
+    gtk_box_append (GTK_BOX (buttons), ok);
+    gtk_box_append (GTK_BOX (buttons), cancel);
+    gtk_window_set_default_widget (GTK_WINDOW (box->window), ok);
+  }
+
+  gtk_window_present (GTK_WINDOW (box->window));
+
+  /* Focus starts on the list of styles, which is what the box is about.
+   * Left to itself GTK picks the last spinner, and a stray arrow key there
+   * quietly changes a heading's outline level. */
+  gtk_widget_grab_focus (box->styles);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Header and Footer                                                       */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *header, *header_align;
+  GtkWidget *footer, *footer_align;
+  /* The first page and the even pages may have their own, as Word's
+   * "Different First Page" and "Different Odd and Even Pages" do. */
+  GtkWidget *title_page, *facing_pages;
+  GtkWidget *first_group, *even_group;
+  GtkWidget *first_header, *first_header_align;
+  GtkWidget *first_footer, *first_footer_align;
+  GtkWidget *even_header, *even_header_align;
+  GtkWidget *even_footer, *even_footer_align;
+} HeaderFooterBox;
+
+static const char * const HF_ALIGNS[] = { "Left", "Center", "Right", NULL };
+
+static void
+hf_free (gpointer data, GObject *gone)
+{
+  (void) gone;
+  g_free (data);
+}
+
+static W42Align
+hf_align_from (GtkWidget *drop)
+{
+  switch (gtk_drop_down_get_selected (GTK_DROP_DOWN (drop)))
+    {
+    case 1:  return W42_ALIGN_CENTER;
+    case 2:  return W42_ALIGN_RIGHT;
+    default: return W42_ALIGN_LEFT;
+    }
+}
+
+static guint
+hf_align_index (W42Align align)
+{
+  return align == W42_ALIGN_CENTER ? 1 : align == W42_ALIGN_RIGHT ? 2 : 0;
+}
+
+static void
+on_hf_ok (GtkButton *button, gpointer data)
+{
+  HeaderFooterBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42PieceTable *pt = w42_document_pt (doc);
+
+  (void) button;
+
+  w42_pt_set_header (pt, gtk_editable_get_text (GTK_EDITABLE (box->header)),
+                     hf_align_from (box->header_align));
+  w42_pt_set_footer (pt, gtk_editable_get_text (GTK_EDITABLE (box->footer)),
+                     hf_align_from (box->footer_align));
+
+  w42_pt_set_title_page (pt, gtk_check_button_get_active (GTK_CHECK_BUTTON (box->title_page)));
+  w42_pt_set_facing_pages (pt, gtk_check_button_get_active (GTK_CHECK_BUTTON (box->facing_pages)));
+  w42_pt_set_header_kind (pt, W42_PAGE_TEXT_FIRST,
+                          gtk_editable_get_text (GTK_EDITABLE (box->first_header)),
+                          hf_align_from (box->first_header_align));
+  w42_pt_set_footer_kind (pt, W42_PAGE_TEXT_FIRST,
+                          gtk_editable_get_text (GTK_EDITABLE (box->first_footer)),
+                          hf_align_from (box->first_footer_align));
+  w42_pt_set_header_kind (pt, W42_PAGE_TEXT_EVEN,
+                          gtk_editable_get_text (GTK_EDITABLE (box->even_header)),
+                          hf_align_from (box->even_header_align));
+  w42_pt_set_footer_kind (pt, W42_PAGE_TEXT_EVEN,
+                          gtk_editable_get_text (GTK_EDITABLE (box->even_footer)),
+                          hf_align_from (box->even_footer_align));
+
+  w42_document_mark_unsaved (doc);
+  w42_document_touch (doc);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static GtkWidget *hf_row (GtkWidget *grid, int row, const char *label, const char *text,
+                          GtkWidget **align_out, W42Align align);
+
+/* A page kind nobody has asked for is shown greyed, so the box says what
+ * it can do without letting you type into rows that would not be used. */
+static void
+on_hf_kind_toggled (GtkCheckButton *check, gpointer data)
+{
+  gtk_widget_set_sensitive (GTK_WIDGET (data), gtk_check_button_get_active (check));
+}
+
+static GtkWidget *
+hf_kind_group (GtkWidget *content, HeaderFooterBox *box, const char *title,
+               const char *switch_label, W42PageTextKind kind, gboolean on,
+               GtkWidget **check_out,
+               GtkWidget **header_out, GtkWidget **header_align_out,
+               GtkWidget **footer_out, GtkWidget **footer_align_out)
+{
+  W42PieceTable *pt = w42_document_pt (w42_view_get_document (box->view));
+  const W42PageText *header = w42_pt_get_header_kind (pt, kind);
+  const W42PageText *footer = w42_pt_get_footer_kind (pt, kind);
+  GtkWidget *check = gtk_check_button_new_with_mnemonic (switch_label);
+  GtkWidget *grid;
+
+  /* The switch first, then the rows it governs, in that order down the box. */
+  gtk_box_append (GTK_BOX (content), check);
+  grid = group (content, title);
+
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (check), on);
+  gtk_widget_set_sensitive (grid, on);
+  g_signal_connect (check, "toggled", G_CALLBACK (on_hf_kind_toggled), grid);
+
+  *header_out = hf_row (grid, 0, "H_eader:", header->text, header_align_out, header->align);
+  *footer_out = hf_row (grid, 1, "F_ooter:", footer->text, footer_align_out, footer->align);
+  *check_out = check;
+  return grid;
+}
+
+static GtkWidget *
+hf_row (GtkWidget *grid, int row, const char *label, const char *text,
+        GtkWidget **align_out, W42Align align)
+{
+  GtkWidget *name = gtk_label_new_with_mnemonic (label);
+  GtkWidget *entry = gtk_entry_new ();
+  GtkWidget *drop = gtk_drop_down_new_from_strings (HF_ALIGNS);
+
+  gtk_label_set_xalign (GTK_LABEL (name), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (name), entry);
+  gtk_widget_set_hexpand (entry, TRUE);
+  gtk_widget_set_size_request (entry, 260, -1);
+  gtk_editable_set_text (GTK_EDITABLE (entry), text != NULL ? text : "");
+  gtk_entry_set_activates_default (GTK_ENTRY (entry), TRUE);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (drop), hf_align_index (align));
+
+  gtk_grid_attach (GTK_GRID (grid), name, 0, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), entry, 1, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), drop, 2, row, 1, 1);
+
+  *align_out = drop;
+  return entry;
+}
+
+void
+w42_header_footer_dialog_show (GtkWindow *parent, W42View *view)
+{
+  HeaderFooterBox *box;
+  GtkWidget *content, *grid, *hint;
+  W42PieceTable *pt;
+  const W42PageText *header, *footer;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  pt = w42_document_pt (w42_view_get_document (view));
+  header = w42_pt_get_header (pt);
+  footer = w42_pt_get_footer (pt);
+
+  box = g_new0 (HeaderFooterBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Header and Footer", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Text");
+  box->header = hf_row (grid, 0, "_Header:", header->text, &box->header_align, header->align);
+  box->footer = hf_row (grid, 1, "_Footer:", footer->text, &box->footer_align, footer->align);
+
+  box->first_group = hf_kind_group (content, box, "First Page",
+                                    "_Different first page", W42_PAGE_TEXT_FIRST,
+                                    w42_pt_get_title_page (pt), &box->title_page,
+                                    &box->first_header, &box->first_header_align,
+                                    &box->first_footer, &box->first_footer_align);
+  box->even_group = hf_kind_group (content, box, "Even Pages",
+                                   "Different odd and _even pages", W42_PAGE_TEXT_EVEN,
+                                   w42_pt_get_facing_pages (pt), &box->facing_pages,
+                                   &box->even_header, &box->even_header_align,
+                                   &box->even_footer, &box->even_footer_align);
+
+  hint = gtk_label_new ("Fields: {PAGE} is the page number, {NUMPAGES} the "
+                        "number of pages, {DATE} today's date.  Headers and "
+                        "footers show in Page Layout view and in print.");
+  gtk_label_set_wrap (GTK_LABEL (hint), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (hint), 60);
+  gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
+  gtk_widget_add_css_class (hint, "w42-dialog-status");
+  gtk_box_append (GTK_BOX (content), hint);
+
+  button_row (content, box->window, G_CALLBACK (on_hf_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->header);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Page Numbers                                                            */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *position, *align;
+} PageNumbersBox;
+
+static void
+on_page_numbers_ok (GtkButton *button, gpointer data)
+{
+  PageNumbersBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42PieceTable *pt = w42_document_pt (doc);
+  gboolean top = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->position)) == 0;
+  W42Align align = hf_align_from (box->align);
+
+  (void) button;
+
+  /* The number joins a header or footer already there rather than
+   * replacing it. */
+  {
+    const W42PageText *have = top ? w42_pt_get_header (pt) : w42_pt_get_footer (pt);
+    char *text;
+
+    if (have != NULL && have->text != NULL && *have->text != '\0' && strstr (have->text, "{PAGE}") == NULL)
+      text = g_strdup_printf ("%s {PAGE}", have->text);
+    else if (have != NULL && have->text != NULL && strstr (have->text, "{PAGE}") != NULL)
+      text = g_strdup (have->text);
+    else
+      text = g_strdup ("{PAGE}");
+    if (top)
+      w42_pt_set_header (pt, text, align);
+    else
+      w42_pt_set_footer (pt, text, align);
+    g_free (text);
+  }
+
+  w42_document_mark_unsaved (doc);
+  w42_document_touch (doc);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_page_numbers_dialog_show (GtkWindow *parent, W42View *view)
+{
+  PageNumbersBox *box;
+  GtkWidget *content, *grid;
+  static const char * const positions[] = { "Top of Page (Header)", "Bottom of Page (Footer)", NULL };
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (PageNumbersBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Page Numbers", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Position");
+  box->position = choice_row (grid, 0, 0, "_Position:", positions, 1);
+  box->align = choice_row (grid, 1, 0, "_Alignment:", HF_ALIGNS, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_page_numbers_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->position);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insert Table                                                            */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *cols, *rows;
+} InsertTableBox;
+
+static void
+on_insert_table_ok (GtkButton *button, gpointer data)
+{
+  InsertTableBox *box = data;
+
+  (void) button;
+
+  w42_view_insert_table (box->view,
+                         (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->rows)),
+                         (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->cols)));
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_insert_table_dialog_show (GtkWindow *parent, W42View *view)
+{
+  InsertTableBox *box;
+  GtkWidget *content, *grid, *label;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (InsertTableBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Insert Table", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Table Size");
+
+  label = gtk_label_new_with_mnemonic ("Number of _Columns:");
+  box->cols = gtk_spin_button_new_with_range (1, 20, 1);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->cols), 2);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->cols);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->cols, 1, 0, 1, 1);
+
+  label = gtk_label_new_with_mnemonic ("Number of _Rows:");
+  box->rows = gtk_spin_button_new_with_range (1, 200, 1);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->rows), 2);
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->rows), TRUE);
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->cols), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->rows);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->rows, 1, 1, 1, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_insert_table_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->cols);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Go To                                                                   */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *what;      /* Page, Line or Bookmark */
+  GtkWidget *number;
+  GtkWidget *names;     /* the bookmarks, shown for Bookmark */
+  char     **bookmarks;
+} GoToBox;
+
+static void
+go_to_free (gpointer data, GObject *gone)
+{
+  GoToBox *box = data;
+
+  (void) gone;
+  g_strfreev (box->bookmarks);
+  g_free (box);
+}
+
+static const char * const GO_TO_KINDS[] = { "Page", "Line", "Bookmark", NULL };
+
+static void
+on_go_to_ok (GtkButton *button, gpointer data)
+{
+  GoToBox *box = data;
+  int n = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->number));
+  guint kind = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->what));
+
+  (void) button;
+
+  if (kind == 0)
+    w42_view_go_to_page (box->view, n);
+  else if (kind == 1)
+    w42_view_go_to_line (box->view, n);
+  else
+    {
+      guint i = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->names));
+
+      if (box->bookmarks != NULL && i != GTK_INVALID_LIST_POSITION &&
+          i < g_strv_length (box->bookmarks))
+        w42_view_go_to_bookmark (box->view, box->bookmarks[i]);
+    }
+
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static void
+on_go_to_kind (GObject *drop, GParamSpec *pspec, gpointer data)
+{
+  GoToBox *box = data;
+  W42Layout *layout = w42_view_get_layout (box->view);
+  guint kind = gtk_drop_down_get_selected (GTK_DROP_DOWN (drop));
+  int top = kind == 0 ? w42_layout_n_pages (layout)
+                      : w42_view_line_count (box->view);
+
+  (void) pspec;
+  gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->number), 1, MAX (top, 1));
+  gtk_widget_set_visible (box->number, kind != 2);
+  gtk_widget_set_visible (box->names, kind == 2);
+}
+
+void
+w42_go_to_dialog_show (GtkWindow *parent, W42View *view)
+{
+  GoToBox *box;
+  GtkWidget *content, *grid, *label;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (GoToBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Go To", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), go_to_free, box);
+  box->bookmarks = w42_pt_bookmark_names (w42_document_pt (w42_view_get_document (view)));
+
+  grid = group (content, "Go to What");
+
+  box->what = choice_row (grid, 0, 0, "Go to _What:", GO_TO_KINDS, 0);
+
+  label = gtk_label_new_with_mnemonic ("Enter _Number:");
+  box->number = gtk_spin_button_new_with_range (1, 1, 1);
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->number), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->number);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->number, 1, 1, 1, 1);
+
+  box->names = gtk_drop_down_new_from_strings ((const char * const *) box->bookmarks);
+  gtk_widget_set_size_request (box->names, 132, -1);
+  gtk_grid_attach (GTK_GRID (grid), box->names, 1, 2, 1, 1);
+  gtk_widget_set_visible (box->names, FALSE);
+
+  g_signal_connect (box->what, "notify::selected", G_CALLBACK (on_go_to_kind), box);
+  on_go_to_kind (G_OBJECT (box->what), NULL, box);
+
+  button_row (content, box->window, G_CALLBACK (on_go_to_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->number);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Date and Time                                                           */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *list;      /* GtkListBox of today in each format */
+} DateTimeBox;
+
+/* The formats Word 6 offered, near enough, with the ISO one added. */
+static const char * const DATE_FORMATS[] = {
+  "%d.%m.%Y", "%m/%d/%Y", "%Y-%m-%d", "%d %B %Y", "%B %d, %Y",
+  "%A, %d %B %Y", "%A, %B %d, %Y", "%d %b %Y", "%b %d, %Y",
+  "%H:%M", "%H:%M:%S", "%I:%M %p", "%d.%m.%Y %H:%M", "%B %d, %Y %H:%M",
+};
+
+static void
+on_date_time_ok (GtkButton *button, gpointer data)
+{
+  DateTimeBox *box = data;
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (box->list));
+
+  (void) button;
+
+  if (row != NULL)
+    {
+      GtkWidget *label = gtk_list_box_row_get_child (row);
+
+      if (GTK_IS_LABEL (label))
+        w42_view_insert_text (box->view, gtk_label_get_text (GTK_LABEL (label)));
+    }
+
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static void
+on_date_time_activated (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  (void) list; (void) row;
+  on_date_time_ok (NULL, data);
+}
+
+void
+w42_date_time_dialog_show (GtkWindow *parent, W42View *view)
+{
+  DateTimeBox *box;
+  GtkWidget *content, *grid, *label, *scroller;
+  GDateTime *now = g_date_time_new_now_local ();
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (DateTimeBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Date and Time", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Available Formats");
+
+  label = gtk_label_new_with_mnemonic ("_Formats:");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->list);
+  g_signal_connect (box->list, "row-activated",
+                    G_CALLBACK (on_date_time_activated), box);
+
+  for (guint i = 0; i < G_N_ELEMENTS (DATE_FORMATS); i++)
+    {
+      char *text = g_date_time_format (now, DATE_FORMATS[i]);
+      GtkWidget *item = gtk_label_new (text);
+
+      gtk_label_set_xalign (GTK_LABEL (item), 0.0);
+      gtk_widget_set_margin_start (item, 4);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), item);
+      g_free (text);
+    }
+  gtk_list_box_select_row (GTK_LIST_BOX (box->list),
+                           gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), 0));
+
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 260, 200);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 1, 2, 1);
+
+  g_date_time_unref (now);
+
+  button_row (content, box->window, G_CALLBACK (on_date_time_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->list);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Symbol                                                                  */
+/* ---------------------------------------------------------------------- */
+
+/* The characters a keyboard does not have, in the order Word's Symbol box
+ * roughly showed them: typography, then currency and maths, then accented
+ * Latin, then Greek and arrows. */
+static const char *SYMBOLS =
+  "\342\200\223\342\200\224\342\200\230\342\200\231\342\200\234\342\200\235\342\200\242\342\200\246"
+  "\302\247\302\266\342\200\240\342\200\241\302\260\302\261\303\227\303\267"
+  "\302\251\302\256\342\204\242\342\202\254\302\243\302\245\302\242\302\274\302\275\302\276"
+  "\302\271\302\262\302\263\302\253\302\273\302\277\302\241\302\265"
+  "\303\200\303\201\303\202\303\203\303\204\303\205\303\206\303\207"
+  "\303\210\303\211\303\212\303\213\303\214\303\215\303\216\303\217"
+  "\303\220\303\221\303\222\303\223\303\224\303\225\303\226\303\230"
+  "\303\231\303\232\303\233\303\234\303\235\303\236\303\237"
+  "\303\240\303\241\303\242\303\243\303\244\303\245\303\246\303\247"
+  "\303\250\303\251\303\252\303\253\303\254\303\255\303\256\303\257"
+  "\303\260\303\261\303\262\303\263\303\264\303\265\303\266\303\270"
+  "\303\271\303\272\303\273\303\274\303\275\303\276\303\277"
+  "\316\261\316\262\316\263\316\264\316\265\316\266\316\267\316\270"
+  "\316\271\316\272\316\273\316\274\316\275\316\276\316\277\317\200"
+  "\317\201\317\203\317\204\317\205\317\206\317\207\317\210\317\211"
+  "\316\224\316\230\316\233\316\236\316\240\316\243\316\246\316\250\316\251"
+  "\342\206\220\342\206\222\342\206\221\342\206\223\342\206\224\342\207\222\342\207\224"
+  "\342\210\236\342\211\210\342\211\240\342\211\244\342\211\245\342\210\221\342\210\232"
+  "\342\210\202\342\210\217\342\210\253\342\231\240\342\231\243\342\231\245\342\231\246"
+  "\342\230\272\342\234\223\342\234\227";
+
+static void
+on_symbol_activated (GtkFlowBox *flow, GtkFlowBoxChild *child, gpointer data)
+{
+  W42View *view = data;
+  GtkWidget *label = gtk_flow_box_child_get_child (child);
+
+  (void) flow;
+
+  if (GTK_IS_LABEL (label))
+    w42_view_insert_text (view, gtk_label_get_text (GTK_LABEL (label)));
+}
+
+void
+w42_symbol_dialog_show (GtkWindow *parent, W42View *view)
+{
+  GtkWidget *window, *content, *frame, *flow, *row, *close;
+  const char *p;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  window = dialog_shell (parent, "Symbol", &content, view);
+
+  /* Modeless, as Word 6's was: pick a symbol, type, pick another. */
+  gtk_window_set_modal (GTK_WINDOW (window), FALSE);
+
+  flow = gtk_flow_box_new ();
+  gtk_flow_box_set_selection_mode (GTK_FLOW_BOX (flow), GTK_SELECTION_SINGLE);
+  gtk_flow_box_set_min_children_per_line (GTK_FLOW_BOX (flow), 16);
+  gtk_flow_box_set_max_children_per_line (GTK_FLOW_BOX (flow), 16);
+  gtk_flow_box_set_homogeneous (GTK_FLOW_BOX (flow), TRUE);
+  gtk_flow_box_set_activate_on_single_click (GTK_FLOW_BOX (flow), FALSE);
+  gtk_flow_box_set_row_spacing (GTK_FLOW_BOX (flow), 1);
+  gtk_flow_box_set_column_spacing (GTK_FLOW_BOX (flow), 1);
+  gtk_widget_add_css_class (flow, "w42-symbols");
+  g_signal_connect (flow, "child-activated", G_CALLBACK (on_symbol_activated), view);
+
+  for (p = SYMBOLS; *p != '\0'; p = g_utf8_next_char (p))
+    {
+      char one[8] = { 0 };
+      GtkWidget *label;
+
+      g_unichar_to_utf8 (g_utf8_get_char (p), one);
+      label = gtk_label_new (one);
+      gtk_widget_set_size_request (label, 26, 26);
+      gtk_flow_box_append (GTK_FLOW_BOX (flow), label);
+    }
+
+  frame = gtk_frame_new (NULL);
+  gtk_frame_set_child (GTK_FRAME (frame), flow);
+  gtk_box_append (GTK_BOX (content), frame);
+
+  row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_set_halign (row, GTK_ALIGN_END);
+  close = gtk_button_new_with_mnemonic ("Close");
+  gtk_widget_set_size_request (close, 92, 26);
+  g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), window);
+  gtk_box_append (GTK_BOX (row), close);
+  gtk_box_append (GTK_BOX (content), row);
+
+  gtk_window_present (GTK_WINDOW (window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tabs                                                                    */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget  *window;
+  W42View    *view;
+  GtkWidget  *position;    /* inches */
+  GtkWidget  *alignment;
+  GtkWidget  *leader;      /* what fills the gap in front of the stop */
+  GtkWidget  *list;        /* GtkListBox of the stops */
+  W42ParaFmt  pa;          /* the stops as edited; applied by OK */
+} TabsBox;
+
+static const char * const TAB_KINDS[] = { "Left", "Center", "Right", "Decimal", NULL };
+/* Word 6's four, in its order and drawn as it drew them. */
+static const char * const TAB_LEADERS[] = { "1  None", "2  ......", "3  ------", "4  ______", NULL };
+
+static void
+tabs_refresh (TabsBox *box)
+{
+  GtkWidget *row;
+
+  while ((row = gtk_widget_get_first_child (box->list)) != NULL)
+    gtk_list_box_remove (GTK_LIST_BOX (box->list), row);
+
+  for (int i = 0; i < box->pa.n_tabs; i++)
+    {
+      static const char * const LEADS[] = { "", "  ......", "  ------", "  ______" };
+      W42TabKind kind = W42_TAB_KIND (box->pa.tab_kind[i]);
+      W42TabLeader lead = W42_TAB_LEADER (box->pa.tab_kind[i]);
+      char *text = g_strdup_printf ("%.2f%s  %s%s", measure_from_twips (box->pa.tab_pos[i]),
+                                    w42_settings_unit_name (),
+                                    TAB_KINDS[CLAMP ((int) kind, 0, 3)],
+                                    LEADS[CLAMP ((int) lead, 0, 3)]);
+      GtkWidget *label = gtk_label_new (text);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_widget_set_margin_start (label, 4);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+      g_free (text);
+    }
+}
+
+static int
+tabs_entry_twips (TabsBox *box)
+{
+  return (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->position))));
+}
+
+static void
+on_tabs_set (GtkButton *button, gpointer data)
+{
+  TabsBox *box = data;
+
+  (void) button;
+  w42_para_fmt_set_tab_leader (&box->pa, tabs_entry_twips (box),
+                               (W42TabKind) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->alignment)),
+                               (W42TabLeader) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->leader)));
+  tabs_refresh (box);
+}
+
+static void
+on_tabs_clear (GtkButton *button, gpointer data)
+{
+  TabsBox *box = data;
+
+  (void) button;
+  w42_para_fmt_clear_tab (&box->pa, tabs_entry_twips (box));
+  tabs_refresh (box);
+}
+
+static void
+on_tabs_clear_all (GtkButton *button, gpointer data)
+{
+  TabsBox *box = data;
+
+  (void) button;
+  box->pa.n_tabs = 0;
+  memset (box->pa.tab_pos, 0, sizeof box->pa.tab_pos);
+  memset (box->pa.tab_kind, 0, sizeof box->pa.tab_kind);
+  tabs_refresh (box);
+}
+
+static void
+on_tabs_row_selected (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  TabsBox *box = data;
+  int i;
+
+  (void) list;
+
+  if (row == NULL)
+    return;
+  i = gtk_list_box_row_get_index (row);
+  if (i < 0 || i >= box->pa.n_tabs)
+    return;
+
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->position),
+                             measure_from_twips (box->pa.tab_pos[i]));
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (box->alignment),
+                              W42_TAB_KIND (box->pa.tab_kind[i]));
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (box->leader),
+                              W42_TAB_LEADER (box->pa.tab_kind[i]));
+}
+
+static void
+on_tabs_ok (GtkButton *button, gpointer data)
+{
+  TabsBox *box = data;
+
+  (void) button;
+  w42_view_apply_para_fmt (box->view, W42_PARA_TABS, &box->pa);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_tabs_dialog_show (GtkWindow *parent, W42View *view)
+{
+  TabsBox *box;
+  GtkWidget *content, *grid, *label, *scroller, *buttons, *set, *clear, *clear_all;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (TabsBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Tabs", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+  w42_view_get_para_fmt (view, &box->pa);
+
+  grid = group (content, "Tab Stops");
+
+  label = gtk_label_new_with_mnemonic ("_Tab Stop Position:");
+  box->position = gtk_spin_button_new_with_range (0.0, 56.0, 0.05);
+  gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->position), 2);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->position), measure_from_twips (720));
+  gtk_widget_set_size_request (box->position, 84, -1);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->position);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->position, 1, 0, 1, 1);
+
+  box->alignment = choice_row (grid, 1, 0, "_Alignment:", TAB_KINDS, 0);
+  box->leader = choice_row (grid, 2, 0, "_Leader:", TAB_LEADERS, 0);
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (on_tabs_row_selected), box);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 220, 120);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 3, 2, 1);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  set = gtk_button_new_with_mnemonic ("_Set");
+  clear = gtk_button_new_with_mnemonic ("Cl_ear");
+  clear_all = gtk_button_new_with_mnemonic ("Clear A_ll");
+  g_signal_connect (set, "clicked", G_CALLBACK (on_tabs_set), box);
+  g_signal_connect (clear, "clicked", G_CALLBACK (on_tabs_clear), box);
+  g_signal_connect (clear_all, "clicked", G_CALLBACK (on_tabs_clear_all), box);
+  gtk_box_append (GTK_BOX (buttons), set);
+  gtk_box_append (GTK_BOX (buttons), clear);
+  gtk_box_append (GTK_BOX (buttons), clear_all);
+  gtk_grid_attach (GTK_GRID (grid), buttons, 0, 4, 2, 1);
+
+  tabs_refresh (box);
+
+  button_row (content, box->window, G_CALLBACK (on_tabs_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->position);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Help                                                                    */
+/* ---------------------------------------------------------------------- */
+
+static const char *HELP_TEXT =
+  "<big><b>Word42</b></big>\n"
+  "A word processor in the classic style, built on GTK 4.\n\n"
+  "<b>Files</b>\n"
+  "Word42 reads and writes Rich Text Format (.rtf), Word documents (.docx), "
+  "OpenDocument (.odt), AbiWord documents (.abw, .zabw), web pages and plain text; reads "
+  "Word 97\u20132003 documents (.doc) and PDF; and writes PDF with "
+  "File \u25b8 Export as PDF. RTF and .docx keep everything the document "
+  "has and are read by other word processors.\n\n"
+  "<b>Views</b>\n"
+  "Normal view shows the text as one galley; Page Layout shows the pages "
+  "as they will print, with headers and footers. Print Preview shows whole "
+  "pages. Zoom is on the toolbar.\n\n"
+  "<b>Formatting</b>\n"
+  "The Formatting toolbar has styles, font, size, bold, italic, underline, "
+  "alignment, numbering and bullets. Format \u25b8 Paragraph sets indents "
+  "and spacing, Format \u25b8 Tabs the tab stops, Format \u25b8 Style the "
+  "style definitions. The ruler is live: drag the indent markers, click it "
+  "to set a tab stop, drag a stop to move it or off the ruler to remove "
+  "it; the box at its left cycles the kind of stop.\n\n"
+  "<b>Tables</b>\n"
+  "Table \u25b8 Insert Table. Tab and Shift+Tab move between cells, and "
+  "Tab past the last cell adds a row. Drag a cell edge to change the column "
+  "widths; select across cells and Merge Cells joins them.\n\n"
+  "<b>Pictures</b>\n"
+  "Insert \u25b8 Picture puts a picture in the text. Click it for handles; "
+  "drag a corner to resize it keeping its shape, a side to stretch it. "
+  "Format \u25b8 Picture sets its size exactly and can put it at the left "
+  "or right of its paragraph with the text running beside it. "
+  "Format \u25b8 Frame does the same for a paragraph of text, and "
+  "Format \u25b8 Drop Cap drops a paragraph's first letter over several lines.\n\n"
+  "<b>Spelling</b>\n"
+  "Words the dictionary does not know are underlined in red as you type. "
+  "Tools \u25b8 Spelling walks through them with suggestions.\n\n"
+  "<b>Long documents</b>\n"
+  "Insert ▸ Footnote and Endnote number themselves; Insert ▸ "
+  "Table of Contents lists the headings with their pages, and Update Table "
+  "of Contents makes it again. Insert ▸ Bookmark marks a place, "
+  "Cross-reference cites its page, Hyperlink links to it or the web. "
+  "Insert ▸ Section Break starts a section on a new page, and "
+  "Format ▸ Columns sets its columns; Insert ▸ Caption numbers a "
+  "figure.\n\n"
+  "<b>Reviewing</b>\n"
+  "Insert ▸ Annotation attaches a comment to the selection. Tools "
+  "▸ Revisions marks what is typed and struck out until Accept All or "
+  "Reject All. Tools ▸ Hyphenation puts soft hyphens in the words; "
+  "Format ▸ Change Case changes the selection's case. Tools ▸ "
+  "Mail Merge fills a letter from a CSV file, one copy per record.\n\n"
+  "<b>Keys</b>\n"
+  "<tt>Ctrl+N</tt> new   <tt>Ctrl+O</tt> open   <tt>Ctrl+S</tt> save   "
+  "<tt>Ctrl+P</tt> print\n"
+  "<tt>Ctrl+Z</tt> undo   <tt>Ctrl+Y</tt> redo   <tt>Ctrl+X/C/V</tt> cut, "
+  "copy, paste   <tt>Ctrl+A</tt> select all\n"
+  "<tt>Ctrl+B/I/U</tt> bold, italic, underline   <tt>Ctrl+D</tt> font\n"
+  "<tt>Ctrl+Shift+N</tt> Normal style   <tt>Ctrl+Alt+1/2/3</tt> Heading 1, "
+  "2, 3   <tt>Ctrl+Shift+L</tt> bullets\n"
+  "<tt>Ctrl+Return</tt> page break   <tt>Ctrl+F</tt> find   <tt>Ctrl+H</tt> "
+  "replace   <tt>F3</tt> find next   <tt>Ctrl+G</tt> go to\n"
+  "<tt>Ctrl+Alt+F/E</tt> footnote, endnote   <tt>Ctrl+K</tt> hyperlink   "
+  "<tt>Ctrl+Shift+F5</tt> bookmark   <tt>Ctrl+Alt+A</tt> annotation\n"
+  "<tt>Ctrl+Shift+E</tt> mark revisions   <tt>Shift+F3</tt> toggle case   "
+  "<tt>Alt+Shift+D</tt> date and time   <tt>F1</tt> this help\n";
+
+void
+w42_help_dialog_show (GtkWindow *parent)
+{
+  GtkWidget *window = gtk_window_new ();
+  GtkWidget *scroller = gtk_scrolled_window_new ();
+  GtkWidget *label = gtk_label_new (NULL);
+  GtkEventController *key = gtk_event_controller_key_new ();
+
+  gtk_window_set_title (GTK_WINDOW (window), "Word42 Help");
+  gtk_window_set_transient_for (GTK_WINDOW (window), parent);
+  gtk_window_set_destroy_with_parent (GTK_WINDOW (window), TRUE);
+  gtk_window_set_default_size (GTK_WINDOW (window), 620, 560);
+
+  g_signal_connect (key, "key-pressed", G_CALLBACK (on_dialog_key), window);
+  gtk_widget_add_controller (window, key);
+
+  gtk_label_set_markup (GTK_LABEL (label), HELP_TEXT);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_yalign (GTK_LABEL (label), 0.0);
+  gtk_widget_set_margin_start (label, 16);
+  gtk_widget_set_margin_end (label, 16);
+  gtk_widget_set_margin_top (label, 12);
+  gtk_widget_set_margin_bottom (label, 12);
+  gtk_widget_add_css_class (label, "w42-help");
+
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), label);
+  gtk_window_set_child (GTK_WINDOW (window), scroller);
+
+  gtk_window_present (GTK_WINDOW (window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Options                                                                 */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  GtkWindow *parent;
+  W42View   *view;
+  GtkWidget *units;
+  GtkWidget *default_view;
+  GtkWidget *zoom;
+  GtkWidget *auto_spell;
+  GtkWidget *user_name;
+} OptionsBox;
+
+static const char * const UNIT_NAMES[] = { "Inches", "Centimeters", NULL };
+static const char * const VIEW_NAMES[] = { "Normal", "Page Layout", NULL };
+static const char * const ZOOM_NAMES[] = { "75%", "100%", "150%", "200%", NULL };
+static const int ZOOM_VALUES[] = { 75, 100, 150, 200 };
+
+static void
+on_options_ok (GtkButton *button, gpointer data)
+{
+  OptionsBox *box = data;
+  guint zoom = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->zoom));
+  gboolean want_spell = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->auto_spell));
+  GAction *spell_action;
+
+  (void) button;
+
+  w42_settings_set_units (gtk_drop_down_get_selected (GTK_DROP_DOWN (box->units)) == 1
+                            ? W42_UNITS_CM : W42_UNITS_INCHES);
+  w42_settings_set_string ("default-view",
+                           gtk_drop_down_get_selected (GTK_DROP_DOWN (box->default_view)) == 1
+                             ? "page-layout" : "normal");
+  if (zoom < G_N_ELEMENTS (ZOOM_VALUES))
+    w42_settings_set_int ("zoom", ZOOM_VALUES[zoom]);
+  w42_settings_set_bool ("auto-spell", want_spell);
+  /* The view and zoom chosen apply to this window now, not only to the
+   * next one opened. */
+  {
+    guint dv = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->default_view));
+
+    g_action_group_activate_action (G_ACTION_GROUP (box->parent), "view-mode",
+                                    g_variant_new_string (dv == 1 ? "page-layout" : "normal"));
+    if (zoom < G_N_ELEMENTS (ZOOM_VALUES))
+      g_action_group_activate_action (G_ACTION_GROUP (box->parent), "zoom",
+                                      g_variant_new_double (ZOOM_VALUES[zoom] / 100.0));
+  }
+  {
+    const char *name = gtk_editable_get_text (GTK_EDITABLE (box->user_name));
+
+    w42_settings_set_string ("user-name", name);
+    w42_pt_set_author (w42_document_pt (w42_view_get_document (box->view)), name);
+  }
+
+  /* Spelling as you type takes effect now, through the same action the
+   * Tools menu toggles. */
+  spell_action = g_action_map_lookup_action (G_ACTION_MAP (box->parent), "auto-spell");
+  if (spell_action != NULL && g_action_get_enabled (spell_action))
+    {
+      GVariant *state = g_action_get_state (spell_action);
+      gboolean on = g_variant_get_boolean (state);
+
+      g_variant_unref (state);
+      if (on != want_spell)
+        g_action_activate (spell_action, NULL);
+    }
+
+  /* The ruler draws in the new unit. */
+  gtk_widget_queue_draw (GTK_WIDGET (box->parent));
+
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_options_dialog_show (GtkWindow *parent, W42View *view)
+{
+  OptionsBox *box;
+  GtkWidget *content, *grid;
+  char *default_view;
+  int zoom;
+  guint zoom_index = 1;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  box = g_new0 (OptionsBox, 1);
+  box->parent = parent;
+  box->view = view;
+  box->window = dialog_shell (parent, "Options", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "General");
+  box->units = choice_row (grid, 0, 0, "_Measurement Units:", UNIT_NAMES,
+                           w42_settings_get_units () == W42_UNITS_CM ? 1 : 0);
+
+  grid = group (content, "View");
+  default_view = w42_settings_get_string ("default-view", "page-layout");
+  box->default_view = choice_row (grid, 0, 0, "Default _View:", VIEW_NAMES,
+                                  g_str_equal (default_view, "page-layout") ? 1 : 0);
+  g_free (default_view);
+
+  zoom = w42_settings_get_int ("zoom", 100);
+  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_VALUES); i++)
+    if (ZOOM_VALUES[i] == zoom)
+      zoom_index = i;
+  box->zoom = choice_row (grid, 1, 0, "Default _Zoom:", ZOOM_NAMES, zoom_index);
+
+  grid = group (content, "User Info");
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("_Name:");
+    char *name = w42_settings_get_string ("user-name", "");
+
+    box->user_name = gtk_entry_new ();
+    if (*name == '\0')
+      {
+        const char *real = g_get_real_name ();
+
+        gtk_editable_set_text (GTK_EDITABLE (box->user_name),
+                               real != NULL && !g_str_equal (real, "Unknown") ? real : g_get_user_name ());
+      }
+    else
+      gtk_editable_set_text (GTK_EDITABLE (box->user_name), name);
+    g_free (name);
+    gtk_widget_set_tooltip_text (box->user_name, "Annotations and revisions carry this name in the files you save.");
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->user_name);
+    gtk_widget_set_size_request (box->user_name, 200, -1);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->user_name, 1, 0, 1, 1);
+  }
+
+  grid = group (content, "Spelling");
+  box->auto_spell = gtk_check_button_new_with_mnemonic ("_Check spelling as you type");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_spell),
+                               w42_settings_get_bool ("auto-spell", TRUE));
+  gtk_grid_attach (GTK_GRID (grid), box->auto_spell, 0, 0, 2, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_options_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->units);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Borders and Shading                                                     */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *sides[4];     /* top, bottom, left, right */
+  GtkWidget *width;
+  GtkWidget *shading;
+} BordersBox;
+
+static const char * const BORDER_WIDTHS[] = { "\302\276 pt", "1\302\275 pt", "2\302\274 pt", NULL };
+static const int BORDER_WIDTH_TWIPS[] = { 15, 30, 45 };
+static const char * const SHADINGS[] = {
+  "None", "10%", "20%", "30%", "40%", "50%", "75%", "Solid (100%)", NULL
+};
+static const int SHADING_VALUES[] = { 0, 10, 20, 30, 40, 50, 75, 100 };
+
+static void
+on_borders_ok (GtkButton *button, gpointer data)
+{
+  BordersBox *box = data;
+  W42ParaFmt want;
+  guint w = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->width));
+  guint sh = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->shading));
+  static const guint8 bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM,
+                                  W42_BORDER_LEFT, W42_BORDER_RIGHT };
+
+  (void) button;
+
+  memset (&want, 0, sizeof want);
+  for (int i = 0; i < 4; i++)
+    if (gtk_check_button_get_active (GTK_CHECK_BUTTON (box->sides[i])))
+      want.border |= bits[i];
+  want.border_width = (guint8) BORDER_WIDTH_TWIPS[MIN (w, 2)];
+  want.shading = (guint8) SHADING_VALUES[MIN (sh, 7)];
+
+  w42_view_apply_para_fmt (box->view, W42_PARA_BORDER | W42_PARA_SHADING, &want);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static void
+on_borders_preset (GtkButton *button, gpointer data)
+{
+  BordersBox *box = data;
+  gboolean all = g_str_equal (gtk_button_get_label (button), "_Box");
+
+  for (int i = 0; i < 4; i++)
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]), all);
+}
+
+void
+w42_borders_dialog_show (GtkWindow *parent, W42View *view)
+{
+  BordersBox *box;
+  GtkWidget *content, *grid, *presets, *none, *all;
+  W42ParaFmt now;
+  static const char * const side_labels[4] = { "_Top", "Botto_m", "_Left", "_Right" };
+  static const guint8 bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM,
+                                  W42_BORDER_LEFT, W42_BORDER_RIGHT };
+  guint width_index = 0, shading_index = 0;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (BordersBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Paragraph Borders and Shading", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+  w42_view_get_para_fmt (view, &now);
+
+  grid = group (content, "Borders");
+
+  presets = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  none = gtk_button_new_with_mnemonic ("_None");
+  all = gtk_button_new_with_mnemonic ("_Box");
+  g_signal_connect (none, "clicked", G_CALLBACK (on_borders_preset), box);
+  g_signal_connect (all, "clicked", G_CALLBACK (on_borders_preset), box);
+  gtk_box_append (GTK_BOX (presets), none);
+  gtk_box_append (GTK_BOX (presets), all);
+  gtk_grid_attach (GTK_GRID (grid), presets, 0, 0, 2, 1);
+
+  for (int i = 0; i < 4; i++)
+    {
+      box->sides[i] = gtk_check_button_new_with_mnemonic (side_labels[i]);
+      gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]),
+                                   (now.border & bits[i]) != 0);
+      gtk_grid_attach (GTK_GRID (grid), box->sides[i], i % 2, 1 + i / 2, 1, 1);
+    }
+
+  for (guint i = 0; i < G_N_ELEMENTS (BORDER_WIDTH_TWIPS); i++)
+    if (BORDER_WIDTH_TWIPS[i] == now.border_width)
+      width_index = i;
+  box->width = choice_row (grid, 3, 0, "Line _Width:", BORDER_WIDTHS, width_index);
+
+  grid = group (content, "Shading");
+  for (guint i = 0; i < G_N_ELEMENTS (SHADING_VALUES); i++)
+    if (SHADING_VALUES[i] == now.shading)
+      shading_index = i;
+  box->shading = choice_row (grid, 0, 0, "_Shading:", SHADINGS, shading_index);
+
+  button_row (content, box->window, G_CALLBACK (on_borders_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->sides[0]);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hyperlink                                                               */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *address;
+  GtkWidget *text;
+} LinkBox;
+
+static void
+on_hyperlink_ok (GtkButton *button, gpointer data)
+{
+  LinkBox *box = data;
+  const char *url = gtk_editable_get_text (GTK_EDITABLE (box->address));
+  const char *text = gtk_editable_get_text (GTK_EDITABLE (box->text));
+
+  (void) button;
+  w42_view_set_link (box->view, url, text);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static void
+on_hyperlink_remove (GtkButton *button, gpointer data)
+{
+  LinkBox *box = data;
+
+  (void) button;
+  w42_view_set_link (box->view, NULL, NULL);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_hyperlink_dialog_show (GtkWindow *parent, W42View *view)
+{
+  LinkBox *box;
+  GtkWidget *content, *grid, *label, *remove;
+  const char *current;
+  char *selected;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (LinkBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Hyperlink", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Link");
+
+  label = gtk_label_new_with_mnemonic ("_Address:");
+  box->address = gtk_entry_new ();
+  gtk_widget_set_size_request (box->address, 300, -1);
+  gtk_entry_set_activates_default (GTK_ENTRY (box->address), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->address);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->address, 1, 0, 1, 1);
+
+  label = gtk_label_new_with_mnemonic ("_Text to Display:");
+  box->text = gtk_entry_new ();
+  gtk_entry_set_activates_default (GTK_ENTRY (box->text), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->text);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->text, 1, 1, 1, 1);
+
+  current = w42_view_get_link (view);
+  if (current != NULL)
+    gtk_editable_set_text (GTK_EDITABLE (box->address), current);
+  selected = w42_view_get_selected_text (view);
+  if (selected != NULL && *selected != '\0')
+    {
+      gtk_editable_set_text (GTK_EDITABLE (box->text), selected);
+      gtk_widget_set_sensitive (box->text, FALSE);   /* the selection is the text */
+    }
+  g_free (selected);
+
+  remove = gtk_button_new_with_mnemonic ("_Remove Link");
+  gtk_widget_set_sensitive (remove, current != NULL);
+  g_signal_connect (remove, "clicked", G_CALLBACK (on_hyperlink_remove), box);
+  gtk_grid_attach (GTK_GRID (grid), remove, 1, 2, 1, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_hyperlink_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->address);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Bookmark                                                                */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *name;
+  GtkWidget *list;      /* GtkListBox of names */
+  GtkWidget *status;
+  char     **names;
+} BookmarkBox;
+
+static void
+bookmark_free (gpointer data, GObject *gone)
+{
+  BookmarkBox *box = data;
+
+  (void) gone;
+  g_strfreev (box->names);
+  g_free (box);
+}
+
+static void
+bookmark_refresh (BookmarkBox *box)
+{
+  GtkWidget *row;
+
+  while ((row = gtk_widget_get_first_child (box->list)) != NULL)
+    gtk_list_box_remove (GTK_LIST_BOX (box->list), row);
+
+  g_strfreev (box->names);
+  box->names = w42_pt_bookmark_names (w42_document_pt (w42_view_get_document (box->view)));
+  for (guint i = 0; box->names != NULL && box->names[i] != NULL; i++)
+    {
+      GtkWidget *label = gtk_label_new (box->names[i]);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_widget_set_margin_start (label, 4);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+    }
+}
+
+static void
+on_bookmark_add (GtkButton *button, gpointer data)
+{
+  BookmarkBox *box = data;
+  const char *name = gtk_editable_get_text (GTK_EDITABLE (box->name));
+
+  (void) button;
+
+  if (name == NULL || *name == '\0')
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), "Type a name for the bookmark.");
+      return;
+    }
+  if (!w42_view_has_selection (box->view))
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), "Select the text to bookmark first.");
+      return;
+    }
+
+  w42_view_set_bookmark (box->view, name);
+  gtk_label_set_text (GTK_LABEL (box->status), "");
+  bookmark_refresh (box);
+}
+
+static void
+on_bookmark_go_to (GtkButton *button, gpointer data)
+{
+  BookmarkBox *box = data;
+  const char *name = gtk_editable_get_text (GTK_EDITABLE (box->name));
+
+  (void) button;
+  if (!w42_view_go_to_bookmark (box->view, name))
+    gtk_label_set_text (GTK_LABEL (box->status), "No bookmark of that name.");
+}
+
+static void
+on_bookmark_delete (GtkButton *button, gpointer data)
+{
+  BookmarkBox *box = data;
+  const char *name = gtk_editable_get_text (GTK_EDITABLE (box->name));
+
+  (void) button;
+  if (w42_view_go_to_bookmark (box->view, name))
+    {
+      w42_view_set_bookmark (box->view, NULL);
+      bookmark_refresh (box);
+    }
+}
+
+static void
+on_bookmark_row (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  BookmarkBox *box = data;
+  GtkWidget *label;
+
+  (void) list;
+  if (row == NULL)
+    return;
+  label = gtk_list_box_row_get_child (row);
+  if (GTK_IS_LABEL (label))
+    gtk_editable_set_text (GTK_EDITABLE (box->name), gtk_label_get_text (GTK_LABEL (label)));
+}
+
+void
+w42_bookmark_dialog_show (GtkWindow *parent, W42View *view)
+{
+  BookmarkBox *box;
+  GtkWidget *content, *grid, *label, *scroller, *buttons, *add, *go, *del, *close;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (BookmarkBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Bookmark", &content, view);
+  gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
+  g_object_weak_ref (G_OBJECT (box->window), bookmark_free, box);
+
+  grid = group (content, "Bookmarks");
+
+  label = gtk_label_new_with_mnemonic ("Bookmark _Name:");
+  box->name = gtk_entry_new ();
+  gtk_widget_set_size_request (box->name, 220, -1);
+  gtk_entry_set_activates_default (GTK_ENTRY (box->name), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->name);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->name, 1, 0, 1, 1);
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (on_bookmark_row), box);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, -1, 120);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 1, 2, 1);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  add = gtk_button_new_with_mnemonic ("_Add");
+  go = gtk_button_new_with_mnemonic ("_Go To");
+  del = gtk_button_new_with_mnemonic ("_Delete");
+  g_signal_connect (add, "clicked", G_CALLBACK (on_bookmark_add), box);
+  g_signal_connect (go, "clicked", G_CALLBACK (on_bookmark_go_to), box);
+  g_signal_connect (del, "clicked", G_CALLBACK (on_bookmark_delete), box);
+  gtk_box_append (GTK_BOX (buttons), add);
+  gtk_box_append (GTK_BOX (buttons), go);
+  gtk_box_append (GTK_BOX (buttons), del);
+  gtk_grid_attach (GTK_GRID (grid), buttons, 0, 2, 2, 1);
+
+  box->status = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->status), 0.0);
+  gtk_widget_add_css_class (box->status, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), box->status, 0, 3, 2, 1);
+
+  {
+    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+
+    gtk_widget_set_halign (row, GTK_ALIGN_END);
+    close = gtk_button_new_with_mnemonic ("Close");
+    gtk_widget_set_size_request (close, 92, 26);
+    g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
+    gtk_box_append (GTK_BOX (row), close);
+    gtk_box_append (GTK_BOX (content), row);
+    gtk_window_set_default_widget (GTK_WINDOW (box->window), add);
+  }
+
+  bookmark_refresh (box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->name);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Font effects                                                            */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *strike, *super, *sub, *smallcaps, *allcaps, *overline;
+  GtkWidget *highlight;
+  GtkWidget *spacing;
+  GtkWidget *colour;
+} EffectsBox;
+
+static const char * const HIGHLIGHTS[] = {
+  "None", "Yellow", "Bright Green", "Turquoise", "Pink", "Blue", "Red",
+  "Dark Blue", "Teal", "Green", "Violet", "Dark Red", "Dark Yellow", "Gray 50%",
+  "Gray 25%", NULL
+};
+static const guint8 HIGHLIGHT_INDEX[] = { 0, 7, 4, 3, 5, 2, 6, 9, 10, 11, 12, 13, 14, 15, 16 };
+
+/* Word 6's sixteen colours, as its Font box listed them; Auto is black. */
+static const char *const TEXT_COLOURS[] = {
+  "Auto", "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
+  "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red", "Dark Yellow", "Dark Gray", "Light Gray", NULL
+};
+static const guint32 TEXT_COLOUR_VALUES[] = {
+  0x000000, 0x000000, 0x0000FF, 0x00FFFF, 0x00FF00, 0xFF00FF, 0xFF0000, 0xFFFF00, 0xFFFFFF,
+  0x000080, 0x008080, 0x008000, 0x800080, 0x800000, 0x808000, 0x808080, 0xC0C0C0
+};
+
+static void
+on_effects_ok (GtkButton *button, gpointer data)
+{
+  EffectsBox *box = data;
+  W42CharFmt want;
+  guint h = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->highlight));
+
+  (void) button;
+
+  memset (&want, 0, sizeof want);
+  want.strikeout = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->strike)) ? 1 : 0;
+  want.overline  = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->overline)) ? 1 : 0;
+  want.script    = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->super)) ? 1
+                 : gtk_check_button_get_active (GTK_CHECK_BUTTON (box->sub)) ? -1 : 0;
+  want.smallcaps = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->smallcaps)) ? 1 : 0;
+  want.allcaps   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->allcaps)) ? 1 : 0;
+  want.highlight = h < G_N_ELEMENTS (HIGHLIGHT_INDEX) ? HIGHLIGHT_INDEX[h] : 0;
+  want.spacing   = (gint16) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->spacing)) * 20.0);
+  {
+    guint c = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->colour));
+
+    want.color = c < G_N_ELEMENTS (TEXT_COLOUR_VALUES) ? TEXT_COLOUR_VALUES[c] : 0;
+  }
+
+  w42_view_apply_char_fmt (box->view,
+                           W42_CHAR_STRIKEOUT | W42_CHAR_OVERLINE | W42_CHAR_SCRIPT | W42_CHAR_SMALLCAPS |
+                           W42_CHAR_ALLCAPS | W42_CHAR_HIGHLIGHT | W42_CHAR_SPACING | W42_CHAR_COLOR, &want);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static void
+on_effects_exclusive (GtkCheckButton *button, gpointer data)
+{
+  /* Superscript and subscript cannot both be on. */
+  GtkCheckButton *other = data;
+
+  if (gtk_check_button_get_active (button))
+    gtk_check_button_set_active (other, FALSE);
+}
+
+void
+w42_effects_dialog_show (GtkWindow *parent, W42View *view)
+{
+  EffectsBox *box;
+  GtkWidget *content, *grid;
+  W42CharFmt now;
+  guint h_index = 0;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (EffectsBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Font Effects", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+  w42_view_get_char_fmt (view, &now);
+
+  grid = group (content, "Effects");
+  box->strike    = gtk_check_button_new_with_mnemonic ("Stri_kethrough");
+  box->super     = gtk_check_button_new_with_mnemonic ("Su_perscript");
+  box->sub       = gtk_check_button_new_with_mnemonic ("Su_bscript");
+  box->smallcaps = gtk_check_button_new_with_mnemonic ("S_mall Caps");
+  box->allcaps   = gtk_check_button_new_with_mnemonic ("_All Caps");
+  box->overline  = gtk_check_button_new_with_mnemonic ("O_verline");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->overline), now.overline);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->strike), now.strikeout);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->super), now.script > 0);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sub), now.script < 0);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->smallcaps), now.smallcaps);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->allcaps), now.allcaps);
+  g_signal_connect (box->super, "toggled", G_CALLBACK (on_effects_exclusive), box->sub);
+  g_signal_connect (box->sub, "toggled", G_CALLBACK (on_effects_exclusive), box->super);
+  gtk_grid_attach (GTK_GRID (grid), box->strike, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->smallcaps, 1, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->super, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->allcaps, 1, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->sub, 0, 2, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->overline, 1, 2, 1, 1);
+
+  grid = group (content, "Highlight");
+  for (guint i = 0; i < G_N_ELEMENTS (HIGHLIGHT_INDEX); i++)
+    if (HIGHLIGHT_INDEX[i] == now.highlight)
+      h_index = i;
+  box->highlight = choice_row (grid, 0, 0, "_Highlight:", HIGHLIGHTS, h_index);
+  {
+    guint ci = 0;
+
+    for (guint i = 1; i < G_N_ELEMENTS (TEXT_COLOUR_VALUES); i++)
+      if (TEXT_COLOUR_VALUES[i] == now.color && now.color != 0) ci = i;
+    box->colour = choice_row (grid, 1, 0, "_Color:", TEXT_COLOURS, ci);
+  }
+
+  grid = group (content, "Character Spacing");
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("_Expanded by (pt):");
+
+    box->spacing = gtk_spin_button_new_with_range (-10.0, 30.0, 0.25);
+    gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->spacing), 2);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->spacing), now.spacing / 20.0);
+    gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->spacing), TRUE);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->spacing);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->spacing, 1, 0, 1, 1);
+  }
+
+  button_row (content, box->window, G_CALLBACK (on_effects_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->strike);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Columns                                                                 */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *count;
+  GtkWidget *gap;
+  GtkWidget *scope;
+} ColumnsBox;
+
+static const char * const COLUMN_SCOPES[] = { "Whole document", "This section", "This point forward", NULL };
+
+static const char * const COLUMN_PRESETS[] = { "One", "Two", "Three", NULL };
+
+static void
+on_columns_ok (GtkButton *button, gpointer data)
+{
+  ColumnsBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42PageSetup page;
+
+  (void) button;
+
+  if (doc == NULL)
+    return;
+
+  page = *w42_document_page_setup (doc);
+  page.columns = (int) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->count)) + 1;
+  page.column_gap = (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->gap))));
+  if (page.column_gap < 72)
+    page.column_gap = 72;
+
+  w42_view_set_columns (box->view, page.columns, page.column_gap,
+                        (W42ColumnsScope) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->scope)));
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_columns_dialog_show (GtkWindow *parent, W42View *view)
+{
+  ColumnsBox *box;
+  GtkWidget *content, *grid;
+  const W42PageSetup *page;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  page = w42_document_page_setup (w42_view_get_document (view));
+  box = g_new0 (ColumnsBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Columns", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Presets");
+  {
+    int columns = 1, gap = 720;
+
+    (void) page;
+    w42_view_get_columns (view, &columns, &gap);
+    box->count = choice_row (grid, 0, 0, "_Number of Columns:", COLUMN_PRESETS,
+                             CLAMP (columns - 1, 0, 2));
+    box->gap = inches_row (grid, 1, 0, "_Spacing:", measure_from_twips (gap));
+  }
+
+  box->scope = choice_row (grid, 2, 0, "_Apply To:", COLUMN_SCOPES, 0);
+
+  button_row (content, box->window, G_CALLBACK (on_columns_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->count);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Annotations                                                             */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *text;       /* GtkTextView for the annotation being written */
+  GtkWidget *list;       /* GtkListBox of the document's annotations */
+  GtkWidget *status;
+  GArray    *items;      /* W42Annotation, as listed */
+} AnnotationsBox;
+
+static void
+annotations_free (gpointer data, GObject *gone)
+{
+  AnnotationsBox *box = data;
+
+  (void) gone;
+  if (box->items != NULL)
+    g_array_free (box->items, TRUE);
+  g_free (box);
+}
+
+static char *
+annotations_text (AnnotationsBox *box)
+{
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text));
+  GtkTextIter a, b;
+
+  gtk_text_buffer_get_bounds (buffer, &a, &b);
+  return gtk_text_buffer_get_text (buffer, &a, &b, FALSE);
+}
+
+static void
+annotations_refresh (AnnotationsBox *box)
+{
+  GtkWidget *row;
+  W42PieceTable *pt = w42_document_pt (w42_view_get_document (box->view));
+
+  while ((row = gtk_widget_get_first_child (box->list)) != NULL)
+    gtk_list_box_remove (GTK_LIST_BOX (box->list), row);
+
+  if (box->items != NULL)
+    g_array_free (box->items, TRUE);
+  box->items = w42_pt_annotations (pt);
+
+  for (guint i = 0; i < box->items->len; i++)
+    {
+      const W42Annotation *a = &g_array_index (box->items, W42Annotation, i);
+      char *quoted = w42_pt_get_text (pt, a->start, MIN (a->end - a->start, 40));
+      char *line;
+      GtkWidget *label;
+
+      g_strdelimit (quoted, "\n\t", ' ');
+      line = g_strdup_printf ("\342\200\234%s%s\342\200\235 \342\200\224 %s", quoted,
+                              a->end - a->start > 40 ? "\342\200\246" : "", a->text);
+      label = gtk_label_new (line);
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+      gtk_label_set_max_width_chars (GTK_LABEL (label), 60);
+      gtk_widget_set_margin_start (label, 4);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+      g_free (line);
+      g_free (quoted);
+    }
+
+  gtk_label_set_text (GTK_LABEL (box->status),
+                      box->items->len == 0 ? "No annotations in the document." : "");
+}
+
+static void
+on_annotation_add (GtkButton *button, gpointer data)
+{
+  AnnotationsBox *box = data;
+  char *text = annotations_text (box);
+
+  (void) button;
+
+  if (!w42_view_has_selection (box->view))
+    gtk_label_set_text (GTK_LABEL (box->status), "Select the text to annotate first.");
+  else if (*g_strstrip (text) == '\0')
+    gtk_label_set_text (GTK_LABEL (box->status), "Type the annotation first.");
+  else
+    {
+      w42_view_set_comment (box->view, text);
+      gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text)), "", -1);
+      annotations_refresh (box);
+    }
+  g_free (text);
+}
+
+static void
+on_annotation_row (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  AnnotationsBox *box = data;
+  int i;
+
+  (void) list;
+  if (row == NULL || box->items == NULL)
+    return;
+  i = gtk_list_box_row_get_index (row);
+  if (i < 0 || (guint) i >= box->items->len)
+    return;
+
+  {
+    const W42Annotation *a = &g_array_index (box->items, W42Annotation, i);
+
+    w42_view_select_range (box->view, a->start, a->end);
+    gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text)), a->text, -1);
+  }
+}
+
+static void
+on_annotation_delete (GtkButton *button, gpointer data)
+{
+  AnnotationsBox *box = data;
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (box->list));
+  int i;
+
+  (void) button;
+  if (row == NULL || box->items == NULL)
+    return;
+  i = gtk_list_box_row_get_index (row);
+  if (i < 0 || (guint) i >= box->items->len)
+    return;
+
+  {
+    const W42Annotation *a = &g_array_index (box->items, W42Annotation, i);
+
+    w42_view_select_range (box->view, a->start, a->end);
+    w42_view_set_comment (box->view, NULL);
+    annotations_refresh (box);
+  }
+}
+
+void
+w42_annotations_dialog_show (GtkWindow *parent, W42View *view)
+{
+  AnnotationsBox *box;
+  GtkWidget *content, *grid, *label, *scroller, *buttons, *add, *del, *close;
+  const char *current;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (AnnotationsBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Annotations", &content, view);
+  gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
+  g_object_weak_ref (G_OBJECT (box->window), annotations_free, box);
+
+  grid = group (content, "Annotation");
+
+  label = gtk_label_new_with_mnemonic ("_Text:");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
+
+  box->text = gtk_text_view_new ();
+  gtk_text_view_set_wrap_mode (GTK_TEXT_VIEW (box->text), GTK_WRAP_WORD);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->text);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->text);
+  gtk_widget_set_size_request (scroller, 360, 70);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 1, 2, 1);
+
+  current = w42_view_get_comment (view);
+  if (current != NULL)
+    gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text)), current, -1);
+
+  grid = group (content, "In the Document");
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (on_annotation_row), box);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 360, 120);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 2, 1);
+
+  box->status = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->status), 0.0);
+  gtk_widget_add_css_class (box->status, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), box->status, 0, 1, 2, 1);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_set_halign (buttons, GTK_ALIGN_END);
+  add = gtk_button_new_with_mnemonic ("_Add");
+  del = gtk_button_new_with_mnemonic ("_Delete");
+  close = gtk_button_new_with_mnemonic ("Close");
+  gtk_widget_set_size_request (add, 92, 26);
+  gtk_widget_set_size_request (del, 92, 26);
+  gtk_widget_set_size_request (close, 92, 26);
+  g_signal_connect (add, "clicked", G_CALLBACK (on_annotation_add), box);
+  g_signal_connect (del, "clicked", G_CALLBACK (on_annotation_delete), box);
+  g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
+  gtk_box_append (GTK_BOX (buttons), add);
+  gtk_box_append (GTK_BOX (buttons), del);
+  gtk_box_append (GTK_BOX (buttons), close);
+  gtk_box_append (GTK_BOX (content), buttons);
+
+  annotations_refresh (box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->text);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tools > Mail Merge                                                      */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42View        *view;
+  GtkWidget      *window;
+  GtkWidget      *path;
+  GtkWidget      *list;
+  GtkWidget      *status;
+  W42MergeSource *source;
+} MergeBox;
+
+static void
+merge_free (gpointer data, GObject *where)
+{
+  MergeBox *box = data;
+
+  (void) where;
+  w42_merge_source_free (box->source);
+  g_free (box);
+}
+
+static const char *
+merge_selected_field (MergeBox *box)
+{
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (box->list));
+  GtkWidget *label;
+
+  if (row == NULL)
+    return NULL;
+  label = gtk_list_box_row_get_child (row);
+  return GTK_IS_LABEL (label) ? gtk_label_get_text (GTK_LABEL (label)) : NULL;
+}
+
+static void
+merge_show_source (MergeBox *box)
+{
+  GtkWidget *child;
+
+  while ((child = gtk_widget_get_first_child (box->list)) != NULL)
+    gtk_list_box_remove (GTK_LIST_BOX (box->list), child);
+
+  if (box->source == NULL)
+    return;
+
+  for (guint i = 0; box->source->fields[i] != NULL; i++)
+    {
+      GtkWidget *label = gtk_label_new (box->source->fields[i]);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+    }
+  gtk_list_box_select_row (GTK_LIST_BOX (box->list),
+                           gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), 0));
+
+  {
+    char *text = g_strdup_printf ("%u record%s, %u field%s.",
+                                  box->source->rows->len,
+                                  box->source->rows->len == 1 ? "" : "s",
+                                  g_strv_length (box->source->fields),
+                                  g_strv_length (box->source->fields) == 1 ? "" : "s");
+    gtk_label_set_text (GTK_LABEL (box->status), text);
+    g_free (text);
+  }
+}
+
+static void
+on_merge_source_chosen (GObject *object, GAsyncResult *result, gpointer data)
+{
+  MergeBox *box = data;
+  GError *error = NULL;
+  GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (object), result, &error);
+  W42MergeSource *source;
+
+  if (file == NULL)
+    {
+      g_clear_error (&error);
+      return;
+    }
+
+  source = w42_merge_source_load (file, &error);
+  if (source == NULL)
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), error->message);
+      g_error_free (error);
+    }
+  else
+    {
+      char *name = g_file_get_basename (file);
+
+      w42_merge_source_free (box->source);
+      box->source = source;
+      gtk_label_set_text (GTK_LABEL (box->path), name);
+      g_free (name);
+      merge_show_source (box);
+    }
+  g_object_unref (file);
+}
+
+static void
+on_merge_open_source (GtkButton *button, gpointer data)
+{
+  MergeBox *box = data;
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
+  GListStore *filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
+  GtkFileFilter *csv = gtk_file_filter_new ();
+
+  (void) button;
+  gtk_file_filter_set_name (csv, "Comma Separated Values (*.csv)");
+  gtk_file_filter_add_pattern (csv, "*.csv");
+  gtk_file_filter_add_pattern (csv, "*.txt");
+  g_list_store_append (filters, csv);
+  gtk_file_dialog_set_title (dialog, "Open Data Source");
+  gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
+  gtk_file_dialog_open (dialog, GTK_WINDOW (box->window), NULL,
+                        on_merge_source_chosen, box);
+  g_object_unref (csv);
+  g_object_unref (filters);
+  g_object_unref (dialog);
+}
+
+static void
+on_merge_insert_field (GtkButton *button, gpointer data)
+{
+  MergeBox *box = data;
+  const char *name = merge_selected_field (box);
+  char *text;
+
+  (void) button;
+  if (name == NULL)
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), "Open a data source first.");
+      return;
+    }
+  text = w42_merge_field_text (name);
+  w42_view_insert_text (box->view, text);
+  g_free (text);
+}
+
+static void
+on_merge_output_chosen (GObject *object, GAsyncResult *result, gpointer data)
+{
+  MergeBox *box = data;
+  GError *error = NULL;
+  GFile *file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (object), result, &error);
+  W42Document *doc = w42_view_get_document (box->view);
+  GtkWindow *parent;
+
+  if (file == NULL)
+    {
+      g_clear_error (&error);
+      return;
+    }
+
+  if (!w42_merge_to_file (w42_document_pt (doc), w42_document_page_setup (doc),
+                          box->source, file, &error))
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), error->message);
+      g_error_free (error);
+      g_object_unref (file);
+      return;
+    }
+
+  /* The result opens in a window of its own, as Word's Merge to New
+   * Document did. */
+  parent = gtk_window_get_transient_for (GTK_WINDOW (box->window));
+  if (parent != NULL)
+    {
+      GtkApplication *app = gtk_window_get_application (parent);
+      GtkWidget *window = w42_window_new (app);
+
+      w42_window_open (W42_WINDOW (window), file);
+      gtk_window_present (GTK_WINDOW (window));
+    }
+  gtk_window_destroy (GTK_WINDOW (box->window));
+  g_object_unref (file);
+}
+
+static void
+on_merge_run (GtkButton *button, gpointer data)
+{
+  MergeBox *box = data;
+  GtkFileDialog *dialog;
+  GListStore *filters;
+  GtkFileFilter *rtf;
+
+  (void) button;
+  if (box->source == NULL)
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), "Open a data source first.");
+      return;
+    }
+  if (box->source->rows->len == 0)
+    {
+      gtk_label_set_text (GTK_LABEL (box->status), "The data source has no records.");
+      return;
+    }
+
+  dialog = gtk_file_dialog_new ();
+  filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
+  rtf = gtk_file_filter_new ();
+  gtk_file_filter_set_name (rtf, "Rich Text Format (*.rtf)");
+  gtk_file_filter_add_pattern (rtf, "*.rtf");
+  g_list_store_append (filters, rtf);
+  gtk_file_dialog_set_title (dialog, "Merge to New Document");
+  gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
+  gtk_file_dialog_set_initial_name (dialog, "Merged.rtf");
+  gtk_file_dialog_save (dialog, GTK_WINDOW (box->window), NULL,
+                        on_merge_output_chosen, box);
+  g_object_unref (rtf);
+  g_object_unref (filters);
+  g_object_unref (dialog);
+}
+
+void
+w42_mail_merge_dialog_show (GtkWindow *parent, W42View *view)
+{
+  MergeBox *box;
+  GtkWidget *content, *grid, *label, *scroller, *buttons, *open, *insert, *merge, *close;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (MergeBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Mail Merge", &content, view);
+  gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
+  g_object_weak_ref (G_OBJECT (box->window), merge_free, box);
+
+  grid = group (content, "Data Source");
+
+  label = gtk_label_new ("A CSV file whose first row names the fields.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
+
+  open = gtk_button_new_with_mnemonic ("_Get Data...");
+  g_signal_connect (open, "clicked", G_CALLBACK (on_merge_open_source), box);
+  box->path = gtk_label_new ("(none)");
+  gtk_label_set_xalign (GTK_LABEL (box->path), 0.0);
+  gtk_label_set_ellipsize (GTK_LABEL (box->path), PANGO_ELLIPSIZE_MIDDLE);
+  gtk_widget_set_hexpand (box->path, TRUE);
+  gtk_grid_attach (GTK_GRID (grid), open, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->path, 1, 1, 1, 1);
+
+  grid = group (content, "Merge Fields");
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 260, 120);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 2, 1);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  insert = gtk_button_new_with_mnemonic ("_Insert Merge Field");
+  merge = gtk_button_new_with_mnemonic ("_Merge to New Document...");
+  g_signal_connect (insert, "clicked", G_CALLBACK (on_merge_insert_field), box);
+  g_signal_connect (merge, "clicked", G_CALLBACK (on_merge_run), box);
+  gtk_box_append (GTK_BOX (buttons), insert);
+  gtk_box_append (GTK_BOX (buttons), merge);
+  gtk_grid_attach (GTK_GRID (grid), buttons, 0, 1, 2, 1);
+
+  box->status = gtk_label_new ("Fields go into the text as \302\253Name\302\273.");
+  gtk_label_set_xalign (GTK_LABEL (box->status), 0.0);
+  gtk_widget_add_css_class (box->status, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), box->status, 0, 2, 2, 1);
+
+  {
+    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+
+    gtk_widget_set_halign (row, GTK_ALIGN_END);
+    close = gtk_button_new_with_mnemonic ("Close");
+    gtk_widget_set_size_request (close, 92, 26);
+    g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
+    gtk_box_append (GTK_BOX (row), close);
+    gtk_box_append (GTK_BOX (content), row);
+  }
+
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insert > Cross-reference                                                */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42View   *view;
+  GtkWidget *window;
+  GtkWidget *which;
+  GtkWidget *kind;
+  char     **names;
+} XrefBox;
+
+static void
+xref_free (gpointer data, GObject *where)
+{
+  XrefBox *box = data;
+
+  (void) where;
+  g_strfreev (box->names);
+  g_free (box);
+}
+
+static void
+on_xref_ok (GtkButton *button, gpointer data)
+{
+  XrefBox *box = data;
+  guint which = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->which));
+  guint kind = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->kind));
+
+  (void) button;
+  if (which < g_strv_length (box->names))
+    w42_view_insert_cross_reference (box->view, box->names[which], kind == 0);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view)
+{
+  XrefBox *box;
+  GtkWidget *content, *grid, *label;
+  W42Document *doc;
+  static const char * const kinds[] = { "Page number", "Bookmark text", NULL };
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  doc = w42_view_get_document (view);
+  if (doc == NULL)
+    return;
+
+  box = g_new0 (XrefBox, 1);
+  box->view = view;
+  box->names = w42_pt_bookmark_names (w42_document_pt (doc));
+  box->window = dialog_shell (parent, "Cross-reference", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), xref_free, box);
+
+  grid = group (content, "Reference");
+
+  if (box->names == NULL || box->names[0] == NULL)
+    {
+      label = gtk_label_new ("There are no bookmarks to refer to.\n"
+                             "Insert > Bookmark marks a place first.");
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
+      box->which = choice_row (grid, 1, 0, "For which _bookmark:", NULL, 0);
+      gtk_widget_set_sensitive (box->which, FALSE);
+    }
+  else
+    box->which = choice_row (grid, 0, 0, "For which _bookmark:",
+                             (const char * const *) box->names, 0);
+  box->kind = choice_row (grid, 2, 0, "_Insert reference to:", kinds, 0);
+
+  label = gtk_label_new ("The reference is text; insert it again after the "
+                         "pages change.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_widget_add_css_class (label, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 3, 2, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_xref_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insert > Drawing                                                        */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *kind, *width, *height, *line, *line_colour, *filled, *fill_colour;
+} DrawingBox;
+
+static const char * const SHAPE_NAMES[] = {
+  "Line", "Arrow", "Rectangle", "Rounded Rectangle", "Ellipse", NULL
+};
+static const char * const SHAPE_COLOURS[] = {
+  "Black", "White", "Gray", "Red", "Green", "Blue", "Yellow", NULL
+};
+static const guint32 SHAPE_RGB[] = {
+  0x000000, 0xffffff, 0x808080, 0xc00000, 0x008000, 0x0000c0, 0xffff00
+};
+
+static void
+on_drawing_ok (GtkButton *button, gpointer data)
+{
+  DrawingBox *box = data;
+  W42ShapeKind kind = (W42ShapeKind) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->kind));
+  double w_in = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->width))) / 1440.0;
+  double h_in = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->height))) / 1440.0;
+  double line_pt = gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->line));
+  guint lc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->line_colour));
+  guint fc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->fill_colour));
+  gboolean filled = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->filled));
+  int w_px = (int) lround (MAX (w_in, 0.05) * 96.0);
+  int h_px = (int) lround (MAX (h_in, 0.02) * 96.0);
+  GBytes *png;
+
+  (void) button;
+
+  png = w42_shape_render (kind, w_px, h_px, line_pt,
+                          SHAPE_RGB[MIN (lc, G_N_ELEMENTS (SHAPE_RGB) - 1)],
+                          filled, SHAPE_RGB[MIN (fc, G_N_ELEMENTS (SHAPE_RGB) - 1)]);
+  if (png != NULL)
+    {
+      w42_view_insert_picture (box->view, png, g_intern_static_string ("png"), w_px, h_px);
+      g_bytes_unref (png);
+    }
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
+{
+  DrawingBox *box;
+  GtkWidget *content, *grid;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (DrawingBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Drawing", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Shape");
+  box->kind   = choice_row (grid, 0, 0, "_Shape:", SHAPE_NAMES, 2);
+  box->width  = inches_row (grid, 1, 0, "_Width:", measure_from_twips (2 * 1440));
+  box->height = inches_row (grid, 2, 0, "_Height:", measure_from_twips (1440));
+
+  grid = group (content, "Line and Fill");
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("_Line Width (pt):");
+
+    box->line = gtk_spin_button_new_with_range (0.25, 12.0, 0.25);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->line), 1.0);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->line);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->line, 1, 0, 1, 1);
+  }
+  box->line_colour = choice_row (grid, 1, 0, "Line _Color:", SHAPE_COLOURS, 0);
+  box->filled = gtk_check_button_new_with_mnemonic ("_Filled");
+  gtk_grid_attach (GTK_GRID (grid), box->filled, 0, 2, 2, 1);
+  box->fill_colour = choice_row (grid, 3, 0, "Fill Colo_r:", SHAPE_COLOURS, 6);
+
+  button_row (content, box->window, G_CALLBACK (on_drawing_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Format > Bullets and Numbering                                          */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *kind;
+  GtkWidget *restart;
+  GtkWidget *start;
+  GtkWidget *level;
+} ListBox;
+
+/* In the order of W42ListKind. */
+static const char * const LIST_KIND_NAMES[] = {
+  "None", "\342\200\242 Bullet", "1. 2. 3.", "a. b. c.", "A. B. C.",
+  "i. ii. iii.", "I. II. III.", "\342\227\246 Circle", "\342\226\252 Square",
+  "\342\200\223 Dash", NULL
+};
+
+static void
+on_list_kind_changed (GObject *drop, GParamSpec *pspec, gpointer data)
+{
+  ListBox *box = data;
+  gboolean numbered = w42_list_is_numbered ((W42ListKind) gtk_drop_down_get_selected (GTK_DROP_DOWN (drop)));
+
+  (void) pspec;
+  gtk_widget_set_sensitive (box->restart, numbered);
+  gtk_widget_set_sensitive (box->start, numbered);
+}
+
+static void
+on_list_ok (GtkButton *button, gpointer data)
+{
+  ListBox *box = data;
+  W42ListKind kind = (W42ListKind) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->kind));
+  gboolean restart = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->restart));
+  int start = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->start));
+
+  (void) button;
+  w42_view_set_list (box->view, kind);
+  if (kind != W42_LIST_NONE)
+    {
+      int level = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->level)) - 1;
+      W42ParaFmt now;
+
+      w42_view_get_para_fmt (box->view, &now);
+      if (level != (int) now.list_level)
+        w42_view_list_level_by (box->view, level - (int) now.list_level);
+    }
+  if (w42_list_is_numbered (kind))
+    w42_view_set_list_start (box->view, restart ? MAX (start, 1) : 0);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_list_dialog_show (GtkWindow *parent, W42View *view)
+{
+  ListBox *box;
+  GtkWidget *content, *grid, *label;
+  W42ParaFmt now;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (ListBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Bullets and Numbering", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+  w42_view_get_para_fmt (view, &now);
+
+  grid = group (content, "List");
+  box->kind = choice_row (grid, 0, 0, "_Kind:", LIST_KIND_NAMES,
+                          MIN (now.list, W42_LIST_KINDS - 1));
+
+  {
+    GtkWidget *lvl_label = gtk_label_new_with_mnemonic ("_Level:");
+
+    box->level = gtk_spin_button_new_with_range (1, 9, 1);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->level), now.list_level + 1);
+    gtk_label_set_xalign (GTK_LABEL (lvl_label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (lvl_label), box->level);
+    gtk_grid_attach (GTK_GRID (grid), lvl_label, 0, 3, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->level, 1, 3, 1, 1);
+  }
+  box->restart = gtk_check_button_new_with_mnemonic ("_Restart numbering at:");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->restart), now.list_start > 0);
+  box->start = gtk_spin_button_new_with_range (1, 255, 1);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->start), now.list_start > 0 ? now.list_start : 1);
+  gtk_grid_attach (GTK_GRID (grid), box->restart, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->start, 1, 1, 1, 1);
+
+  label = gtk_label_new ("Numbering continues from the item before unless restarted.\n"
+                         "Tab and Shift+Tab at the start of an item change its level.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_widget_add_css_class (label, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 4, 2, 1);
+
+  g_signal_connect (box->kind, "notify::selected", G_CALLBACK (on_list_kind_changed), box);
+  on_list_kind_changed (G_OBJECT (box->kind), NULL, box);
+
+  button_row (content, box->window, G_CALLBACK (on_list_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Table > Table Properties                                                */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *borders;
+  GtkWidget *header;
+  GtkWidget *row_height;
+  GtkWidget *shading;
+  GtkWidget *side[4];      /* top, bottom, left, right */
+  int        sides_before;
+} TablePropsBox;
+
+/* An inches (or cm) spinner's value in twips. */
+static int
+spin_twips (GtkWidget *spin)
+{
+  double v = gtk_spin_button_get_value (GTK_SPIN_BUTTON (spin));
+
+  if (w42_settings_get_units () == W42_UNITS_CM)
+    v /= 2.54;
+  return (int) lround (v * 1440.0);
+}
+
+static void
+on_table_props_ok (GtkButton *button, gpointer data)
+{
+  TablePropsBox *box = data;
+  guint sh = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->shading));
+  W42ParaFmt now;
+
+  (void) button;
+  w42_view_table_set_borders (box->view, gtk_check_button_get_active (GTK_CHECK_BUTTON (box->borders)));
+  w42_view_table_set_header_rows (box->view, gtk_check_button_get_active (GTK_CHECK_BUTTON (box->header)) ? 1 : 0);
+  w42_view_table_set_row_height (box->view, spin_twips (box->row_height));
+  w42_view_get_para_fmt (box->view, &now);
+  if ((int) SHADING_VALUES[MIN (sh, 7)] != (int) now.shading)
+    w42_view_cell_set_shading (box->view, SHADING_VALUES[MIN (sh, 7)]);
+  {
+    static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
+    int sides = 0;
+
+    for (int i = 0; i < 4; i++)
+      if (gtk_check_button_get_active (GTK_CHECK_BUTTON (box->side[i])))
+        sides |= bits[i];
+    if (sides != box->sides_before)
+      w42_view_cell_set_borders (box->view, sides);
+  }
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
+{
+  TablePropsBox *box;
+  GtkWidget *content, *grid;
+  W42ParaFmt now;
+  guint shading_index = 0;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (TablePropsBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Table Properties", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+  w42_view_get_para_fmt (view, &now);
+
+  grid = group (content, "Table");
+  box->borders = gtk_check_button_new_with_mnemonic ("_Borders around every cell");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->borders), w42_view_table_get_borders (view));
+  gtk_grid_attach (GTK_GRID (grid), box->borders, 0, 0, 2, 1);
+  box->header = gtk_check_button_new_with_mnemonic ("_Repeat the first row at the top of each page");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->header), w42_view_table_get_header_rows (view) > 0);
+  gtk_grid_attach (GTK_GRID (grid), box->header, 0, 1, 2, 1);
+
+  grid = group (content, "This Row");
+  {
+    double unit = w42_settings_get_units () == W42_UNITS_CM ? 2.54 : 1.0;
+
+    box->row_height = inches_row (grid, 0, 0, "Height at _least:",
+                                  w42_view_table_get_row_height (view) / 1440.0 * unit);
+  }
+
+  grid = group (content, "This Cell");
+  for (guint i = 0; i < G_N_ELEMENTS (SHADING_VALUES); i++)
+    if (SHADING_VALUES[i] == now.shading)
+      shading_index = i;
+  box->shading = choice_row (grid, 0, 0, "_Shading:", SHADINGS, shading_index);
+  {
+    static const char *const names[4] = { "_Top", "Botto_m", "Le_ft", "Ri_ght" };
+    static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
+    GtkWidget *label = gtk_label_new ("Borders:");
+
+    box->sides_before = w42_view_cell_get_borders (view);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+    for (int i = 0; i < 4; i++)
+      {
+        box->side[i] = gtk_check_button_new_with_mnemonic (names[i]);
+        gtk_check_button_set_active (GTK_CHECK_BUTTON (box->side[i]), (box->sides_before & bits[i]) != 0);
+        gtk_grid_attach (GTK_GRID (grid), box->side[i], 1 + i % 2, 1 + i / 2, 1, 1);
+      }
+  }
+
+  button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insert > Field                                                          */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *kind;
+} FieldBox;
+
+static const char * const FIELD_NAMES[] = {
+  "Page number", "Number of pages", "Date", "Time", "File name", "Word count", NULL
+};
+static const char * const FIELD_CODES[] = {
+  "PAGE", "NUMPAGES", "DATE", "TIME", "FILENAME", "NUMWORDS"
+};
+
+static void
+on_field_ok (GtkButton *button, gpointer data)
+{
+  FieldBox *box = data;
+  guint which = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->kind));
+
+  (void) button;
+  w42_view_insert_field (box->view, FIELD_CODES[MIN (which, G_N_ELEMENTS (FIELD_CODES) - 1)]);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_field_dialog_show (GtkWindow *parent, W42View *view)
+{
+  FieldBox *box;
+  GtkWidget *content, *grid, *label;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (FieldBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Field", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, "Field");
+  box->kind = choice_row (grid, 0, 0, "_Insert:", FIELD_NAMES, 0);
+  label = gtk_label_new ("A field shows its result, shaded grey. F9 updates every field;\n"
+                         "printing and exporting update them too.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_widget_add_css_class (label, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_field_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Format > Picture                                                        */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42View   *view;
+  GtkWidget *window;
+  GtkWidget *width, *height, *wrap;
+} PictureBox;
+
+static void
+picture_ok (GtkButton *button, gpointer data)
+{
+  PictureBox *box = data;
+  static const W42Wrap wraps[] = { W42_WRAP_INLINE, W42_WRAP_LEFT, W42_WRAP_RIGHT };
+  guint sel = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->wrap));
+
+  (void) button;
+  w42_view_set_picture (box->view,
+                        MAX (spin_twips (box->width), 15),
+                        MAX (spin_twips (box->height), 15),
+                        wraps[MIN (sel, 2)]);
+  gtk_window_close (GTK_WINDOW (box->window));
+}
+
+void
+w42_picture_dialog_show (GtkWindow *parent, W42View *view)
+{
+  static const char *const wraps[] = {
+    "In line with text", "Left, text to the right", "Right, text to the left", NULL
+  };
+  PictureBox *box;
+  GtkWidget *content, *grid;
+  int width = 0, height = 0;
+  W42Wrap wrap = W42_WRAP_INLINE;
+  gboolean cm = w42_settings_get_units () == W42_UNITS_CM;
+  double unit = cm ? 2.54 : 1.0;
+
+  if (!w42_view_get_picture (view, &width, &height, &wrap))
+    {
+      w42_message_show (parent,
+                        "Select a picture first: click it once, so that its "
+                        "handles show.", NULL);
+      return;
+    }
+
+  box = g_new0 (PictureBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Picture", &content, view);
+  g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
+
+  grid = group (content, "Size");
+  box->width = inches_row (grid, 0, 0, "_Width:", width / 1440.0 * unit);
+  box->height = inches_row (grid, 1, 0, "_Height:", height / 1440.0 * unit);
+
+  grid = group (content, "Text wrapping");
+  box->wrap = choice_row (grid, 0, 0, "_Position:", wraps, (guint) wrap);
+
+  button_row (content, box->window, G_CALLBACK (picture_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Format > Drop Cap, Format > Frame                                       */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42View   *view;
+  GtkWidget *window;
+  GtkWidget *position, *lines, *width;
+} FrameBox;
+
+static void
+on_drop_position (GtkDropDown *drop, GParamSpec *pspec, gpointer data)
+{
+  FrameBox *box = data;
+
+  (void) pspec;
+  gtk_widget_set_sensitive (box->lines, gtk_drop_down_get_selected (drop) == 1);
+}
+
+static void
+drop_cap_ok (GtkButton *button, gpointer data)
+{
+  FrameBox *box = data;
+  guint pos = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->position));
+
+  (void) button;
+  w42_view_set_drop_cap (box->view,
+                         pos == 0 ? 0 : (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->lines)));
+  gtk_window_close (GTK_WINDOW (box->window));
+}
+
+void
+w42_drop_cap_dialog_show (GtkWindow *parent, W42View *view)
+{
+  static const char *const positions[] = { "None", "Dropped", NULL };
+  FrameBox *box = g_new0 (FrameBox, 1);
+  GtkWidget *content, *grid, *label;
+  W42ParaFmt now;
+
+  w42_view_get_para_fmt (view, &now);
+  box->view = view;
+  box->window = dialog_shell (parent, "Drop Cap", &content, view);
+  g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
+
+  grid = group (content, "Position");
+  box->position = choice_row (grid, 0, 0, "_Position:", positions, now.drop_cap > 0 ? 1 : 0);
+  label = gtk_label_new_with_mnemonic ("_Lines to drop:");
+  box->lines = gtk_spin_button_new_with_range (1, 10, 1);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->lines), now.drop_cap > 0 ? now.drop_cap : 3);
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->lines), TRUE);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->lines);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->lines, 1, 1, 1, 1);
+  gtk_widget_set_sensitive (box->lines, now.drop_cap > 0);
+  g_signal_connect (box->position, "notify::selected", G_CALLBACK (on_drop_position), box);
+
+  button_row (content, box->window, G_CALLBACK (drop_cap_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+static void
+frame_ok (GtkButton *button, gpointer data)
+{
+  FrameBox *box = data;
+  guint pos = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->position));
+
+  (void) button;
+  w42_view_set_frame (box->view, (int) MIN (pos, 2), spin_twips (box->width));
+  gtk_window_close (GTK_WINDOW (box->window));
+}
+
+void
+w42_frame_dialog_show (GtkWindow *parent, W42View *view)
+{
+  static const char *const positions[] = { "None", "Left, text to the right", "Right, text to the left", NULL };
+  FrameBox *box = g_new0 (FrameBox, 1);
+  GtkWidget *content, *grid;
+  W42ParaFmt now;
+  double unit = w42_settings_get_units () == W42_UNITS_CM ? 2.54 : 1.0;
+
+  w42_view_get_para_fmt (view, &now);
+  box->view = view;
+  box->window = dialog_shell (parent, "Frame", &content, view);
+  g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
+
+  grid = group (content, "Frame");
+  box->position = choice_row (grid, 0, 0, "_Position:", positions, MIN (now.frame_side, 2));
+  box->width = inches_row (grid, 1, 0, "_Width:", (now.frame_width > 0 ? now.frame_width : 2880) / 1440.0 * unit);
+
+  button_row (content, box->window, G_CALLBACK (frame_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* File > Summary Info                                                     */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42View   *view;
+  GtkWidget *window;
+  GtkWidget *field[5];      /* title, subject, author, keywords, comments */
+} SummaryBox;
+
+static void
+summary_ok (GtkButton *button, gpointer data)
+{
+  SummaryBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42DocInfo info;
+  const W42DocInfo *had;
+  gboolean changed = FALSE;
+
+  (void) button;
+  memset (&info, 0, sizeof info);
+  info.title    = gtk_editable_get_text (GTK_EDITABLE (box->field[0]));
+  info.subject  = gtk_editable_get_text (GTK_EDITABLE (box->field[1]));
+  info.author   = gtk_editable_get_text (GTK_EDITABLE (box->field[2]));
+  info.keywords = gtk_editable_get_text (GTK_EDITABLE (box->field[3]));
+  info.comments = gtk_editable_get_text (GTK_EDITABLE (box->field[4]));
+
+  had = w42_pt_get_info (w42_document_pt (doc));
+  changed = g_strcmp0 (had->title, info.title) || g_strcmp0 (had->subject, info.subject) ||
+            g_strcmp0 (had->author, info.author) || g_strcmp0 (had->keywords, info.keywords) ||
+            g_strcmp0 (had->comments, info.comments);
+  if (changed)
+    {
+      w42_pt_set_info (w42_document_pt (doc), &info);
+      w42_document_mark_unsaved (doc);
+      w42_document_touch (doc);
+    }
+  gtk_window_close (GTK_WINDOW (box->window));
+}
+
+void
+w42_summary_dialog_show (GtkWindow *parent, W42View *view)
+{
+  static const char *const labels[] = { "_Title:", "_Subject:", "_Author:", "_Keywords:", "_Comments:" };
+  SummaryBox *box;
+  GtkWidget *content, *grid;
+  const W42DocInfo *info;
+  const char *values[5];
+
+  g_return_if_fail (W42_IS_VIEW (view));
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  info = w42_pt_get_info (w42_document_pt (w42_view_get_document (view)));
+  values[0] = info->title;
+  values[1] = info->subject;
+  values[2] = info->author;
+  values[3] = info->keywords;
+  values[4] = info->comments;
+
+  box = g_new0 (SummaryBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Summary Info", &content, view);
+  g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
+
+  grid = group (content, "This document");
+  for (int i = 0; i < 5; i++)
+    {
+      GtkWidget *label = gtk_label_new_with_mnemonic (labels[i]);
+      char *name;
+
+      box->field[i] = gtk_entry_new ();
+      /* An author who has said nothing is the person using the program. */
+      name = i == 2 && values[i] == NULL ? w42_settings_get_string ("user-name", "") : NULL;
+      if (values[i] != NULL)
+        gtk_editable_set_text (GTK_EDITABLE (box->field[i]), values[i]);
+      else if (name != NULL && *name != '\0')
+        gtk_editable_set_text (GTK_EDITABLE (box->field[i]), name);
+      else if (i == 2)
+        {
+          const char *real = g_get_real_name ();
+
+          gtk_editable_set_text (GTK_EDITABLE (box->field[i]),
+                                 real != NULL && !g_str_equal (real, "Unknown") ? real : g_get_user_name ());
+        }
+      g_free (name);
+      gtk_entry_set_activates_default (GTK_ENTRY (box->field[i]), TRUE);
+      gtk_widget_set_size_request (box->field[i], 260, -1);
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->field[i]);
+      gtk_grid_attach (GTK_GRID (grid), label, 0, i, 1, 1);
+      gtk_grid_attach (GTK_GRID (grid), box->field[i], 1, i, 1, 1);
+    }
+
+  button_row (content, box->window, G_CALLBACK (summary_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->field[0]);
+}
