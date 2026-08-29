@@ -40,6 +40,7 @@ is listed so the distance to the current product is honest.
 | Alignment, indents, spacing, line spacing (single, 1½, double, At Least, Exactly, multiple) | full | full | full | full |
 | Tabs (left/centre/right/decimal), live ruler, leaders | full | full | full | full |
 | Borders and shading | paragraph, one style | full | full | full |
+| Page background colour | full (screen and preview) | yes | no | yes |
 | Keep with next/together, widows, page break before | full | full | full | full |
 | Right-to-left paragraphs | full | full | (later versions) | full |
 | Styles: paragraph styles, character styles, user-defined, based on | full: a style keeps its own settings and follows its base for the rest | full | full | full |
@@ -140,12 +141,12 @@ Pa = partial, M = missing.
 | Edit | 12/1/2 | Repeat, Links | 13/0/1 | Paste Unformatted styles |
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
 | Insert | 7/6/3 | Object, Index, Form Field | 11/2/2 | Text Box, Clip Art |
-| Format | 5/8/2 | AutoFormat, Style Gallery, one Font box | 14/4/4 | Language, Background |
+| Format | 6/8/1 | AutoFormat, Style Gallery, one Font box | 16/4/2 | two the earlier review did not name |
 | Tools | 5/3/6 | Thesaurus, Grammar, Envelopes | 6/2/2 | Compare, Document Statistics |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
 | Help | 5/1/3 | Quick Preview, Examples and Demos | 5/1/0 | -- |
-| **Total** | **64/24/25** | | **82/12/14** | |
+| **Total** | **65/24/24** | | **84/12/12** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
@@ -358,3 +359,12 @@ another; Word 6 showed one at every start and so does this, unless the
 switch in the box or in Tools > Options says otherwise.  **Word42 on the
 Web** and **Report a Bug** open the project's pages, which is what
 Word 6's Technical Support and AbiWord's bug report are for.
+
+**A colour behind the page.**  Format > Background sets the colour the
+paper is, chosen from a list with a sample that shows it behind text.
+It is what the eye sees and what the file carries: Word's
+`w:background` (with the settings part that makes Word show it), RTF's
+background shape, OpenDocument's `fo:background-color` on the page
+layout, and HTML's body style, all both ways, and LibreOffice reads all
+of ours.  Printing leaves the paper alone, as a word processor does
+unless it is told otherwise.

@@ -693,6 +693,16 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
       if (attr (an, av, "fo:margin-bottom")) o->page->margin_bottom = length_twips (attr (an, av, "fo:margin-bottom"));
       if (attr (an, av, "fo:margin-left")) o->page->margin_left = length_twips (attr (an, av, "fo:margin-left"));
       if (attr (an, av, "fo:margin-right")) o->page->margin_right = length_twips (attr (an, av, "fo:margin-right"));
+      {
+        /* The colour behind the page. */
+        const char *bg = attr (an, av, "fo:background-color");
+
+        if (bg != NULL && *bg == '#' && strlen (bg) >= 7)
+          {
+            o->page->background = (guint32) strtoul (bg + 1, NULL, 16);
+            o->page->has_background = 1;
+          }
+      }
       o->in_page_layout = TRUE;
     }
   else if (g_str_equal (tag, "columns") && o->in_page_layout)
@@ -2468,6 +2478,9 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_string_append (stylesxml, "\" fo:margin-right=\"");
   twips_out (stylesxml, pg.margin_right);
   g_string_append (stylesxml, "\"");
+  if (pg.has_background)
+    g_string_append_printf (stylesxml, " fo:background-color=\"#%06x\"",
+                            pg.background & 0xFFFFFF);
   if (w42_page_columns (&pg) > 1)
     {
       g_string_append_printf (stylesxml, "><style:columns fo:column-count=\"%d\" fo:column-gap=\"", w42_page_columns (&pg));

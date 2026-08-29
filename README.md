@@ -97,6 +97,9 @@ Early, but real. Word42 today is a working word processor:
   HTML back — a plain reading, with no CSS engine, that brings in what
   Word42 wrote and most pages that are text: headings, paragraphs, bold,
   italic, links, lists, tables, embedded pictures.
+- **Page background** — Format ▸ Background sets the colour behind the
+  page, shown on the screen and in Print Preview and carried by Word,
+  RTF, OpenDocument and HTML; printing leaves the paper as it is.
 - **Help** — the user guide travels inside the program: Help ▸ Contents
   (F1) opens a window with the guide's sections on the left and the one
   chosen on the right, Search for Help on... narrows the list to the

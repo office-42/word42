@@ -123,7 +123,17 @@ draw_preview (GtkDrawingArea *area, cairo_t *cr, int width, int height,
       cairo_rectangle (cr, ox + 3, oy + 3, page_w, page_h);
       cairo_fill (cr);
 
-      cairo_set_source_rgb (cr, 1, 1, 1);
+      {
+        /* The paper is white unless Format > Background says otherwise. */
+        const W42PageSetup *setup = w42_document_page_setup (self->doc);
+
+        if (setup != NULL && setup->has_background)
+          cairo_set_source_rgb (cr, ((setup->background >> 16) & 0xFF) / 255.0,
+                                ((setup->background >> 8) & 0xFF) / 255.0,
+                                (setup->background & 0xFF) / 255.0);
+        else
+          cairo_set_source_rgb (cr, 1, 1, 1);
+      }
       cairo_rectangle (cr, ox, oy, page_w, page_h);
       cairo_fill_preserve (cr);
       cairo_set_source_rgb (cr, 0.2, 0.2, 0.2);

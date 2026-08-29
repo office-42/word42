@@ -313,7 +313,12 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
     "table { border-collapse: collapse; }\ntd { border: 1px solid #000; padding: 2pt 4pt; vertical-align: top; }\n"
     "a { color: #000080; }\n.notes { margin-top: 1em; border-top: 1px solid #000; width: 33%; padding-top: 0.5em; }\n"
     ".note { font-size: smaller; }\n");
-  g_string_append (out, "</style>\n</head>\n<body>\n");
+  g_string_append (out, "</style>\n</head>\n");
+  if (page != NULL && page->has_background)
+    g_string_append_printf (out, "<body style=\"background: #%06x\">\n",
+                            page->background & 0xFFFFFF);
+  else
+    g_string_append (out, "<body>\n");
   g_free (title);
 
   /* The body: every paragraph that is not a footnote's. */

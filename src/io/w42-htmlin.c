@@ -20,6 +20,7 @@
 
 typedef struct {
   W42PieceTable *pt;
+  W42PageSetup  *page;              /* the page, for what the body says */
   gsize          pos;
 
   W42CharFmt     ch[MAX_DEPTH];     /* a stack: inline elements push */
@@ -1349,7 +1350,6 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
   g_return_val_if_fail (pt != NULL, FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
-  (void) page;
 
   if (!g_file_load_contents (file, NULL, &contents, &length, NULL, error))
     return FALSE;
@@ -1367,6 +1367,7 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
 
   memset (&h, 0, sizeof h);
   h.pt = pt;
+  h.page = page;
   {
     GFile *dir = g_file_get_parent (file);
 
@@ -1392,8 +1393,24 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
     if (body != NULL)
       {
         const char *gt = memchr (body, '>', end - body);
+
         if (gt != NULL)
-          p = gt + 1;
+          {
+            /* What the body says about the colour behind the page. */
+            char *attrs = g_strndup (body + 5, (gsize) (gt - (body + 5)));
+            char *style = attr_value (attrs, "style");
+            const char *hash = style != NULL ? strchr (style, '#') : NULL;
+
+            if (page != NULL && style != NULL && hash != NULL && strlen (hash) >= 7 &&
+                strstr (style, "background") != NULL)
+              {
+                page->background = (guint32) strtoul (hash + 1, NULL, 16);
+                page->has_background = 1;
+              }
+            g_free (style);
+            g_free (attrs);
+            p = gt + 1;
+          }
         read_head (&h, contents, body);
       }
   }

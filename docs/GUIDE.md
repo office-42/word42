@@ -257,6 +257,18 @@ There is a tab stop every half inch until you set one of your own.
 The three markers on the ruler are the first-line indent (top), the left
 indent (bottom) and the right indent; drag them.
 
+### Format ▸ Background
+
+The colour behind the page: pick one from the list and the sample shows
+what it will look like, text and all. The colour is shown on the screen
+and in Print Preview; printing leaves the paper as it is, which is what
+a word processor does with a page colour unless told otherwise.
+
+Word (`w:background`), RTF (a background shape), OpenDocument
+(`fo:background-color` on the page layout) and HTML (the body's own
+style) all carry the colour both ways, and LibreOffice reads all four of
+ours.
+
 ### Format ▸ Borders and Shading
 
 A line above, below, to the left or right of a paragraph, or round it, in

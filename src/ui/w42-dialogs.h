@@ -39,6 +39,7 @@ void w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view);
 void w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell);
 void w42_word_count_dialog_show (GtkWindow *parent, W42View *view);
 void w42_autotext_dialog_show (GtkWindow *parent, W42View *view);
+void w42_background_dialog_show (GtkWindow *parent, W42View *view);
 void w42_picture_dialog_show (GtkWindow *parent, W42View *view);
 void w42_summary_dialog_show (GtkWindow *parent, W42View *view);
 void w42_drop_cap_dialog_show (GtkWindow *parent, W42View *view);

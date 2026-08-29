@@ -3634,6 +3634,150 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Format > Background                                                     */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *colour;
+  GtkWidget *sample;
+  guint32    rgb;
+  gboolean   none;
+} BackgroundBox;
+
+/* White paper and the fifteen colours the Font box offers. */
+static const char * const PAGE_COLOURS[] = {
+  "None (white paper)", "Light Gray", "Dark Gray", "Yellow", "Cyan", "Green",
+  "Magenta", "Red", "Blue", "Dark Blue", "Dark Cyan", "Dark Green",
+  "Dark Magenta", "Dark Red", "Dark Yellow", "Black", NULL
+};
+static const guint32 PAGE_COLOUR_VALUES[] = {
+  0xFFFFFF, 0xC0C0C0, 0x808080, 0xFFFFC0, 0xC0FFFF, 0xC0FFC0,
+  0xFFC0FF, 0xFFC0C0, 0xC0C0FF, 0x000080, 0x008080, 0x008000,
+  0x800080, 0x800000, 0x808000, 0x000000
+};
+
+static void
+background_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+/* The chosen colour, drawn as a page of it. */
+static void
+draw_background_sample (GtkDrawingArea *area, cairo_t *cr, int width, int height,
+                        gpointer data)
+{
+  BackgroundBox *box = data;
+  guint which = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->colour));
+  guint32 rgb = which < G_N_ELEMENTS (PAGE_COLOUR_VALUES)
+                  ? PAGE_COLOUR_VALUES[which] : 0xFFFFFF;
+
+  (void) area;
+  cairo_set_source_rgb (cr, 0.86, 0.86, 0.86);
+  cairo_paint (cr);
+  cairo_set_source_rgb (cr, ((rgb >> 16) & 0xFF) / 255.0, ((rgb >> 8) & 0xFF) / 255.0,
+                        (rgb & 0xFF) / 255.0);
+  cairo_rectangle (cr, 8, 6, width - 16, height - 12);
+  cairo_fill_preserve (cr);
+  cairo_set_source_rgb (cr, 0.4, 0.4, 0.4);
+  cairo_set_line_width (cr, 1.0);
+  cairo_stroke (cr);
+
+  /* Three lines of "text", so that the colour is judged behind text. */
+  cairo_set_source_rgb (cr, 0.25, 0.25, 0.25);
+  for (int i = 0; i < 3; i++)
+    {
+      cairo_rectangle (cr, 18, 18 + i * 10, width - 36 - (i == 2 ? 30 : 0), 3);
+      cairo_fill (cr);
+    }
+}
+
+static void
+on_background_changed (GtkDropDown *drop, GParamSpec *spec, gpointer data)
+{
+  BackgroundBox *box = data;
+
+  (void) drop; (void) spec;
+  gtk_widget_queue_draw (box->sample);
+}
+
+static void
+on_background_ok (GtkButton *button, gpointer data)
+{
+  BackgroundBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  guint which = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->colour));
+  W42PageSetup page;
+
+  (void) button;
+  if (doc == NULL)
+    return;
+
+  page = *w42_document_page_setup (doc);
+  if (which == 0)
+    {
+      page.has_background = 0;
+      page.background = 0;
+    }
+  else if (which < G_N_ELEMENTS (PAGE_COLOUR_VALUES))
+    {
+      page.has_background = 1;
+      page.background = PAGE_COLOUR_VALUES[which];
+    }
+  w42_document_set_page_setup (doc, &page);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_background_dialog_show (GtkWindow *parent, W42View *view)
+{
+  BackgroundBox *box;
+  GtkWidget *content, *grid, *label;
+  const W42PageSetup *page;
+  guint selected = 0;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (BackgroundBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Background", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), background_free, box);
+
+  page = w42_document_page_setup (w42_view_get_document (view));
+  if (page != NULL && page->has_background)
+    for (guint i = 1; i < G_N_ELEMENTS (PAGE_COLOUR_VALUES); i++)
+      if (PAGE_COLOUR_VALUES[i] == (page->background & 0xFFFFFF))
+        selected = i;
+
+  grid = group (content, "The colour behind the page");
+  box->colour = choice_row (grid, 0, 0, "_Color:", PAGE_COLOURS, selected);
+  g_signal_connect (box->colour, "notify::selected",
+                    G_CALLBACK (on_background_changed), box);
+
+  box->sample = gtk_drawing_area_new ();
+  gtk_widget_set_size_request (box->sample, 190, 58);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (box->sample),
+                                  draw_background_sample, box, NULL);
+  gtk_grid_attach (GTK_GRID (grid), box->sample, 0, 1, 2, 1);
+
+  label = gtk_label_new ("The colour is shown on the screen and in Print "
+                         "Preview; printing leaves the paper as it is.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_widget_set_size_request (label, 300, -1);
+  gtk_box_append (GTK_BOX (content), label);
+
+  button_row (content, box->window, G_CALLBACK (on_background_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
 /* Edit > AutoText                                                         */
 /* ---------------------------------------------------------------------- */
 

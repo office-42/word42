@@ -1543,6 +1543,18 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->cell_vmerge = (val != NULL && g_str_equal (val, "restart")) ? 1 : 2;
     }
 
+  /* The colour behind the page, which stands outside the body. */
+  else if (g_str_equal (tag, "background"))
+    {
+      const char *colour = attr (an, av, "color");
+
+      if (colour != NULL && strlen (colour) >= 6 && d->page != NULL)
+        {
+          d->page->background = (guint32) strtoul (colour + (colour[0] == '#'), NULL, 16);
+          d->page->has_background = 1;
+        }
+    }
+
   /* The body's own section properties: the page. */
   else if (g_str_equal (tag, "sectPr"))
     d->in_sectpr_body = TRUE;
@@ -2670,6 +2682,8 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
   parts.link_rels = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   parts.comments = g_string_new (NULL);
   g_free (add_rel (&parts, "styles", "styles.xml", FALSE));
+  if (page != NULL && page->has_background)
+    g_free (add_rel (&parts, "settings", "settings.xml", FALSE));
 
   header = w42_pt_get_header (pt);
   footer = w42_pt_get_footer (pt);
@@ -2705,7 +2719,15 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
         parts.footer_even_rid = add_rel (&parts, "footer", "footer3.xml", FALSE);
     }
 
-  g_string_append (doc, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document " W_NS "><w:body>");
+  g_string_append (doc, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document " W_NS ">");
+  if (page != NULL && page->has_background)
+    {
+      /* The colour behind the page.  Word shows it only when the
+       * settings part says so, which is why that part is written. */
+      g_string_append_printf (doc, "<w:background w:color=\"%06X\"/>",
+                              page->background & 0xFFFFFF);
+    }
+  g_string_append (doc, "<w:body>");
 
   for (guint b = 0; b < blocks->len; b++)
     {
@@ -2994,6 +3016,8 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
             }
         }
     }
+    if (page != NULL && page->has_background)
+      g_string_append (types, "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>");
     g_string_append (types, "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>");
     g_string_append (types, "</Types>");
     w42_zip_writer_add (zip, "[Content_Types].xml", types->str, types->len);
@@ -3016,6 +3040,16 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
     g_string_free (rels, TRUE);
 
     w42_zip_writer_add (zip, "word/document.xml", doc->str, doc->len);
+    if (page != NULL && page->has_background)
+      {
+        /* Word paints the background only if it is told to display the
+         * background shape; the settings part is where that is said. */
+        const char *settings =
+          "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+          "<w:settings " W_NS "><w:displayBackgroundShape/></w:settings>";
+
+        w42_zip_writer_add (zip, "word/settings.xml", settings, strlen (settings));
+      }
   {
     /* What the document says about itself. */
     const W42DocInfo *info = w42_pt_get_info (pt);

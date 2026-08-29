@@ -3949,6 +3949,22 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
   int n_pages = w42_layout_n_pages (layout);
 
   gboolean paged = (self->mode == W42_VIEW_PAGE_LAYOUT);
+  double paper_r = 1.0, paper_g = 1.0, paper_b = 1.0;
+
+  {
+    /* Format > Background: the colour the paper is, white unless the
+     * document says otherwise. */
+    const W42PageSetup *setup = w42_document_page_setup (self->doc);
+    double pr = 1.0, pg = 1.0, pb = 1.0;
+
+    if (setup != NULL && setup->has_background)
+      {
+        pr = ((setup->background >> 16) & 0xFF) / 255.0;
+        pg = ((setup->background >> 8) & 0xFF) / 255.0;
+        pb = (setup->background & 0xFF) / 255.0;
+      }
+    paper_r = pr; paper_g = pg; paper_b = pb;
+  }
 
   if (paged)
     {
@@ -3958,7 +3974,7 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
   else
     {
       /* Normal view is paper all the way out to the window frame. */
-      cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+      cairo_set_source_rgb (cr, paper_r, paper_g, paper_b);
     }
   cairo_paint (cr);
 
@@ -3976,8 +3992,8 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
 
       if (paged)
         {
-          /* A white sheet, centred, with a hairline round it. */
-          cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+          /* The sheet, centred, with a hairline round it. */
+          cairo_set_source_rgb (cr, paper_r, paper_g, paper_b);
           cairo_rectangle (cr, ox, oy, pw, ph);
           cairo_fill (cr);
           cairo_set_source_rgb (cr, 0.62, 0.62, 0.62);

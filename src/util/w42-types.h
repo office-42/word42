@@ -40,6 +40,8 @@ typedef struct {
   int margin_bottom;
   int columns;          /* newspaper columns; 0 or 1 is one */
   int column_gap;       /* twips between them; 0 means a half inch */
+  guint8  has_background;  /* the page has a colour of its own */
+  guint32 background;      /* 0x00RRGGBB, when it has */
 } W42PageSetup;
 
 static inline int w42_page_columns (const W42PageSetup *page)

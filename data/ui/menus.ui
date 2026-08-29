@@ -371,6 +371,10 @@
           </section>
         </submenu>
         <item>
+          <attribute name="label" translatable="yes">Bac_kground...</attribute>
+          <attribute name="action">win.background</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Borders and _Shading...</attribute>
           <attribute name="action">win.borders</attribute>
         </item>

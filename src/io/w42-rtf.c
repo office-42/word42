@@ -509,6 +509,21 @@ w42_rtf_save (W42PieceTable      *pt,
       "\\paperw%d\\paperh%d\\margl%d\\margr%d\\margt%d\\margb%d\n",
       page->width, page->height, page->margin_left, page->margin_right,
       page->margin_top, page->margin_bottom);
+  if (page != NULL && page->has_background)
+    {
+      /* The colour behind the page.  RTF says it with a shape that
+       * covers the page, and \viewbkspN asks for it to be shown; the
+       * colour itself is the shape's fill. */
+      g_string_append_printf (out,
+        "\\viewbksp1{\\*\\background {\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright0\\shpbottom0"
+        "\\shpfhdr0\\shpbxpage\\shpbypage\\shpwr0\\shpfblwtxt1"
+        "{\\sp{\\sn shapeType}{\\sv 1}}{\\sp{\\sn fFilled}{\\sv 1}}"
+        "{\\sp{\\sn fillColor}{\\sv %u}}{\\sp{\\sn fillType}{\\sv 0}}}}}\n",
+        /* the shape's colour is 0x00BBGGRR, the other way round from ours */
+        (unsigned) (((page->background & 0xFF) << 16) |
+                    (page->background & 0xFF00) |
+                    ((page->background >> 16) & 0xFF)));
+    }
   if (w42_page_columns (page) > 1)
     g_string_append_printf (out, "\\sectd\\cols%d\\colsx%d\n",
                             w42_page_columns (page), w42_page_column_gap (page));
@@ -2190,6 +2205,37 @@ word_param (const char *d, gsize len, gsize from, gsize to, const char *word)
 }
 
 /* ls number -> the shape of that list.  Free with g_hash_table_destroy. */
+/* The colour behind the page.  It is written as a shape in a group the
+ * reader otherwise skips, so it is looked for before the parse: the fill
+ * colour of the background shape, which RTF gives the other way round
+ * from the way this program keeps a colour. */
+static gboolean
+scan_background (const char *d, gsize len, guint32 *rgb)
+{
+  for (gsize i = 0; i + 12 < len; i++)
+    {
+      const char *fill, *sv;
+      gsize stop;
+      unsigned long bgr;
+
+      if (d[i] != '\\' || strncmp (d + i + 1, "background", 10) != 0)
+        continue;
+
+      /* Somewhere inside the group: {\sp{\sn fillColor}{\sv 12632256}} */
+      stop = MIN (len, i + 4096);
+      fill = g_strstr_len (d + i, (gssize) (stop - i), "fillColor");
+      if (fill == NULL)
+        continue;
+      sv = g_strstr_len (fill, (gssize) (d + stop - fill), "\\sv ");
+      if (sv == NULL)
+        continue;
+      bgr = strtoul (sv + 4, NULL, 10);
+      *rgb = (guint32) (((bgr & 0xFF) << 16) | (bgr & 0xFF00) | ((bgr >> 16) & 0xFF));
+      return TRUE;
+    }
+  return FALSE;
+}
+
 static GHashTable *
 scan_list_tables (const char *d, gsize len)
 {
@@ -2356,6 +2402,16 @@ w42_rtf_load (W42PieceTable *pt,
   r.style_name = g_string_new (NULL);
   r.style_names = g_hash_table_new (g_direct_hash, g_direct_equal);
   r.list_shapes = scan_list_tables (contents, length);
+  if (page != NULL)
+    {
+      guint32 rgb = 0;
+
+      if (scan_background (contents, length, &rgb))
+        {
+          page->background = rgb;
+          page->has_background = 1;
+        }
+    }
   r.cur_ls = -1;
   r.cur_ilvl = 0;
   r.hf_text = g_string_new (NULL);
