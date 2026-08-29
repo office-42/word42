@@ -1890,6 +1890,15 @@ action_table_properties (GSimpleAction *action, GVariant *param, gpointer data)
 }
 
 static void
+action_language (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_language_dialog_show (GTK_WINDOW (self), self->view, self->spell);
+}
+
+static void
 action_table_autoformat (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
@@ -3559,6 +3568,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "table-delete-cols", action_table_delete_column, NULL, NULL, NULL, { 0 } },
   { "table-properties", action_table_properties, NULL, NULL, NULL, { 0 } },
   { "table-autoformat", action_table_autoformat, NULL, NULL, NULL, { 0 } },
+  { "language",     action_language,     NULL, NULL, NULL, { 0 } },
   { "format-picture", action_format_picture, NULL, NULL, NULL, { 0 } },
   { "drop-cap", action_drop_cap, NULL, NULL, NULL, { 0 } },
   { "frame", action_frame, NULL, NULL, NULL, { 0 } },

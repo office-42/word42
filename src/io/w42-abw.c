@@ -11,6 +11,7 @@
 
 #include "w42-build.h"
 #include "w42-image.h"
+#include "w42-lang.h"
 
 /* ---------------------------------------------------------------------- */
 /* props="a:b; c:d" -- AbiWord's CSS-like attribute                        */
@@ -264,6 +265,14 @@ char_prop (const char *key, const char *value, gpointer data)
     ch->script = g_str_equal (value, "superscript") ? 1 : g_str_equal (value, "subscript") ? -1 : 0;
   else if (g_str_equal (key, "font-variant")) ch->smallcaps = g_str_equal (value, "small-caps");
   else if (g_str_equal (key, "text-transform")) ch->allcaps = g_str_equal (value, "uppercase");
+  else if (g_str_equal (key, "lang"))
+    {
+      /* AbiWord's own property for the language of a run. */
+      const char *known = w42_lang_normalise (value);
+
+      if (known != NULL)
+        ch->lang = known;
+    }
 }
 
 static void
@@ -1199,6 +1208,8 @@ char_props (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
     g_string_append_printf (s, "%sfont-variant:small-caps", s->len > 0 ? "; " : "");
   if (ch->allcaps)
     g_string_append_printf (s, "%stext-transform:uppercase", s->len > 0 ? "; " : "");
+  if (ch->lang != NULL)
+    g_string_append_printf (s, "%slang:%s", s->len > 0 ? "; " : "", ch->lang);
 }
 
 static int

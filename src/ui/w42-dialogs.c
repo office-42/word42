@@ -8,6 +8,8 @@
 
 #include "w42-autocorrect.h"
 #include "w42-tableformat.h"
+#include "w42-lang.h"
+#include "w42-spell.h"
 
 #include "w42-settings.h"
 #include "w42-merge.h"
@@ -3719,6 +3721,149 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
   }
 
   button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tools > Language                                                        */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  W42Spell  *spell;
+  GtkWidget *list;
+  GtkWidget *note;
+  int        chosen;        /* -1: the document's own language */
+} LanguageBox;
+
+static void
+language_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+static void
+language_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  LanguageBox *box = data;
+  int n = 0;
+  const W42Language *langs = w42_languages (&n);
+
+  (void) list;
+  if (row == NULL)
+    return;
+  box->chosen = gtk_list_box_row_get_index (row) - 1;    /* row 0 is "own" */
+  if (box->chosen < 0)
+    gtk_label_set_text (GTK_LABEL (box->note),
+                        "The text is checked with the document's own dictionary.");
+  else if (g_strcmp0 (langs[box->chosen].tag, W42_LANG_NONE) == 0)
+    gtk_label_set_text (GTK_LABEL (box->note),
+                        "The text is not checked at all.");
+  else if (box->spell != NULL &&
+           w42_spell_has_language (box->spell, langs[box->chosen].tag))
+    gtk_label_set_text (GTK_LABEL (box->note), "A dictionary for this is installed.");
+  else
+    gtk_label_set_text (GTK_LABEL (box->note),
+                        "No dictionary for this is installed: the words are not checked.");
+}
+
+static void
+on_language_ok (GtkButton *button, gpointer data)
+{
+  LanguageBox *box = data;
+  int n = 0;
+  const W42Language *langs = w42_languages (&n);
+  W42CharFmt want;
+
+  (void) button;
+  memset (&want, 0, sizeof want);
+  want.lang = box->chosen >= 0 && box->chosen < n
+                ? g_intern_static_string (langs[box->chosen].tag) : NULL;
+  w42_view_apply_char_fmt (box->view, W42_CHAR_LANG, &want);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
+{
+  LanguageBox *box;
+  GtkWidget *content, *grid, *scroller, *label;
+  int n = 0;
+  const W42Language *langs = w42_languages (&n);
+  W42CharFmt now;
+  int selected = 0;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (LanguageBox, 1);
+  box->view = view;
+  box->spell = spell;
+  box->chosen = -1;
+  box->window = dialog_shell (parent, "Language", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), language_free, box);
+
+  grid = group (content, "Mark the selected text as");
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
+  {
+    GtkWidget *own = gtk_label_new ("(the document's own language)");
+
+    gtk_label_set_xalign (GTK_LABEL (own), 0.0);
+    gtk_widget_set_margin_start (own, 6);
+    gtk_list_box_append (GTK_LIST_BOX (box->list), own);
+  }
+  w42_view_get_char_fmt (view, &now);
+  for (int i = 0; i < n; i++)
+    {
+      /* A tick for the languages there is a dictionary for, as the
+       * classic box marked them. */
+      gboolean have = spell != NULL && w42_spell_has_language (spell, langs[i].tag);
+      char *text = g_strdup_printf ("%s%s", have ? "\342\234\223 " : "   ", langs[i].name);
+      GtkWidget *item = gtk_label_new (text);
+
+      gtk_label_set_xalign (GTK_LABEL (item), 0.0);
+      gtk_widget_set_margin_start (item, 6);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), item);
+      if (now.lang != NULL && g_strcmp0 (now.lang, langs[i].tag) == 0)
+        selected = i + 1;
+      g_free (text);
+    }
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 280, 190);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 1, 1);
+
+  box->note = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->note), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (box->note), TRUE);
+  gtk_widget_set_size_request (box->note, 280, -1);
+  gtk_grid_attach (GTK_GRID (grid), box->note, 0, 1, 1, 1);
+
+  {
+    char *text = spell != NULL && w42_spell_language (spell) != NULL
+                   ? g_strdup_printf ("The document's own dictionary is %s.",
+                                      w42_spell_language (spell))
+                   : g_strdup ("No dictionary was found on this machine.");
+
+    label = gtk_label_new (text);
+    g_free (text);
+  }
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_box_append (GTK_BOX (content), label);
+
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (language_chosen), box);
+  gtk_list_box_select_row (GTK_LIST_BOX (box->list),
+                           gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), selected));
+
+  button_row (content, box->window, G_CALLBACK (on_language_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
 }
 

@@ -207,7 +207,11 @@ Early, but real. Word42 today is a working word processor:
   Tools ▸ Spelling, the classic box: Not in Dictionary, Change To,
   Suggestions, Ignore / Ignore All / Change / Change All / Add. Built on
   Enchant, so it uses whatever Hunspell, Aspell or system dictionary is
-  installed for your language; without one, the box says so.
+  installed for your language; without one, the box says so. Tools ▸
+  Language marks the selected text as written in a language of its own,
+  and it is then checked with that language's dictionary — or, marked as
+  no proofing, not checked at all. The mark goes through RTF, Word,
+  OpenDocument, AbiWord and HTML.
 - **Bullets and numbering** — the two buttons on the formatting bar, or
   Format ▸ Bullets / Numbering (Ctrl+Shift+L for bullets). An item gets a
   quarter-inch hanging indent with the marker in it; numbers count along a

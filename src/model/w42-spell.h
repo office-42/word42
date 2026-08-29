@@ -29,8 +29,20 @@ const char *w42_spell_language (W42Spell *spell);
 /* TRUE when the word is spelt right, or has been ignored or added. */
 gboolean    w42_spell_check    (W42Spell *spell, const char *word, gssize len);
 
+/* The same, with the language the run of text is marked with: a BCP-47
+ * tag, or NULL for the document's own dictionary.  A run marked
+ * W42_LANG_NONE ("zxx") is not language and is never wrong; a language
+ * there is no dictionary for is not judged either. */
+gboolean    w42_spell_check_lang (W42Spell *spell, const char *lang,
+                                  const char *word, gssize len);
+
+/* TRUE when there is a dictionary for the tag. */
+gboolean    w42_spell_has_language (W42Spell *spell, const char *lang);
+
 /* NULL-terminated, for g_strfreev(); NULL when there is nothing to offer. */
 char      **w42_spell_suggest  (W42Spell *spell, const char *word, gssize len);
+char      **w42_spell_suggest_lang (W42Spell *spell, const char *lang,
+                                    const char *word, gssize len);
 
 /* Ignore All: right for the rest of this session.  Add: right for good,
  * in the user's own dictionary. */

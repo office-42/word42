@@ -36,7 +36,7 @@ is listed so the distance to the current product is honest.
 | Overline, small caps, all caps, super/subscript, highlight, letter spacing | full | full | most | full |
 | Underline styles (single, words only, double, dotted, dashed, thick, wave) | full | single and double | Word 6's four | full |
 | Double strike, emboss, engrave | no | partial | some | full |
-| Language per run | no | yes | yes | yes |
+| Language per run | full | yes | yes | yes |
 | Alignment, indents, spacing, line spacing (single, 1½, double, At Least, Exactly, multiple) | full | full | full | full |
 | Tabs (left/centre/right/decimal), live ruler, leaders | full | full | full | full |
 | Borders and shading | paragraph, one style | full | full | full |
@@ -141,11 +141,11 @@ Pa = partial, M = missing.
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
 | Insert | 7/6/3 | Object, Index, Form Field | 11/2/2 | Text Box, Clip Art |
 | Format | 5/8/2 | AutoFormat, Style Gallery, one Font box | 14/4/4 | Language, Background |
-| Tools | 3/3/8 | Thesaurus, AutoCorrect, Grammar, Envelopes | 4/2/4 | Set Language, Compare |
+| Tools | 5/3/6 | Thesaurus, Grammar, Envelopes | 6/2/2 | Compare, Document Statistics |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
 | Help | 1/1/7 | Index and Search, Tip of the Day | 2/0/4 | Search, Report a Bug |
-| **Total** | **58/24/31** | | **77/11/20** | |
+| **Total** | **60/24/29** | | **79/11/18** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
@@ -314,3 +314,14 @@ the heading row and every other row take, and what is set in bold.  The
 preview draws the table small as the list is walked, the two switches say
 whether the heading row and the first column are singled out, and putting
 a look on is one undo step.
+
+**The language of a run.**  A run of text can now be marked with the
+language it is written in -- Tools > Language, with a tick beside the
+languages a dictionary is installed for -- and the spelling checker uses
+the dictionary for that language rather than the document's, so a
+Norwegian sentence in an English document is checked in Norwegian and
+suggested for in Norwegian.  "(no proofing)" marks text that is not
+language at all and is never checked.  RTF (`\lang`, `\noproof`), Word
+(`w:lang`, `w:noProof`), OpenDocument (`fo:language` and `fo:country`),
+AbiWord (`lang`) and HTML (`lang=`) all carry the mark both ways, with
+Word's language numbers turned into tags and back.

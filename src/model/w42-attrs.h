@@ -52,6 +52,8 @@ typedef struct {
   const char *comment;     /* interned text, or NULL: an annotation on the run */
   const char *field;       /* interned code ("PAGE", "DATE"...), or NULL: the run
                             * is a field's cached result, Update Fields renews it */
+  const char *lang;        /* interned BCP-47 tag ("en-GB", "nb-NO"), or NULL
+                            * for the document's own; "none" is not checked */
 } W42CharFmt;
 
 /* A paragraph that is an item of a list.  The marker is not text: it is

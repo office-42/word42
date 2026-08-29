@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "w42-image.h"
+#include "w42-lang.h"
 
 /* ---------------------------------------------------------------------- */
 /* The writer: text goes in at `pos` with the formatting on the stack      */
@@ -1252,6 +1253,17 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
       /* Something else inline, or unknown: no formatting of its own, but
        * it still pops, so push the same. */
     }
+
+  {
+    /* An element may say the language of what is in it, and any element
+     * may: it is not the span's alone. */
+    char *lang = attr_value (attrs, "lang");
+    const char *known = lang != NULL ? w42_lang_normalise (lang) : NULL;
+
+    if (known != NULL)
+      h->ch[h->depth].lang = known;
+    g_free (lang);
+  }
 
   if ((style = attr_value (attrs, "style")) != NULL)
     {

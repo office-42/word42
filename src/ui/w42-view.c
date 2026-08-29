@@ -353,6 +353,7 @@ w42_view_get_char_fmt (W42View *self, W42CharFmt *out)
       if (m & W42_CHAR_UNDERLINE) out->underline = self->pending.underline;
       if (m & W42_CHAR_STRIKEOUT) out->strikeout = self->pending.strikeout;
       if (m & W42_CHAR_COLOR)     out->color     = self->pending.color;
+      if (m & W42_CHAR_LANG)      out->lang      = self->pending.lang;
     }
 }
 
@@ -1162,6 +1163,22 @@ w42_view_spell_refresh (W42View *self)
   view_relayout (self);
 }
 
+/* The language marked on the run the byte at `at` is in. */
+static const char *
+block_run_lang (W42PieceTable *pt, const W42Block *block, gsize at)
+{
+  W42ApTable *aps = w42_pt_ap_table (pt);
+
+  for (guint i = 0; i < block->runs->len; i++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, i);
+
+      if (at >= run->byte_offset && at < run->byte_offset + run->n_bytes)
+        return w42_ap_table_get (aps, run->ap)->ch.lang;
+    }
+  return NULL;
+}
+
 gboolean
 w42_view_find_misspelling (W42View *self, W42Spell *spell, gsize from,
                            gsize *start, gsize *end)
@@ -1195,7 +1212,8 @@ w42_view_find_misspelling (W42View *self, W42Spell *spell, gsize from,
 
           if (ws < from)
             continue;
-          if (w42_spell_check (spell, text + s, (gssize) (e - s)))
+          if (w42_spell_check_lang (spell, block_run_lang (pt, block, s),
+                                    text + s, (gssize) (e - s)))
             continue;
 
           *start = ws;
@@ -1325,6 +1343,7 @@ view_apply_char_fmt (W42View *self, W42CharMask mask, const W42CharFmt *value)
   if (mask & W42_CHAR_UNDERLINE) self->pending.underline = value->underline;
   if (mask & W42_CHAR_STRIKEOUT) self->pending.strikeout = value->strikeout;
   if (mask & W42_CHAR_COLOR)     self->pending.color     = value->color;
+  if (mask & W42_CHAR_LANG)      self->pending.lang      = value->lang;
 
   view_state_changed (self);
 }

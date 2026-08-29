@@ -1876,6 +1876,7 @@ char_fmt_apply_mask (W42CharFmt *fmt, W42CharMask mask, const W42CharFmt *value)
   if (mask & W42_CHAR_REVISION)  fmt->revision  = value->revision;
   if (mask & W42_CHAR_OVERLINE)  fmt->overline  = value->overline;
   if (mask & W42_CHAR_FIELD)     fmt->field     = value->field;
+  if (mask & W42_CHAR_LANG)      fmt->lang      = value->lang;
   if (mask & W42_CHAR_BOOKMARK)  fmt->bookmark  = value->bookmark;
 }
 

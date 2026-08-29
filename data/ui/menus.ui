@@ -447,6 +447,10 @@
           <attribute name="action">win.autocorrect</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">_Language...</attribute>
+          <attribute name="action">win.language</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">_Word Count...</attribute>
           <attribute name="action">win.word-count</attribute>
         </item>

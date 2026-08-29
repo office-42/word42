@@ -11,6 +11,7 @@
 
 #include "w42-build.h"
 #include "w42-image.h"
+#include "w42-lang.h"
 #include "w42-zip.h"
 
 #define EMU_PER_TWIP 635
@@ -1222,6 +1223,15 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (g_str_equal (tag, "u"))
         ch->underline = underline_from_val (attr (an, av, "val"));
       else if (g_str_equal (tag, "strike") || g_str_equal (tag, "dstrike")) ch->strikeout = toggle_on (an, av);
+      else if (g_str_equal (tag, "lang"))
+        {
+          const char *known = w42_lang_normalise (attr (an, av, "val"));
+
+          if (known != NULL)
+            ch->lang = known;
+        }
+      else if (g_str_equal (tag, "noProof"))
+        ch->lang = toggle_on (an, av) ? g_intern_static_string (W42_LANG_NONE) : NULL;
       else if (g_str_equal (tag, "caps"))  ch->allcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "smallCaps")) ch->smallcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "sz"))
@@ -2006,6 +2016,15 @@ write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
     g_string_append_printf (rpr, "<w:u w:val=\"%s\"/>", underline_val (ch->underline));
   if (ch->script > 0) g_string_append (rpr, "<w:vertAlign w:val=\"superscript\"/>");
   if (ch->script < 0) g_string_append (rpr, "<w:vertAlign w:val=\"subscript\"/>");
+  if (ch->lang != NULL)
+    {
+      /* Word marks a run that is not to be checked with noProof rather
+       * than with a language of its own. */
+      if (g_strcmp0 (ch->lang, W42_LANG_NONE) == 0)
+        g_string_append (rpr, "<w:noProof/>");
+      else
+        g_string_append_printf (rpr, "<w:lang w:val=\"%s\"/>", ch->lang);
+    }
 
   if (rpr->len > 0)
     g_string_append_printf (out, "<w:rPr>%s</w:rPr>", rpr->str);

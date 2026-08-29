@@ -7,6 +7,7 @@
 #include "w42-rtf.h"
 
 #include "w42-image.h"
+#include "w42-lang.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -167,6 +168,17 @@ write_char_props (GString *out, const W42CharFmt *ch, RtfTables *tables)
   if (ch->allcaps)   g_string_append (out, "\\caps");
   if (ch->highlight) g_string_append_printf (out, "\\highlight%d", ch->highlight);
   if (ch->spacing)   g_string_append_printf (out, "\\expndtw%d", ch->spacing);
+  if (ch->lang != NULL)
+    {
+      /* The language of the run: Word's number for it, and \noproof for
+       * a run that is not language at all. */
+      int lcid = w42_lang_to_lcid (ch->lang);
+
+      if (lcid > 0)
+        g_string_append_printf (out, "\\lang%d", lcid);
+      if (g_strcmp0 (ch->lang, W42_LANG_NONE) == 0)
+        g_string_append (out, "\\noproof");
+    }
   if (ch->revision == 1) g_string_append (out, "\\revised\\revauth1");
   if (ch->revision == 2) g_string_append (out, "\\deleted\\revauth1");
 
@@ -1860,6 +1872,17 @@ formatting:
     { flush_text (r); st->ch.revision = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "deleted"))
     { flush_text (r); st->ch.revision = (has_param && param == 0) ? 0 : 2; }
+  else if (g_str_equal (word, "lang") && has_param)
+    {
+      flush_text (r);
+      st->ch.lang = w42_lang_from_lcid (param);   /* NULL: one we do not know */
+    }
+  else if (g_str_equal (word, "noproof"))
+    {
+      flush_text (r);
+      st->ch.lang = (has_param && param == 0) ? NULL
+                                              : g_intern_static_string (W42_LANG_NONE);
+    }
   else if (g_str_equal (word, "expndtw") && has_param)
     { flush_text (r); st->ch.spacing = (gint16) CLAMP (param, -720, 720); }
   else if (g_str_equal (word, "expnd") && has_param)

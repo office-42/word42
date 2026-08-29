@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "w42-image.h"
+#include "w42-lang.h"
 
 static void
 append_escaped (GString *out, const char *text, gsize len)
@@ -192,7 +193,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
       append_escaped (out, ch->comment, strlen (ch->comment));
       g_string_append (out, "\">");
     }
-  span = css->len > 0;
+  span = css->len > 0 || ch->lang != NULL;
   if (ch->link != NULL)
     {
       g_string_append (out, "<a href=\"");
@@ -200,7 +201,15 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
       g_string_append (out, "\">");
     }
   if (span)
-    g_string_append_printf (out, "<span style=\"%s\">", css->str);
+    {
+      /* The language of the run, where HTML puts it. */
+      g_string_append (out, "<span");
+      if (ch->lang != NULL)
+        g_string_append_printf (out, " lang=\"%s\"", ch->lang);
+      if (css->len > 0)
+        g_string_append_printf (out, " style=\"%s\"", css->str);
+      g_string_append_c (out, '>');
+    }
   if (ch->bold)      g_string_append (out, "<b>");
   if (ch->italic)    g_string_append (out, "<i>");
   if (ch->underline && ch->link == NULL)

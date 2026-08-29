@@ -11,6 +11,7 @@
 
 #include "w42-build.h"
 #include "w42-image.h"
+#include "w42-lang.h"
 #include "w42-zip.h"
 
 #define ODT_MIME "application/vnd.oasis.opendocument.text"
@@ -244,9 +245,14 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
 static void
 text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
 {
+  const char *lang = NULL, *country = NULL;
+
   for (int i = 0; an != NULL && an[i] != NULL; i++)
     {
       const char *k = an[i], *v = av[i];
+
+      if (g_str_equal (k, "fo:language"))      lang = v;
+      else if (g_str_equal (k, "fo:country"))  country = v;
 
       if (g_str_equal (k, "fo:font-weight"))        ch->bold = g_str_equal (v, "bold") || atoi (v) >= 600;
       else if (g_str_equal (k, "fo:font-style"))    ch->italic = g_str_equal (v, "italic") || g_str_equal (v, "oblique");
@@ -306,6 +312,25 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
         {
           if (!g_str_equal (v, "normal"))
             ch->spacing = (gint16) CLAMP (length_twips (v), -720, 720);
+        }
+    }
+
+  /* The language and the country are two attributes and one tag. */
+  if (lang != NULL && *lang != '\0')
+    {
+      if (g_str_equal (lang, W42_LANG_NONE))
+        ch->lang = g_intern_static_string (W42_LANG_NONE);
+      else
+        {
+          char *tag = country != NULL && *country != '\0' && !g_str_equal (country, "none")
+                        ? g_strdup_printf ("%s-%s", lang, country)
+                        : g_strdup (lang);
+
+          const char *known = w42_lang_normalise (tag);
+
+          if (known != NULL)
+            ch->lang = known;
+          g_free (tag);
         }
     }
 }
@@ -383,6 +408,7 @@ resolve_style (Odt *o, const char *name, int depth)
               if (s->ch.smallcaps) ch.smallcaps = 1;
               if (s->ch.allcaps) ch.allcaps = 1;
               if (s->ch.spacing) ch.spacing = s->ch.spacing;
+              if (s->ch.lang != NULL) ch.lang = s->ch.lang;
             }
           s->pa = pa;
           s->ch = ch;
@@ -973,6 +999,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           if (s->ch.smallcaps) ch.smallcaps = 1;
           if (s->ch.allcaps) ch.allcaps = 1;
           if (s->ch.spacing) ch.spacing = s->ch.spacing;
+          if (s->ch.lang != NULL) ch.lang = s->ch.lang;
         }
       g_array_append_val (o->span_stack, ch);
     }
@@ -1833,6 +1860,16 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->smallcaps) g_string_append (s, " fo:font-variant=\"small-caps\"");
   if (ch->allcaps)   g_string_append (s, " fo:text-transform=\"uppercase\"");
   if (ch->spacing)   g_string_append_printf (s, " fo:letter-spacing=\"%dpt\"", ch->spacing / 20);
+  if (ch->lang != NULL)
+    {
+      /* OpenDocument keeps the language and the country apart, and says
+       * a run that is not language at all with "zxx" and "none". */
+      char **parts = g_strsplit (ch->lang, "-", 2);
+
+      g_string_append_printf (s, " fo:language=\"%s\"", parts[0]);
+      g_string_append_printf (s, " fo:country=\"%s\"", parts[1] != NULL ? parts[1] : "none");
+      g_strfreev (parts);
+    }
   g_string_append (s, "/>");
 }
 

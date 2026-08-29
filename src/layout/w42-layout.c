@@ -750,8 +750,23 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
 
 /* Red squiggles under the words the dictionary does not know, except the
  * one the caret is in. */
+/* The language of the run the byte at `at` belongs to. */
+static const char *
+run_language (const W42Block *block, W42ApTable *aps, gsize at)
+{
+  for (guint i = 0; i < block->runs->len; i++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, i);
+
+      if (at >= run->byte_offset && at < run->byte_offset + run->n_bytes)
+        return w42_ap_table_get (aps, run->ap)->ch.lang;
+    }
+  return NULL;
+}
+
 static void
-add_spelling (W42Layout *self, PangoAttrList *attrs, const W42Block *block)
+add_spelling (W42Layout *self, PangoAttrList *attrs, const W42Block *block,
+              W42ApTable *aps)
 {
   const char *text = block->text->str;
   gsize len = block->text->len;
@@ -776,7 +791,8 @@ add_spelling (W42Layout *self, PangoAttrList *attrs, const W42Block *block)
     {
       if (caret_byte >= start && caret_byte <= end)
         continue;
-      if (w42_spell_check (self->spell, text + start, (gssize) (end - start)))
+      if (w42_spell_check_lang (self->spell, run_language (block, aps, start),
+                                text + start, (gssize) (end - start)))
         continue;
 
       add_attr (attrs, pango_attr_underline_new (PANGO_UNDERLINE_ERROR),
@@ -828,7 +844,7 @@ build_block_layout (W42Layout      *self,
 
   attrs = build_attributes (self, block, aps);
   if (self->spell != NULL)
-    add_spelling (self, attrs, block);
+    add_spelling (self, attrs, block, aps);
   /* Text set elsewhere -- a dropped letter, or the part of the paragraph
    * in another layout -- is still here, as glyphs of no size, so that byte
    * offsets mean the same in every layout of the paragraph. */

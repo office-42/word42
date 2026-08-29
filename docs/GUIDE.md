@@ -495,6 +495,21 @@ is not asked to judge Chinese, Russian or Arabic — and words with soft
 hyphens in them are checked as though the hyphens were not there. Without
 any dictionary at all, the box says so.
 
+### Tools ▸ Language
+
+**Tools ▸ Language** marks the selected text as written in a language of
+its own: pick it from the list, and the spelling checker uses the
+dictionary for it rather than the document's. A tick in the list marks the
+languages a dictionary is installed for; the first entry leaves the text
+in the document's own language, and "(no proofing)" says the text is not
+language at all and is never checked — the right thing for a code
+listing or a part number.
+
+With nothing selected the language is set for what is typed next, the way
+bold is. The mark travels with the text: RTF carries it as `\lang`, Word
+as `w:lang`, OpenDocument as `fo:language` and `fo:country`, AbiWord as
+its `lang` property and HTML as `lang=`.
+
 ### Tools ▸ AutoCorrect
 
 What is put right as you type, as Word 6 did it:
@@ -654,7 +669,9 @@ world in one document:
   falls back to Windows-1252 for older files; CRLF, CR and LF line endings
   all work.
 - **Spelling** — the checker judges only the script its dictionary is
-  written for, so text in other scripts is not marked wrong.
+  written for, so text in other scripts is not marked wrong, and a run
+  marked with a language of its own (Tools ▸ Language) is checked with
+  that language's dictionary when one is installed.
 - **Hyphenation** — uses the pattern dictionary for your language, if one
   is installed.
 

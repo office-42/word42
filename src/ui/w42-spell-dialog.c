@@ -74,7 +74,14 @@ present_word (W42SpellDialog *self, gsize start, gsize end)
   gtk_label_set_text (GTK_LABEL (self->word_label), self->word);
   clear_suggestions (self);
 
-  suggestions = w42_spell_suggest (self->spell, self->word, -1);
+  {
+    /* What the run is marked as: a Norwegian word gets Norwegian
+     * suggestions even in an English document. */
+    W42CharFmt ch;
+
+    w42_view_get_char_fmt (self->view, &ch);
+    suggestions = w42_spell_suggest_lang (self->spell, ch.lang, self->word, -1);
+  }
   for (guint i = 0; suggestions != NULL && suggestions[i] != NULL; i++)
     {
       GtkWidget *label = gtk_label_new (suggestions[i]);

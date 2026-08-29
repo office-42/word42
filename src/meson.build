@@ -7,6 +7,7 @@ w42_inc = include_directories('util', 'model', 'layout', 'io', 'ui')
 # without pulling in GTK.
 w42_core_sources = files(
   'util/w42-image.c',
+  'util/w42-lang.c',
   'util/w42-shape.c',
   'model/w42-object.c',
   'model/w42-style.c',
