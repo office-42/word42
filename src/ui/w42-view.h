@@ -252,6 +252,14 @@ typedef enum {
 
 void     w42_view_change_case (W42View *self, W42CaseKind kind);
 
+/* Insert > Index Entry: the selection is marked as an entry, filed under
+ * `term` when that differs from the words marked.  FALSE with nothing
+ * selected.  Insert > Index gathers the marked runs into an index at the
+ * caret -- or replaces the index already there -- and returns how many
+ * entries it made. */
+gboolean w42_view_mark_index_entry (W42View *self, const char *term);
+int      w42_view_insert_index     (W42View *self);
+
 /* Insert > Cross-reference: the page number the bookmark is on, or the
  * bookmarked text itself, put in at the caret.  FALSE if no such
  * bookmark. */

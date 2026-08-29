@@ -497,6 +497,27 @@ It is ordinary text, to edit or delete freely. **Insert ▸ Update Table of
 Contents** rebuilds it in place from the headings and page numbers as they
 now are.
 
+### Index
+
+An index is made the way a book's is: mark the words as you write, then
+gather them.
+
+Select a word or a phrase and **Insert ▸ Index ▸ Mark Entry** marks it.
+The box offers the words themselves as the entry; type something else to
+file it under that instead — "Cats" marked, but filed under "Animals".
+The words on the page do not change and read as they did.
+
+**Insert ▸ Index ▸ Build the Index** puts the index in at the caret: one
+paragraph per entry, in alphabetical order, with the page numbers at a
+right tab stop and dots leading out to them. Ask for it again and the
+index already there is replaced where it stands, so it can be brought up
+to date after the text has moved. The pages are the layout's, so ask for
+the index in Page Layout view.
+
+The marks travel with the document: RTF and Word carry them as XE
+fields, OpenDocument as the pair of index marks it has for the purpose,
+and LibreOffice reads all three as its own index entries.
+
 ### Captions and annotations
 
 **Insert ▸ Caption** starts a "Figure N:" paragraph in the Caption style,

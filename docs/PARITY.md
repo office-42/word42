@@ -67,6 +67,7 @@ is listed so the distance to the current product is honest.
 | Floating text boxes placed anywhere on the page | no | yes | yes | yes |
 | Drawing shapes | as pictures | as objects | as objects | as objects |
 | Table of contents (insert, update) | full | full | full | full |
+| Index (mark entries, build, rebuild) | full | no | full | full |
 | Bookmarks, hyperlinks, cross-references | full | full | full | full |
 | Fields in the body (page, pages, date, time, filename, word count) | full (F9 updates) | yes | yes | yes |
 | Captions | numbered text | yes | yes | yes |
@@ -142,13 +143,13 @@ Pa = partial, M = missing.
 | File | 14/0/1 | Find File | 14/0/0 | -- |
 | Edit | 12/1/2 | Repeat, Links | 13/0/1 | Paste Unformatted styles |
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
-| Insert | 7/6/3 | Object, Index, Form Field | 11/2/2 | Text Box, Clip Art |
+| Insert | 8/6/2 | Object, Form Field | 12/2/2 | Text Box, Clip Art |
 | Format | 6/8/1 | AutoFormat, Style Gallery, one Font box | 16/4/2 | two the earlier review did not name |
 | Tools | 6/3/5 | Thesaurus, Grammar, Protect Document | 6/2/2 | Plugins and Scripts |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
 | Help | 5/1/3 | Quick Preview, Examples and Demos | 5/1/0 | -- |
-| **Total** | **67/24/23** | | **85/12/11** | |
+| **Total** | **68/24/22** | | **86/12/11** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
@@ -389,3 +390,18 @@ count still named on the File menu, and one of the three on Tools.
     and the sheet is a table with a cell per label, no rules, each cell
     the label's size.  The sizes are named by what they measure -- no
     maker's catalogue numbers.
+
+**An index.**  Insert > Index > Mark Entry marks the selected words as an
+index entry -- under the words themselves, or under a term of your own --
+and Build the Index gathers every marked run into an alphabetical index
+at the caret, each entry with the pages it is on and dots leading out to
+the numbers.  Asking again replaces the index where it stands, as Update
+Table of Contents does.
+
+A mark is a field on the run (XE, or XE:term), so the words stay where
+they are and read as they did, and every format that carries fields
+carries the marks: RTF and Word as XE fields, OpenDocument as the pair of
+alphabetical index marks it has for the purpose.  LibreOffice reads all
+three of ours as its own index entries.  The gathering lives beside the
+layout rather than in the window, since the page numbers are the
+layout's -- which is also what lets it be checked without a window.

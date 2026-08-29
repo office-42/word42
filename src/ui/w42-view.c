@@ -8,6 +8,7 @@
 
 #include "w42-autocorrect.h"
 #include "w42-autotext.h"
+#include "w42-index.h"
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
@@ -601,6 +602,94 @@ view_insert_toc_entries (W42View *self)
   if (made > 0)
     {
       self->caret = self->anchor = w42_pt_clamp_pos (pt, at);
+      view_edited (self);
+    }
+  return made;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insert > Index                                                          */
+/* ---------------------------------------------------------------------- */
+
+/* An index entry is a run of text marked as a field whose code is XE, or
+ * XE:term when the entry is filed under something other than the words
+ * on the page.  The text stays where it is and reads as it did; the
+ * index gathers the marked runs and says which page each is on. */
+gboolean
+w42_view_mark_index_entry (W42View *self, const char *term)
+{
+  W42PieceTable *pt;
+  W42CharFmt want;
+  char *code;
+  char *marked;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+
+  pt = view_pt (self);
+  if (pt == NULL || !w42_view_has_selection (self))
+    return FALSE;
+
+  marked = w42_view_get_selected_text (self);
+  if (marked == NULL || *marked == '\0')
+    {
+      g_free (marked);
+      return FALSE;
+    }
+
+  /* The term is kept in the code only when it differs from the words
+   * that are marked, so the common case costs nothing. */
+  if (term != NULL && *term != '\0' && !g_str_equal (term, marked))
+    code = g_strconcat (W42_INDEX_FIELD ":", term, NULL);
+  else
+    code = g_strdup (W42_INDEX_FIELD);
+
+  memset (&want, 0, sizeof want);
+  want.field = g_intern_string (code);
+  w42_pt_apply_char_fmt (pt, sel_start (self), sel_end (self) - sel_start (self),
+                         W42_CHAR_FIELD, &want);
+  view_edited (self);
+
+  g_free (code);
+  g_free (marked);
+  return TRUE;
+}
+
+int
+w42_view_insert_index (W42View *self)
+{
+  W42PieceTable *pt;
+  gsize at, start, end, after = 0;
+  int made;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 0);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return 0;
+
+  w42_pt_begin_group (pt);
+
+  /* An index already there is replaced where it stands, as Update Table
+   * of Contents replaces the table. */
+  if (w42_pt_find_bookmark (pt, W42_INDEX_BOOKMARK, &start, &end))
+    {
+      w42_pt_delete (pt, start, end - start);
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, start);
+      view_relayout (self);
+    }
+  else
+    {
+      view_delete_selection (self);
+    }
+
+  at = w42_pt_paragraph_start (pt, self->caret) + 1;
+  made = w42_index_build (pt, self->layout, w42_document_page_setup (self->doc),
+                          at, &after);
+  w42_pt_end_group (pt);
+
+  if (made > 0)
+    {
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, after);
       view_edited (self);
     }
   return made;
@@ -2142,6 +2231,8 @@ view_field_value (W42View *self, const char *code, gsize pos)
       g_date_time_unref (now);
       return text;
     }
+  if (g_str_has_prefix (code, W42_INDEX_FIELD))
+    return NULL;                 /* an index entry: its text is the text */
   if (g_str_equal (code, "FILENAME"))
     return w42_document_get_title (self->doc);
   if (g_str_equal (code, "NUMWORDS"))
@@ -2224,9 +2315,9 @@ w42_view_update_fields (W42View *self)
           gsize *entry = &g_array_index (ranges, gsize, (i - 1) * 3);
           const char *code = (const char *) (gintptr) entry[2];
           char *value = view_field_value (self, code, entry[0]);
-          char *old = w42_pt_get_text (pt, entry[0], entry[1] - entry[0]);
+          char *old = value != NULL ? w42_pt_get_text (pt, entry[0], entry[1] - entry[0]) : NULL;
 
-          if (!g_str_equal (value, old))
+          if (value != NULL && !g_str_equal (value, old))
             {
               W42ApIdx ap = w42_pt_ap_at (pt, entry[0] + 1);
               gsize n = g_utf8_strlen (value, -1);

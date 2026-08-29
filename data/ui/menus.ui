@@ -290,6 +290,19 @@
           <attribute name="label" translatable="yes">Up_date Table of Contents</attribute>
           <attribute name="action">win.update-toc</attribute>
         </item>
+        <submenu>
+          <attribute name="label" translatable="yes">Inde_x</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Mark Entry...</attribute>
+              <attribute name="action">win.index-entry</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Build the Index</attribute>
+              <attribute name="action">win.insert-index</attribute>
+            </item>
+          </section>
+        </submenu>
         <item>
           <attribute name="label" translatable="yes">Cross-_reference...</attribute>
           <attribute name="action">win.cross-reference</attribute>

@@ -1868,6 +1868,36 @@ action_table_split (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
+/* Insert > Index Entry, and Insert > Index. */
+static void
+action_index_entry (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_index_entry_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+static void
+action_insert_index (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+
+  if (w42_view_caret_in_note (self->view))
+    {
+      window_flash (self, "The caret is in a note: put it in the body of the "
+                          "document first.");
+      return;
+    }
+
+  if (w42_view_insert_index (self->view) == 0)
+    show_message (self, "There is nothing marked for the index.",
+                  "Select a word and use Insert â¸ Index Entry to "
+                  "mark it, then ask for the index again.");
+}
+
 static void
 action_insert_toc (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -3815,6 +3845,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "effects",       action_effects,       NULL, NULL, NULL, { 0 } },
   { "columns",       action_columns,       NULL, NULL, NULL, { 0 } },
   { "insert-toc",    action_insert_toc,    NULL, NULL, NULL, { 0 } },
+  { "index-entry",   action_index_entry,   NULL, NULL, NULL, { 0 } },
+  { "insert-index",  action_insert_index,  NULL, NULL, NULL, { 0 } },
   { "open-recent",   action_open_recent,   "s",  NULL, NULL, { 0 } },
   { "export-html",   action_export_html,   NULL, NULL, NULL, { 0 } },
   { "bookmark",      action_bookmark,      NULL, NULL, NULL, { 0 } },

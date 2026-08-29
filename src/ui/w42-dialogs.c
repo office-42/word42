@@ -3636,6 +3636,86 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Insert > Index Entry                                                    */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *term;
+} IndexEntryBox;
+
+static void
+index_entry_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+static void
+on_index_entry_ok (GtkButton *button, gpointer data)
+{
+  IndexEntryBox *box = data;
+  const char *term = gtk_editable_get_text (GTK_EDITABLE (box->term));
+
+  (void) button;
+  w42_view_mark_index_entry (box->view, term);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_index_entry_dialog_show (GtkWindow *parent, W42View *view)
+{
+  IndexEntryBox *box;
+  GtkWidget *content, *grid, *label;
+  char *selected;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  selected = w42_view_get_selected_text (view);
+  if (selected == NULL || *selected == '\0')
+    {
+      w42_message_show (parent, "Select the words to put in the index first.",
+                        "Insert \342\226\270 Index Entry marks what is selected; "
+                        "Insert \342\226\270 Index then gathers the marked words "
+                        "and the pages they are on.");
+      g_free (selected);
+      return;
+    }
+
+  box = g_new0 (IndexEntryBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Index Entry", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), index_entry_free, box);
+
+  grid = group (content, "Mark the selected words");
+  label = gtk_label_new_with_mnemonic ("_File it under:");
+  box->term = gtk_entry_new ();
+  gtk_editable_set_text (GTK_EDITABLE (box->term), selected);
+  gtk_entry_set_activates_default (GTK_ENTRY (box->term), TRUE);
+  gtk_widget_set_size_request (box->term, 240, -1);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->term);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->term, 1, 0, 1, 1);
+
+  label = gtk_label_new ("The words stay as they are and read as they did; "
+                         "the index says which pages they are on.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_widget_set_size_request (label, 320, -1);
+  gtk_box_append (GTK_BOX (content), label);
+
+  button_row (content, box->window, G_CALLBACK (on_index_entry_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->term);
+  g_free (selected);
+}
+
+/* ---------------------------------------------------------------------- */
 /* File > New from Template                                                */
 /* ---------------------------------------------------------------------- */
 

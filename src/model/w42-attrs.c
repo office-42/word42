@@ -308,6 +308,22 @@ w42_field_code (const char *instruction)
   if (instruction == NULL)
     return NULL;
   code = g_strstrip (g_strdup (instruction));
+
+  /* An index entry: XE, or XE:term when the entry is filed under
+   * something other than the words that are marked.  The term is part
+   * of the code, so it is kept whole. */
+  if (g_ascii_strncasecmp (code, "XE", 2) == 0 &&
+      (code[2] == '\0' || code[2] == ':' || g_ascii_isspace (code[2])))
+    {
+      char *end = strchr (code, ' ');
+
+      if (end != NULL)
+        *end = '\0';
+      found = g_intern_string (code);
+      g_free (code);
+      return found;
+    }
+
   for (int i = 0; codes[i] != NULL && found == NULL; i++)
     {
       gsize n = strlen (codes[i]);

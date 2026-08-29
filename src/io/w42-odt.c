@@ -158,6 +158,8 @@ typedef struct {
   GHashTable    *annotation_start;
   int            skip_depth;
   const char    *field;           /* inside a field element */
+  char          *index_term;      /* between the marks of an index entry */
+  gsize          index_start;
   GString       *field_text;
   gboolean       frame_pending;
   int            frame_w, frame_h;
@@ -1235,6 +1237,15 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       g_free (o->frame_href);
       o->frame_href = g_strdup (attr (an, av, "xlink:href"));
     }
+  else if (g_str_equal (tag, "alphabetical-index-mark-start"))
+    {
+      const char *term = attr (an, av, "text:string-value");
+
+      odt_flush (o);
+      g_free (o->index_term);
+      o->index_term = g_strdup (term != NULL ? term : "");
+      o->index_start = o->b.pos;
+    }
   else if (g_str_equal (tag, "page-number") || g_str_equal (tag, "page-count") ||
            g_str_equal (tag, "date") || g_str_equal (tag, "time") ||
            g_str_equal (tag, "file-name") || g_str_equal (tag, "word-count"))
@@ -1379,6 +1390,27 @@ body_end (Odt *o, const char *tag)
             g_bytes_unref (bytes);
         }
       o->frame_pending = FALSE;
+    }
+  else if (g_str_equal (tag, "alphabetical-index-mark-start") && o->index_term != NULL)
+    {
+      /* An empty element: the words it marks come after it, and the
+       * closing mark says where they end. */
+    }
+  else if (g_str_equal (tag, "alphabetical-index-mark-end") && o->index_term != NULL)
+    {
+      W42CharFmt want;
+      char *code;
+
+      odt_flush (o);
+      code = *o->index_term != '\0' ? g_strconcat ("XE:", o->index_term, NULL)
+                                    : g_strdup ("XE");
+      memset (&want, 0, sizeof want);
+      want.field = g_intern_string (code);
+      if (o->b.pos > o->index_start)
+        w42_pt_apply_char_fmt (o->pt, o->index_start, o->b.pos - o->index_start,
+                               W42_CHAR_FIELD, &want);
+      g_free (code);
+      g_clear_pointer (&o->index_term, g_free);
     }
   else if (o->field != NULL && (g_str_equal (tag, "page-number") || g_str_equal (tag, "page-count") ||
                                 g_str_equal (tag, "date") || g_str_equal (tag, "time") ||
@@ -1698,6 +1730,7 @@ typedef struct {
   GPtrArray *ch_keys;          /* W42CharFmt copies: T1.. */
   GPtrArray *pictures;         /* GBytes*, Pictures/imageN.png */
   int        n_tables;
+  int        n_index_marks;    /* index entries written, for their ids */
   int        list_style_used[W42_LIST_KINDS];
   W42CharFmt base_ch;
   int        note_id;
@@ -2054,6 +2087,27 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
               g_string_append (w->body, "</text:p>");
             }
           g_string_append (w->body, "</text:note-body></text:note>");
+          continue;
+        }
+
+      /* An index entry is not a field in OpenDocument but a pair of
+       * marks round the words, with the term in the first of them. */
+      if (ch->field != NULL && g_str_has_prefix (ch->field, "XE"))
+        {
+          const char *colon = strchr (ch->field, ':');
+          char *term = colon != NULL && colon[1] != '\0'
+                         ? g_strdup (colon + 1)
+                         : g_strndup (block->text->str + run->byte_offset, run->n_bytes);
+          int id = ++w->n_index_marks;
+
+          g_string_append_printf (w->body,
+            "<text:alphabetical-index-mark-start text:id=\"IMark%d\" text:string-value=\"", id);
+          xml_escape (w->body, term, strlen (term));
+          g_string_append (w->body, "\"/>");
+          xml_escape (w->body, block->text->str + run->byte_offset, run->n_bytes);
+          g_string_append_printf (w->body,
+            "<text:alphabetical-index-mark-end text:id=\"IMark%d\"/>", id);
+          g_free (term);
           continue;
         }
 
