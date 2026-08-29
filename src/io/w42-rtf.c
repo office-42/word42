@@ -616,6 +616,27 @@ w42_rtf_save (W42PieceTable      *pt,
                 g_string_append (out, "\\clmgf");
               else if (owner[c] >= 0 && owner[c] != c)
                 g_string_append (out, "\\clmrg");
+              {
+                /* And the merge downwards, if there is one: \\clvmgf on
+                 * the cell it starts in, \\clvmrg on the ones it covers. */
+                const W42ParaFmt *cpa = NULL;
+
+                for (guint k = b; k < blocks->len; k++)
+                  {
+                    const W42Block *rb = g_ptr_array_index (blocks, k);
+
+                    if (rb->table != block->table || rb->row != block->row)
+                      break;
+                    if (rb->col != c)
+                      continue;
+                    cpa = &w42_ap_table_get (aps, rb->cell_ap)->pa;
+                    break;
+                  }
+                if (cpa != NULL && cpa->cell_vspan == W42_CELL_COVERED)
+                  g_string_append (out, "\\clvmrg");
+                else if (cpa != NULL && cpa->cell_vspan > 1)
+                  g_string_append (out, "\\clvmgf");
+              }
               g_string_append_printf (out, "\\cellx%d", edge);
             }
           g_string_append_c (out, '\n');
@@ -942,6 +963,8 @@ typedef struct {
   gboolean       trhdr;          /* \trhdr: the row repeats on every page */
   GArray        *clflags;        /* int, per \cellx: 1 \clmgf, 2 \clmrg */
   int            clpending;      /* the flag for the next \cellx */
+  int            clvpending;     /* 1 \clvmgf, 2 \clvmrg, for the next \cellx */
+  GArray        *clvflags;       /* int, per \cellx */
   gsize          last_cell_pos;  /* the CELL mark most recently made */
   int            last_cell_span;
 
@@ -1095,6 +1118,17 @@ table_sync (RtfReader *r)
           if (sides != (r->no_borders ? 0 : W42_BORDER_BOX))
             w42_pt_cell_set_borders_at (r->pt, r->pos, sides);
         }
+      if (r->table_col < (int) r->clvflags->len)
+        {
+          /* \clvmgf starts a merge downwards, \clvmrg carries it on; how
+           * many rows it covers is counted when the table ends. */
+          int flag = g_array_index (r->clvflags, int, r->table_col);
+
+          if (flag == 1)
+            w42_pt_set_cell_vspan (r->pt, r->pos, 2);
+          else if (flag == 2)
+            w42_pt_set_cell_vspan (r->pt, r->pos, W42_CELL_COVERED);
+        }
       if (r->table_col == 0)
         {
           if (r->trrh > 0)
@@ -1109,6 +1143,7 @@ table_sync (RtfReader *r)
     }
   else if (!r->state.intbl && r->table >= 0)
     {
+      w42_pt_resolve_vmerges (r->pt, r->table);
       flush_text (r);
 
       if (r->table_before_block)
@@ -1434,13 +1469,17 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
   /* Tables. */
   if (g_str_equal (word, "clmgf")) { r->clpending = 1; return; }
   if (g_str_equal (word, "clmrg")) { r->clpending = 2; return; }
+  if (g_str_equal (word, "clvmgf")) { r->clvpending = 1; return; }
+  if (g_str_equal (word, "clvmrg")) { r->clvpending = 2; return; }
 
   if (g_str_equal (word, "trowd"))
     {
       g_array_set_size (r->cellx, 0);
       g_array_set_size (r->clflags, 0);
+      g_array_set_size (r->clvflags, 0);
       g_array_set_size (r->clsides, 0);
       r->clpending = 0;
+      r->clvpending = 0;
       r->clsides_pending = W42_BORDER_BOX;
       r->trrh = 0;
       r->trhdr = FALSE;
@@ -1461,11 +1500,13 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     {
       g_array_append_val (r->cellx, param);
       g_array_append_val (r->clflags, r->clpending);
+      g_array_append_val (r->clvflags, r->clvpending);
       g_array_append_val (r->clsides, r->clsides_pending);
       /* The table is ruled unless its first cell has no rules at all. */
       if (r->table < 0 && r->clsides->len == 1)
         r->no_borders = (r->clsides_pending == 0);
-      r->clpending = 0;
+r->clpending = 0;
+      r->clvpending = 0;
       r->clsides_pending = W42_BORDER_BOX;
       return;
     }
@@ -2304,6 +2345,7 @@ w42_rtf_load (W42PieceTable *pt,
   r.table = -1;
   r.cellx = g_array_new (FALSE, FALSE, sizeof (int));
   r.clflags = g_array_new (FALSE, FALSE, sizeof (int));
+  r.clvflags = g_array_new (FALSE, FALSE, sizeof (int));
   r.clsides = g_array_new (FALSE, FALSE, sizeof (int));
   r.info_text = g_string_new (NULL);
   r.clsides_pending = W42_BORDER_BOX;
@@ -2791,6 +2833,7 @@ w42_rtf_load (W42PieceTable *pt,
   g_hash_table_destroy (r.atrf_end);
   g_array_free (r.cellx, TRUE);
   g_array_free (r.clflags, TRUE);
+  g_array_free (r.clvflags, TRUE);
   g_array_free (r.clsides, TRUE);
   {
     /* What the \info group said. */

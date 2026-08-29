@@ -108,6 +108,9 @@ typedef enum {
 #define W42_TAB_BYTE(kind, leader) \
   ((guint8) (((guint) (kind) & 0x0F) | (((guint) (leader) & 0x0F) << 4)))
 
+/* A cell covered by the vertical merge of the cell above it. */
+#define W42_CELL_COVERED 255
+
 /* Which sides of a paragraph carry a border. */
 typedef enum {
   W42_BORDER_TOP    = 1 << 0,
@@ -154,6 +157,9 @@ typedef struct {
                               * at that side of the column, the text after it
                               * running down the other side */
   int         frame_width;   /* twips; 0 means a third of the column */
+  guint8      cell_vspan;    /* on a CELL mark: the rows the cell covers.
+                              * 0 and 1 are one row; W42_CELL_COVERED means
+                              * the cell above covers this one. */
 } W42ParaFmt;
 
 typedef enum {

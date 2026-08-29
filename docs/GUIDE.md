@@ -351,8 +351,8 @@ header rows.
 | --- | --- |
 | Insert Rows / Delete Rows | Above the caret's row, or removes it. |
 | Insert Columns / Delete Columns | The same across. A cell merged across the place grows or shrinks with it. |
-| Merge Cells | Joins the selected cells of a row, keeping every cell's paragraphs. |
-| Split Cells | Undoes a merge. |
+| Merge Cells | Joins the selected cells of a row, keeping every cell's paragraphs; select down a column instead and the cells become one cell as tall as those rows. |
+| Split Cells | Undoes a merge, sideways or downwards. What a downward merge hid is still there and comes back. |
 | Split Table | Makes the caret's row the first row of a table of its own. |
 | Select Row / Select Table | Selects one or all of it. |
 

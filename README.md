@@ -223,7 +223,9 @@ Early, but real. Word42 today is a working word processor:
   adds a row, Enter makes another paragraph inside a cell; Insert Rows and
   Delete Rows on the Table menu; drag a cell's right edge to change the
   column widths; select across cells of a row and Merge Cells joins them,
-  keeping every cell's paragraphs. Rows are as tall as their tallest cell and
+  keeping every cell's paragraphs, or down a column and it makes one cell as
+  tall as the rows it covers — Split Cells gives them back, and what a merge
+  hid comes back with them. Rows are as tall as their tallest cell and
   move to the next page whole. The marks that hold a table together cannot
   be deleted by accident, only the text in the cells. RTF carries tables as
   `\trowd`…`\cell`…`\row`, both ways, column widths and merged cells

@@ -799,6 +799,7 @@ typedef struct {
   int         depth_tbl;          /* nested tables are read as paragraphs */
   gboolean    cell_pending;
   int         cell_span;
+  int         cell_vmerge;   /* 0 none, 1 the merge starts here, 2 it carries on */
   GArray     *grid;               /* int widths of the table being read */
   gboolean    table_started;
   gboolean    in_tblborders;
@@ -928,8 +929,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->cell_pending = FALSE;
           if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
             w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
-          if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
+          if (d->cell_vmerge != 0 && d->b.cell_pos != (gsize) -1)
+            {
+              /* The rows a merge covers are counted once the table is
+               * read; for now the cell says which end of one it is. */
+              w42_pt_set_cell_vspan (d->pt, d->b.cell_pos,
+                                     d->cell_vmerge == 1 ? 2 : W42_CELL_COVERED);
+            }
         }
       w42_builder_reset_para (&d->b);
       d->have_style_ch = FALSE;
@@ -1497,6 +1503,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->cell_pending = TRUE;
       d->cell_span = 1;
       d->cell_sides = -1;
+      d->cell_vmerge = 0;
     }
   else if (g_str_equal (tag, "tcBorders") && d->depth_tbl == 1 && d->cell_pending)
     {
@@ -1518,6 +1525,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "gridSpan") && d->depth_tbl == 1 && d->cell_pending)
     d->cell_span = CLAMP (attr_int (an, av, "val", 1), 1, 63);
+  else if (g_str_equal (tag, "vMerge") && d->depth_tbl == 1 && d->cell_pending)
+    {
+      /* Without a value, the cell carries on the merge above it. */
+      const char *val = attr (an, av, "val");
+
+      d->cell_vmerge = (val != NULL && g_str_equal (val, "restart")) ? 1 : 2;
+    }
 
   /* The body's own section properties: the page. */
   else if (g_str_equal (tag, "sectPr"))
@@ -1727,7 +1741,13 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
   else if (g_str_equal (tag, "tbl"))
     {
       if (d->depth_tbl == 1)
-        w42_builder_end_table (&d->b);
+        {
+          int table = d->b.table;
+
+          w42_builder_end_table (&d->b);
+          if (table >= 0)
+            w42_pt_resolve_vmerges (d->pt, table);
+        }
       d->depth_tbl--;
     }
   else if (g_str_equal (tag, "sectPr"))
@@ -2783,6 +2803,16 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
                 g_string_append_printf (doc, "<w:tcW w:w=\"%d\" w:type=\"dxa\"/>", width);
               if (block->span > 1)
                 g_string_append_printf (doc, "<w:gridSpan w:val=\"%d\"/>", block->span);
+              {
+                /* A cell merged downwards: Word says where it starts and
+                 * which cells it swallows. */
+                const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
+
+                if (cpa->cell_vspan == W42_CELL_COVERED)
+                  g_string_append (doc, "<w:vMerge/>");
+                else if (cpa->cell_vspan > 1)
+                  g_string_append (doc, "<w:vMerge w:val=\"restart\"/>");
+              }
               {
                 const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
 

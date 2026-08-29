@@ -1908,6 +1908,7 @@ para_fmt_apply_mask (W42ParaFmt *fmt, W42ParaMask mask, const W42ParaFmt *value)
       fmt->border_width = value->border_width;
     }
   if (mask & W42_PARA_SHADING)      fmt->shading = value->shading;
+  if (mask & W42_PARA_CELL_SPAN)    fmt->cell_vspan = value->cell_vspan;
   if (mask & W42_PARA_SECTION)
     {
       fmt->section_break = value->section_break;
@@ -2198,6 +2199,206 @@ w42_pt_table_props (W42PieceTable *pt, int table)
     return NULL;
 
   return g_ptr_array_index (pt->tables, table);
+}
+
+/* ---- vertical merges --------------------------------------------------- */
+
+/* The AP of the CELL mark that owns (row, col), or -1. */
+static gsize
+cell_mark_pos (W42PieceTable *pt, int table, int row, int col)
+{
+  gsize start = w42_pt_cell_start (pt, table, row, col);
+
+  /* A cell's text begins one position after its own mark and the BLOCK
+   * that follows it. */
+  return start == (gsize) -1 || start < 2 ? (gsize) -1 : start - 2;
+}
+
+/* The CELL mark's own piece, which carries the cell's properties. */
+static W42Piece *
+cell_mark_piece (W42PieceTable *pt, int table, int row, int col, gsize *pos_out)
+{
+  gsize at = cell_mark_pos (pt, table, row, col);
+  gsize offset = 0;
+  W42Piece *piece;
+
+  if (at == (gsize) -1)
+    return NULL;
+  piece = pt_find (pt, at, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return NULL;
+  if (pos_out != NULL)
+    *pos_out = at;
+  return piece;
+}
+
+int
+w42_pt_cell_vspan (W42PieceTable *pt, int table, int row, int col)
+{
+  W42Piece *piece;
+  const W42Fmt *fmt;
+
+  g_return_val_if_fail (pt != NULL, 0);
+  piece = cell_mark_piece (pt, table, row, col, NULL);
+  if (piece == NULL)
+    return 0;
+  fmt = w42_ap_table_get (pt->aps, piece->ap);
+  if (fmt == NULL)
+    return 1;
+  if (fmt->pa.cell_vspan == W42_CELL_COVERED)
+    return W42_CELL_COVERED;
+  return MAX ((int) fmt->pa.cell_vspan, 1);
+}
+
+/* The mark is replaced rather than edited, so that undo puts the old one
+ * back; everything else about the cell is kept. */
+static void
+cell_set_vspan (W42PieceTable *pt, int table, int row, int col, int vspan)
+{
+  gsize at = 0;
+  W42Piece *piece = cell_mark_piece (pt, table, row, col, &at);
+  W42Fmt fmt;
+  gsize payload;
+
+  if (piece == NULL)
+    return;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.cell_vspan = (guint8) CLAMP (vspan, 0, 255);
+  payload = piece->offset;
+
+  pt_push (pt, pt_do_delete (pt, at, 1));
+  pt_insert_strux_at (pt, at, W42_STRUX_CELL, payload,
+                      w42_ap_table_intern (pt->aps, &fmt));
+  pt_push (pt, cr_new (CR_INSERT, at, 1));
+}
+
+void
+w42_pt_set_cell_vspan (W42PieceTable *pt, gsize cell_pos, int vspan)
+{
+  W42Piece *piece;
+  gsize offset = 0;
+  W42Fmt fmt;
+
+  g_return_if_fail (pt != NULL);
+
+  piece = pt_find (pt, cell_pos, &offset);
+  if (piece == NULL || piece->type != W42_PIECE_STRUX ||
+      piece->strux != W42_STRUX_CELL)
+    return;
+
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.cell_vspan = (guint8) CLAMP (vspan, 0, 255);
+  piece->ap = w42_ap_table_intern (pt->aps, &fmt);
+}
+
+gboolean
+w42_pt_merge_cells_down (W42PieceTable *pt, int table, int row, int col, int rows)
+{
+  gsize owner;
+
+  g_return_val_if_fail (pt != NULL, FALSE);
+  if (rows < 2)
+    return FALSE;
+
+  owner = cell_mark_pos (pt, table, row, col);
+  if (owner == (gsize) -1)
+    return FALSE;
+
+  /* Every row under it must have a cell in that column, and none of
+   * them may already be part of another merge. */
+  for (int r = row; r < row + rows; r++)
+    {
+      int v = w42_pt_cell_vspan (pt, table, r, col);
+
+      if (v == 0)
+        return FALSE;
+      if (r > row && v != 1)
+        return FALSE;
+    }
+
+  w42_pt_begin_group (pt);
+  /* The covered cells first: setting the owner's span would otherwise
+   * change what w42_pt_cell_start finds under it. */
+  for (int r = row + rows - 1; r > row; r--)
+    cell_set_vspan (pt, table, r, col, W42_CELL_COVERED);
+  cell_set_vspan (pt, table, row, col, rows);
+  w42_pt_end_group (pt);
+  pt->coalescing = FALSE;
+  return TRUE;
+}
+
+/* The other way about: the cell at (row, col) — or the merge that has
+ * swallowed it — is given its rows back. */
+gboolean
+w42_pt_split_cells_down (W42PieceTable *pt, int table, int row, int col)
+{
+  int owner = row, span;
+
+  g_return_val_if_fail (pt != NULL, FALSE);
+
+  /* A covered cell is split by splitting whatever covers it. */
+  while (owner >= 0 && w42_pt_cell_vspan (pt, table, owner, col) == W42_CELL_COVERED)
+    owner--;
+  if (owner < 0)
+    return FALSE;
+  span = w42_pt_cell_vspan (pt, table, owner, col);
+  if (span < 2 || span == W42_CELL_COVERED)
+    return FALSE;
+
+  w42_pt_begin_group (pt);
+  cell_set_vspan (pt, table, owner, col, 1);
+  for (int r = owner + 1; r < owner + span; r++)
+    cell_set_vspan (pt, table, r, col, 1);
+  w42_pt_end_group (pt);
+  pt->coalescing = FALSE;
+  return TRUE;
+}
+
+/* After a table has been read: a file says only where a merge starts and
+ * which cells it swallows, so the owner is given the number of rows it
+ * really covers, and a covered cell with nothing above it is set free. */
+void
+w42_pt_resolve_vmerges (W42PieceTable *pt, int table)
+{
+  const W42TableProps *props = w42_pt_table_props (pt, table);
+  int rows = 0, cols;
+
+  g_return_if_fail (pt != NULL);
+  if (props == NULL)
+    return;
+  cols = props->n_cols;
+
+  /* How many rows the table has: the last one that has a first cell. */
+  while (rows < 4096 && w42_pt_cell_start (pt, table, rows, 0) != (gsize) -1)
+    rows++;
+  if (rows == 0 || cols <= 0)
+    return;
+
+  for (int col = 0; col < cols; col++)
+    {
+      for (int row = 0; row < rows; row++)
+        {
+          int v = w42_pt_cell_vspan (pt, table, row, col);
+          int n = 1;
+
+          if (v == 0 || v == W42_CELL_COVERED)
+            {
+              /* Covered by nothing: an ordinary cell after all. */
+              if (v == W42_CELL_COVERED)
+                cell_set_vspan (pt, table, row, col, 1);
+              continue;
+            }
+          if (v < 2)
+            continue;
+
+          while (row + n < rows &&
+                 w42_pt_cell_vspan (pt, table, row + n, col) == W42_CELL_COVERED)
+            n++;
+          cell_set_vspan (pt, table, row, col, n > 1 ? n : 1);
+          row += n - 1;
+        }
+    }
+  w42_pt_clear_undo (pt);
 }
 
 int

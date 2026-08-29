@@ -54,7 +54,7 @@ is listed so the distance to the current product is honest.
 
 | Feature | Word42 | AbiWord | Word 6 | Word (modern) |
 |---|---|---|---|---|
-| Tables: insert, rows, columns, column widths (drag), merge and split cells | full (merge same row) | full | full | full |
+| Tables: insert, rows, columns, column widths (drag), merge and split cells (across and down) | full | full | full | full |
 | A row taller than a page | broken between its lines, header rows repeated | breaks | breaks | breaks |
 | Table properties: borders (table and per cell side), cell shading, row height, header rows repeated | full | full | full | full |
 | Footnotes and endnotes | full | full | full | full |
@@ -295,3 +295,13 @@ and the Word formats, which keep it relative to the paragraph's
 direction, are turned round as they are read and written.  The Arabic
 paragraph in the showcase now sits against the right margin, where
 LibreOffice puts it.
+
+**Cells merged down a column.**  Merge Cells took a selection across one
+row; it takes a selection down one column too, and makes a cell as tall
+as the rows it covers.  The rows it swallows keep their cells -- the
+table's grid does not change shape -- and whatever was written in them is
+kept and comes back when Split Cells gives the rows their cells again.
+Word (`w:vMerge`), RTF (`\clvmgf` and `\clvmrg`) and OpenDocument
+(`table:number-rows-spanned` with `<table:covered-table-cell/>`) carry
+the merge both ways, and LibreOffice reads all three of ours as the one
+tall cell they say.

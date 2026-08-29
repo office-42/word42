@@ -440,8 +440,20 @@ w42_view_table_merge_cells (W42View *self)
     return;
 
   last = MAX (sel_start (self), sel_end (self) - 1);
-  if (!w42_pt_cell_at (pt, last, &t2, &r2, &c2) ||
-      t2 != t1 || r2 != r1 || c2 <= c1)
+  if (!w42_pt_cell_at (pt, last, &t2, &r2, &c2) || t2 != t1)
+    return;
+
+  /* Down a column: the cells become one tall cell. */
+  if (c2 == c1 && r2 > r1)
+    {
+      if (w42_pt_merge_cells_down (pt, t1, r1, c1, r2 - r1 + 1))
+        {
+          self->anchor = self->caret = w42_pt_cell_start (pt, t1, r1, c1);
+          view_edited (self);
+        }
+      return;
+    }
+  if (r2 != r1 || c2 <= c1)
     return;
 
   w42_pt_table_merge_cells (pt, t1, r1, c1, c2);
@@ -4439,6 +4451,14 @@ w42_view_table_split_cell (W42View *self)
   pt = view_pt (self);
   if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
     return;
+  /* A cell merged downwards is given its rows back first; only then is a
+   * cell merged sideways split, as Word's Split Cells does. */
+  if (w42_pt_split_cells_down (pt, table, row, col))
+    {
+      self->anchor = self->caret = w42_pt_cell_start (pt, table, row, col);
+      view_edited (self);
+      return;
+    }
   w42_pt_table_split_cell (pt, table, row, col);
   self->anchor = self->caret = w42_pt_cell_start (pt, table, row, col);
   view_edited (self);

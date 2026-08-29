@@ -144,6 +144,8 @@ typedef struct {
   gboolean       table_started;
   gboolean       cell_pending;
   int            cell_span;
+  int            cell_vspan;         /* rows the pending cell spans, or W42_CELL_COVERED */
+  int            skip_covered;       /* covered cells the last sideways span accounts for */
   int            in_note;
   gboolean       note_first_para;
   W42ParaFmt     note_outer_pa;
@@ -843,6 +845,25 @@ odt_flush (Odt *o)
   g_string_truncate (o->text, 0);
 }
 
+/* The cell whose element has been seen but whose first paragraph has not:
+ * it is begun here, so that its properties have a mark to sit on. */
+static void
+open_pending_cell (Odt *o)
+{
+  if (!o->cell_pending)
+    return;
+  w42_builder_begin_cell (&o->b, o->cell_span);
+  o->cell_pending = FALSE;
+  if (o->cell_span > 1)
+    o->skip_covered += o->cell_span - 1;   /* the covered cells it stands for */
+  if (o->b.cell_pos == (gsize) -1)
+    return;
+  if (o->pending_cell_sides >= 0)
+    w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
+  if (o->cell_vspan != 1)
+    w42_pt_set_cell_vspan (o->pt, o->b.cell_pos, o->cell_vspan);
+}
+
 static void
 body_start (Odt *o, const char *tag, const char **an, const char **av)
 {
@@ -854,15 +875,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       OdtStyle *s = resolve_style (o, sn, 0);
       W42Fmt def;
 
-      if (o->cell_pending)
-        {
-          w42_builder_begin_cell (&o->b, o->cell_span);
-          o->cell_pending = FALSE;
-          if (o->pending_cell_sides >= 0 && o->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
-          if (o->pending_cell_sides >= 0 && o->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
-        }
+      open_pending_cell (o);
       if (o->in_note > 0)
         {
           if (!o->note_first_para)
@@ -1115,13 +1128,29 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       if (o->in_header_rows)
         w42_pt_table_set_header_rows (o->b.pt, o->b.table, o->table_row + 1);
       o->table_row++;
+      o->skip_covered = 0;
     }
-  else if (g_str_equal (tag, "table-cell") && o->in_table == 1)
+  else if ((g_str_equal (tag, "table-cell") || g_str_equal (tag, "covered-table-cell")) &&
+           o->in_table == 1)
     {
       const char *span = attr (an, av, "table:number-columns-spanned");
+      const char *rows = attr (an, av, "table:number-rows-spanned");
 
+      if (g_str_equal (tag, "covered-table-cell") && o->skip_covered > 0)
+        {
+          o->skip_covered--;          /* a cell swallowed sideways: it is already there */
+          return;
+        }
       o->cell_pending = TRUE;
       o->cell_span = span != NULL ? CLAMP (atoi (span), 1, 63) : 1;
+      /* A covered cell is one the merge above it has swallowed; the cell
+       * that owns the merge says how many rows it takes. */
+      if (g_str_equal (tag, "covered-table-cell"))
+        o->cell_vspan = W42_CELL_COVERED;
+      else if (rows != NULL && atoi (rows) > 1)
+        o->cell_vspan = CLAMP (atoi (rows), 1, 254);
+      else
+        o->cell_vspan = 1;
       {
         const char *sn = attr (an, av, "table:style-name");
         gpointer v = sn != NULL ? g_hash_table_lookup (o->cell_sides, sn) : NULL;
@@ -1219,15 +1248,7 @@ body_end (Odt *o, const char *tag)
           return;
         }
       o->tb_reopened = FALSE;
-      if (o->cell_pending)
-        {
-          w42_builder_begin_cell (&o->b, o->cell_span);
-          o->cell_pending = FALSE;
-          if (o->pending_cell_sides >= 0 && o->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
-          if (o->pending_cell_sides >= 0 && o->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
-        }
+      open_pending_cell (o);
       if (o->in_note == 0)
         w42_builder_end_paragraph (&o->b);
       o->para_open = FALSE;
@@ -1277,18 +1298,11 @@ body_end (Odt *o, const char *tag)
       if (o->list_style_stack->len > 0)
         g_ptr_array_remove_index (o->list_style_stack, o->list_style_stack->len - 1);
     }
-  else if (g_str_equal (tag, "table-cell") && o->in_table == 1)
+  else if ((g_str_equal (tag, "table-cell") || g_str_equal (tag, "covered-table-cell")) &&
+           o->in_table == 1)
     {
       odt_flush (o);
-      if (o->cell_pending)
-        {
-          w42_builder_begin_cell (&o->b, o->cell_span);
-          o->cell_pending = FALSE;
-          if (o->pending_cell_sides >= 0 && o->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
-          if (o->pending_cell_sides >= 0 && o->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
-        }
+      open_pending_cell (o);
       w42_builder_end_cell (&o->b);
       o->para_open = FALSE;
     }
@@ -1299,7 +1313,13 @@ body_end (Odt *o, const char *tag)
   else if (g_str_equal (tag, "table"))
     {
       if (o->in_table == 1)
-        w42_builder_end_table (&o->b);
+        {
+          int t = o->b.table;
+
+          w42_builder_end_table (&o->b);
+          if (t >= 0)
+            w42_pt_resolve_vmerges (o->pt, t);   /* merges tidied, strays freed */
+        }
       if (o->in_table > 0)
         o->in_table--;
     }
@@ -2075,6 +2095,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   int list_depth = 0;
   W42ListKind list_stack[9];
   int table_open = -1, row_open = -1;
+  gboolean cell_covered = FALSE;      /* the open cell is one a merge swallowed */
   W42ZipWriter *zip;
   GString *content, *stylesxml, *manifest;
   gboolean ok;
@@ -2213,6 +2234,13 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
               row_open = block->row;
             }
           if (cell_start)
+            cell_covered = w42_ap_table_get (aps, block->cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
+          /* A cell a merge has swallowed keeps whatever is in it — it is
+           * simply not shown — so it is written whole, under the name
+           * OpenDocument gives such a cell. */
+          if (cell_start && cell_covered)
+            g_string_append (w.body, "<table:covered-table-cell office:value-type=\"string\">");
+          if (cell_start && !cell_covered)
             {
               {
                 const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
@@ -2240,12 +2268,19 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
               }
               if (block->span > 1)
                 g_string_append_printf (w.body, " table:number-columns-spanned=\"%d\"", block->span);
+              {
+                int vspan = w42_ap_table_get (aps, block->cell_ap)->pa.cell_vspan;
+
+                if (vspan > 1 && vspan != W42_CELL_COVERED)
+                  g_string_append_printf (w.body, " table:number-rows-spanned=\"%d\"", vspan);
+              }
               g_string_append (w.body, ">");
             }
           write_paragraph (&w, pt, aps, blocks, block, styles);
           if (cell_end)
             {
-              g_string_append (w.body, "</table:table-cell>");
+              g_string_append (w.body, cell_covered ? "</table:covered-table-cell>"
+                                                    : "</table:table-cell>");
               for (int k = 1; k < block->span; k++)
                 g_string_append (w.body, "<table:covered-table-cell/>");
             }

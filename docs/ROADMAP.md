@@ -11,7 +11,10 @@ deliberate: the menu bar is the specification.
 
 **Headers and footers edited in place**, with pictures and several
 paragraphs, different on the first page and on odd and even pages.
-Then: vertical cell merges and nested tables; incremental reflow.
+Then: nested tables; incremental reflow.
+Vertical cell merges are done: select down a column and Merge Cells
+makes one cell as tall as the rows it covers; Split Cells gives them
+back; Word, RTF and OpenDocument carry the merge both ways.
 Done since: Options > User Info names the author of annotations and
 revisions in the files; table borders, row heights, header rows and
 a cell's own borders are undo steps.

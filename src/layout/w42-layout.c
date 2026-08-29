@@ -1016,6 +1016,17 @@ layout_cell (W42Layout      *self,
   return y - top;
 }
 
+/* A cell merged downwards: its rectangle is kept back until the last of
+ * the rows it covers has been placed, since only then is its height
+ * known. */
+typedef struct {
+  int          col;
+  int          rows_left;    /* rows still to come */
+  int          page;
+  double       height;       /* what its rows have added up to */
+  W42CellRect  rect;
+} Merge;
+
 /* A row is laid out once and then placed, in one piece when it fits and
  * in several when it is taller than a page. */
 typedef struct {
@@ -1106,6 +1117,19 @@ layout_header_rows (W42Layout *self, W42ApTable *aps, guint first, guint last,
     }
 
   return y;
+}
+
+/* The rows a cell covers, out of its own mark's formatting: 1 for an
+ * ordinary cell, more for one merged downwards, and W42_CELL_COVERED for
+ * a cell the one above covers. */
+static int
+cell_vspan (W42ApTable *aps, const W42Block *blk)
+{
+  const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk->cell_ap)->pa;
+
+  if (cpa->cell_vspan == W42_CELL_COVERED)
+    return W42_CELL_COVERED;
+  return MAX ((int) cpa->cell_vspan, 1);
 }
 
 /* Which sides of a cell are ruled: the cell's own, if it has them, else
@@ -1245,6 +1269,7 @@ layout_table (W42Layout      *self,
   const W42TableProps *props = w42_pt_table_props (pt, head->table);
   int n_cols = props != NULL ? props->n_cols : 1;
   double *col_x = g_new0 (double, n_cols + 1);
+  GArray *merges = g_array_new (FALSE, FALSE, sizeof (Merge));
   double y = *y_io;
   int page = *page_io;
   guint b = first;
@@ -1282,6 +1307,7 @@ layout_table (W42Layout      *self,
       int *owner = g_new (int, n_cols);
       int *spans = g_new0 (int, n_cols);
       guint8 *sides = g_new0 (guint8, n_cols);
+      int *vspans = g_new0 (int, n_cols);   /* rows each cell covers */
 
       /* Which cell owns each column of the row: a merged cell owns the
        * ones it spans, and those get no border of their own. */
@@ -1297,6 +1323,7 @@ layout_table (W42Layout      *self,
           col0 = CLAMP (blk->col, 0, n_cols - 1);
           span = CLAMP (blk->span, 1, n_cols - col0);
           spans[col0] = span;
+          vspans[col0] = cell_vspan (aps, blk);
           sides[col0] = cell_sides (aps, blk, props == NULL || props->borders);
           for (int k2 = col0; k2 < col0 + span; k2++)
             owner[k2] = col0;
@@ -1322,6 +1349,13 @@ layout_table (W42Layout      *self,
               cell_last++;
             }
 
+          /* A cell the one above covers holds nothing of its own. */
+          if (vspans[col] == W42_CELL_COVERED)
+            {
+              c = cell_last + 1;
+              continue;
+            }
+
           {
             int span = CLAMP (blk->span, 1, n_cols - col);
 
@@ -1330,6 +1364,8 @@ layout_table (W42Layout      *self,
                              MAX (col_x[col + span] - col_x[col] - 2 * CELL_PAD, 8.0),
                              page);
           }
+          if (vspans[col] > 1 && vspans[col] != W42_CELL_COVERED)
+            h = h / vspans[col];      /* its height is shared over its rows */
           row_h = MAX (row_h, h);
           c = cell_last + 1;
         }
@@ -1455,6 +1491,28 @@ layout_table (W42Layout      *self,
               if (owner[col] == col)
                 span = CLAMP (spans[col], 1, n_cols - col);
 
+              /* A cell covered from above is drawn by the cell that
+               * covers it, when its last row is placed. */
+              if (vspans[col] == W42_CELL_COVERED)
+                {
+                  for (guint m = 0; m < merges->len; m++)
+                    {
+                      Merge *merge = &g_array_index (merges, Merge, m);
+
+                      if (merge->col != col || merge->rows_left <= 0)
+                        continue;
+                      if (merge->page == seg->page)
+                        merge->height += seg->height;
+                      else
+                        {
+                          /* The merge ran on to another page: what it
+                           * covered there is drawn where it started. */
+                          merge->rows_left = 1;
+                        }
+                    }
+                  continue;
+                }
+
               rect.page = seg->page;
               rect.x = col_x[col];
               rect.y = self->mar_t + seg->top;
@@ -1466,6 +1524,21 @@ layout_table (W42Layout      *self,
                            : (props == NULL || props->borders) ? W42_BORDER_BOX : 0;
               rect.sides &= (guint8) ~cut_sides;
               rect.borders = rect.sides != 0;
+
+              /* A cell merged downwards is one rectangle over its rows,
+               * so it is kept back until they have all been placed. */
+              if (vspans[col] > 1 && sg + 1 == segs->len)
+                {
+                  Merge merge;
+
+                  merge.col = col;
+                  merge.rows_left = vspans[col];   /* its own row, and the covered ones */
+                  merge.page = seg->page;
+                  merge.height = seg->height;
+                  merge.rect = rect;
+                  g_array_append_val (merges, merge);
+                  continue;
+                }
               g_array_append_val (self->cell_rects, rect);
             }
         }
@@ -1479,9 +1552,30 @@ layout_table (W42Layout      *self,
       }
       g_array_free (segs, TRUE);
 
+      /* The rows a merged cell covers have all been placed: its one
+       * rectangle can be drawn now. */
+      for (guint m = 0; m < merges->len; )
+        {
+          Merge *merge = &g_array_index (merges, Merge, m);
+
+          if (merge->rows_left > 0)
+            {
+              merge->rows_left--;
+              if (merge->rows_left == 0)
+                {
+                  merge->rect.h = merge->height;
+                  g_array_append_val (self->cell_rects, merge->rect);
+                  g_array_remove_index (merges, m);
+                  continue;
+                }
+            }
+          m++;
+        }
+
       g_free (owner);
       g_free (spans);
       g_free (sides);
+      g_free (vspans);
 
       /* The lines were laid out relative to y=0 at the top margin;
        * layout_cell wrote box.y as a page-relative value from `y` without
@@ -1492,6 +1586,17 @@ layout_table (W42Layout      *self,
       y += row_h;
       b = c;
     }
+
+  /* A merge that ran past the last row -- a file can say so -- is drawn
+   * with what it did cover. */
+  for (guint m = 0; m < merges->len; m++)
+    {
+      Merge *merge = &g_array_index (merges, Merge, m);
+
+      merge->rect.h = merge->height;
+      g_array_append_val (self->cell_rects, merge->rect);
+    }
+  g_array_free (merges, TRUE);
 
   g_free (col_x);
   *y_io = y;

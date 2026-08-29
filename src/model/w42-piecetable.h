@@ -109,7 +109,8 @@ typedef enum {
   W42_PARA_FLOW         = 1 << 14,   /* keep with next, keep together, widows */
   W42_PARA_SECTION      = 1 << 15,   /* section break and its columns */
   W42_PARA_FRAME        = 1 << 16,   /* drop cap, and the frame at the side */
-  W42_PARA_ALL          = (1 << 17) - 1
+  W42_PARA_CELL_SPAN    = 1 << 17,   /* a cell's vertical merge */
+  W42_PARA_ALL          = (1 << 18) - 1
 } W42ParaMask;
 
 /* ---- Block snapshots -------------------------------------------------- */
@@ -376,6 +377,26 @@ void w42_pt_table_set_widths (W42PieceTable *pt, int table,
  * spans them, keeping every cell's paragraphs.  One undo step. */
 void w42_pt_table_merge_cells (W42PieceTable *pt, int table, int row,
                                int col_from, int col_to);
+
+/* Table > Merge Cells down a column: the cell at (row, col) covers
+ * `rows` rows, and the cells under it are marked as covered.  FALSE when
+ * there is no such cell, or not that many rows under it.  One undo
+ * step. */
+gboolean w42_pt_merge_cells_down (W42PieceTable *pt, int table, int row, int col, int rows);
+
+/* And the merge undone: the cells under it are their own again. */
+gboolean w42_pt_split_cells_down (W42PieceTable *pt, int table, int row, int col);
+
+/* For importers: turns the "starts here" and "covered" marks a file
+ * carries into the number of rows each merged cell covers. */
+void w42_pt_resolve_vmerges (W42PieceTable *pt, int table);
+
+/* The rows the cell at (row, col) covers: 1 for an ordinary cell,
+ * W42_CELL_COVERED for one covered by the cell above. */
+int  w42_pt_cell_vspan (W42PieceTable *pt, int table, int row, int col);
+
+/* For importers: the vertical span of the CELL mark at `cell_pos`. */
+void w42_pt_set_cell_vspan (W42PieceTable *pt, gsize cell_pos, int vspan);
 
 /* How many columns the cell at (row, col) spans, or 0 when no cell
  * starts there -- a column a merged cell covers has no cell of its own. */
