@@ -25,7 +25,7 @@ is listed so the distance to the current product is honest.
 | Hyphenation (libhyphen patterns) | full | no (stub) | full | full |
 | Word count | full | full | full | full |
 | AutoCorrect as you type | full (quotes, capitals, dashes, misspellings) | partial | full | full |
-| AutoText | no | yes | yes | yes |
+| AutoText | full (named entries, Ctrl+F3) | yes | yes | yes |
 | Formatting marks (¶, ·, →) | full | full | full | full |
 
 ## Character and paragraph formatting
@@ -120,14 +120,14 @@ document's own, text frames and drop caps — and lacks free-floating text
 boxes, equations, accessibility and translations.
 
 Against **Word 6**, it lacks positioned text boxes, the Drawing toolbar's
-editable objects, Equation Editor, AutoText, thesaurus and grammar, and
-outline view; it exceeds Word 6 in Unicode, right-to-left text, PDF and
-modern file formats.
+editable objects, Equation Editor, thesaurus and grammar, and outline
+view; it exceeds Word 6 in Unicode, right-to-left text, PDF and modern
+file formats.
 
 The order of work that closes the most ground now: editing the header and
-footer on the page itself rather than in a box, a language per run (which
-the spelling checker would then follow rather than guessing by script),
-positioned text boxes, then translations and accessibility.
+footer on the page itself rather than in a box, positioned text boxes,
+a real Help window (the weakest menu against Word 6), then translations
+and accessibility.
 
 ## Completeness, command by command
 
@@ -136,8 +136,8 @@ Pa = partial, M = missing.
 
 | Menu | vs Word 6 (P/Pa/M) | Most missed there | vs AbiWord (P/Pa/M) | Most missed there |
 |---|---|---|---|---|
-| File | 12/0/2 | Templates, Find File | 12/0/2 | New from Template, Revert |
-| Edit | 11/1/3 | AutoText, Repeat, Links | 12/0/2 | Paste Unformatted styles |
+| File | 13/0/1 | Templates, Find File | 13/0/1 | New from Template |
+| Edit | 12/1/2 | Repeat, Links | 13/0/1 | Paste Unformatted styles |
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
 | Insert | 7/6/3 | Object, Index, Form Field | 11/2/2 | Text Box, Clip Art |
 | Format | 5/8/2 | AutoFormat, Style Gallery, one Font box | 14/4/4 | Language, Background |
@@ -325,3 +325,21 @@ language at all and is never checked.  RTF (`\lang`, `\noproof`), Word
 (`w:lang`, `w:noProof`), OpenDocument (`fo:language` and `fo:country`),
 AbiWord (`lang`) and HTML (`lang=`) all carry the mark both ways, with
 Word's language numbers turned into tags and back.
+
+**AutoText, Revert, and a Word Count worth the name.**  Three of the
+gaps the command-by-command count named, closed together.
+
+  - **Edit > AutoText** keeps a piece of text under a name and puts it
+    in at the caret; the box offers a name made from the selection's
+    first words, as Word 6's did, and typing the name and pressing
+    Ctrl+F3 puts the entry in without the box (F3 alone stays Find Next,
+    which is what a program of this age is expected to do).  The entries
+    live in the settings file and outlast the session.  What is kept is
+    the text, not its formatting.
+  - **File > Revert** goes back to the document as it was when it was
+    last saved, asking first, and is greyed out when there is nothing to
+    go back to.
+  - **Tools > Word Count** was a message box with four numbers.  It is
+    now the box Word 6 had: pages, words, characters with and without
+    their spaces, paragraphs and lines, a switch for whether the notes
+    are counted, and a column for the selection when there is one.

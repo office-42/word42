@@ -30,6 +30,7 @@
 #include "w42-rtf.h"
 #include "w42-settings.h"
 #include "w42-spell-dialog.h"
+#include "w42-autotext.h"
 #include "w42-view.h"
 
 static const char *window_author_name (void);
@@ -569,6 +570,51 @@ on_open_response (GObject *source, GAsyncResult *result, gpointer data)
     }
 
   g_clear_error (&error);
+}
+
+/* File > Revert: the document as it was when it was last saved.  The
+ * answer comes back here. */
+static void
+on_revert_choice (int choice, gpointer data)
+{
+  W42Window *self = data;
+  GFile *file = w42_document_get_file (self->doc);
+
+  if (choice != 0 || file == NULL)
+    return;
+  w42_window_open (self, file);
+}
+
+static void
+action_revert (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GFile *file = w42_document_get_file (self->doc);
+  static const char *const buttons[] = { "_Revert", "Cancel", NULL };
+  char *name, *heading;
+
+  (void) action; (void) param;
+
+  if (file == NULL)
+    {
+      window_flash (self, "This document has not been saved yet, so there is "
+                          "nothing to go back to.");
+      return;
+    }
+  if (!w42_document_get_modified (self->doc))
+    {
+      window_flash (self, "The document has no unsaved changes.");
+      return;
+    }
+
+  name = w42_document_get_title (self->doc);
+  heading = g_strdup_printf ("Revert \342\200\234%s\342\200\235 to the saved version?", name);
+  w42_choice_show (GTK_WINDOW (self), heading,
+                   "The changes made since the document was last saved "
+                   "will be lost.",
+                   buttons, 1, 1, on_revert_choice, self);
+  g_free (heading);
+  g_free (name);
 }
 
 static void
@@ -1115,46 +1161,9 @@ static void
 action_word_count (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
-  W42PieceTable *pt = w42_document_pt (self->doc);
-  gsize first = w42_pt_first_caret_pos (pt);
-  char *text = w42_pt_get_text (pt, first, w42_pt_length (pt) - first);
-  glong characters = g_utf8_strlen (text, -1);
-  gsize words = 0;
-  gsize paragraphs = 1;
-  gboolean in_word = FALSE;
-  char *detail;
 
   (void) action; (void) param;
-
-  for (const char *p = text; *p != '\0'; p = g_utf8_next_char (p))
-    {
-      gunichar c = g_utf8_get_char (p);
-
-      if (c == '\n')
-        paragraphs++;
-
-      if (g_unichar_isspace (c))
-        {
-          in_word = FALSE;
-        }
-      else if (!in_word)
-        {
-          in_word = TRUE;
-          words++;
-        }
-    }
-
-  detail = g_strdup_printf ("Words:\t\t%" G_GSIZE_FORMAT "\n"
-                            "Characters:\t%ld\n"
-                            "Paragraphs:\t%" G_GSIZE_FORMAT "\n"
-                            "Pages:\t\t%d",
-                            words, characters, paragraphs,
-                            w42_layout_n_pages (w42_view_get_layout (self->view)));
-
-  show_message (self, "Word Count", detail);
-
-  g_free (detail);
-  g_free (text);
+  w42_word_count_dialog_show (GTK_WINDOW (self), self->view);
 }
 
 static void
@@ -1887,6 +1896,28 @@ action_table_properties (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   w42_table_properties_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+static void
+action_autotext (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_autotext_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+/* The name typed before the caret becomes the entry it names. */
+static void
+action_autotext_expand (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  if (!w42_view_expand_autotext (self->view))
+    window_flash (self, "Type the name of an AutoText entry, then press "
+                        "Ctrl+F3.  Edit > AutoText makes one from the selection.");
+  gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
 static void
@@ -3484,6 +3515,17 @@ window_sync_state (W42Window *self)
   }
 
   {
+    /* Revert has something to go back to only when the document came
+     * from a file and has been changed since. */
+    GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), "revert");
+
+    if (a != NULL)
+      g_simple_action_set_enabled (G_SIMPLE_ACTION (a),
+                                   w42_document_get_file (self->doc) != NULL &&
+                                   w42_document_get_modified (self->doc));
+  }
+
+  {
     static const char *sel_actions[] = { "cut", "copy", "clear" };
 
     for (guint i = 0; i < G_N_ELEMENTS (sel_actions); i++)
@@ -3535,6 +3577,7 @@ on_view_mapped (GtkWidget *widget, gpointer data)
 static const GActionEntry WINDOW_ACTIONS[] = {
   { "new",        action_new,        NULL, NULL,    NULL, { 0 } },
   { "open",       action_open,       NULL, NULL,    NULL, { 0 } },
+  { "revert",     action_revert,     NULL, NULL,    NULL, { 0 } },
   { "save",       action_save,       NULL, NULL,    NULL, { 0 } },
   { "save-as",    action_save_as,    NULL, NULL,    NULL, { 0 } },
   { "close",      action_close,      NULL, NULL,    NULL, { 0 } },
@@ -3569,6 +3612,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "table-properties", action_table_properties, NULL, NULL, NULL, { 0 } },
   { "table-autoformat", action_table_autoformat, NULL, NULL, NULL, { 0 } },
   { "language",     action_language,     NULL, NULL, NULL, { 0 } },
+  { "autotext",     action_autotext,     NULL, NULL, NULL, { 0 } },
+  { "autotext-expand", action_autotext_expand, NULL, NULL, NULL, { 0 } },
   { "format-picture", action_format_picture, NULL, NULL, NULL, { 0 } },
   { "drop-cap", action_drop_cap, NULL, NULL, NULL, { 0 } },
   { "frame", action_frame, NULL, NULL, NULL, { 0 } },

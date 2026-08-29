@@ -97,6 +97,10 @@ Early, but real. Word42 today is a working word processor:
   HTML back — a plain reading, with no CSS engine, that brings in what
   Word42 wrote and most pages that are text: headings, paragraphs, bold,
   italic, links, lists, tables, embedded pictures.
+- **AutoText** — Edit ▸ AutoText keeps a piece of text under a name — a
+  closing, an address — and puts it in wherever the caret is; typing the
+  name and pressing Ctrl+F3 puts it in without the box. The entries are
+  kept between runs.
 - **Autosave and recovery** — every two minutes a modified document is
   written to a copy in your data directory; a clean close or a save removes
   it, and if Word42 stops without either, the next start opens the copy as

@@ -1244,6 +1244,100 @@ block_new (gsize start_pos, W42ApIdx ap)
   return block;
 }
 
+/* What one stretch of text comes to.  A word is a run of anything that
+ * is not white space; the object mark a picture or a note reference
+ * stands in for is not a character at all. */
+static void
+count_text (const char *text, gsize len, W42Stats *out)
+{
+  const char *stop = text + len;
+  gboolean in_word = FALSE;
+
+  for (const char *p = text; p < stop; p = g_utf8_next_char (p))
+    {
+      gunichar c = g_utf8_get_char (p);
+
+      if (c == 0xFFFC)
+        {
+          in_word = FALSE;      /* a picture: not a character, not a word */
+          continue;
+        }
+      out->characters++;
+      if (g_unichar_isspace (c))
+        {
+          in_word = FALSE;
+        }
+      else
+        {
+          out->characters_no_spaces++;
+          if (!in_word)
+            {
+              in_word = TRUE;
+              out->words++;
+            }
+        }
+    }
+}
+
+void
+w42_pt_statistics (W42PieceTable *pt, gboolean with_notes, W42Stats *out)
+{
+  GPtrArray *blocks;
+
+  g_return_if_fail (pt != NULL);
+  g_return_if_fail (out != NULL);
+
+  memset (out, 0, sizeof *out);
+  blocks = w42_pt_snapshot_blocks (pt);
+  for (guint b = 0; b < blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (blocks, b);
+
+      if (block->note >= 0 && !with_notes)
+        continue;
+      out->paragraphs++;
+      count_text (block->text->str, block->text->len, out);
+    }
+  g_ptr_array_free (blocks, TRUE);
+}
+
+void
+w42_pt_statistics_range (W42PieceTable *pt, gsize start, gsize end, W42Stats *out)
+{
+  GPtrArray *blocks;
+
+  g_return_if_fail (pt != NULL);
+  g_return_if_fail (out != NULL);
+
+  memset (out, 0, sizeof *out);
+  if (end <= start)
+    return;
+
+  blocks = w42_pt_snapshot_blocks (pt);
+  for (guint b = 0; b < blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (blocks, b);
+      gsize first = block->start_pos + 1;          /* the text after the mark */
+      gsize n_chars = g_utf8_strlen (block->text->str, (gssize) block->text->len);
+      gsize from, to;
+      const char *p, *q;
+
+      if (first + n_chars <= start || first >= end)
+        continue;
+
+      from = start > first ? start - first : 0;
+      to = end < first + n_chars ? end - first : n_chars;
+      if (to <= from)
+        continue;
+
+      p = g_utf8_offset_to_pointer (block->text->str, (glong) from);
+      q = g_utf8_offset_to_pointer (block->text->str, (glong) to);
+      out->paragraphs++;
+      count_text (p, (gsize) (q - p), out);
+    }
+  g_ptr_array_free (blocks, TRUE);
+}
+
 GPtrArray *
 w42_pt_snapshot_blocks (W42PieceTable *pt)
 {

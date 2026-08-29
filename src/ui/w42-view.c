@@ -7,6 +7,7 @@
 #include "w42-view.h"
 
 #include "w42-autocorrect.h"
+#include "w42-autotext.h"
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
@@ -2887,6 +2888,54 @@ text_before_caret (W42View *self)
   if (self->caret - start > 64)
     start = self->caret - 64;
   return w42_pt_get_text (pt, start, self->caret - start);
+}
+
+gboolean
+w42_view_expand_autotext (W42View *self)
+{
+  W42PieceTable *pt;
+  char *before, *entry = NULL;
+  gsize back = 0;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return FALSE;
+  before = text_before_caret (self);
+  if (before == NULL)
+    return FALSE;
+
+  /* The name is what was typed since the last space -- or, since a name
+   * may have spaces in it, the longest ending of the line that names an
+   * entry, so that "Yours sincerely" expands as well as "ys". */
+  for (const char *p = before; *p != '\0'; p = g_utf8_next_char (p))
+    {
+      if (p != before && !g_unichar_isspace (g_utf8_get_char (g_utf8_prev_char (p))))
+        continue;                 /* start at a word, not inside one */
+      entry = w42_autotext_get (p);
+      if (entry != NULL)
+        {
+          back = (gsize) g_utf8_strlen (p, -1);
+          break;
+        }
+    }
+  g_free (before);
+
+  if (entry == NULL || back == 0 || back > self->caret)
+    return FALSE;
+
+  w42_pt_begin_group (pt);
+  w42_pt_delete (pt, self->caret - back, back);
+  self->caret -= back;
+  w42_pt_insert_text (pt, self->caret, entry, view_effective_ap (self));
+  self->caret += g_utf8_strlen (entry, -1);
+  self->anchor = self->caret;
+  w42_pt_end_group (pt);
+  view_edited (self);
+
+  g_free (entry);
+  return TRUE;
 }
 
 /* Word 6 corrected as you typed, and so does this: the correction is

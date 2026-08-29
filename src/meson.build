@@ -50,6 +50,7 @@ w42_core_dep = declare_dependency(
 
 w42_ui_sources = files(
   'ui/w42-settings.c',
+  'ui/w42-autotext.c',
   'ui/w42-view.c',
   'ui/w42-ruler.c',
   'ui/w42-find-dialog.c',

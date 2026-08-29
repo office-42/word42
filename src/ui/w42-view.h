@@ -63,6 +63,10 @@ gboolean w42_view_get_autocorrect   (W42View *self);
 /* Whether the caret is in a footnote's or endnote's text. */
 gboolean w42_view_caret_in_note     (W42View *self);
 
+/* Edit > AutoText: the entry named by what was typed before the caret
+ * takes its place.  FALSE when nothing there names one. */
+gboolean w42_view_expand_autotext    (W42View *self);
+
 /* Insert > Caption: a paragraph under the caret's, in the Caption
  * style, with `label` in it, as one undo step. */
 void     w42_view_insert_caption    (W42View *self, const char *label);

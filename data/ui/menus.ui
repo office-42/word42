@@ -31,6 +31,10 @@
           <attribute name="action">win.save-as</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">_Revert</attribute>
+          <attribute name="action">win.revert</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Sav_e All</attribute>
           <attribute name="action">win.save-all</attribute>
         </item>
@@ -107,6 +111,10 @@
         <item>
           <attribute name="label" translatable="yes">_Clear</attribute>
           <attribute name="action">win.clear</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">AutoTe_xt...</attribute>
+          <attribute name="action">win.autotext</attribute>
         </item>
       </section>
       <section>

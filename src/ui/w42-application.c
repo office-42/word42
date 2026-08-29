@@ -72,6 +72,7 @@ static const struct {
   { "win.insert-endnote", { "<Control><Alt>e", NULL } },
   { "win.replace",    { "<Control>h", NULL } },
   { "win.find-next",  { "F3", NULL } },
+  { "win.autotext-expand", { "<Control>F3", NULL } },
   { "app.quit",       { "<Control>q", NULL } },
 };
 

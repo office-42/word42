@@ -248,6 +248,27 @@ gboolean  w42_pt_is_block_mark  (W42PieceTable *pt, gsize pos);
 
 GPtrArray *w42_pt_snapshot_blocks (W42PieceTable *pt);  /* of W42Block* */
 
+/* ---- What the document counts up to ------------------------------------ */
+
+/* Tools > Word Count.  Pictures and note reference marks are not
+ * characters and are not counted; a word is a run of anything that is
+ * not white space, which is how Word counted them. */
+typedef struct {
+  gsize words;
+  gsize characters;             /* with the spaces */
+  gsize characters_no_spaces;
+  gsize paragraphs;
+  gsize lines;                  /* the layout's, filled in by the caller */
+  gsize pages;                  /* likewise */
+} W42Stats;
+
+/* The whole document, with or without what is in the notes. */
+void w42_pt_statistics (W42PieceTable *pt, gboolean with_notes, W42Stats *out);
+
+/* And a stretch of it: what a selection comes to. */
+void w42_pt_statistics_range (W42PieceTable *pt, gsize start, gsize end,
+                              W42Stats *out);
+
 /* ---- Mutation --------------------------------------------------------- */
 
 void w42_pt_insert_text  (W42PieceTable *pt, gsize pos, const char *utf8, W42ApIdx ap);

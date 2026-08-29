@@ -62,6 +62,11 @@ and the ruler off and on; Word42 remembers the setting for the next time.
 The File menu remembers the last eight files you opened or saved; pick one
 from the bottom of the menu to open it again.
 
+**File ▸ Revert** goes back to the document as it was when it was last
+saved, throwing away the changes made since. It asks first, and it is
+greyed out when the document has never been saved or has no changes to
+throw away.
+
 ### The formats Word42 reads and writes
 
 | Format | Open | Save |
@@ -143,6 +148,21 @@ bookmark by name.
 | Paste | Ctrl+V | Puts the clipboard in at the caret, with its formatting. |
 | Paste Special | — | Puts the clipboard in as plain text, taking the formatting of the text round it. |
 | Clear | Del | Removes the selection without touching the clipboard. |
+| AutoText... | — | Keeps the selected text under a name, and puts a kept piece of text in at the caret. |
+
+### Edit ▸ AutoText
+
+A piece of text you type often — a closing, an address, a company name —
+can be kept under a name and put in whenever you want it. Select the
+text, open **Edit ▸ AutoText**, and the box offers a name made from its
+first words; **Add** keeps it. With nothing selected, the box lists what
+is kept: pick one and **Insert** puts it in at the caret, and **Delete**
+takes it out of the list for good.
+
+Typing the name and pressing **Ctrl+F3** puts the entry in without the box,
+the way Word 6's F3 did (F3 alone is Find Next here). Entries are kept
+between runs, in the settings file; what is kept is the text, not its
+formatting, so an entry takes the formatting of the place it lands in.
 
 ### Find and Replace
 
@@ -529,8 +549,10 @@ undo step, so Ctrl+Z once puts back exactly what you typed.
 
 ### Tools ▸ Word Count
 
-Words, characters, paragraphs and pages, for the selection or the whole
-document.
+Pages, words, characters with and without their spaces, paragraphs and
+lines. **Include footnotes and endnotes** counts what is down in the
+notes as well, and with text selected the box counts the selection
+beside the document.
 
 ### Tools ▸ Hyphenation
 

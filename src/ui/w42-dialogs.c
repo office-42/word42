@@ -7,6 +7,7 @@
 #include "w42-dialogs.h"
 
 #include "w42-autocorrect.h"
+#include "w42-autotext.h"
 #include "w42-tableformat.h"
 #include "w42-lang.h"
 #include "w42-spell.h"
@@ -3721,6 +3722,393 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
   }
 
   button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Edit > AutoText                                                         */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *name;
+  GtkWidget *list;
+  GtkWidget *preview;
+  GtkWidget *add, *insert, *delete;
+} AutoTextBox;
+
+static void
+autotext_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+static char *
+autotext_chosen (AutoTextBox *box)
+{
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (box->list));
+  GtkWidget *label = row != NULL ? gtk_list_box_row_get_child (row) : NULL;
+
+  return label != NULL ? g_strdup (gtk_label_get_text (GTK_LABEL (label))) : NULL;
+}
+
+static void
+autotext_refill (AutoTextBox *box, const char *select)
+{
+  char **names = w42_autotext_names ();
+  GtkWidget *row;
+  int pick = -1;
+
+  while ((row = gtk_widget_get_first_child (box->list)) != NULL)
+    gtk_list_box_remove (GTK_LIST_BOX (box->list), row);
+
+  for (guint i = 0; names != NULL && names[i] != NULL; i++)
+    {
+      GtkWidget *label = gtk_label_new (names[i]);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_widget_set_margin_start (label, 6);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+      if (select != NULL && g_ascii_strcasecmp (names[i], select) == 0)
+        pick = (int) i;
+    }
+  if (pick >= 0)
+    gtk_list_box_select_row (GTK_LIST_BOX (box->list),
+                             gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), pick));
+  g_strfreev (names);
+}
+
+/* What the chosen entry holds, shown small so that the right one is
+ * picked without putting it in the document first. */
+static void
+autotext_selected (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  AutoTextBox *box = data;
+  char *name, *text;
+
+  (void) list; (void) row;
+  name = autotext_chosen (box);
+  text = name != NULL ? w42_autotext_get (name) : NULL;
+
+  if (name != NULL)
+    gtk_editable_set_text (GTK_EDITABLE (box->name), name);
+  if (text != NULL)
+    {
+      char *one_line = g_strdelimit (g_strdup (text), "\n\r", ' ');
+
+      gtk_label_set_text (GTK_LABEL (box->preview), one_line);
+      g_free (one_line);
+    }
+  else
+    gtk_label_set_text (GTK_LABEL (box->preview), "");
+
+  gtk_widget_set_sensitive (box->insert, text != NULL);
+  gtk_widget_set_sensitive (box->delete, text != NULL);
+  g_free (name);
+  g_free (text);
+}
+
+static void
+on_autotext_add (GtkButton *button, gpointer data)
+{
+  AutoTextBox *box = data;
+  const char *name = gtk_editable_get_text (GTK_EDITABLE (box->name));
+  char *text = w42_view_get_selected_text (box->view);
+
+  (void) button;
+  if (text == NULL || *text == '\0')
+    {
+      gtk_label_set_text (GTK_LABEL (box->preview),
+                          "Select the text to keep, then Add.");
+      g_free (text);
+      return;
+    }
+  if (name == NULL || *name == '\0')
+    {
+      gtk_label_set_text (GTK_LABEL (box->preview), "Give the entry a name.");
+      g_free (text);
+      return;
+    }
+
+  w42_autotext_set (name, text);
+  autotext_refill (box, name);
+  g_free (text);
+}
+
+static void
+on_autotext_insert (GtkButton *button, gpointer data)
+{
+  AutoTextBox *box = data;
+  char *name = autotext_chosen (box);
+  char *text = name != NULL ? w42_autotext_get (name) : NULL;
+
+  (void) button;
+  if (text != NULL)
+    w42_view_insert_text (box->view, text);
+  g_free (name);
+  g_free (text);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+static void
+on_autotext_delete (GtkButton *button, gpointer data)
+{
+  AutoTextBox *box = data;
+  char *name = autotext_chosen (box);
+
+  (void) button;
+  if (name != NULL)
+    w42_autotext_remove (name);
+  autotext_refill (box, NULL);
+  gtk_label_set_text (GTK_LABEL (box->preview), "");
+  gtk_widget_set_sensitive (box->insert, FALSE);
+  gtk_widget_set_sensitive (box->delete, FALSE);
+  g_free (name);
+}
+
+void
+w42_autotext_dialog_show (GtkWindow *parent, W42View *view)
+{
+  AutoTextBox *box;
+  GtkWidget *content, *grid, *label, *scroller, *buttons, *close;
+  char *selected;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (AutoTextBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "AutoText", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), autotext_free, box);
+
+  grid = group (content, "Entries");
+
+  label = gtk_label_new_with_mnemonic ("_Name:");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  box->name = gtk_entry_new ();
+  gtk_entry_set_activates_default (GTK_ENTRY (box->name), TRUE);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->name);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->name, 1, 0, 1, 1);
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 260, 130);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 1, 2, 1);
+
+  box->preview = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->preview), 0.0);
+  gtk_label_set_ellipsize (GTK_LABEL (box->preview), PANGO_ELLIPSIZE_END);
+  gtk_widget_set_size_request (box->preview, 260, -1);
+  gtk_grid_attach (GTK_GRID (grid), box->preview, 0, 2, 2, 1);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  box->add = gtk_button_new_with_mnemonic ("_Add");
+  box->insert = gtk_button_new_with_mnemonic ("_Insert");
+  box->delete = gtk_button_new_with_mnemonic ("_Delete");
+  close = gtk_button_new_with_mnemonic ("_Close");
+  gtk_widget_set_size_request (box->add, 84, 26);
+  gtk_widget_set_size_request (box->insert, 84, 26);
+  gtk_widget_set_size_request (box->delete, 84, 26);
+  gtk_widget_set_size_request (close, 84, 26);
+  gtk_box_append (GTK_BOX (buttons), box->add);
+  gtk_box_append (GTK_BOX (buttons), box->insert);
+  gtk_box_append (GTK_BOX (buttons), box->delete);
+  gtk_box_append (GTK_BOX (buttons), close);
+  gtk_widget_set_halign (buttons, GTK_ALIGN_END);
+  gtk_box_append (GTK_BOX (content), buttons);
+
+  g_signal_connect (box->add, "clicked", G_CALLBACK (on_autotext_add), box);
+  g_signal_connect (box->insert, "clicked", G_CALLBACK (on_autotext_insert), box);
+  g_signal_connect (box->delete, "clicked", G_CALLBACK (on_autotext_delete), box);
+  g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (autotext_selected), box);
+
+  autotext_refill (box, NULL);
+
+  /* With text selected the box is there to keep it: the name is filled
+   * in from its first words, as Word 6 filled it in. */
+  selected = w42_view_get_selected_text (view);
+  if (selected != NULL && *selected != '\0')
+    {
+      char *suggestion = w42_autotext_suggest_name (selected);
+
+      if (suggestion != NULL)
+        gtk_editable_set_text (GTK_EDITABLE (box->name), suggestion);
+      gtk_label_set_text (GTK_LABEL (box->preview),
+                          "Add keeps the selected text under that name.");
+      gtk_window_set_default_widget (GTK_WINDOW (box->window), box->add);
+      g_free (suggestion);
+    }
+  else
+    {
+      gtk_widget_set_sensitive (box->add, FALSE);
+      gtk_window_set_default_widget (GTK_WINDOW (box->window), box->insert);
+    }
+  g_free (selected);
+
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tools > Word Count                                                      */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *notes;             /* the "include the notes" switch */
+  GtkWidget *value[6];          /* pages, words, characters, no spaces,
+                                 * paragraphs, lines -- of the document */
+  GtkWidget *selected[6];       /* and of the selection, when there is one */
+  gboolean   has_selection;
+} CountBox;
+
+static const char * const COUNT_NAMES[6] = {
+  "Pages", "Words", "Characters", "Characters (no spaces)", "Paragraphs", "Lines"
+};
+
+static void
+count_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+/* How many lines the layout has laid out, notes and all. */
+static gsize
+count_lines (W42View *view)
+{
+  W42Layout *layout = w42_view_get_layout (view);
+  const GArray *lines = layout != NULL ? w42_layout_lines (layout) : NULL;
+
+  return lines != NULL ? lines->len : 0;
+}
+
+static void
+count_fill (CountBox *box)
+{
+  W42PieceTable *pt = w42_view_get_document (box->view) != NULL
+                        ? w42_document_pt (w42_view_get_document (box->view)) : NULL;
+  gboolean with_notes = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->notes));
+  W42Stats doc;
+  gsize counts[6];
+
+  if (pt == NULL)
+    return;
+
+  w42_pt_statistics (pt, with_notes, &doc);
+  counts[0] = (gsize) MAX (w42_layout_n_pages (w42_view_get_layout (box->view)), 1);
+  counts[1] = doc.words;
+  counts[2] = doc.characters;
+  counts[3] = doc.characters_no_spaces;
+  counts[4] = doc.paragraphs;
+  counts[5] = count_lines (box->view);
+  for (int i = 0; i < 6; i++)
+    {
+      char *text = g_strdup_printf ("%" G_GSIZE_FORMAT, counts[i]);
+
+      gtk_label_set_text (GTK_LABEL (box->value[i]), text);
+      g_free (text);
+    }
+
+  if (box->has_selection)
+    {
+      W42Stats sel;
+      gsize start, end;
+
+      w42_view_get_selection_bounds (box->view, &start, &end);
+      w42_pt_statistics_range (pt, start, end, &sel);
+      for (int i = 0; i < 6; i++)
+        {
+          gsize n = i == 1 ? sel.words : i == 2 ? sel.characters
+                  : i == 3 ? sel.characters_no_spaces : i == 4 ? sel.paragraphs : 0;
+          char *text = i == 0 || i == 5 ? g_strdup ("--")
+                                        : g_strdup_printf ("%" G_GSIZE_FORMAT, n);
+
+          gtk_label_set_text (GTK_LABEL (box->selected[i]), text);
+          g_free (text);
+        }
+    }
+}
+
+static void
+on_count_notes (GtkCheckButton *button, gpointer data)
+{
+  (void) button;
+  count_fill (data);
+}
+
+void
+w42_word_count_dialog_show (GtkWindow *parent, W42View *view)
+{
+  CountBox *box;
+  GtkWidget *content, *grid, *close;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (CountBox, 1);
+  box->view = view;
+  box->has_selection = w42_view_has_selection (view);
+  box->window = dialog_shell (parent, "Word Count", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), count_free, box);
+
+  grid = group (content, box->has_selection ? "Counts" : "Statistics");
+  if (box->has_selection)
+    {
+      GtkWidget *a = gtk_label_new ("Document");
+      GtkWidget *b = gtk_label_new ("Selection");
+
+      gtk_label_set_xalign (GTK_LABEL (a), 1.0);
+      gtk_label_set_xalign (GTK_LABEL (b), 1.0);
+      gtk_grid_attach (GTK_GRID (grid), a, 1, 0, 1, 1);
+      gtk_grid_attach (GTK_GRID (grid), b, 2, 0, 1, 1);
+    }
+  for (int i = 0; i < 6; i++)
+    {
+      GtkWidget *name = gtk_label_new (COUNT_NAMES[i]);
+
+      gtk_label_set_xalign (GTK_LABEL (name), 0.0);
+      box->value[i] = gtk_label_new ("0");
+      gtk_label_set_xalign (GTK_LABEL (box->value[i]), 1.0);
+      gtk_widget_set_size_request (box->value[i], 70, -1);
+      gtk_grid_attach (GTK_GRID (grid), name, 0, i + 1, 1, 1);
+      gtk_grid_attach (GTK_GRID (grid), box->value[i], 1, i + 1, 1, 1);
+      if (box->has_selection)
+        {
+          box->selected[i] = gtk_label_new ("0");
+          gtk_label_set_xalign (GTK_LABEL (box->selected[i]), 1.0);
+          gtk_widget_set_size_request (box->selected[i], 70, -1);
+          gtk_grid_attach (GTK_GRID (grid), box->selected[i], 2, i + 1, 1, 1);
+        }
+    }
+
+  box->notes = gtk_check_button_new_with_mnemonic ("Include _footnotes and endnotes");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->notes), TRUE);
+  g_signal_connect (box->notes, "toggled", G_CALLBACK (on_count_notes), box);
+  gtk_box_append (GTK_BOX (content), box->notes);
+
+  count_fill (box);
+
+  /* One button: there is nothing here to undo or apply. */
+  close = gtk_button_new_with_mnemonic ("_Close");
+  gtk_widget_set_halign (close, GTK_ALIGN_END);
+  gtk_widget_set_size_request (close, 92, 26);
+  g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
+  gtk_box_append (GTK_BOX (content), close);
+  gtk_window_set_default_widget (GTK_WINDOW (box->window), close);
+
   gtk_window_present (GTK_WINDOW (box->window));
 }
 
