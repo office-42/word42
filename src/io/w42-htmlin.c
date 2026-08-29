@@ -507,9 +507,28 @@ apply_style (Html *h, const char *style, gboolean para)
         h->ch[h->depth].bold = (g_ascii_strcasecmp (value, "bold") == 0 || atoi (value) >= 600);
       else if (g_ascii_strcasecmp (key, "font-style") == 0)
         h->ch[h->depth].italic = g_ascii_strcasecmp (value, "italic") == 0;
+      else if (g_ascii_strcasecmp (key, "text-decoration-style") == 0)
+        {
+          /* The shape of the line, when the page says one. */
+          if (h->ch[h->depth].underline == W42_UNDERLINE_NONE)
+            h->ch[h->depth].underline = W42_UNDERLINE_SINGLE;
+          if (g_ascii_strcasecmp (value, "double") == 0)
+            h->ch[h->depth].underline = W42_UNDERLINE_DOUBLE;
+          else if (g_ascii_strcasecmp (value, "dotted") == 0)
+            h->ch[h->depth].underline = W42_UNDERLINE_DOTTED;
+          else if (g_ascii_strcasecmp (value, "dashed") == 0)
+            h->ch[h->depth].underline = W42_UNDERLINE_DASHED;
+          else if (g_ascii_strcasecmp (value, "wavy") == 0)
+            h->ch[h->depth].underline = W42_UNDERLINE_WAVE;
+        }
       else if (g_ascii_strcasecmp (key, "text-decoration") == 0)
         {
-          if (strstr (value, "underline")) h->ch[h->depth].underline = 1;
+          if (strstr (value, "underline") && h->ch[h->depth].underline == W42_UNDERLINE_NONE)
+            h->ch[h->depth].underline = W42_UNDERLINE_SINGLE;
+          if (strstr (value, "double")) h->ch[h->depth].underline = W42_UNDERLINE_DOUBLE;
+          if (strstr (value, "dotted")) h->ch[h->depth].underline = W42_UNDERLINE_DOTTED;
+          if (strstr (value, "dashed")) h->ch[h->depth].underline = W42_UNDERLINE_DASHED;
+          if (strstr (value, "wavy"))   h->ch[h->depth].underline = W42_UNDERLINE_WAVE;
           if (strstr (value, "line-through")) h->ch[h->depth].strikeout = 1;
           if (strstr (value, "overline")) h->ch[h->depth].overline = 1;
         }

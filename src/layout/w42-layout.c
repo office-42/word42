@@ -543,6 +543,21 @@ family_chain (const char *family)
   return found;
 }
 
+/* Pango's name for a kind of underline.  Pango draws a dotted, dashed or
+ * wavy line only where the font and the version can; where it cannot, a
+ * single line is nearer the truth than none. */
+static PangoUnderline
+pango_underline_for (guint kind)
+{
+  switch (kind)
+    {
+    case W42_UNDERLINE_NONE:   return PANGO_UNDERLINE_NONE;
+    case W42_UNDERLINE_DOUBLE: return PANGO_UNDERLINE_DOUBLE;
+    case W42_UNDERLINE_WAVE:   return PANGO_UNDERLINE_ERROR;
+    default:                   return PANGO_UNDERLINE_SINGLE;
+    }
+}
+
 static void
 apply_font_description (PangoFontDescription *desc, const W42CharFmt *ch)
 {
@@ -661,9 +676,7 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
       add_attr (list, pango_attr_style_new (ch->italic ? PANGO_STYLE_ITALIC
                                                        : PANGO_STYLE_NORMAL),
                 start, end);
-      add_attr (list, pango_attr_underline_new (ch->underline
-                                                  ? PANGO_UNDERLINE_SINGLE
-                                                  : PANGO_UNDERLINE_NONE),
+      add_attr (list, pango_attr_underline_new (pango_underline_for (ch->underline)),
                 start, end);
       add_attr (list, pango_attr_strikethrough_new (ch->strikeout != 0),
                 start, end);

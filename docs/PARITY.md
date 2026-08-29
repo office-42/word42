@@ -34,7 +34,8 @@ is listed so the distance to the current product is honest.
 |---|---|---|---|---|
 | Font, size, bold, italic, underline, strikeout, colour | full | full | full | full |
 | Overline, small caps, all caps, super/subscript, highlight, letter spacing | full | full | most | full |
-| Underline styles (double, dotted…), double strike, emboss | no | partial | some | full |
+| Underline styles (single, words only, double, dotted, dashed, thick, wave) | full | single and double | Word 6's four | full |
+| Double strike, emboss, engrave | no | partial | some | full |
 | Language per run | no | yes | yes | yes |
 | Alignment, indents, spacing, line spacing (single, 1½, double, At Least, Exactly, multiple) | full | full | full | full |
 | Tabs (left/centre/right/decimal), live ruler, leaders | full | full | full | full |
@@ -281,6 +282,12 @@ takes its capital, two hyphens become a dash, and a short list of
 misspellings is corrected.  Tools > AutoCorrect shows the list and the
 switch; Tools > Options has the switch too.  A correction and the
 character that prompted it are one undo step.
+
+**Underline styles.**  A run can be underlined in any of seven ways --
+single, words only, double, dotted, dashed, thick and wave -- chosen in
+Format > Font Effects.  RTF, Word and OpenDocument carry all of them both
+ways; HTML carries what CSS can say; AbiWord's own format keeps the line
+but not always its shape.
 
 **A right-to-left paragraph sits where it should.**  Alignment in this
 model is what the eye sees -- Left is the left margin, Right the right --

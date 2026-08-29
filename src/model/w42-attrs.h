@@ -18,12 +18,26 @@ typedef guint32 W42ApIdx;
 
 #define W42_AP_INVALID ((W42ApIdx) G_MAXUINT32)
 
+/* How a run is underlined.  Word 6 offered None, Single, Words Only and
+ * Double; the others are what the file formats can say, and what other
+ * programs write. */
+typedef enum {
+  W42_UNDERLINE_NONE = 0,
+  W42_UNDERLINE_SINGLE,
+  W42_UNDERLINE_DOUBLE,
+  W42_UNDERLINE_WORDS,      /* the spaces between words are not underlined */
+  W42_UNDERLINE_DOTTED,
+  W42_UNDERLINE_DASHED,
+  W42_UNDERLINE_THICK,
+  W42_UNDERLINE_WAVE
+} W42Underline;
+
 typedef struct {
   const char *family;      /* interned via g_intern_string(), never freed */
   int         size;        /* half-points */
   guint       bold      : 1;
   guint       italic    : 1;
-  guint       underline : 1;
+  guint       underline : 3;   /* W42Underline: 0 none, 1 single, ... */
   guint       strikeout : 1;
   guint       overline  : 1;   /* AbiWord has it; Word never did */
   gint8       script;      /* -1 subscript, 0 normal, +1 superscript */

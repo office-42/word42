@@ -248,7 +248,25 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
 
       if (g_str_equal (k, "fo:font-weight"))        ch->bold = g_str_equal (v, "bold") || atoi (v) >= 600;
       else if (g_str_equal (k, "fo:font-style"))    ch->italic = g_str_equal (v, "italic") || g_str_equal (v, "oblique");
-      else if (g_str_equal (k, "style:text-underline-style")) ch->underline = !g_str_equal (v, "none");
+      else if (g_str_equal (k, "style:text-underline-style"))
+        {
+          /* OpenDocument says the line's shape here and, for a double
+           * line, its number in style:text-underline-type. */
+          if (g_str_equal (v, "none"))            ch->underline = W42_UNDERLINE_NONE;
+          else if (g_str_equal (v, "dotted"))     ch->underline = W42_UNDERLINE_DOTTED;
+          else if (g_str_has_prefix (v, "dash") ||
+                   g_str_has_prefix (v, "long-dash") ||
+                   g_str_has_prefix (v, "dot-dash")) ch->underline = W42_UNDERLINE_DASHED;
+          else if (g_str_equal (v, "wave"))       ch->underline = W42_UNDERLINE_WAVE;
+          else if (ch->underline == W42_UNDERLINE_NONE) ch->underline = W42_UNDERLINE_SINGLE;
+        }
+      else if (g_str_equal (k, "style:text-underline-type") && g_str_equal (v, "double"))
+        ch->underline = W42_UNDERLINE_DOUBLE;
+      else if (g_str_equal (k, "style:text-underline-width") &&
+               (g_str_equal (v, "bold") || g_str_equal (v, "thick")))
+        ch->underline = W42_UNDERLINE_THICK;
+      else if (g_str_equal (k, "style:text-underline-mode") && g_str_equal (v, "skip-white-space"))
+        ch->underline = W42_UNDERLINE_WORDS;
       else if (g_str_equal (k, "style:text-line-through-style")) ch->strikeout = !g_str_equal (v, "none");
       else if (g_str_equal (k, "style:text-overline-style")) ch->overline = !g_str_equal (v, "none");
       else if (g_str_equal (k, "fo:font-size"))
@@ -352,7 +370,7 @@ resolve_style (Odt *o, const char *name, int depth)
               w42_fmt_init_default (&def);
               if (s->ch.bold) ch.bold = 1;
               if (s->ch.italic) ch.italic = 1;
-              if (s->ch.underline) ch.underline = 1;
+              if (s->ch.underline) ch.underline = s->ch.underline;
               if (s->ch.strikeout) ch.strikeout = 1;
               if (s->ch.overline) ch.overline = 1;
               if (s->ch.size != def.ch.size) ch.size = s->ch.size;
@@ -926,7 +944,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           /* A text style adds to what is there. */
           if (s->ch.bold) ch.bold = 1;
           if (s->ch.italic) ch.italic = 1;
-          if (s->ch.underline) ch.underline = 1;
+          if (s->ch.underline) ch.underline = s->ch.underline;
           if (s->ch.strikeout) ch.strikeout = 1;
           if (s->ch.overline) ch.overline = 1;
           {
@@ -1769,7 +1787,23 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
     g_string_append_printf (s, " fo:font-weight=\"%s\"", ch->bold ? "bold" : "normal");
   if (base == NULL || ch->italic != base->italic)
     g_string_append_printf (s, " fo:font-style=\"%s\"", ch->italic ? "italic" : "normal");
-  if (ch->underline) g_string_append (s, " style:text-underline-style=\"solid\" style:text-underline-width=\"auto\" style:text-underline-color=\"font-color\"");
+  if (ch->underline)
+    {
+      static const char *const STYLES[] = {
+        "none", "solid", "solid", "solid", "dotted", "dash", "solid", "wave"
+      };
+      guint kind = MIN (ch->underline, G_N_ELEMENTS (STYLES) - 1);
+
+      g_string_append_printf (s, " style:text-underline-style=\"%s\""
+                                 " style:text-underline-width=\"%s\""
+                                 " style:text-underline-color=\"font-color\"",
+                              STYLES[kind],
+                              ch->underline == W42_UNDERLINE_THICK ? "bold" : "auto");
+      if (ch->underline == W42_UNDERLINE_DOUBLE)
+        g_string_append (s, " style:text-underline-type=\"double\"");
+      if (ch->underline == W42_UNDERLINE_WORDS)
+        g_string_append (s, " style:text-underline-mode=\"skip-white-space\"");
+    }
   if (ch->strikeout) g_string_append (s, " style:text-line-through-style=\"solid\"");
   if (ch->overline)  g_string_append (s, " style:text-overline-style=\"solid\"");
   if (ch->color != 0) g_string_append_printf (s, " fo:color=\"#%06x\"", ch->color);

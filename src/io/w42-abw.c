@@ -239,7 +239,10 @@ char_prop (const char *key, const char *value, gpointer data)
   else if (g_str_equal (key, "font-style")) ch->italic = g_str_equal (value, "italic");
   else if (g_str_equal (key, "text-decoration"))
     {
-      ch->underline = strstr (value, "underline") != NULL;
+      ch->underline = strstr (value, "underline") != NULL
+                        ? (strstr (value, "double") != NULL ? W42_UNDERLINE_DOUBLE
+                                                            : W42_UNDERLINE_SINGLE)
+                        : W42_UNDERLINE_NONE;
       ch->strikeout = strstr (value, "line-through") != NULL;
       ch->overline = strstr (value, "overline") != NULL;
     }

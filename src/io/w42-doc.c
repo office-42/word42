@@ -1332,7 +1332,19 @@ fill_char_fmt (Doc *doc, const Char *ch, W42CharFmt *out)
   out->size      = ch->hps > 0 ? ch->hps : 20;
   out->bold      = ch->bold ? 1 : 0;
   out->italic    = ch->italic ? 1 : 0;
-  out->underline = ch->kul != 0 ? 1 : 0;
+  /* Word's kul: 1 single, 2 words only, 3 double, 4 dotted, 6 thick,
+   * 7 and 9 dashed, 11 wave. */
+  switch (ch->kul)
+    {
+    case 0:  out->underline = W42_UNDERLINE_NONE;   break;
+    case 2:  out->underline = W42_UNDERLINE_WORDS;  break;
+    case 3:  out->underline = W42_UNDERLINE_DOUBLE; break;
+    case 4:  out->underline = W42_UNDERLINE_DOTTED; break;
+    case 6:  out->underline = W42_UNDERLINE_THICK;  break;
+    case 7: case 9: case 10: out->underline = W42_UNDERLINE_DASHED; break;
+    case 11: case 27: out->underline = W42_UNDERLINE_WAVE; break;
+    default: out->underline = W42_UNDERLINE_SINGLE; break;
+    }
   out->strikeout = ch->strike ? 1 : 0;
   out->script    = ch->iss == 1 ? 1 : ch->iss == 2 ? -1 : 0;
   out->smallcaps = ch->smallcaps ? 1 : 0;

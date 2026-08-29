@@ -71,6 +71,38 @@ mirror_align (W42Align align, gboolean rtl)
   return align;
 }
 
+/* Word's names for the kinds of underline, and ours. */
+static guint
+underline_from_val (const char *v)
+{
+  if (v == NULL || g_str_equal (v, "none"))            return W42_UNDERLINE_NONE;
+  if (g_str_equal (v, "double"))                       return W42_UNDERLINE_DOUBLE;
+  if (g_str_equal (v, "words"))                        return W42_UNDERLINE_WORDS;
+  if (g_str_has_prefix (v, "dotted"))                  return W42_UNDERLINE_DOTTED;
+  if (g_str_has_prefix (v, "dash") || g_str_has_prefix (v, "dotDash"))
+                                                       return W42_UNDERLINE_DASHED;
+  if (g_str_has_prefix (v, "thick") || g_str_has_prefix (v, "wavyHeavy"))
+                                                       return W42_UNDERLINE_THICK;
+  if (g_str_has_prefix (v, "wave"))                    return W42_UNDERLINE_WAVE;
+  return W42_UNDERLINE_SINGLE;
+}
+
+static const char *
+underline_val (guint kind)
+{
+  switch (kind)
+    {
+    case W42_UNDERLINE_NONE:   return NULL;
+    case W42_UNDERLINE_DOUBLE: return "double";
+    case W42_UNDERLINE_WORDS:  return "words";
+    case W42_UNDERLINE_DOTTED: return "dotted";
+    case W42_UNDERLINE_DASHED: return "dash";
+    case W42_UNDERLINE_THICK:  return "thick";
+    case W42_UNDERLINE_WAVE:   return "wave";
+    default:                   return "single";
+    }
+}
+
 static int
 highlight_index (const char *name)
 {
@@ -1181,7 +1213,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
       if (g_str_equal (tag, "b"))          ch->bold = toggle_on (an, av);
       else if (g_str_equal (tag, "i"))     ch->italic = toggle_on (an, av);
-      else if (g_str_equal (tag, "u"))     ch->underline = toggle_on (an, av);
+      else if (g_str_equal (tag, "u"))
+        ch->underline = underline_from_val (attr (an, av, "val"));
       else if (g_str_equal (tag, "strike") || g_str_equal (tag, "dstrike")) ch->strikeout = toggle_on (an, av);
       else if (g_str_equal (tag, "caps"))  ch->allcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "smallCaps")) ch->smallcaps = toggle_on (an, av);
@@ -1950,7 +1983,7 @@ write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->highlight != 0)
     g_string_append_printf (rpr, "<w:highlight w:val=\"%s\"/>", HIGHLIGHT_NAMES[CLAMP (ch->highlight, 1, 16)]);
   if (ch->underline || ch->link != NULL)
-    g_string_append (rpr, "<w:u w:val=\"single\"/>");
+    g_string_append_printf (rpr, "<w:u w:val=\"%s\"/>", underline_val (ch->underline));
   if (ch->script > 0) g_string_append (rpr, "<w:vertAlign w:val=\"superscript\"/>");
   if (ch->script < 0) g_string_append (rpr, "<w:vertAlign w:val=\"subscript\"/>");
 
@@ -2492,7 +2525,8 @@ styles_part (W42StyleSheet *styles)
         append_rfonts (out, s->ch.family);
       if (s->ch.bold)   g_string_append (out, "<w:b/>");
       if (s->ch.italic) g_string_append (out, "<w:i/>");
-      if (s->ch.underline) g_string_append (out, "<w:u w:val=\"single\"/>");
+      if (s->ch.underline)
+        g_string_append_printf (out, "<w:u w:val=\"%s\"/>", underline_val (s->ch.underline));
       if (s->ch.color != 0)
         g_string_append_printf (out, "<w:color w:val=\"%06X\"/>", s->ch.color & 0xFFFFFF);
       if (s->ch.size > 0 && (normal == NULL || s->ch.size != normal->ch.size))

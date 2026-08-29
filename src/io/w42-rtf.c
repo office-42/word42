@@ -148,7 +148,17 @@ write_char_props (GString *out, const W42CharFmt *ch, RtfTables *tables)
 
   if (ch->bold)      g_string_append (out, "\\b");
   if (ch->italic)    g_string_append (out, "\\i");
-  if (ch->underline) g_string_append (out, "\\ul");
+  switch (ch->underline)
+    {
+    case W42_UNDERLINE_NONE:                                        break;
+    case W42_UNDERLINE_DOUBLE: g_string_append (out, "\\uldb");     break;
+    case W42_UNDERLINE_WORDS:  g_string_append (out, "\\ulw");      break;
+    case W42_UNDERLINE_DOTTED: g_string_append (out, "\\uld");      break;
+    case W42_UNDERLINE_DASHED: g_string_append (out, "\\uldash");   break;
+    case W42_UNDERLINE_THICK:  g_string_append (out, "\\ulth");     break;
+    case W42_UNDERLINE_WAVE:   g_string_append (out, "\\ulwave");   break;
+    default:                   g_string_append (out, "\\ul");       break;
+    }
   if (ch->strikeout) g_string_append (out, "\\strike");
   if (ch->overline)  g_string_append (out, "\\ol");
   if (ch->script > 0) g_string_append (out, "\\super");
@@ -1770,9 +1780,25 @@ formatting:
   else if (g_str_equal (word, "i"))
     { flush_text (r); st->ch.italic = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "ul"))
-    { flush_text (r); st->ch.underline = (has_param && param == 0) ? 0 : 1; }
+    { flush_text (r); st->ch.underline = (has_param && param == 0) ? W42_UNDERLINE_NONE
+                                                                   : W42_UNDERLINE_SINGLE; }
   else if (g_str_equal (word, "ulnone"))
-    { flush_text (r); st->ch.underline = 0; }
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_NONE; }
+  else if (g_str_equal (word, "uldb"))
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_DOUBLE; }
+  else if (g_str_equal (word, "ulw"))
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_WORDS; }
+  else if (g_str_equal (word, "uld") || g_str_equal (word, "uldb0"))
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_DOTTED; }
+  else if (g_str_equal (word, "uldash") || g_str_equal (word, "uldashd") ||
+           g_str_equal (word, "uldashdd"))
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_DASHED; }
+  else if (g_str_equal (word, "ulth") || g_str_equal (word, "ulthd") ||
+           g_str_equal (word, "ulthdash") || g_str_equal (word, "ulhwave") ||
+           g_str_equal (word, "ululdbwave"))
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_THICK; }
+  else if (g_str_equal (word, "ulwave"))
+    { flush_text (r); st->ch.underline = W42_UNDERLINE_WAVE; }
   else if (g_str_equal (word, "ol"))
     { flush_text (r); st->ch.overline = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "strike"))

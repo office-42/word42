@@ -261,6 +261,10 @@ Early, but real. Word42 today is a working word processor:
   many as you like). Beside a picture, a frame or a dropped letter the text
   is set line by line, and the rest of the paragraph at full width. Word,
   OpenDocument and HTML files carry both.
+- **Underline styles** — single, double, words only, dotted, dashed, thick
+  and wave, in Format ▸ Font Effects; RTF, Word and OpenDocument files
+  carry every one of them, both ways.
+
 - **AutoCorrect** — Word 6's four corrections, made as you type: straight
   quotes become the curly ones that fit where they stand, TWo INitial
   CApitals become one, the first word of a sentence takes its capital, two

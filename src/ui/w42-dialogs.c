@@ -2610,10 +2610,17 @@ typedef struct {
   GtkWidget *window;
   W42View   *view;
   GtkWidget *strike, *super, *sub, *smallcaps, *allcaps, *overline;
+  GtkWidget *underline;
   GtkWidget *highlight;
   GtkWidget *spacing;
   GtkWidget *colour;
 } EffectsBox;
+
+/* Word 6 offered the first four; the rest are what the file formats can
+ * say, and what other programs write. */
+static const char * const UNDERLINES[] = {
+  "(none)", "Single", "Double", "Words Only", "Dotted", "Dashed", "Thick", "Wave", NULL
+};
 
 static const char * const HIGHLIGHTS[] = {
   "None", "Yellow", "Bright Green", "Turquoise", "Pink", "Blue", "Red",
@@ -2649,6 +2656,7 @@ on_effects_ok (GtkButton *button, gpointer data)
   want.smallcaps = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->smallcaps)) ? 1 : 0;
   want.allcaps   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->allcaps)) ? 1 : 0;
   want.highlight = h < G_N_ELEMENTS (HIGHLIGHT_INDEX) ? HIGHLIGHT_INDEX[h] : 0;
+  want.underline = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->underline));
   want.spacing   = (gint16) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->spacing)) * 20.0);
   {
     guint c = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->colour));
@@ -2658,7 +2666,8 @@ on_effects_ok (GtkButton *button, gpointer data)
 
   w42_view_apply_char_fmt (box->view,
                            W42_CHAR_STRIKEOUT | W42_CHAR_OVERLINE | W42_CHAR_SCRIPT | W42_CHAR_SMALLCAPS |
-                           W42_CHAR_ALLCAPS | W42_CHAR_HIGHLIGHT | W42_CHAR_SPACING | W42_CHAR_COLOR, &want);
+                           W42_CHAR_ALLCAPS | W42_CHAR_HIGHLIGHT | W42_CHAR_SPACING | W42_CHAR_COLOR |
+                           W42_CHAR_UNDERLINE, &want);
   gtk_window_destroy (GTK_WINDOW (box->window));
 }
 
@@ -2712,6 +2721,10 @@ w42_effects_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), box->allcaps, 1, 1, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->sub, 0, 2, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->overline, 1, 2, 1, 1);
+
+  grid = group (content, "Underline");
+  box->underline = choice_row (grid, 0, 0, "_Underline:", UNDERLINES,
+                               MIN (now.underline, G_N_ELEMENTS (UNDERLINES) - 2));
 
   grid = group (content, "Highlight");
   for (guint i = 0; i < G_N_ELEMENTS (HIGHLIGHT_INDEX); i++)

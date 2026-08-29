@@ -186,6 +186,11 @@ The rest of them: strikethrough, overline, superscript, subscript, small
 capitals, all capitals, a highlight colour, and character spacing (letters
 pushed apart or drawn together, in points).
 
+It also carries the **underline**, which has seven kinds: single, double,
+words only (the spaces between words are left alone), dotted, dashed,
+thick and wave. Ctrl+U is the single one; the others are chosen here. RTF,
+Word and OpenDocument files carry all of them.
+
 ### Format ▸ Change Case
 
 Sentence case, lowercase, UPPERCASE, Title Case and tOGGLE cASE

@@ -203,7 +203,20 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
     g_string_append_printf (out, "<span style=\"%s\">", css->str);
   if (ch->bold)      g_string_append (out, "<b>");
   if (ch->italic)    g_string_append (out, "<i>");
-  if (ch->underline && ch->link == NULL) g_string_append (out, "<u>");
+  if (ch->underline && ch->link == NULL)
+    {
+      static const char *const CSS[] = {
+        "", "", "double", "", "dotted", "dashed", "solid", "wavy"
+      };
+      guint kind = MIN (ch->underline, G_N_ELEMENTS (CSS) - 1);
+
+      if (*CSS[kind] != '\0')
+        g_string_append_printf (out, "<u style=\"text-decoration-style:%s%s\">", CSS[kind],
+                                ch->underline == W42_UNDERLINE_THICK
+                                  ? ";text-decoration-thickness:2px" : "");
+      else
+        g_string_append (out, "<u>");
+    }
   if (ch->strikeout) g_string_append (out, "<s>");
   if (ch->overline)  g_string_append (out, "<span style=\"text-decoration:overline\">");
   if (ch->revision == 1) g_string_append (out, "<ins>");
