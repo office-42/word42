@@ -97,6 +97,12 @@ Early, but real. Word42 today is a working word processor:
   HTML back — a plain reading, with no CSS engine, that brings in what
   Word42 wrote and most pages that are text: headings, paragraphs, bold,
   italic, links, lists, tables, embedded pictures.
+- **Templates** — File ▸ New from Template starts from a Letter, Memo,
+  Fax Cover, Report or Meeting Notes, or from a document of your own kept
+  in the templates folder; File ▸ Save as Template puts one there.
+- **Envelopes and labels** — Tools ▸ Envelopes and Labels makes an
+  envelope of any of six sizes, with the addresses where the post expects
+  them, or a sheet of labels as a table with a cell per label.
 - **Page background** — Format ▸ Background sets the colour behind the
   page, shown on the screen and in Print Preview and carried by Word,
   RTF, OpenDocument and HTML; printing leaves the paper as it is.

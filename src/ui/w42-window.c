@@ -31,6 +31,7 @@
 #include "w42-settings.h"
 #include "w42-spell-dialog.h"
 #include "w42-autotext.h"
+#include "w42-template.h"
 #include "w42-help.h"
 #include "w42-view.h"
 
@@ -497,6 +498,20 @@ window_note_recent (W42Window *self, GFile *file)
       window_refresh_recent (W42_WINDOW (l->data));
 }
 
+W42Document *
+w42_window_new_document (GtkWindow *from)
+{
+  GtkApplication *app = from != NULL ? gtk_window_get_application (from) : NULL;
+  GtkWidget *window;
+
+  if (app == NULL)
+    return NULL;
+
+  window = w42_window_new (app);
+  gtk_window_present (GTK_WINDOW (window));
+  return W42_WINDOW (window)->doc;
+}
+
 void
 w42_window_open (W42Window *self, GFile *file)
 {
@@ -782,6 +797,83 @@ action_save_as (GSimpleAction *action, GVariant *param, gpointer data)
 {
   (void) action; (void) param;
   window_save_as (W42_WINDOW (data));
+}
+
+/* File > New from Template. */
+static void
+action_new_from_template (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_template_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+/* File > Save as Template: a copy in the templates folder, which
+ * New from Template then lists.  The document keeps the file it had. */
+static void
+on_template_saved (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  GFile *file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
+
+  if (file != NULL)
+    {
+      GFile *had = w42_document_get_file (self->doc);
+      gboolean was_modified = w42_document_get_modified (self->doc);
+
+      if (had != NULL)
+        g_object_ref (had);
+      if (!w42_document_save (self->doc, file, &error))
+        show_error (self, "Word42 could not save that template.", error);
+      else
+        window_flash (self, "Saved as a template.  File > New from Template "
+                            "lists it.");
+      /* The document is what it was: the template is a copy. */
+      w42_document_set_file (self->doc, had);
+      w42_document_set_modified (self->doc, was_modified);
+      if (had != NULL)
+        g_object_unref (had);
+      g_object_unref (file);
+    }
+  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
+                                              GTK_DIALOG_ERROR_DISMISSED))
+    {
+      show_error (self, "Word42 could not save that template.", error);
+    }
+  g_clear_error (&error);
+}
+
+static void
+action_save_as_template (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
+  char *dir = w42_template_folder ();
+  GFile *folder = g_file_new_for_path (dir);
+  char *name = w42_document_get_title (self->doc);
+  char *stem = g_strdup (name);
+  char *dot = strrchr (stem, '.');
+  char *suggested;
+
+  (void) action; (void) param;
+
+  if (dot != NULL)
+    *dot = '\0';
+  suggested = g_strconcat (stem, ".rtf", NULL);
+
+  gtk_file_dialog_set_title (dialog, "Save as Template");
+  gtk_file_dialog_set_initial_folder (dialog, folder);
+  gtk_file_dialog_set_initial_name (dialog, suggested);
+  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, on_template_saved, self);
+
+  g_free (suggested);
+  g_free (stem);
+  g_free (name);
+  g_object_unref (folder);
+  g_free (dir);
+  g_object_unref (dialog);
 }
 
 /* ---- Closing a document with unsaved changes -------------------------- */
@@ -1956,6 +2048,15 @@ action_table_properties (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   w42_table_properties_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+static void
+action_envelopes (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_envelope_dialog_show (GTK_WINDOW (self), self->view);
 }
 
 static void
@@ -3649,6 +3750,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "revert",     action_revert,     NULL, NULL,    NULL, { 0 } },
   { "save",       action_save,       NULL, NULL,    NULL, { 0 } },
   { "save-as",    action_save_as,    NULL, NULL,    NULL, { 0 } },
+  { "new-from-template", action_new_from_template, NULL, NULL, NULL, { 0 } },
+  { "save-as-template",  action_save_as_template,  NULL, NULL, NULL, { 0 } },
   { "close",      action_close,      NULL, NULL,    NULL, { 0 } },
   { "undo",       action_undo,       NULL, NULL,    NULL, { 0 } },
   { "redo",       action_redo,       NULL, NULL,    NULL, { 0 } },
@@ -3683,6 +3786,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "language",     action_language,     NULL, NULL, NULL, { 0 } },
   { "autotext",     action_autotext,     NULL, NULL, NULL, { 0 } },
   { "background",   action_background,   NULL, NULL, NULL, { 0 } },
+  { "envelopes",    action_envelopes,    NULL, NULL, NULL, { 0 } },
   { "autotext-expand", action_autotext_expand, NULL, NULL, NULL, { 0 } },
   { "format-picture", action_format_picture, NULL, NULL, NULL, { 0 } },
   { "drop-cap", action_drop_cap, NULL, NULL, NULL, { 0 } },

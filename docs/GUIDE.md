@@ -63,6 +63,14 @@ and the ruler off and on; Word42 remembers the setting for the next time.
 The File menu remembers the last eight files you opened or saved; pick one
 from the bottom of the menu to open it again.
 
+**File ▸ New from Template** starts a document from one of the templates
+that travel with the program — Letter, Memo, Fax Cover, Report, Meeting
+Notes — or from one of your own. **File ▸ Save as Template** puts a copy
+of the document you are in into the templates folder, where the list
+picks it up; the document itself is unchanged and keeps its own file. A
+document started from a template is untitled: saving asks where to put
+it, so a template is never written over by accident.
+
 **File ▸ Revert** goes back to the document as it was when it was last
 saved, throwing away the changes made since. It asks first, and it is
 greyed out when the document has never been saved or has no changes to
@@ -566,6 +574,22 @@ Pages, words, characters with and without their spaces, paragraphs and
 lines. **Include footnotes and endnotes** counts what is down in the
 notes as well, and with text selected the box counts the selection
 beside the document.
+
+### Tools ▸ Envelopes and Labels
+
+**Tools ▸ Envelopes and Labels** makes an envelope or a sheet of labels
+as a document of its own, in a new window. For an envelope, give the
+delivery address and the return address and pick the size: the page
+becomes the envelope's, the return address sits small in the top corner
+and the delivery address a third of the way in and two fifths of the way
+down, where a sorting machine looks for it. For labels, the delivery
+address box is the label's text and the sheet is a table with a cell per
+label, no rules, each cell the label's size — the same text on every
+label, or on the first one only.
+
+The delivery address starts as whatever is selected in the document, and
+the return address as the name in Tools ▸ Options. Sizes are named by
+what they measure rather than by any maker's catalogue number.
 
 ### Tools ▸ Hyphenation
 

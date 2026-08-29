@@ -8,6 +8,8 @@
 
 #include "w42-autocorrect.h"
 #include "w42-autotext.h"
+#include "w42-envelope.h"
+#include "w42-template.h"
 #include "w42-tableformat.h"
 #include "w42-lang.h"
 #include "w42-spell.h"
@@ -3630,6 +3632,335 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
   }
 
   button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* File > New from Template                                                */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *list;
+  GtkWidget *hint;
+  char     **files;         /* what is in the templates folder */
+  int        n_built_in;
+} TemplateBox;
+
+static void
+template_free (gpointer data, GObject *where)
+{
+  TemplateBox *box = data;
+
+  (void) where;
+  g_strfreev (box->files);
+  g_free (box);
+}
+
+static void
+template_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  TemplateBox *box = data;
+  int n = 0;
+  const W42Template *templates = w42_templates (&n);
+  int which;
+
+  (void) list;
+  if (row == NULL)
+    return;
+  which = gtk_list_box_row_get_index (row);
+  if (which < n)
+    gtk_label_set_text (GTK_LABEL (box->hint), templates[which].hint);
+  else
+    gtk_label_set_text (GTK_LABEL (box->hint),
+                        "A document of your own, kept in the templates folder.");
+}
+
+static void
+on_template_ok (GtkButton *button, gpointer data)
+{
+  TemplateBox *box = data;
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (box->list));
+  GtkWindow *parent = gtk_window_get_transient_for (GTK_WINDOW (box->window));
+  int which = row != NULL ? gtk_list_box_row_get_index (row) : 0;
+  W42Document *doc;
+
+  (void) button;
+
+  doc = w42_window_new_document (parent);
+  if (doc == NULL)
+    return;
+
+  if (which < box->n_built_in)
+    {
+      W42PageSetup page = *w42_document_page_setup (doc);
+
+      w42_template_make (w42_document_pt (doc), &page, which);
+      w42_document_set_page_setup (doc, &page);
+      w42_document_set_modified (doc, which != 0);
+      w42_document_touch (doc);
+    }
+  else
+    {
+      /* One of the user's own: it is opened and then forgotten, so that
+       * saving asks where to put the new document rather than writing
+       * over the template. */
+      char *dir = w42_template_folder ();
+      char *path = g_build_filename (dir, box->files[which - box->n_built_in], NULL);
+      GFile *file = g_file_new_for_path (path);
+      GError *error = NULL;
+
+      if (w42_document_load (doc, file, &error))
+        {
+          w42_document_set_file (doc, NULL);
+          w42_document_set_modified (doc, FALSE);
+          w42_document_touch (doc);
+        }
+      else
+        {
+          w42_message_show (parent, "Word42 could not open that template.",
+                            error != NULL ? error->message : NULL);
+        }
+      g_clear_error (&error);
+      g_object_unref (file);
+      g_free (path);
+      g_free (dir);
+    }
+
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_template_dialog_show (GtkWindow *parent, W42View *view)
+{
+  TemplateBox *box;
+  GtkWidget *content, *grid, *scroller;
+  int n = 0;
+  const W42Template *templates = w42_templates (&n);
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  box = g_new0 (TemplateBox, 1);
+  box->view = view;
+  box->n_built_in = n;
+  box->files = w42_template_files ();
+  box->window = dialog_shell (parent, "New from Template", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), template_free, box);
+
+  grid = group (content, "Templates");
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
+  for (int i = 0; i < n; i++)
+    {
+      GtkWidget *label = gtk_label_new (templates[i].name);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_widget_set_margin_start (label, 6);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+    }
+  for (guint i = 0; box->files != NULL && box->files[i] != NULL; i++)
+    {
+      GtkWidget *label = gtk_label_new (box->files[i]);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+      gtk_widget_set_margin_start (label, 6);
+      gtk_list_box_append (GTK_LIST_BOX (box->list), label);
+    }
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_widget_set_size_request (scroller, 280, 160);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 1, 1);
+
+  box->hint = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->hint), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (box->hint), TRUE);
+  gtk_widget_set_size_request (box->hint, 280, -1);
+  gtk_grid_attach (GTK_GRID (grid), box->hint, 0, 1, 1, 1);
+
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (template_chosen), box);
+  gtk_list_box_select_row (GTK_LIST_BOX (box->list),
+                           gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), 1));
+
+  button_row (content, box->window, G_CALLBACK (on_template_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tools > Envelopes and Labels                                            */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *what;              /* envelope or labels */
+  GtkWidget *delivery;          /* a text view: an address has lines */
+  GtkWidget *sender;
+  GtkWidget *envelope_size;
+  GtkWidget *label_sheet;
+  GtkWidget *label_all;
+} EnvelopeBox;
+
+static const char * const ENVELOPE_OR_LABELS[] = { "Envelope", "Labels", NULL };
+
+static void
+envelope_free (gpointer data, GObject *where)
+{
+  (void) where;
+  g_free (data);
+}
+
+/* Everything in a text view, as one string. */
+static char *
+text_view_text (GtkWidget *view)
+{
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+  GtkTextIter start, end;
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  return gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+}
+
+static void
+on_envelope_ok (GtkButton *button, gpointer data)
+{
+  EnvelopeBox *box = data;
+  gboolean labels = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->what)) == 1;
+  char *delivery = text_view_text (box->delivery);
+  char *sender = text_view_text (box->sender);
+  GtkWindow *parent = GTK_WINDOW (gtk_window_get_transient_for (GTK_WINDOW (box->window)));
+  W42Document *doc;
+  W42PageSetup page;
+
+  (void) button;
+
+  /* The envelope or the sheet is a document of its own, in a window of
+   * its own: Word 6 offered to put it in front of the letter, but a
+   * separate document is the honest thing when a section cannot have a
+   * page size of its own yet. */
+  doc = w42_window_new_document (parent);
+  if (doc == NULL)
+    {
+      g_free (delivery);
+      g_free (sender);
+      return;
+    }
+
+  page = *w42_document_page_setup (doc);
+  if (labels)
+    w42_labels_make (w42_document_pt (doc), &page,
+                     (int) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->label_sheet)),
+                     delivery,
+                     gtk_check_button_get_active (GTK_CHECK_BUTTON (box->label_all)));
+  else
+    w42_envelope_make (w42_document_pt (doc), &page,
+                       (int) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->envelope_size)),
+                       delivery, sender);
+  w42_document_set_page_setup (doc, &page);
+  w42_document_set_modified (doc, TRUE);
+  w42_document_touch (doc);
+
+  g_free (delivery);
+  g_free (sender);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+/* A framed text view, for an address of several lines. */
+static GtkWidget *
+address_box (GtkWidget *grid, int row, const char *label, GtkWidget **view)
+{
+  GtkWidget *text = gtk_label_new_with_mnemonic (label);
+  GtkWidget *scroller = gtk_scrolled_window_new ();
+
+  *view = gtk_text_view_new ();
+  gtk_text_view_set_wrap_mode (GTK_TEXT_VIEW (*view), GTK_WRAP_WORD);
+  gtk_label_set_xalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_yalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (text), *view);
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
+                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), *view);
+  gtk_widget_set_size_request (scroller, 260, 72);
+  gtk_grid_attach (GTK_GRID (grid), text, 0, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 1, row, 1, 1);
+  return scroller;
+}
+
+void
+w42_envelope_dialog_show (GtkWindow *parent, W42View *view)
+{
+  EnvelopeBox *box;
+  GtkWidget *content, *grid, *label;
+  int n_env = 0, n_lab = 0;
+  const W42EnvelopeSize *envs = w42_envelope_sizes (&n_env);
+  const W42LabelSheet *sheets = w42_label_sheets (&n_lab);
+  const char **env_names, **sheet_names;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (EnvelopeBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Envelopes and Labels", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), envelope_free, box);
+
+  grid = group (content, "What to make");
+  box->what = choice_row (grid, 0, 0, "_Make:", ENVELOPE_OR_LABELS, 0);
+
+  grid = group (content, "Addresses");
+  address_box (grid, 0, "_Delivery address:", &box->delivery);
+  address_box (grid, 1, "_Return address:", &box->sender);
+
+  /* An address is often already in the document: the selection is the
+   * likeliest one, as Word 6 took it. */
+  {
+    char *selected = w42_view_get_selected_text (view);
+
+    if (selected != NULL && *selected != '\0')
+      gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->delivery)),
+                                selected, -1);
+    g_free (selected);
+  }
+  {
+    char *me = w42_settings_get_string ("user-name", "");
+
+    if (me != NULL && *me != '\0')
+      gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->sender)),
+                                me, -1);
+    g_free (me);
+  }
+
+  grid = group (content, "Sizes");
+  env_names = g_new0 (const char *, n_env + 1);
+  for (int i = 0; i < n_env; i++)
+    env_names[i] = envs[i].name;
+  box->envelope_size = choice_row (grid, 0, 0, "_Envelope:", env_names, 0);
+  gtk_widget_set_size_request (box->envelope_size, 250, -1);
+  g_free (env_names);
+
+  sheet_names = g_new0 (const char *, n_lab + 1);
+  for (int i = 0; i < n_lab; i++)
+    sheet_names[i] = sheets[i].name;
+  box->label_sheet = choice_row (grid, 1, 0, "_Label sheet:", sheet_names, 0);
+  gtk_widget_set_size_request (box->label_sheet, 250, -1);
+  g_free (sheet_names);
+
+  box->label_all = gtk_check_button_new_with_mnemonic ("The same on _every label");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->label_all), TRUE);
+  gtk_grid_attach (GTK_GRID (grid), box->label_all, 0, 2, 2, 1);
+
+  label = gtk_label_new ("The envelope or the sheet of labels is made as a "
+                         "document of its own, in a new window.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_widget_set_size_request (label, 360, -1);
+  gtk_box_append (GTK_BOX (content), label);
+
+  button_row (content, box->window, G_CALLBACK (on_envelope_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
 }
 

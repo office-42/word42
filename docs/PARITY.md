@@ -73,6 +73,8 @@ is listed so the distance to the current product is honest.
 | Annotations/comments | full | yes | yes | yes |
 | Revision marks (track, accept/reject all) | full, one author | full | full | full |
 | Mail merge (CSV) | full | yes | yes | yes |
+| Envelopes and labels | full (a document of their own) | no | full | full |
+| Templates | built-in ones, and a folder of your own | New from Template | full | full |
 | Equations | no | yes (MathML) | Equation Editor | yes |
 | Macros | no | no (plugins) | WordBasic | VBA |
 
@@ -137,16 +139,16 @@ Pa = partial, M = missing.
 
 | Menu | vs Word 6 (P/Pa/M) | Most missed there | vs AbiWord (P/Pa/M) | Most missed there |
 |---|---|---|---|---|
-| File | 13/0/1 | Templates, Find File | 13/0/1 | New from Template |
+| File | 14/0/1 | Find File | 14/0/0 | -- |
 | Edit | 12/1/2 | Repeat, Links | 13/0/1 | Paste Unformatted styles |
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
 | Insert | 7/6/3 | Object, Index, Form Field | 11/2/2 | Text Box, Clip Art |
 | Format | 6/8/1 | AutoFormat, Style Gallery, one Font box | 16/4/2 | two the earlier review did not name |
-| Tools | 5/3/6 | Thesaurus, Grammar, Envelopes | 6/2/2 | Compare, Document Statistics |
+| Tools | 6/3/5 | Thesaurus, Grammar, Protect Document | 6/2/2 | Plugins and Scripts |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
 | Window | 3/0/1 | Split | 2/0/0 | -- |
 | Help | 5/1/3 | Quick Preview, Examples and Demos | 5/1/0 | -- |
-| **Total** | **65/24/24** | | **84/12/12** | |
+| **Total** | **67/24/23** | | **85/12/11** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
@@ -368,3 +370,22 @@ background shape, OpenDocument's `fo:background-color` on the page
 layout, and HTML's body style, all both ways, and LibreOffice reads all
 of ours.  Printing leaves the paper alone, as a word processor does
 unless it is told otherwise.
+
+**Templates, envelopes and labels.**  Two of the three commands the
+count still named on the File menu, and one of the three on Tools.
+
+  - **File > New from Template** lists six templates that travel with
+    the program -- Blank, Letter, Memo, Fax Cover, Report, Meeting
+    Notes -- and whatever is in the templates folder, and starts a
+    document from the one chosen.  The built-in ones are built in the
+    model rather than read from a file, so they cannot go missing, and
+    they use the styles, tab stops, paragraph rules and date fields the
+    program already has.  **File > Save as Template** puts a copy of the
+    document in that folder; a document started from a template is
+    untitled, so a template cannot be written over by accident.
+  - **Tools > Envelopes and Labels** makes an envelope or a sheet of
+    labels as a document of its own: the envelope's page is the
+    envelope's size with the two addresses where the post expects them,
+    and the sheet is a table with a cell per label, no rules, each cell
+    the label's size.  The sizes are named by what they measure -- no
+    maker's catalogue numbers.

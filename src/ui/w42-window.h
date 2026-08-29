@@ -23,6 +23,12 @@ GtkWidget *w42_window_new  (GtkApplication *app);
 GtkWidget *w42_window_new_for_document (GtkApplication *app, W42Document *doc);
 void       w42_window_open (W42Window *self, GFile *file);
 
+/* An empty document in a new window, for the commands that make a
+ * document of their own -- an envelope, a sheet of labels.  The window
+ * is presented; the document is returned to be filled.  NULL when
+ * `from` belongs to no application. */
+W42Document *w42_window_new_document (GtkWindow *from);
+
 /* Opens a window for every document word42 was editing when it last
  * stopped without saving -- the autosave copies -- and returns how many.
  * Called before the first ordinary window is made. */

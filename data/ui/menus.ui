@@ -13,6 +13,10 @@
           <attribute name="action">win.new</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">New from Te_mplate...</attribute>
+          <attribute name="action">win.new-from-template</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">_Open...</attribute>
           <attribute name="action">win.open</attribute>
         </item>
@@ -29,6 +33,10 @@
         <item>
           <attribute name="label" translatable="yes">Save _As...</attribute>
           <attribute name="action">win.save-as</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Save as Temp_late...</attribute>
+          <attribute name="action">win.save-as-template</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">_Revert</attribute>
@@ -500,6 +508,10 @@
             </item>
           </section>
         </submenu>
+        <item>
+          <attribute name="label" translatable="yes">En_velopes and Labels...</attribute>
+          <attribute name="action">win.envelopes</attribute>
+        </item>
         <item>
           <attribute name="label" translatable="yes">Mail Mer_ge...</attribute>
           <attribute name="action">win.mail-merge</attribute>
