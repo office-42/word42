@@ -49,6 +49,11 @@ char      **w42_spell_suggest_lang (W42Spell *spell, const char *lang,
 void        w42_spell_ignore   (W42Spell *spell, const char *word);
 void        w42_spell_add      (W42Spell *spell, const char *word);
 
+/* Bumped whenever a word is ignored or added, so that anything holding
+ * on to what the checker said before -- the layout's shaped paragraphs,
+ * with their red underlines -- knows to work it out again. */
+guint       w42_spell_serial   (W42Spell *spell);
+
 /* The next word of `text` at or after byte `*end`: on TRUE, [*start, *end)
  * are its byte bounds.  A word is a run of letters, with apostrophes inside
  * it; anything with a digit in it is not a word and is not checked. */

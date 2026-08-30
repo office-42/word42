@@ -22,6 +22,7 @@ struct _W42Spell {
   GHashTable    *ignored;    /* words ignored this session */
   GHashTable    *by_lang;    /* BCP-47 tag -> EnchantDict*, or NULL when
                               * there is no dictionary for it */
+  guint          serial;     /* bumped when a word is ignored or added */
 };
 
 /* ---------------------------------------------------------------------- */
@@ -503,6 +504,14 @@ w42_spell_ignore (W42Spell *spell, const char *word)
   g_return_if_fail (word != NULL);
 
   g_hash_table_add (spell->ignored, plain_word (word));
+  spell->serial++;
+}
+
+guint
+w42_spell_serial (W42Spell *spell)
+{
+  g_return_val_if_fail (spell != NULL, 0);
+  return spell->serial;
 }
 
 void
@@ -520,5 +529,6 @@ w42_spell_add (W42Spell *spell, const char *word)
     /* Belt and braces: Enchant's personal list is read back on the next
      * check, but the session list costs nothing. */
     g_hash_table_add (spell->ignored, plain);
+    spell->serial++;
   }
 }

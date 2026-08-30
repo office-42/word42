@@ -159,10 +159,43 @@ Two conveniences sit on top:
 
 ## Layout
 
-`w42_layout_build()` throws away the previous layout and reformats everything.
-That is honest about what it is: correct, simple, and fast enough for
-documents of the size Word 6 was built for. Incremental reformatting is the
-obvious next optimisation and the interface does not need to change for it.
+`w42_layout_build()` walks the whole document every time, but it does not
+**shape** the whole document every time. Shaping — turning text and its
+formatting into positioned glyphs — is what costs; the rest of a pass is
+arithmetic. So every paragraph shaped is kept under a signature of
+everything that went into it, and a pass reuses what has not changed:
+
+```
+   typing one character into a 173-page document
+   before:  845 ms   every paragraph shaped
+   after:    20 ms   one paragraph shaped, 4 999 reused
+```
+
+The signature holds the paragraph's text, its formatting record, every
+run's record and byte extent, the width it is set to, the drop-cap and
+hidden ranges, and the state of the spelling checker. It deliberately
+holds **no document position**: a run's offsets are counted from its own
+paragraph, so typing on page one leaves page two's signature alone,
+which is the whole point. A paragraph carrying a footnote reference is
+not signed at all — its mark is drawn from a list the pass builds as it
+goes, so it must be built afresh.
+
+Two paragraphs identical in every particular share one shaped layout;
+in an ordinary document the empty ones alone make that worth having.
+What a pass does not ask for is let go of at the end of it, so the cache
+holds the document as it stands rather than everything it has been, and
+a layout handed a different document forgets the lot
+(`w42_layout_forget_shaping()`), since another document numbers its
+formatting records its own way.
+
+The measured lines of a whole paragraph are kept with its shaped layout
+too, so an unchanged paragraph is not walked with a `PangoLayoutIter`
+again either.
+
+What remains linear in the document is the snapshot out of the piece
+table and the pagination arithmetic — about 5 ms and 14 ms respectively
+for 5 000 paragraphs. Making *those* incremental is the next
+optimisation, and the interface does not need to change for it.
 
 ### Units
 

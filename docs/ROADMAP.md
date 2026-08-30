@@ -11,7 +11,12 @@ deliberate: the menu bar is the specification.
 
 **Headers and footers edited in place**, with pictures and several
 paragraphs, different on the first page and on odd and even pages.
-Then: nested tables; incremental reflow.
+Then: nested tables; an incremental snapshot and pagination to go with
+the incremental shaping.
+Shaping is incremental now: a keystroke in a 173-page document shapes
+the one paragraph it changed and reuses the rest, which took the cost of
+a keystroke there from 845 ms to 20 ms.
+
 Vertical cell merges are done: select down a column and Merge Cells
 makes one cell as tall as the rows it covers; Split Cells gives them
 back; Word, RTF and OpenDocument carry the merge both ways.

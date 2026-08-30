@@ -105,6 +105,7 @@ is listed so the distance to the current product is honest.
 | Full Screen (chrome away, Escape back) | full | full | full | full |
 | Outline view / document map | no | no | yes | yes |
 | Multiple windows on one document | full | yes | full | full |
+| Typing in a long document (173 pages) | 20 ms a keystroke: the changed paragraph is shaped, the rest reused | incremental | incremental | incremental |
 | Autosave and crash recovery | full | yes | yes | yes |
 | Recent files, options, units | full | full | full | full |
 | Message and confirmation boxes | the program's own chrome | system | own | own |
@@ -415,3 +416,23 @@ quotes take a printer's shapes, two hyphens become a dash, and a run of
 empty paragraphs becomes one.  The four are switches in the box, the
 whole pass is one undo step, and a second pass over the same document
 finds nothing left to do.  Tables and notes are left alone.
+
+**Typing in a long document.**  Every keystroke laid the whole document
+out again, shaping every paragraph: 336 ms in a 69-page document and
+845 ms in a 173-page one, which is not a word processor one can write a
+report in, let alone a book.  Shaping is now kept between passes under a
+signature of everything that goes into it, so a keystroke shapes the
+paragraph it changed and reuses the rest -- 4 999 of 5 000 in the
+measurement -- and the same keystroke costs 20 ms.  The measured lines
+of an unchanged paragraph are kept with it, so Pango's iterator is not
+walked again either.
+
+What the pass still does for every paragraph is take a snapshot out of
+the piece table and work out where the lines fall; those are arithmetic
+rather than shaping, and they are what is left to make incremental.
+
+The cache changes nothing about what comes out: the checks lay a
+document out twice and compare every line box of the cached pass with
+one from a layout that has never seen the document, after typing, after
+undo, after formatting, after the page narrows, after the spelling
+checker is told to ignore a word, and after the caret moves.

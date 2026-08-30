@@ -4472,6 +4472,10 @@ w42_view_set_document (W42View *self, W42Document *doc)
 
   g_set_object (&self->doc, doc);
 
+  /* The shaped paragraphs the layout keeps belong to the document it
+   * had: another document's formatting is numbered its own way. */
+  w42_layout_forget_shaping (self->layout);
+
   if (doc != NULL)
     {
       self->doc_changed_id = g_signal_connect (doc, "changed",

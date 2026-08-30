@@ -42,7 +42,42 @@ struct _W42Layout {
   GArray       *cell_rects;  /* W42CellRect: table cell borders */
   GPtrArray    *note_marks;  /* PangoLayout*, the footnote numbers in the text */
   GArray       *note_rules;  /* W42NoteRule: the separator above the notes */
+
+  /* Shaping a paragraph is the expensive part of laying a document out,
+   * and a keystroke changes one paragraph.  Every paragraph shaped is
+   * kept under a signature of everything that went into it, so the next
+   * pass over the document reshapes what changed and reuses the rest.
+   * Two paragraphs that are the same in every particular -- two empty
+   * ones, say -- share the one shaped layout. */
+  GHashTable   *shaped;      /* GBytes* signature -> Shaped* */
+  guint         generation;  /* which pass we are on */
+  GByteArray   *keybuf;      /* the signature being built, reused */
+  gpointer      cache_pt;    /* the document the cache belongs to */
+  gpointer      cache_aps;
+  guint         hits, misses;   /* what the last pass did */
 };
+
+/* One shaped paragraph, and the pass that last wanted it. */
+typedef struct {
+  PangoLayout *layout;       /* one reference is the cache's */
+  guint        generation;
+} Shaped;
+
+/* The measured lines hung on a shaped layout. */
+static void
+block_lines_free (gpointer data)
+{
+  g_array_free (data, TRUE);
+}
+
+static void
+shaped_free (gpointer data)
+{
+  Shaped *shaped = data;
+
+  g_clear_object (&shaped->layout);
+  g_free (shaped);
+}
 
 typedef struct {
   int    page;
@@ -447,6 +482,9 @@ w42_layout_new (void)
   self->furniture_layouts = g_ptr_array_new_with_free_func (g_object_unref);
   self->lines   = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
   self->n_pages = 1;
+  self->shaped = g_hash_table_new_full (g_bytes_hash, g_bytes_equal,
+                                        (GDestroyNotify) g_bytes_unref, shaped_free);
+  self->keybuf = g_byte_array_new ();
 
   return self;
 }
@@ -469,6 +507,8 @@ w42_layout_free (W42Layout *self)
   g_array_free (self->caps, TRUE);
   g_ptr_array_free (self->cap_layouts, TRUE);
   g_array_free (self->lines, TRUE);
+  g_hash_table_destroy (self->shaped);
+  g_byte_array_free (self->keybuf, TRUE);
   g_object_unref (self->ctx);
   g_object_unref (self->ctx_rtl);
   g_free (self);
@@ -816,6 +856,75 @@ w42_layout_set_spell_caret (W42Layout *self, gsize pos)
   self->spell_caret = pos;
 }
 
+/* Everything that goes into the shaping of one paragraph, as bytes.
+ *
+ * What is in here decides when a paragraph has to be shaped again, so
+ * it must hold every input build_block_layout reads -- and nothing that
+ * changes when other paragraphs change.  In particular no document
+ * position goes in: a run's offsets are counted from the paragraph's own
+ * start, so typing on page one leaves page two's signatures alone, which
+ * is the whole point.  A paragraph whose text carries a note reference
+ * is not signed at all: its mark is drawn from a list the layout builds
+ * as it goes, so it must be built afresh each time. */
+static GBytes *
+shaping_key (W42Layout      *self,
+             const W42Block *block,
+             double          text_width,
+             double          extra_indent,
+             guint           cap_bytes,
+             guint           hide_from,
+             guint           hide_to)
+{
+  GByteArray *key = self->keybuf;
+  guint32 n32;
+  double d;
+  gsize spell_at = (gsize) -1;
+
+  for (guint i = 0; i < block->runs->len; i++)
+    if (g_array_index (block->runs, W42Run, i).footnote > 0)
+      return NULL;
+
+  g_byte_array_set_size (key, 0);
+
+#define PUT(p, n) g_byte_array_append (key, (const guint8 *) (p), (n))
+  n32 = 1; PUT (&n32, 4);                       /* what the signature means */
+  d = text_width;    PUT (&d, sizeof d);
+  d = extra_indent;  PUT (&d, sizeof d);
+  d = self->text_w;  PUT (&d, sizeof d);        /* an oversized picture is scaled to it */
+  n32 = cap_bytes;   PUT (&n32, 4);
+  n32 = hide_from;   PUT (&n32, 4);
+  n32 = hide_to;     PUT (&n32, 4);
+  n32 = block->ap;   PUT (&n32, 4);
+
+  /* The red underlines: which dictionary state, and the word the caret
+   * is in, which is left alone.  The caret's place is counted from the
+   * paragraph, and only when it falls inside it. */
+  n32 = self->spell != NULL ? w42_spell_serial (self->spell) + 1 : 0;
+  PUT (&n32, 4);
+  if (self->spell != NULL && self->spell_caret != (gsize) -1 &&
+      self->spell_caret >= block->start_pos &&
+      self->spell_caret <= block->start_pos + 1 + (gsize) g_utf8_strlen (block->text->str, -1))
+    spell_at = self->spell_caret - block->start_pos;
+  PUT (&spell_at, sizeof spell_at);
+
+  n32 = block->runs->len; PUT (&n32, 4);
+  for (guint i = 0; i < block->runs->len; i++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, i);
+      guint32 five[5] = { (guint32) run->ap, (guint32) run->byte_offset,
+                          (guint32) run->n_bytes, (guint32) run->object,
+                          (guint32) run->footnote };
+
+      PUT (five, sizeof five);
+    }
+
+  n32 = (guint32) block->text->len; PUT (&n32, 4);
+  PUT (block->text->str, (guint) block->text->len);
+#undef PUT
+
+  return g_bytes_new (key->data, key->len);
+}
+
 static PangoLayout *
 build_block_layout (W42Layout      *self,
                     const W42Block *block,
@@ -827,7 +936,26 @@ build_block_layout (W42Layout      *self,
                     guint           hide_to)
 {
   const W42ParaFmt *dir_pa = &w42_ap_table_get (aps, block->ap)->pa;
-  PangoLayout *layout = pango_layout_new (dir_pa->rtl ? self->ctx_rtl : self->ctx);
+  PangoLayout *layout;
+  GBytes *key = shaping_key (self, block, text_width, extra_indent,
+                             cap_bytes, hide_from, hide_to);
+
+  if (key != NULL)
+    {
+      Shaped *found = g_hash_table_lookup (self->shaped, key);
+
+      if (found != NULL)
+        {
+          /* Shaped already, and nothing about it has changed. */
+          found->generation = self->generation;
+          g_bytes_unref (key);
+          self->hits++;
+          return g_object_ref (found->layout);
+        }
+    }
+  self->misses++;
+
+  layout = pango_layout_new (dir_pa->rtl ? self->ctx_rtl : self->ctx);
   const W42Fmt *fmt = w42_ap_table_get (aps, block->ap);
   const W42ParaFmt *pa = &fmt->pa;
   PangoFontDescription *desc = pango_font_description_new ();
@@ -954,6 +1082,15 @@ build_block_layout (W42Layout      *self,
     default:
       pango_layout_set_alignment (layout, PANGO_ALIGN_LEFT);
       break;
+    }
+
+  if (key != NULL)
+    {
+      Shaped *shaped = g_new0 (Shaped, 1);
+
+      shaped->layout = g_object_ref (layout);
+      shaped->generation = self->generation;
+      g_hash_table_insert (self->shaped, key, shaped);   /* the key is the table's now */
     }
 
   return layout;
@@ -1164,7 +1301,28 @@ cell_sides (W42ApTable *aps, const W42Block *blk, gboolean table_borders)
 static void
 collect_lines (PangoLayout *layout, GArray *out, guint from, guint to, gboolean narrow, gboolean last)
 {
-  PangoLayoutIter *iter = pango_layout_get_iter (layout);
+  PangoLayoutIter *iter;
+  GArray *whole = NULL;
+
+  /* Whole paragraphs -- which is nearly all of them -- are measured once
+   * and the measurements kept with the shaped layout, so that a pass over
+   * a document that has not changed does not walk Pango's lines again.
+   * The line pointers are the layout's own and live as long as it does. */
+  if (from == 0 && !narrow && last &&
+      to == (guint) strlen (pango_layout_get_text (layout)))
+    {
+      whole = g_object_get_data (G_OBJECT (layout), "w42-lines");
+      if (whole != NULL)
+        {
+          for (guint i = 0; i < whole->len; i++)
+            g_array_append_val (out, g_array_index (whole, BlockLine, i));
+          return;
+        }
+      whole = g_array_new (FALSE, FALSE, sizeof (BlockLine));
+      g_object_set_data_full (G_OBJECT (layout), "w42-lines", whole, block_lines_free);
+    }
+
+  iter = pango_layout_get_iter (layout);
 
   do
     {
@@ -1185,6 +1343,8 @@ collect_lines (PangoLayout *layout, GArray *out, guint from, guint to, gboolean 
       bl.length = ce > cs ? ce - cs : 0;
       bl.narrow = narrow;
       g_array_append_val (out, bl);
+      if (whole != NULL)
+        g_array_append_val (whole, bl);
     }
   while (pango_layout_iter_next_line (iter));
   pango_layout_iter_free (iter);
@@ -1644,6 +1804,19 @@ w42_layout_build_pt (W42Layout          *self,
   g_return_if_fail (page != NULL);
 
   aps = w42_pt_ap_table (pt);
+
+  /* The shaped paragraphs belong to one document: another document's
+   * formatting records are numbered its own way. */
+  if (self->cache_pt != pt || self->cache_aps != aps)
+    {
+      w42_layout_forget_shaping (self);
+      self->cache_pt = pt;
+      self->cache_aps = aps;
+    }
+  self->generation++;
+  self->hits = 0;
+  self->misses = 0;
+
   self->objects = w42_pt_object_table (pt);
   self->styles = w42_pt_stylesheet (pt);
   self->aps = w42_pt_ap_table (pt);
@@ -2552,6 +2725,39 @@ w42_layout_build_pt (W42Layout          *self,
       self->n_pages = 1;
       self->page_h = self->mar_t + y + self->mar_b;
     }
+
+  /* What this pass did not want is let go of, so that the cache holds
+   * the document as it now is and not everything it has ever been. */
+  {
+    GHashTableIter it;
+    gpointer key, value;
+
+    g_hash_table_iter_init (&it, self->shaped);
+    while (g_hash_table_iter_next (&it, &key, &value))
+      if (((const Shaped *) value)->generation != self->generation)
+        g_hash_table_iter_remove (&it);
+  }
+}
+
+void
+w42_layout_forget_shaping (W42Layout *self)
+{
+  g_return_if_fail (self != NULL);
+
+  g_hash_table_remove_all (self->shaped);
+  self->cache_pt = NULL;
+  self->cache_aps = NULL;
+}
+
+void
+w42_layout_shaping_counts (W42Layout *self, guint *reused, guint *shaped)
+{
+  g_return_if_fail (self != NULL);
+
+  if (reused != NULL)
+    *reused = self->hits;
+  if (shaped != NULL)
+    *shaped = self->misses;
 }
 
 /* Expands {PAGE}, {NUMPAGES} and {DATE} in a header or footer. */

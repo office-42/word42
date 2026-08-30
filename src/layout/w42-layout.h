@@ -127,6 +127,15 @@ void  w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page);
  * so the screen, the printer, the preview and the PDF agree. */
 void  w42_layout_draw_line (W42Layout *self, cairo_t *cr, const W42LineBox *box);
 
+/* The shaped paragraphs the layout keeps between passes are let go of:
+ * for when the layout is given a different document, whose formatting
+ * records are numbered its own way. */
+void  w42_layout_forget_shaping (W42Layout *self);
+
+/* What the last pass did: how many paragraphs it reused and how many it
+ * had to shape.  For the checks, and for anyone measuring. */
+void  w42_layout_shaping_counts (W42Layout *self, guint *reused, guint *shaped);
+
 /* ---- Mapping between document positions and the page ------------------ */
 
 /* Position of a block's text within the document, and back again. */
