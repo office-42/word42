@@ -14,8 +14,11 @@ paragraphs, different on the first page and on odd and even pages.
 Then: nested tables; an incremental snapshot and pagination to go with
 the incremental shaping.
 Shaping is incremental now: a keystroke in a 173-page document shapes
-the one paragraph it changed and reuses the rest, which took the cost of
-a keystroke there from 845 ms to 20 ms.
+the one paragraph it changed and reuses the rest, and the passes over
+the document that remain were made cheap -- signatures borrowed rather
+than allocated and hashed as they are built, the last pass's paragraphs
+filled again rather than allocated afresh, a piece's characters
+converted in one go.  A keystroke there went from 845 ms to 12 ms.
 
 Vertical cell merges are done: select down a column and Merge Cells
 makes one cell as tall as the rows it covers; Split Cells gives them

@@ -105,7 +105,7 @@ is listed so the distance to the current product is honest.
 | Full Screen (chrome away, Escape back) | full | full | full | full |
 | Outline view / document map | no | no | yes | yes |
 | Multiple windows on one document | full | yes | full | full |
-| Typing in a long document (173 pages) | 20 ms a keystroke: the changed paragraph is shaped, the rest reused | incremental | incremental | incremental |
+| Typing in a long document (173 pages) | 12 ms a keystroke: the changed paragraph is shaped, the rest reused | incremental | incremental | incremental |
 | Autosave and crash recovery | full | yes | yes | yes |
 | Recent files, options, units | full | full | full | full |
 | Message and confirmation boxes | the program's own chrome | system | own | own |
@@ -436,3 +436,21 @@ document out twice and compare every line box of the cached pass with
 one from a layout that has never seen the document, after typing, after
 undo, after formatting, after the page narrows, after the spelling
 checker is told to ignore a word, and after the caret moves.
+
+**And the passes that remain.**  With the shaping reused, what was left
+of a keystroke was three kinds of housekeeping over the whole document,
+and each was made cheaper.  A paragraph's signature is now borrowed from
+the buffer it is built in rather than allocated, and hashed as it is
+built rather than in a second pass -- and the hash reads every byte,
+which is not a detail: a version that read only the ends of a signature
+put thousands of nearly identical paragraphs in one bucket and made a
+keystroke five times slower than doing nothing at all.  The snapshot
+fills the previous pass's paragraphs again instead of allocating three
+things per paragraph.  And a piece's characters are converted to UTF-8
+in one go rather than one at a time.
+
+A keystroke in a 173-page document costs 12 ms now, against 845 ms
+before any of this; in a 69-page one, 4 ms.  A hundred edits of every
+kind and a hundred undo steps are checked paragraph by paragraph and
+line by line against a layout that has never seen the document, which is
+what says the reuse changes nothing.

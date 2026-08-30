@@ -1244,6 +1244,37 @@ block_new (gsize start_pos, W42ApIdx ap)
   return block;
 }
 
+/* The same, out of a snapshot that is being thrown away: a paragraph's
+ * text and runs are emptied and filled again rather than freed and
+ * allocated.  A pass over a long document made three allocations per
+ * paragraph, which is worth not making.  `taken` says how much of the
+ * pool has been used. */
+static W42Block *
+block_new_reusing (GPtrArray *pool, guint *taken, gsize start_pos, W42ApIdx ap)
+{
+  W42Block *block;
+
+  if (pool == NULL || *taken >= pool->len)
+    return block_new (start_pos, ap);
+
+  block = g_ptr_array_index (pool, (*taken)++);
+  {
+    GString *text = block->text;
+    GArray *runs = block->runs;
+
+    g_string_set_size (text, 0);
+    g_array_set_size (runs, 0);
+    memset (block, 0, sizeof *block);
+    block->text = text;
+    block->runs = runs;
+  }
+  block->start_pos = start_pos;
+  block->ap        = ap;
+  block->table     = -1;
+  block->note      = -1;
+  return block;
+}
+
 /* What one stretch of text comes to.  A word is a run of anything that
  * is not white space; the object mark a picture or a note reference
  * stands in for is not a character at all. */
@@ -1341,9 +1372,16 @@ w42_pt_statistics_range (W42PieceTable *pt, gsize start, gsize end, W42Stats *ou
 GPtrArray *
 w42_pt_snapshot_blocks (W42PieceTable *pt)
 {
+  return w42_pt_snapshot_blocks_reusing (pt, NULL);
+}
+
+GPtrArray *
+w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool)
+{
   GPtrArray *blocks;
   W42Block *current = NULL;
   gsize pos = 0;
+  guint taken = 0;
 
   g_return_val_if_fail (pt != NULL, NULL);
 
@@ -1429,7 +1467,7 @@ w42_pt_snapshot_blocks (W42PieceTable *pt)
               table = -1;
               break;
             case W42_STRUX_BLOCK:
-              current = block_new (pos, p->ap);
+              current = block_new_reusing (pool, &taken, pos, p->ap);
               current->table = table;
               current->row = row;
               current->span = span;
@@ -1477,12 +1515,21 @@ w42_pt_snapshot_blocks (W42PieceTable *pt)
           gsize byte_start = current->text->len;
           W42Run *last = NULL;
 
-          for (gsize i = 0; i < p->length; i++)
-            {
-              char utf8[8];
-              int n = g_unichar_to_utf8 (buf[i], utf8);
-              g_string_append_len (current->text, utf8, n);
-            }
+          /* The piece's characters as UTF-8, written straight into the
+           * paragraph's text: room for the worst case is made once, and
+           * what was not needed is given back.  A character at a time
+           * through g_string_append_len was the snapshot's largest
+           * single cost in a long document. */
+          {
+            gsize room = byte_start + p->length * 4;
+            char *out;
+
+            g_string_set_size (current->text, room);
+            out = current->text->str + byte_start;
+            for (gsize i = 0; i < p->length; i++)
+              out += g_unichar_to_utf8 (buf[i], out);
+            g_string_set_size (current->text, (gsize) (out - current->text->str));
+          }
 
           if (current->runs->len > 0)
             last = &g_array_index (current->runs, W42Run,
@@ -1516,6 +1563,20 @@ w42_pt_snapshot_blocks (W42PieceTable *pt)
 
   g_array_free (numbers, TRUE);
   g_array_free (ends, TRUE);
+
+  /* Whatever was left of the pool is now nobody's: the paragraphs taken
+   * from it belong to the new snapshot, and the rest are freed with the
+   * array they came in. */
+  if (pool != NULL)
+    {
+      /* The array's own free function would free the paragraphs that
+       * have just been handed to the new snapshot, so it is taken off
+       * first and the ones left over are freed by hand. */
+      g_ptr_array_set_free_func (pool, NULL);
+      for (guint i = taken; i < pool->len; i++)
+        w42_block_free (g_ptr_array_index (pool, i));
+      g_ptr_array_free (pool, TRUE);
+    }
   return blocks;
 }
 

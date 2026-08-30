@@ -99,7 +99,7 @@ Early, but real. Word42 today is a working word processor:
   italic, links, lists, tables, embedded pictures.
 - **Long documents** — a keystroke lays out only what it changed: the
   paragraph typed in is shaped again and the rest of the document is
-  reused, so typing in a 173-page document costs about 20 ms a
+  reused, so typing in a 173-page document costs about 12 ms a
   character rather than the best part of a second.
 - **AutoFormat** — Format ▸ AutoFormat the Whole Document turns typed
   text into a formatted document: headings, lists, printer's quotes, and

@@ -248,6 +248,12 @@ gboolean  w42_pt_is_block_mark  (W42PieceTable *pt, gsize pos);
 
 GPtrArray *w42_pt_snapshot_blocks (W42PieceTable *pt);  /* of W42Block* */
 
+/* The same, taking the paragraphs of a snapshot that is being thrown
+ * away rather than allocating new ones.  `pool` is consumed: what is
+ * used of it comes back in the new snapshot and the rest is freed with
+ * it.  The layout does this on every pass over a document. */
+GPtrArray *w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool);
+
 /* ---- What the document counts up to ------------------------------------ */
 
 /* Tools > Word Count.  Pictures and note reference marks are not

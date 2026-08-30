@@ -168,7 +168,7 @@ everything that went into it, and a pass reuses what has not changed:
 ```
    typing one character into a 173-page document
    before:  845 ms   every paragraph shaped
-   after:    20 ms   one paragraph shaped, 4 999 reused
+   after:    12 ms   one paragraph shaped, 4 999 reused
 ```
 
 The signature holds the paragraph's text, its formatting record, every
@@ -192,10 +192,34 @@ The measured lines of a whole paragraph are kept with its shaped layout
 too, so an unchanged paragraph is not walked with a `PangoLayoutIter`
 again either.
 
-What remains linear in the document is the snapshot out of the piece
-table and the pagination arithmetic — about 5 ms and 14 ms respectively
-for 5 000 paragraphs. Making *those* incremental is the next
-optimisation, and the interface does not need to change for it.
+Three things pay for the rest of a pass, and all three were made cheaper
+rather than clever:
+
+- **Signatures are borrowed, not built.** There is a lookup per paragraph
+  per pass, so the signature being asked about points into a buffer the
+  layout reuses; only one that turns out to be new is copied and kept.
+  It is hashed *while* it is built, in one pass over the paragraph's
+  text, eight bytes at a time. The hash reads every byte on purpose: an
+  earlier version read only the ends of a signature, and since the
+  paragraphs of a real document differ by very little, thousands of them
+  landed in one bucket and a keystroke took 96 ms instead of 20.
+- **The snapshot fills the last pass's paragraphs again.** `W42Block`
+  carries a `GString` and a `GArray`; allocating three things per
+  paragraph per keystroke is worth not doing, so
+  `w42_pt_snapshot_blocks_reusing()` takes the previous snapshot as a
+  pool, empties each paragraph and fills it, and frees only what is left
+  over.
+- **A piece's characters are converted in one go.** Room for the worst
+  case is made once and the characters are written straight into the
+  paragraph's text; a character at a time through `g_string_append_len`
+  was the snapshot's largest single cost.
+
+What remains linear in the document is walking the pieces to take the
+snapshot (about 4 ms for 5 000 paragraphs) and the pagination arithmetic
+(about 4 ms). Making *those* incremental — a snapshot that patches the
+paragraphs an edit touched, and pagination that starts from the first
+line that moved — is the next optimisation, and the interface still does
+not need to change for it.
 
 ### Units
 

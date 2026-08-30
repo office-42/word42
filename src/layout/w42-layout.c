@@ -63,6 +63,75 @@ typedef struct {
   guint        generation;
 } Shaped;
 
+/* A paragraph's signature.  Looking one up must not allocate -- there is
+ * a lookup per paragraph per pass -- so the signature being asked about
+ * is borrowed from the buffer it was built in, and only a signature that
+ * turns out to be new is copied and kept.  The hash reads every byte --
+ * paragraphs of a long document differ by very little, and a hash that
+ * looked at only the ends of them put thousands in one bucket -- but it
+ * reads them eight at a time. */
+typedef struct {
+  const guint8 *data;
+  gsize         len;
+  guint         hash;        /* worked out while the signature is built */
+  gboolean      owned;
+} Key;
+
+static guint
+key_hash (gconstpointer p)
+{
+  return ((const Key *) p)->hash;
+}
+
+static gboolean
+key_equal (gconstpointer a, gconstpointer b)
+{
+  const Key *x = a, *y = b;
+
+  return x->len == y->len && memcmp (x->data, y->data, x->len) == 0;
+}
+
+static void
+key_free (gpointer p)
+{
+  Key *key = p;
+
+  if (key->owned)
+    g_free ((guint8 *) key->data);
+  g_free (key);
+}
+
+static Key *
+key_keep (const Key *borrowed)
+{
+  Key *key = g_new (Key, 1);
+
+  key->data = g_memdup2 (borrowed->data, borrowed->len);
+  key->len = borrowed->len;
+  key->hash = borrowed->hash;
+  key->owned = TRUE;
+  return key;
+}
+
+/* FNV-1a over what has just been added to a signature, so that building
+ * one and hashing it are a single pass over the paragraph's text. */
+static guint64
+key_mix (guint64 h, const guint8 *d, gsize n)
+{
+  gsize i = 0;
+
+  for (; i + 8 <= n; i += 8)
+    {
+      guint64 word;
+
+      memcpy (&word, d + i, 8);
+      h = (h ^ word) * 1099511628211ULL;
+    }
+  for (; i < n; i++)
+    h = (h ^ d[i]) * 1099511628211ULL;
+  return h;
+}
+
 /* The measured lines hung on a shaped layout. */
 static void
 block_lines_free (gpointer data)
@@ -482,8 +551,7 @@ w42_layout_new (void)
   self->furniture_layouts = g_ptr_array_new_with_free_func (g_object_unref);
   self->lines   = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
   self->n_pages = 1;
-  self->shaped = g_hash_table_new_full (g_bytes_hash, g_bytes_equal,
-                                        (GDestroyNotify) g_bytes_unref, shaped_free);
+  self->shaped = g_hash_table_new_full (key_hash, key_equal, key_free, shaped_free);
   self->keybuf = g_byte_array_new ();
 
   return self;
@@ -866,27 +934,29 @@ w42_layout_set_spell_caret (W42Layout *self, gsize pos)
  * is the whole point.  A paragraph whose text carries a note reference
  * is not signed at all: its mark is drawn from a list the layout builds
  * as it goes, so it must be built afresh each time. */
-static GBytes *
+static gboolean
 shaping_key (W42Layout      *self,
              const W42Block *block,
              double          text_width,
              double          extra_indent,
              guint           cap_bytes,
              guint           hide_from,
-             guint           hide_to)
+             guint           hide_to,
+             Key            *borrowed)
 {
   GByteArray *key = self->keybuf;
+  guint64 hash = 1469598103934665603ULL;
   guint32 n32;
   double d;
   gsize spell_at = (gsize) -1;
 
   for (guint i = 0; i < block->runs->len; i++)
     if (g_array_index (block->runs, W42Run, i).footnote > 0)
-      return NULL;
+      return FALSE;
 
   g_byte_array_set_size (key, 0);
 
-#define PUT(p, n) g_byte_array_append (key, (const guint8 *) (p), (n))
+#define PUT(p, n) do {     g_byte_array_append (key, (const guint8 *) (p), (n));     hash = key_mix (hash, (const guint8 *) (p), (n));   } while (0)
   n32 = 1; PUT (&n32, 4);                       /* what the signature means */
   d = text_width;    PUT (&d, sizeof d);
   d = extra_indent;  PUT (&d, sizeof d);
@@ -922,7 +992,11 @@ shaping_key (W42Layout      *self,
   PUT (block->text->str, (guint) block->text->len);
 #undef PUT
 
-  return g_bytes_new (key->data, key->len);
+  borrowed->data = key->data;
+  borrowed->len = key->len;
+  borrowed->hash = (guint) (hash ^ (hash >> 32));
+  borrowed->owned = FALSE;
+  return TRUE;
 }
 
 static PangoLayout *
@@ -937,18 +1011,18 @@ build_block_layout (W42Layout      *self,
 {
   const W42ParaFmt *dir_pa = &w42_ap_table_get (aps, block->ap)->pa;
   PangoLayout *layout;
-  GBytes *key = shaping_key (self, block, text_width, extra_indent,
-                             cap_bytes, hide_from, hide_to);
+  Key borrowed = { NULL, 0, 0, FALSE };
+  gboolean signed_ = shaping_key (self, block, text_width, extra_indent,
+                                  cap_bytes, hide_from, hide_to, &borrowed);
 
-  if (key != NULL)
+  if (signed_)
     {
-      Shaped *found = g_hash_table_lookup (self->shaped, key);
+      Shaped *found = g_hash_table_lookup (self->shaped, &borrowed);
 
       if (found != NULL)
         {
           /* Shaped already, and nothing about it has changed. */
           found->generation = self->generation;
-          g_bytes_unref (key);
           self->hits++;
           return g_object_ref (found->layout);
         }
@@ -1084,13 +1158,15 @@ build_block_layout (W42Layout      *self,
       break;
     }
 
-  if (key != NULL)
+  if (signed_)
     {
       Shaped *shaped = g_new0 (Shaped, 1);
 
       shaped->layout = g_object_ref (layout);
       shaped->generation = self->generation;
-      g_hash_table_insert (self->shaped, key, shaped);   /* the key is the table's now */
+      /* Only now is the signature worth a copy of its own: this one is
+       * being kept. */
+      g_hash_table_insert (self->shaped, key_keep (&borrowed), shaped);
     }
 
   return layout;
@@ -1865,12 +1941,13 @@ w42_layout_build_pt (W42Layout          *self,
       text_h = G_MAXDOUBLE / 4.0;
     }
 
-  g_clear_pointer (&self->blocks, g_ptr_array_unref);
   g_ptr_array_set_size (self->layouts, 0);
   g_array_set_size (self->lines, 0);
 
   self->text_w = text_w;
-  self->blocks = w42_pt_snapshot_blocks (pt);
+  /* The paragraphs of the last pass are handed back to the snapshot to
+   * be filled again rather than freed and allocated afresh. */
+  self->blocks = w42_pt_snapshot_blocks_reusing (pt, self->blocks);
   g_array_set_size (self->floats, 0);
 
   /* A wrapped picture: the paragraph it is anchored to and those after it
