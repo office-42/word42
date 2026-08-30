@@ -495,6 +495,9 @@ void w42_pt_table_split_cell (W42PieceTable *pt, int table, int row, int col);
 void w42_pt_cell_set_borders    (W42PieceTable *pt, int table, int row, int col, int sides);
 int  w42_pt_cell_get_borders    (W42PieceTable *pt, int table, int row, int col);
 void w42_pt_cell_set_borders_at (W42PieceTable *pt, gsize cell_pos, int sides);
+/* The cell's own background colour, 0x00RRGGBB; `has` off leaves it clear. */
+void w42_pt_cell_set_fill_at    (W42PieceTable *pt, gsize cell_pos,
+                                 gboolean has, guint32 rgb);
 void w42_pt_table_delete_row (W42PieceTable *pt, int table, int row);
 
 /* The position just past the paragraph containing `pos`: the next mark of

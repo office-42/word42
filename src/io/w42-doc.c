@@ -306,12 +306,18 @@ typedef struct {
   int      ilfo, ilvl;
   int      itc_mac;         /* columns, from a row-end TDefTable */
   int      cellx[64];
+  guint8   cell_sides[64];  /* each cell's ruled sides, from its TC80 */
+  guint32  cell_shade[64];  /* each cell's background, 0x00RRGGBB */
+  guint8   has_cell_shade[64];
   guint8   n_tabs;                    /* sprmPChgTabsPapx */
   int      tab_pos[W42_MAX_TABS];
   guint8   tab_kind[W42_MAX_TABS];    /* kind and leader, as the model packs them */
   guint8   border;                    /* sprmPBrcTop and its neighbours */
   guint8   border_width;
+  guint32  border_color;
   guint8   shading;                   /* sprmPShd */
+  guint8   has_shading_color;
+  guint32  shading_color;
 } Para;
 
 typedef struct {
@@ -860,6 +866,8 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
       if (olen > avail)
         break;
 
+      if (g_getenv ("W42SPRM"))
+        g_printerr ("sprm %04X len %u\n", sprm, olen);
       switch (sprm)
         {
         case 0x2403: case 0x2461: pa->jc = op[0]; break;
@@ -932,10 +940,10 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
             }
           break;
 
-        case 0xC64D: case 0xC64E: case 0xC64F: case 0xC650:
-          /* The paragraph's borders: a BRC each, whose second half holds
-           * the line's width in eighths of a point.  A width of nothing,
-           * or the "no border" line style, means no border. */
+        case 0xC64E: case 0xC64F: case 0xC650: case 0xC651:
+          /* sprmPBrcTop, Left, Bottom and Right: a BRC each, whose second
+           * half holds the line's width in eighths of a point.  A width of
+           * nothing, or the "no border" line style, means no border. */
           {
             static const guint8 SIDES[] = { W42_BORDER_TOP, W42_BORDER_LEFT,
                                             W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
@@ -951,37 +959,101 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
 
                 if (width > 0 && kind != 0)
                   {
-                    pa->border |= SIDES[sprm - 0xC64D];
+                    pa->border |= SIDES[sprm - 0xC64E];
                     pa->border_width = (guint8) CLAMP ((int) width * 20 / 8, 5, 120);
+                    /* A BRC's first four bytes are a COLORREF, red first,
+                     * with 0xFF in the last for "automatic". */
+                    if (brc_len >= 8 && brc[3] != 0xFF)
+                      pa->border_color = ((guint32) brc[0] << 16) |
+                                         ((guint32) brc[1] << 8) | brc[2];
+                    else
+                      pa->border_color = 0;
                   }
               }
           }
           break;
 
-        case 0xC64C: case 0x442D:
-          /* sprmPShd: the paragraph's background, as a shading percentage
-           * or a colour.  Either way what the model wants is the grey. */
-          if (olen >= 2)
+        case 0xC64D: case 0x442D:
+          /* sprmPShd, and its Word 97 form sprmPShd80: the paragraph's
+           * background, as a shading percentage or a colour.  Either way
+           * what the model wants is the grey. */
+          if (sprm == 0xC64D && olen >= 11)
             {
-              guint ipat = olen >= 10 ? (guint) rd16 (op + 9) : (guint) (rd16 (op) >> 10);
+              guint32 back = rd32 (op + 5);
+
+              if ((back >> 24) != 0xFF)
+                {
+                  pa->shading_color = ((back & 0xFF) << 16) | (back & 0xFF00) |
+                                      ((back >> 16) & 0xFF);
+                  pa->has_shading_color = 1;
+                }
+            }
+          else if (olen >= 2)
+            {
+              guint ipat = (guint) (rd16 (op) >> 10);
 
               pa->shading = (guint8) CLAMP ((int) ipat / 50, 0, 100);
             }
           break;
         case 0xD608:
-          /* TDefTable: cb, itcMac, then itcMac+1 column edges. */
+          /* TDefTable: cb, itcMac, then itcMac+1 column edges, then one
+           * twenty-byte TC80 per cell.  A TC80 is two bytes of flags, two
+           * unused, and the cell's four BRC80 borders. */
           if (olen >= 3)
             {
               int itc = op[2];
+              guint edges;
 
               if (itc > 63) itc = 63;
-              if (olen >= 3u + 2u * ((guint) itc + 1))
+              edges = 3u + 2u * ((guint) itc + 1);
+              if (olen >= edges)
                 {
                   pa->itc_mac = itc;
                   for (int c = 0; c <= itc; c++)
                     pa->cellx[c] = rd16s (op + 3 + 2 * c);
                 }
+              for (int c = 0; c < itc && olen >= edges + 20u * (guint) (c + 1); c++)
+                {
+                  static const guint8 SIDES[] = { W42_BORDER_TOP, W42_BORDER_LEFT,
+                                                  W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
+                  const guint8 *tc = op + edges + 20 * c;
+
+                  for (int side = 0; side < 4; side++)
+                    {
+                      const guint8 *brc = tc + 4 + 4 * side;
+
+                      if (brc[0] > 0 && brc[1] != 0)
+                        pa->cell_sides[c] |= SIDES[side];
+                    }
+                }
             }
+          break;
+        case 0xD612:
+          /* sprmTDefTableShd: cb, then one ten-byte SHD per cell in column
+           * order.  A background of "automatic" leaves the cell as the
+           * page; anything else is the colour it is filled with.  Word 97's
+           * own sprmTDefTableShd80 (0xD609) could only name one of sixteen
+           * palette colours, so it is left alone: a file that has it also
+           * has this. */
+          {
+            guint n = olen > 0 ? (guint) (olen - 1) / 10 : 0;
+
+            for (guint c = 0; c < n && c < 64; c++)
+              {
+                const guint8 *shd = op + 1 + 10 * c;
+                guint32 back = rd32 (shd + 4);
+
+                /* A COLORREF is red, green, blue, then 0xFF for
+                 * "automatic"; the model wants 0x00RRGGBB. */
+                if ((back >> 24) != 0xFF)
+                  {
+                    pa->cell_shade[c] = ((back & 0xFF) << 16) |
+                                        (back & 0xFF00) |
+                                        ((back >> 16) & 0xFF);
+                    pa->has_cell_shade[c] = 1;
+                  }
+              }
+          }
           break;
         default:
           break;
@@ -1494,7 +1566,10 @@ fill_para_fmt (Doc *doc, const DocPara *dp, W42ParaFmt *out)
   memcpy (out->tab_kind, pa->tab_kind, sizeof out->tab_kind);
   out->border = pa->border;
   out->border_width = pa->border_width;
+  out->border_color = pa->border_color;
   out->shading = pa->shading;
+  out->shading_color = pa->shading_color;
+  out->has_shading_color = pa->has_shading_color;
   out->list = list_kind_for (doc, pa->ilfo, pa->ilvl);
   out->list_level = (guint8) CLAMP (pa->ilvl, 0, 8);
 
@@ -1829,6 +1904,15 @@ para_ap (Builder *b, const DocPara *dp)
   return w42_ap_table_intern (w42_pt_ap_table (b->pt), &fmt);
 }
 
+/* The paragraph properties of a .doc sit on the paragraph mark, so they are
+ * known only once the paragraph's text has been emitted.  They belong to the
+ * BLOCK strux in front of that text, which is the one w42_pt_apply_para_fmt
+ * finds by widening backwards -- but from `b->pos - 1`, the last thing
+ * emitted, not from `b->pos`: a document that ends in a table still has its
+ * final empty paragraph's BLOCK sitting at `b->pos`, and widening from there
+ * finds that one and leaves every paragraph wearing its predecessor's
+ * formatting.  An empty paragraph puts its own BLOCK at `b->pos - 1`, which
+ * is what it should get. */
 static void
 apply_para (Builder *b, const DocPara *dp)
 {
@@ -1836,29 +1920,40 @@ apply_para (Builder *b, const DocPara *dp)
 
   w42_fmt_init_default (&fmt);
   fill_para_fmt (b->doc, dp, &fmt.pa);
-  w42_pt_apply_para_fmt (b->pt, b->pos, 0, W42_PARA_ALL, &fmt.pa);
+  w42_pt_apply_para_fmt (b->pt, b->pos > 0 ? b->pos - 1 : 0, 0,
+                         W42_PARA_ALL, &fmt.pa);
 }
 
-static void
-open_table (Builder *b, GArray *paras, guint index)
+/* A row's shape -- its columns, their widths and each cell's borders and
+ * background -- is in the row-end paragraph that follows its cells, so it
+ * has to be looked ahead for. */
+static const Para *
+row_shape (GArray *paras, guint index)
 {
-  int n_cols = 1;
-  int widths[64] = { 0 };
-
-  /* The row's shape is in the row-end paragraph further on. */
   for (guint k = index; k < paras->len; k++)
     {
       const DocPara *q = &g_array_index (paras, DocPara, k);
 
       if (q->pa.ttp && q->pa.itc_mac > 0)
-        {
-          n_cols = MIN (q->pa.itc_mac, 64);
-          for (int c = 0; c < n_cols; c++)
-            widths[c] = q->pa.cellx[c + 1] - q->pa.cellx[c];
-          break;
-        }
+        return &q->pa;
       if (!q->pa.in_table)
         break;
+    }
+  return NULL;
+}
+
+static void
+open_table (Builder *b, GArray *paras, guint index)
+{
+  const Para *shape = row_shape (paras, index);
+  int n_cols = 1;
+  int widths[64] = { 0 };
+
+  if (shape != NULL)
+    {
+      n_cols = MIN (shape->itc_mac, 64);
+      for (int c = 0; c < n_cols; c++)
+        widths[c] = shape->cellx[c + 1] - shape->cellx[c];
     }
 
   b->table_before_block = FALSE;
@@ -1872,6 +1967,10 @@ open_table (Builder *b, GArray *paras, guint index)
     b->pos -= 1;
 
   b->table = w42_pt_insert_table_start (b->pt, b->pos, n_cols, widths);
+  /* Word keeps every rule in the cells themselves, so the table's own
+   * "ruled" flag -- which the model has for a table drawn by hand -- is
+   * off and each cell says what it wants. */
+  w42_pt_table_set_borders (b->pt, b->table, FALSE);
   b->pos += 1;
   b->row = b->col = 0;
   b->in_cell = FALSE;
@@ -1932,9 +2031,21 @@ build_document (Doc *doc, W42PieceTable *pt)
             open_table (&b, paras, i);
           if (!b.in_cell)
             {
+              const Para *shape = row_shape (paras, i);
+              gsize cell_pos = b.pos;
+
               w42_pt_insert_cell (pt, b.pos, b.table, b.row, b.col, ap);
               b.pos += 2;
               b.in_cell = TRUE;
+              if (shape != NULL && b.col >= 0 && b.col < 64)
+                {
+                  w42_pt_cell_set_borders_at (pt, cell_pos,
+                                              shape->cell_sides[b.col] |
+                                              W42_BORDER_CELL_SET);
+                  w42_pt_cell_set_fill_at (pt, cell_pos,
+                                           shape->has_cell_shade[b.col],
+                                           shape->cell_shade[b.col]);
+                }
             }
 
           emit_text (&b, dp);

@@ -809,7 +809,7 @@ typedef struct {
   gsize       fld_start;
   gboolean    in_instr;
   int         skip_depth;         /* inside mc:Fallback: read nothing */
-  gboolean    tbl_no_borders;
+  gboolean    tbl_borders;     /* w:tblBorders, or a grid table style, said so */
 
   gboolean    in_ppr, in_rpr, in_sectpr_body;
   W42CharFmt  run_ch;             /* built from the run's rPr */
@@ -1461,17 +1461,30 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         }
           g_array_set_size (d->grid, 0);
           d->table_started = FALSE;
-          d->tbl_no_borders = FALSE;
+          d->tbl_borders = FALSE;
         }
     }
   else if (g_str_equal (tag, "tblBorders") && d->depth_tbl == 1)
     d->in_tblborders = TRUE;
-  else if (d->in_tblborders && (g_str_equal (tag, "top") || g_str_equal (tag, "insideH")))
+  else if (d->in_tblborders && (g_str_equal (tag, "top") || g_str_equal (tag, "bottom") ||
+                                g_str_equal (tag, "left") || g_str_equal (tag, "right") ||
+                                g_str_equal (tag, "start") || g_str_equal (tag, "end") ||
+                                g_str_equal (tag, "insideH") || g_str_equal (tag, "insideV")))
     {
       const char *val = attr (an, av, "val");
 
-      if (val != NULL && (g_str_equal (val, "nil") || g_str_equal (val, "none")))
-        d->tbl_no_borders = TRUE;
+      /* A table is ruled only where it says so.  Word's own default, and
+       * what a table carrying no w:tblBorders at all means, is no rules;
+       * the grid everyone recognises comes from the Table Grid style. */
+      if (val != NULL && !g_str_equal (val, "nil") && !g_str_equal (val, "none"))
+        d->tbl_borders = TRUE;
+    }
+  else if (g_str_equal (tag, "tblStyle") && d->depth_tbl == 1)
+    {
+      const char *val = attr (an, av, "val");
+
+      if (val != NULL && strstr (val, "Grid") != NULL)
+        d->tbl_borders = TRUE;
     }
   else if (g_str_equal (tag, "gridCol") && d->depth_tbl == 1)
     {
@@ -1488,8 +1501,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           w42_builder_begin_table (&d->b, n > 0 ? n : 1,
                                    n > 0 ? (const int *) d->grid->data : NULL);
           d->table_started = TRUE;
-          if (d->tbl_no_borders)
-            w42_pt_table_set_borders (d->pt, d->b.table, FALSE);
+          w42_pt_table_set_borders (d->pt, d->b.table, d->tbl_borders);
         }
     }
   else if (g_str_equal (tag, "trHeight") && d->depth_tbl == 1 && d->table_started)
@@ -1517,8 +1529,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "tcBorders") && d->depth_tbl == 1 && d->cell_pending)
     {
+      /* A side the cell does not name is the table's, not a rule of its
+       * own, so the sides start where the table left them. */
       d->in_tcborders = TRUE;
-      d->cell_sides = W42_BORDER_BOX;
+      d->cell_sides = d->tbl_borders ? W42_BORDER_BOX : 0;
     }
   else if (d->in_tcborders && (g_str_equal (tag, "top") || g_str_equal (tag, "bottom") ||
                                g_str_equal (tag, "left") || g_str_equal (tag, "right") ||

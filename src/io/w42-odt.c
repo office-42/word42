@@ -1160,6 +1160,10 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           int n = (int) o->table_widths->len;
 
           w42_builder_begin_table (&o->b, n > 0 ? n : 1, n > 0 ? (const int *) o->table_widths->data : NULL);
+          /* ODF has no rules of its own on a table: every rule belongs to
+           * a cell style, so the table is left unruled and the cells say
+           * what they want. */
+          w42_pt_table_set_borders (o->pt, o->b.table, FALSE);
           o->table_started = TRUE;
         }
       if (h > 0)

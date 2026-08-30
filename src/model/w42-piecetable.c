@@ -2062,8 +2062,14 @@ para_fmt_apply_mask (W42ParaFmt *fmt, W42ParaMask mask, const W42ParaFmt *value)
     {
       fmt->border = value->border;
       fmt->border_width = value->border_width;
+      fmt->border_color = value->border_color;
     }
-  if (mask & W42_PARA_SHADING)      fmt->shading = value->shading;
+  if (mask & W42_PARA_SHADING)
+    {
+      fmt->shading = value->shading;
+      fmt->shading_color = value->shading_color;
+      fmt->has_shading_color = value->has_shading_color;
+    }
   if (mask & W42_PARA_CELL_SPAN)    fmt->cell_vspan = value->cell_vspan;
   if (mask & W42_PARA_SECTION)
     {
@@ -3676,9 +3682,29 @@ w42_pt_cell_set_borders_at (W42PieceTable *pt, gsize cell_pos, int sides)
   piece = pt_find (pt, cell_pos, &offset);
   if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
     return;
-  w42_fmt_init_default (&fmt);
-  if (sides >= 0)
-    fmt.pa.border = (guint8) (W42_BORDER_CELL_SET | (sides & W42_BORDER_BOX));
+  /* The mark also carries the cell's vertical merge and its background, so
+   * start from what it has rather than from nothing. */
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.border = (sides >= 0)
+                    ? (guint8) (W42_BORDER_CELL_SET | (sides & W42_BORDER_BOX))
+                    : 0;
+  piece->ap = w42_ap_table_intern (pt->aps, &fmt);
+}
+
+void
+w42_pt_cell_set_fill_at (W42PieceTable *pt, gsize cell_pos, gboolean has, guint32 rgb)
+{
+  gsize offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+
+  g_return_if_fail (pt != NULL);
+  piece = pt_find (pt, cell_pos, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.has_shading_color = has ? 1 : 0;
+  fmt.pa.shading_color = has ? rgb : 0;
   piece->ap = w42_ap_table_intern (pt->aps, &fmt);
 }
 

@@ -148,6 +148,9 @@ typedef struct {
   guint8      border;        /* W42BorderSides */
   guint8      border_width;  /* twips: 15 is Word's 3/4 pt hairline */
   guint8      shading;       /* percent of black behind the paragraph */
+  guint8      has_shading_color;  /* the background is a colour, not a grey */
+  guint32     border_color;  /* 0x00RRGGBB; 0 is Word's black */
+  guint32     shading_color; /* 0x00RRGGBB, when has_shading_color */
   guint8      section_break; /* the paragraph starts a new section, on a new page */
   guint8      columns;       /* that section's newspaper columns; 0 or 1 is one */
   int         column_gap;    /* twips between them; 0 means a half inch */

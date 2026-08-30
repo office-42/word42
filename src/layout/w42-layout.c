@@ -360,6 +360,7 @@ layout_note (W42Layout *self, W42ApTable *aps, int id, double text_w,
           box.x           = box.origin_x + (double) logical.x / PANGO_SCALE;
           box.y           = y;
           box.width       = (double) logical.width / PANGO_SCALE;
+          box.column_w    = text_w;
           box.height      = (double) logical.height / PANGO_SCALE;
           box.baseline    = (double) (pango_layout_iter_get_baseline (iter) -
                                       logical.y) / PANGO_SCALE;
@@ -1224,6 +1225,7 @@ layout_cell (W42Layout      *self,
           box.x           = box.origin_x + (double) logical.x / PANGO_SCALE;
           box.y           = y;
           box.width       = (double) logical.width / PANGO_SCALE;
+          box.column_w    = width;
           box.height      = line_h;
           box.baseline    = (double) (pango_layout_iter_get_baseline (iter) - logical.y) / PANGO_SCALE;
           box.block       = (int) b;
@@ -1336,6 +1338,12 @@ layout_header_rows (W42Layout *self, W42ApTable *aps, guint first, guint last,
           rect.col = col + span - 1;
           rect.sides = cell_sides (aps, cb, borders);
           rect.borders = rect.sides != 0;
+          {
+            const W42ParaFmt *cpa = &w42_ap_table_get (aps, cb->cell_ap)->pa;
+
+            rect.has_fill = cpa->has_shading_color;
+            rect.fill = cpa->shading_color;
+          }
           g_array_append_val (self->cell_rects, rect);
         }
 
@@ -1559,6 +1567,8 @@ layout_table (W42Layout      *self,
       int *owner = g_new (int, n_cols);
       int *spans = g_new0 (int, n_cols);
       guint8 *sides = g_new0 (guint8, n_cols);
+      guint8 *has_fill = g_new0 (guint8, n_cols);
+      guint32 *fill = g_new0 (guint32, n_cols);
       int *vspans = g_new0 (int, n_cols);   /* rows each cell covers */
 
       /* Which cell owns each column of the row: a merged cell owns the
@@ -1577,6 +1587,12 @@ layout_table (W42Layout      *self,
           spans[col0] = span;
           vspans[col0] = cell_vspan (aps, blk);
           sides[col0] = cell_sides (aps, blk, props == NULL || props->borders);
+          {
+            const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk->cell_ap)->pa;
+
+            has_fill[col0] = cpa->has_shading_color;
+            fill[col0] = cpa->shading_color;
+          }
           for (int k2 = col0; k2 < col0 + span; k2++)
             owner[k2] = col0;
         }
@@ -1776,6 +1792,8 @@ layout_table (W42Layout      *self,
                            : (props == NULL || props->borders) ? W42_BORDER_BOX : 0;
               rect.sides &= (guint8) ~cut_sides;
               rect.borders = rect.sides != 0;
+              rect.has_fill = owner[col] == col ? has_fill[col] : 0;
+              rect.fill = owner[col] == col ? fill[col] : 0;
 
               /* A cell merged downwards is one rectangle over its rows,
                * so it is kept back until they have all been placed. */
@@ -1827,6 +1845,8 @@ layout_table (W42Layout      *self,
       g_free (owner);
       g_free (spans);
       g_free (sides);
+      g_free (has_fill);
+      g_free (fill);
       g_free (vspans);
 
       /* The lines were laid out relative to y=0 at the top margin;
@@ -2079,6 +2099,7 @@ w42_layout_build_pt (W42Layout          *self,
               box.x           = x0 + (double) logical.x / PANGO_SCALE;
               box.y           = self->mar_t + fy;
               box.width       = (double) logical.width / PANGO_SCALE;
+              box.column_w    = fw_px;
               box.height      = line_h;
               box.baseline    = (double) (pango_layout_iter_get_baseline (fi) - logical.y) / PANGO_SCALE;
               box.block       = (int) b;
@@ -2585,6 +2606,7 @@ w42_layout_build_pt (W42Layout          *self,
           box.x           = box.origin_x + (double) logical.x / PANGO_SCALE;
           box.y           = self->mar_t + y;
           box.width       = (double) logical.width / PANGO_SCALE;
+          box.column_w    = text_w;
           box.height      = line_h;
           box.baseline    = bl->baseline;
           box.block       = (int) b;
@@ -2953,6 +2975,23 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
   if (self->blocks == NULL)
     return;
 
+  /* Cells with a background of their own, painted before anything else so
+   * that a shaded paragraph inside one still shows over it. */
+  for (guint i = 0; i < self->cell_rects->len; i++)
+    {
+      const W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
+
+      if (r->page != page || !r->has_fill)
+        continue;
+      cairo_save (cr);
+      cairo_set_source_rgb (cr, ((r->fill >> 16) & 0xFF) / 255.0,
+                            ((r->fill >> 8) & 0xFF) / 255.0,
+                            (r->fill & 0xFF) / 255.0);
+      cairo_rectangle (cr, r->x, r->y, r->w, r->h);
+      cairo_fill (cr);
+      cairo_restore (cr);
+    }
+
   /* Each paragraph's lines on this page, taken together, give the box the
    * shading fills and the borders run round.  A paragraph that runs on to
    * the next page gets its top border on this one and its bottom on the
@@ -2977,27 +3016,36 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
           j++;
         }
 
-      if (first->page == page && (pa->shading > 0 || pa->border != 0) &&
-          block->table < 0)
+      if (first->page == page &&
+          (pa->shading > 0 || pa->has_shading_color || pa->border != 0))
         {
           double width = (double) pa->border_width / W42_TWIPS_PER_PX;
 
-          /* From the line's own origin, so a paragraph in the second column
-           * is shaded in the second column. */
+          /* From the line's own origin and across its own column, so that a
+           * paragraph in the second newspaper column, or in a table cell,
+           * is shaded and ruled there and not across the page. */
           left  = first->origin_x;
           right = first->origin_x - w42_twips_to_px (pa->indent_left) +
-                  self->text_w - w42_twips_to_px (pa->indent_right);
+                  (first->column_w > 0 ? first->column_w : self->text_w) -
+                  w42_twips_to_px (pa->indent_right);
           if (pa->indent_first < 0)
             left += w42_twips_to_px (pa->indent_first);
           top -= 2.0;
           bottom += 2.0;
 
           cairo_save (cr);
-          if (pa->shading > 0)
+          if (pa->has_shading_color || pa->shading > 0)
             {
-              double g = 1.0 - CLAMP (pa->shading, 0, 100) / 100.0;
+              if (pa->has_shading_color)
+                cairo_set_source_rgb (cr, ((pa->shading_color >> 16) & 0xFF) / 255.0,
+                                      ((pa->shading_color >> 8) & 0xFF) / 255.0,
+                                      (pa->shading_color & 0xFF) / 255.0);
+              else
+                {
+                  double g = 1.0 - CLAMP (pa->shading, 0, 100) / 100.0;
 
-              cairo_set_source_rgb (cr, g, g, g);
+                  cairo_set_source_rgb (cr, g, g, g);
+                }
               cairo_rectangle (cr, left, top, right - left, bottom - top);
               cairo_fill (cr);
             }
@@ -3005,7 +3053,9 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
             {
               if (width < 0.75)
                 width = 0.75;
-              cairo_set_source_rgb (cr, 0.0, 0.0, 0.0);
+              cairo_set_source_rgb (cr, ((pa->border_color >> 16) & 0xFF) / 255.0,
+                                    ((pa->border_color >> 8) & 0xFF) / 255.0,
+                                    (pa->border_color & 0xFF) / 255.0);
               cairo_set_line_width (cr, width);
               if (pa->border & W42_BORDER_TOP)
                 {

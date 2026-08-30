@@ -27,6 +27,10 @@ typedef struct {
                                  * Pango reports x-ranges relative to this */
   double           y;
   double           width;
+  double           column_w;     /* the text column the line was broken to:
+                                  * the page's, a newspaper column's, or the
+                                  * cell's.  Paragraph shading and borders
+                                  * run the width of it. */
   double           height;
   double           baseline;     /* from the top of the line box */
   int              block;        /* index into w42_layout_blocks() */
@@ -98,6 +102,8 @@ typedef struct {
   int    col;
   gboolean borders;   /* the table is ruled */
   guint8 sides;       /* W42_BORDER_* bits: which of its sides are drawn */
+  guint8 has_fill;    /* the cell has a background colour of its own */
+  guint32 fill;       /* 0x00RRGGBB, when it has */
 } W42CellRect;
 
 const GArray *w42_layout_cell_rects (W42Layout *self);  /* of W42CellRect */
