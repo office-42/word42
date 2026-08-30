@@ -75,8 +75,17 @@ collect_tables (GPtrArray *blocks, W42ApTable *aps, RtfTables *tables,
       const W42Block *block = g_ptr_array_index (blocks, b);
       const W42Fmt *para = w42_ap_table_get (aps, block->ap);
 
+      const W42Fmt *cell = block->cell_ap != W42_AP_INVALID
+                             ? w42_ap_table_get (aps, block->cell_ap) : NULL;
+
       table_intern_font (tables, para->ch.family);
       table_intern_colour (tables, para->ch.color);
+      if (para->pa.border_color != 0)
+        table_intern_colour (tables, para->pa.border_color);
+      if (para->pa.has_shading_color)
+        table_intern_colour (tables, para->pa.shading_color);
+      if (cell != NULL && cell->pa.has_shading_color)
+        table_intern_colour (tables, cell->pa.shading_color);
 
       for (guint r = 0; r < block->runs->len; r++)
         {
@@ -197,14 +206,16 @@ style_index (W42StyleSheet *styles, const char *name)
   return 0;
 }
 
-static void write_para_body (GString *out, const W42ParaFmt *pa);
+static void write_para_body (GString *out, const W42ParaFmt *pa,
+                             RtfTables *tables);
 
 static void
-write_para_props (GString *out, const W42ParaFmt *pa, W42StyleSheet *styles)
+write_para_props (GString *out, const W42ParaFmt *pa, W42StyleSheet *styles,
+                  RtfTables *tables)
 {
   g_string_append (out, "\\pard\\plain");
   g_string_append_printf (out, "\\s%d", style_index (styles, pa->style));
-  write_para_body (out, pa);
+  write_para_body (out, pa, tables);
 }
 
 /* Alignment, indents and spacing: the part of a paragraph's formatting that
@@ -226,7 +237,7 @@ rtf_mirror_align (W42Align align, gboolean rtl)
 }
 
 static void
-write_para_body (GString *out, const W42ParaFmt *pa)
+write_para_body (GString *out, const W42ParaFmt *pa, RtfTables *tables)
 {
   switch (rtf_mirror_align (pa->align, pa->rtl != 0))
     {
@@ -250,22 +261,33 @@ write_para_body (GString *out, const W42ParaFmt *pa)
   if (pa->border != 0)
     {
       int w = pa->border_width > 0 ? pa->border_width : 15;
+      char cf[24];
+
+      /* The rule's colour, when it has one: an index into the colour
+       * table, as everything coloured in RTF is. */
+      cf[0] = '\0';
+      if (tables != NULL && pa->border_color != 0)
+        g_snprintf (cf, sizeof cf, "\\brdrcf%u",
+                    table_intern_colour (tables, pa->border_color) + 1);
 
       if (pa->border == W42_BORDER_BOX)
-        g_string_append_printf (out, "\\box\\brdrs\\brdrw%d\\brsp20", w);
+        g_string_append_printf (out, "\\box\\brdrs\\brdrw%d%s\\brsp20", w, cf);
       else
         {
           if (pa->border & W42_BORDER_TOP)
-            g_string_append_printf (out, "\\brdrt\\brdrs\\brdrw%d\\brsp20", w);
+            g_string_append_printf (out, "\\brdrt\\brdrs\\brdrw%d%s\\brsp20", w, cf);
           if (pa->border & W42_BORDER_BOTTOM)
-            g_string_append_printf (out, "\\brdrb\\brdrs\\brdrw%d\\brsp20", w);
+            g_string_append_printf (out, "\\brdrb\\brdrs\\brdrw%d%s\\brsp20", w, cf);
           if (pa->border & W42_BORDER_LEFT)
-            g_string_append_printf (out, "\\brdrl\\brdrs\\brdrw%d\\brsp20", w);
+            g_string_append_printf (out, "\\brdrl\\brdrs\\brdrw%d%s\\brsp20", w, cf);
           if (pa->border & W42_BORDER_RIGHT)
-            g_string_append_printf (out, "\\brdrr\\brdrs\\brdrw%d\\brsp20", w);
+            g_string_append_printf (out, "\\brdrr\\brdrs\\brdrw%d%s\\brsp20", w, cf);
         }
     }
-  if (pa->shading > 0)
+  if (pa->has_shading_color && tables != NULL)
+    g_string_append_printf (out, "\\cbpat%u",
+                            table_intern_colour (tables, pa->shading_color) + 1);
+  else if (pa->shading > 0)
     g_string_append_printf (out, "\\shading%d", pa->shading * 100);
 
   for (int i = 0; i < pa->n_tabs; i++)
@@ -488,7 +510,7 @@ w42_rtf_save (W42PieceTable      *pt,
       const W42Style *style = w42_stylesheet_get (styles, i);
 
       g_string_append_printf (out, "{\\s%u", i);
-      write_para_body (out, &style->pa);
+      write_para_body (out, &style->pa, &tables);
       if (style->outline > 0)
         g_string_append_printf (out, "\\outlinelevel%d", style->outline - 1);
       g_string_append_c (out, ' ');
@@ -617,6 +639,7 @@ w42_rtf_save (W42PieceTable      *pt,
               {
                 /* The owning cell's own sides, or the table's setting. */
                 int sides = (props != NULL && !props->borders) ? 0 : W42_BORDER_BOX;
+                const W42Fmt *fill = NULL;
                 static const char letters[4] = { 't', 'l', 'b', 'r' };
                 static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_LEFT, W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
                 int oc = owner[c] <= -2 ? -2 - owner[c] : owner[c] >= 0 ? owner[c] : c;
@@ -633,11 +656,16 @@ w42_rtf_save (W42PieceTable      *pt,
                     cpa = &w42_ap_table_get (aps, rb->cell_ap)->pa;
                     if (cpa->border & W42_BORDER_CELL_SET)
                       sides = cpa->border & W42_BORDER_BOX;
+                    fill = w42_ap_table_get (aps, rb->cell_ap);
                     break;
                   }
                 for (int k = 0; k < 4; k++)
                   g_string_append_printf (out, "\\clbrdr%c%s", letters[k],
                                           (sides & bits[k]) ? "\\brdrs\\brdrw10" : "\\brdrnone");
+                if (fill != NULL && fill->pa.has_shading_color)
+                  g_string_append_printf (out, "\\clcbpat%u",
+                                          table_intern_colour (&tables,
+                                            fill->pa.shading_color) + 1);
               }
               if (owner[c] <= -2)
                 g_string_append (out, "\\clmgf");
@@ -676,7 +704,7 @@ w42_rtf_save (W42PieceTable      *pt,
         g_string_append_printf (out, "\\sect\\sectd\\sbkpage\\cols%d\\colsx%d\n",
                                 MAX (para->pa.columns, 1),
                                 para->pa.column_gap > 0 ? para->pa.column_gap : 720);
-      write_para_props (out, &para->pa, styles);
+      write_para_props (out, &para->pa, styles, &tables);
       if (in_table)
         g_string_append (out, "\\intbl");
 
@@ -758,6 +786,9 @@ w42_rtf_save (W42PieceTable      *pt,
 
           if (run->object != W42_OBJECT_NONE)
             {
+              /* The picture's run has a font and a size like any other, and
+               * the line it sits on is as tall as they make it. */
+              write_char_props (out, &fmt->ch, &tables);
               write_pict (out, w42_pt_object_table (pt), run->object);
               continue;
             }
@@ -780,7 +811,7 @@ w42_rtf_save (W42PieceTable      *pt,
                   npara = w42_ap_table_get (aps, note->ap);
                   if (!first)
                     g_string_append (out, "\\par\n");
-                  write_para_props (out, &npara->pa, styles);
+                  write_para_props (out, &npara->pa, styles, &tables);
                   if (first)
                     g_string_append (out, "{\\super\\chftn }");
                   first = FALSE;
@@ -950,6 +981,10 @@ typedef struct {
   char          *info_keep[5];  /* title, subject, author, keywords, comments */
   int            cell_side;     /* which side that \\clbrdr names */
   int            clsides_pending; /* the next \\cellx's ruled sides */
+  guint32        clfill_pending;  /* and its background, if it has one */
+  gboolean       clfilled_pending;
+  GArray        *clfills;         /* guint32, one per cell of the row */
+  GArray        *clfilled;        /* int, whether that cell has one */
   GArray        *clsides;       /* int, per \\cellx */
   gboolean       no_borders;    /* the row's cells have \\brdrnone */
   int            sect_cols;
@@ -1108,7 +1143,7 @@ table_sync (RtfReader *r)
 
           r->table = w42_pt_insert_table_start (r->pt, r->pos, n_cols, widths);
 
-          w42_pt_table_set_borders (r->pt, r->table, !r->no_borders);
+          w42_pt_table_set_borders (r->pt, r->table, FALSE);
           r->pos += 1;
           r->table_row = 0;
           r->table_col = 0;
@@ -1138,13 +1173,19 @@ table_sync (RtfReader *r)
 
       w42_pt_insert_cell (r->pt, r->pos, r->table, r->table_row, r->table_col,
                           reader_ap (r));
-      if (r->table_col < (int) r->clsides->len)
-        {
-          int sides = g_array_index (r->clsides, int, r->table_col);
+      {
+        int sides = r->table_col < (int) r->clsides->len
+                      ? g_array_index (r->clsides, int, r->table_col)
+                      : (r->no_borders ? 0 : W42_BORDER_BOX);
 
-          if (sides != (r->no_borders ? 0 : W42_BORDER_BOX))
-            w42_pt_cell_set_borders_at (r->pt, r->pos, sides);
-        }
+        w42_pt_cell_set_borders_at (r->pt, r->pos,
+                                    sides | W42_BORDER_CELL_SET);
+      }
+      if (r->table_col < (int) r->clfilled->len &&
+          g_array_index (r->clfilled, int, r->table_col))
+        w42_pt_cell_set_fill_at (r->pt, r->pos, TRUE,
+                                 g_array_index (r->clfills, guint32,
+                                                r->table_col));
       if (r->table_col < (int) r->clvflags->len)
         {
           /* \clvmgf starts a merge downwards, \clvmrg carries it on; how
@@ -1296,7 +1337,11 @@ end_paragraph (RtfReader *r)
   table_sync (r);
   flush_text (r);
 
-  w42_pt_apply_para_fmt (r->pt, r->pos, 0, PARA_MASK, &r->state.pa);
+  /* Widening backwards has to start from the last thing written, not from
+   * `pos`: a document that opens with a table still has its final empty
+   * paragraph's BLOCK sitting at `pos`, and that is not this paragraph. */
+  w42_pt_apply_para_fmt (r->pt, r->pos > 0 ? r->pos - 1 : 0, 0, PARA_MASK,
+                         &r->state.pa);
 
   w42_fmt_init_default (&fmt);
   fmt.ch = r->state.ch;
@@ -1435,6 +1480,11 @@ finish_pict (RtfReader *r)
                               pw, ph, width, height);
   g_bytes_unref (data);
 
+  /* A picture goes into the document like text does, so a cell it belongs
+   * to has to be open first -- a table whose first cell holds nothing but a
+   * picture would otherwise be opened after it, leaving the picture in a
+   * paragraph of its own above the table. */
+  table_sync (r);
   flush_text (r);
   w42_pt_insert_object (r->pt, r->pos, idx, reader_ap (r));
   r->pos += 1;
@@ -1505,6 +1555,8 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       g_array_set_size (r->clflags, 0);
       g_array_set_size (r->clvflags, 0);
       g_array_set_size (r->clsides, 0);
+      g_array_set_size (r->clfills, 0);
+      g_array_set_size (r->clfilled, 0);
       r->clpending = 0;
       r->clvpending = 0;
       r->clsides_pending = W42_BORDER_BOX;
@@ -1529,12 +1581,20 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       g_array_append_val (r->clflags, r->clpending);
       g_array_append_val (r->clvflags, r->clvpending);
       g_array_append_val (r->clsides, r->clsides_pending);
+      g_array_append_val (r->clfills, r->clfill_pending);
+      {
+        int filled = r->clfilled_pending ? 1 : 0;
+
+        g_array_append_val (r->clfilled, filled);
+      }
       /* The table is ruled unless its first cell has no rules at all. */
       if (r->table < 0 && r->clsides->len == 1)
         r->no_borders = (r->clsides_pending == 0);
-r->clpending = 0;
+      r->clpending = 0;
       r->clvpending = 0;
       r->clsides_pending = W42_BORDER_BOX;
+      r->clfill_pending = 0;
+      r->clfilled_pending = FALSE;
       return;
     }
   if (g_str_equal (word, "intbl"))
@@ -1549,6 +1609,8 @@ r->clpending = 0;
       st->intbl = TRUE;
       table_sync (r);
       flush_text (r);
+      w42_pt_apply_para_fmt (r->pt, r->pos > 0 ? r->pos - 1 : 0, 0,
+                             PARA_MASK, &r->state.pa);
       r->in_cell = FALSE;
       r->table_col++;
       return;
@@ -1649,6 +1711,7 @@ r->clpending = 0;
        * main text resumes after the group, one position on for the mark. */
       gsize body;
 
+      table_sync (r);
       flush_text (r);
       body = w42_pt_insert_footnote (r->pt, r->pos, reader_ap (r));
       r->note_return = r->pos + 1;
@@ -1797,12 +1860,10 @@ formatting:
     }
   else if (g_str_equal (word, "cbpat") && has_param)
     {
-      /* The paragraph's background, likewise, as a shade of grey. */
-      guint32 rgb = colour_at (r, param);
-      int grey = (int) ((((rgb >> 16) & 0xFF) * 30 + ((rgb >> 8) & 0xFF) * 59 +
-                         (rgb & 0xFF) * 11) / 100);
-
-      st->pa.shading = (guint8) CLAMP ((255 - grey) * 100 / 255, 0, 100);
+      /* The paragraph's background, as the colour it is. */
+      st->pa.shading_color = colour_at (r, param);
+      st->pa.has_shading_color = 1;
+      st->pa.shading = 0;
       return;
     }
   else if (g_str_equal (word, "stylesheet"))
@@ -1947,6 +2008,18 @@ formatting:
           st->pa.columns = (guint8) CLAMP (r->sect_cols, 1, 9);
           st->pa.column_gap = r->sect_gap;
         }
+    }
+  else if (g_str_equal (word, "clcbpat") && has_param)
+    {
+      r->clfill_pending = colour_at (r, param);
+      r->clfilled_pending = TRUE;
+    }
+  else if (g_str_equal (word, "brdrcf") && has_param)
+    {
+      /* A rule's colour.  A cell's rules are not coloured in the
+       * model, so only a paragraph's is kept. */
+      if (!r->cell_border)
+        st->pa.border_color = colour_at (r, param);
     }
   else if (g_str_has_prefix (word, "clbrdr"))
     {
@@ -2428,6 +2501,8 @@ w42_rtf_load (W42PieceTable *pt,
   r.clsides = g_array_new (FALSE, FALSE, sizeof (int));
   r.info_text = g_string_new (NULL);
   r.clsides_pending = W42_BORDER_BOX;
+  r.clfills = g_array_new (FALSE, FALSE, sizeof (guint32));
+  r.clfilled = g_array_new (FALSE, FALSE, sizeof (int));
   r.last_cell_pos = (gsize) -1;
   r.pos = w42_pt_first_caret_pos (pt);
   r.first_para = TRUE;
@@ -2914,6 +2989,8 @@ w42_rtf_load (W42PieceTable *pt,
   g_array_free (r.clflags, TRUE);
   g_array_free (r.clvflags, TRUE);
   g_array_free (r.clsides, TRUE);
+  g_array_free (r.clfills, TRUE);
+  g_array_free (r.clfilled, TRUE);
   {
     /* What the \info group said. */
     W42DocInfo info;
