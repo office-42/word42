@@ -211,9 +211,13 @@ Early, but real. Word42 today is a working word processor:
   Deleting a mark deletes its note, and undo brings both back. RTF carries
   them as `{\footnote ...}` with `\chftn`.
 - **Borders and shading** — Format ▸ Borders and Shading puts a line
-  above, below, beside or round a paragraph in three weights, and a grey
-  shading behind it; drawn by every painter, so it prints and exports as it
-  shows. RTF carries them as `\brdrt`…`\brdrw` and `\shading`.
+  above, below, beside or round a paragraph in three weights, and a shading
+  behind it; drawn by every painter, so it prints and exports as it shows,
+  inside a table cell as much as outside one, and across the column the
+  paragraph was broken to rather than across the page. A rule read from a
+  file keeps its colour, and a background read from one keeps its colour
+  rather than becoming a shade of grey. RTF carries them as
+  `\brdrt`…`\brdrw`, `\brdrcf` and `\cbpat`.
 - **Tabs and a live ruler** — left, centre, right and decimal tab stops,
   every half inch by default; Format ▸ Tabs to set them by number, or click
   the ruler to set one where you click, drag it to move it, drag it off to
@@ -347,9 +351,13 @@ Early, but real. Word42 today is a working word processor:
   paragraphs with tabs between the cells and turns tabbed paragraphs back
   into a table; and Table Gridlines, which shows the cells of an unruled
   table faintly on screen without printing them.
-- **Cell borders** — Table Properties rules any of a cell's four sides on its
-  own, over the table's setting; Word, RTF and OpenDocument carry them.
-  Every table property is an undo step.
+- **Cell borders and backgrounds** — Table Properties rules any of a cell's
+  four sides on its own, over the table's setting; Word, RTF, OpenDocument,
+  AbiWord and HTML carry them, and a cell's background colour with them. A
+  table read from a file is ruled only where the file says: every format
+  keeps its rules in the cells, so a layout table -- the two columns of a
+  CV, say -- comes back without the grid it never had. Every table property
+  is an undo step.
 - **Find and Replace** picks up the selected word, and Change Case with
   nothing selected changes the word at the caret, as Word does.
 - **User Info** — Tools ▸ Options takes your name; annotations and revisions
@@ -365,9 +373,14 @@ Early, but real. Word42 today is a working word processor:
   frames did. Word, OpenDocument, AbiWord and HTML files carry the wrap.
 - **PDF** — File ▸ Export as PDF writes the document through the same layout
   engine and painting code the screen and printer use. Opening a `.pdf`
-  imports it: the text with paragraphs recovered from the line breaks, the
-  pictures, and the page size. A PDF is a picture of a document rather than
-  the document, so that is what there is to recover.
+  imports it: each run's font, size, colour and underline; the columns read
+  in order, found from the bands of the page no character sits in, so a
+  two-column CV does not come back interleaved line by line; paragraphs
+  recovered from the geometry — a gap, a line that stopped short of its
+  column, a step in or out, a change of type, a bullet or a number; a
+  heading set in tracked capitals closed back up; the pictures; and the page
+  with its margins. A PDF is a picture of a document rather than the
+  document, so that is what there is to recover.
 - **Printing** — File ▸ Print through the system's print dialog on Windows,
   CUPS on Linux and GTK's own dialog on macOS; where no print backend works,
   Word42 offers to write the same pages to a PDF instead.
