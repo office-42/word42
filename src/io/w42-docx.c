@@ -826,6 +826,8 @@ typedef struct {
   int         drop_join;
   int         txbx_depth;    /* inside w:txbxContent: a text box's paragraphs */
   gboolean    in_tcborders;  /* w:tcBorders: the cell's own sides */
+  gboolean    cell_has_fill; /* w:tcPr/w:shd: the cell's own background */
+  guint32     cell_fill;
   int         cell_sides;    /* -1 for none of its own */
   W42CharFmt  style_ch;      /* the paragraph style's character formatting */
   gboolean    have_style_ch;
@@ -930,6 +932,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->cell_pending = FALSE;
           if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
             w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
+          if (d->cell_has_fill && d->b.cell_pos != (gsize) -1)
+            w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
           if (d->cell_vmerge != 0 && d->b.cell_pos != (gsize) -1)
             {
               /* The rows a merge covers are counted once the table is
@@ -1157,10 +1161,14 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
           if (val != NULL && !g_str_equal (val, "nil") && !g_str_equal (val, "none"))
             {
+              const char *colour = attr (an, av, "color");
+
               pa->border |= g_str_equal (tag, "top") ? W42_BORDER_TOP
                           : g_str_equal (tag, "bottom") ? W42_BORDER_BOTTOM
                           : g_str_equal (tag, "left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
               pa->border_width = (guint8) CLAMP (sz * 20 / 8, 5, 120);   /* eighths of a point */
+              if (colour != NULL && !g_str_equal (colour, "auto"))
+                pa->border_color = (guint32) strtoul (colour, NULL, 16) & 0xFFFFFF;
             }
         }
       else if (g_str_equal (tag, "shd"))
@@ -1169,10 +1177,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
           if (fill != NULL && !g_str_equal (fill, "auto"))
             {
-              guint32 rgb = (guint32) strtoul (fill, NULL, 16);
-              int grey = ((rgb >> 16) & 0xff) * 30 / 100 + ((rgb >> 8) & 0xff) * 59 / 100 + (rgb & 0xff) * 11 / 100;
-
-              pa->shading = (guint8) CLAMP (100 - grey * 100 / 255, 0, 100);
+              pa->shading_color = (guint32) strtoul (fill, NULL, 16) & 0xFFFFFF;
+              pa->has_shading_color = 1;
+              pa->shading = 0;
             }
         }
       else if (g_str_equal (tag, "keepNext"))     pa->keep_next = toggle_on (an, av);
@@ -1526,6 +1533,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->cell_span = 1;
       d->cell_sides = -1;
       d->cell_vmerge = 0;
+      d->cell_fill = 0;
+      d->cell_has_fill = FALSE;
     }
   else if (g_str_equal (tag, "tcBorders") && d->depth_tbl == 1 && d->cell_pending)
     {
@@ -1546,6 +1555,17 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         d->cell_sides &= ~bit;
       else
         d->cell_sides |= bit;
+    }
+  else if (g_str_equal (tag, "shd") && d->depth_tbl == 1 && d->cell_pending &&
+           !d->in_ppr && !d->in_rpr)
+    {
+      const char *fill = attr (an, av, "fill");
+
+      if (fill != NULL && !g_str_equal (fill, "auto"))
+        {
+          d->cell_fill = (guint32) strtoul (fill, NULL, 16) & 0xFFFFFF;
+          d->cell_has_fill = TRUE;
+        }
     }
   else if (g_str_equal (tag, "gridSpan") && d->depth_tbl == 1 && d->cell_pending)
     d->cell_span = CLAMP (attr_int (an, av, "val", 1), 1, 63);
@@ -1700,8 +1720,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
           d->cell_pending = FALSE;
           if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
             w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
-          if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
+          if (d->cell_has_fill && d->b.cell_pos != (gsize) -1)
+            w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
         }
       if (d->drop_pending > 0)
         {
@@ -1742,6 +1762,13 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
 
           if (bytes != NULL && w42_image_probe (bytes, &pw, &ph, &format))
             {
+              /* The picture's run carries a font and a size like any other,
+               * and the line it sits on is as tall as they make it.  Only
+               * flushing text picks the run's formatting up, and a run
+               * holding a picture has none. */
+              d->b.ch = d->run_ch;
+              d->b.ch.link = d->link;
+              d->b.ch.revision = (guint8) d->revision;
               w42_builder_object (&d->b, bytes, format, pw, ph,
                                   (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
                                   (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
@@ -1763,8 +1790,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
           d->cell_pending = FALSE;
           if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
             w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
-          if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
+          if (d->cell_has_fill && d->b.cell_pos != (gsize) -1)
+            w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
         }
       w42_builder_end_cell (&d->b);
     }
@@ -2096,32 +2123,38 @@ write_run_text (GString *out, const char *text, gsize len, gboolean deleted)
 }
 
 static void
-write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run)
+write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
+               const W42CharFmt *ch, const W42CharFmt *base)
 {
   const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
-  GBytes *png;
+  GBytes *bytes;
+  const char *ext = "png";
   char *name, *target, *rid;
   gint64 cx, cy;
   int id;
 
   if (object == NULL)
     return;
-  png = w42_image_to_png (object->data);
-  if (png == NULL)
+  bytes = w42_image_for_container (object->data, &ext, NULL);
+  if (bytes == NULL)
     return;
 
   id = ++parts->image_id;
-  name = g_strdup_printf ("image%d.png", id);
+  name = g_strdup_printf ("image%d.%s", id, ext);
   target = g_strconcat ("media/", name, NULL);
   rid = add_rel (parts, "image", target, FALSE);
   g_ptr_array_add (parts->media_names, name);
-  g_ptr_array_add (parts->media_data, png);
+  g_ptr_array_add (parts->media_data, bytes);
   cx = (gint64) object->width * EMU_PER_TWIP;
   cy = (gint64) object->height * EMU_PER_TWIP;
 
+  /* The picture's run carries a font and a size like any other, and the
+   * line it sits on is as tall as they make it, so they go out with it. */
+  g_string_append (out, "<w:r>");
+  write_rpr (out, ch, base);
   if (object->wrap == W42_WRAP_INLINE)
     g_string_append_printf (out,
-      "<w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+      "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
       "<wp:extent cx=\"%" G_GINT64_FORMAT "\" cy=\"%" G_GINT64_FORMAT "\"/>"
       "<wp:docPr id=\"%d\" name=\"Picture %d\"/>",
       cx, cy, id, id);
@@ -2129,7 +2162,7 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run)
     /* Anchored at the paragraph's top, against the column's side, with
      * the text running down the other side. */
     g_string_append_printf (out,
-      "<w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" "
+      "<w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" "
       "simplePos=\"0\" relativeHeight=\"%d\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
       "<wp:simplePos x=\"0\" y=\"0\"/>"
       "<wp:positionH relativeFrom=\"column\"><wp:align>%s</wp:align></wp:positionH>"
@@ -2253,7 +2286,7 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
         }
 
       if (run->object != W42_OBJECT_NONE)
-        write_drawing (out, parts, pt, run);
+        write_drawing (out, parts, pt, run, ch, base);
       else if (run->footnote > 0)
         g_string_append_printf (out,
           "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:%sReference w:id=\"%d\"/></w:r>",
@@ -2338,10 +2371,14 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
       g_string_append (out, "<w:pBdr>");
       for (int i = 0; i < 4; i++)
         if (pa->border & bits[i])
-          g_string_append_printf (out, "<w:%s w:val=\"single\" w:sz=\"%d\" w:space=\"1\" w:color=\"000000\"/>", sides[i], sz);
+          g_string_append_printf (out, "<w:%s w:val=\"single\" w:sz=\"%d\" w:space=\"1\" w:color=\"%06X\"/>",
+                                  sides[i], sz, pa->border_color & 0xFFFFFF);
       g_string_append (out, "</w:pBdr>");
     }
-  if (pa->shading > 0)
+  if (pa->has_shading_color)
+    g_string_append_printf (out, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"%06X\"/>",
+                            pa->shading_color & 0xFFFFFF);
+  else if (pa->shading > 0)
     {
       int grey = 255 - pa->shading * 255 / 100;
 
@@ -2882,6 +2919,9 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
                                               names[k], (cpa->border & bits[k]) ? "single" : "nil");
                     g_string_append (doc, "</w:tcBorders>");
                   }
+                if (cpa->has_shading_color)
+                  g_string_append_printf (doc, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"%06X\"/>",
+                                          cpa->shading_color & 0xFFFFFF);
               }
               g_string_append (doc, "</w:tcPr>");
             }
@@ -2922,6 +2962,10 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
       "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
       "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
       "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+      "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>"
+      "<Default Extension=\"jpg\" ContentType=\"image/jpeg\"/>"
+      "<Default Extension=\"gif\" ContentType=\"image/gif\"/>"
+      "<Default Extension=\"bmp\" ContentType=\"image/bmp\"/>"
       "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
       "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>");
     gboolean any_lists = FALSE;

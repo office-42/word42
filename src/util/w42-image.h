@@ -42,6 +42,16 @@ cairo_surface_t *w42_image_surface (GBytes *data);
  * original.  Returns NULL on failure. */
 GBytes  *w42_image_to_png (GBytes *data);
 
+/* The bytes to put in a container that can hold more than PNG -- a .docx or
+ * an .odt.  A picture in a format the container carries is handed back
+ * untouched, so that a JPEG stays the JPEG it was rather than trebling in
+ * size as a PNG; anything else is re-encoded.  `ext` and `mime` receive the
+ * file extension and the MIME type to file it under, both static.  The
+ * caller owns the bytes.  NULL if the picture cannot be read at all. */
+GBytes  *w42_image_for_container (GBytes      *data,
+                                  const char **ext,
+                                  const char **mime);
+
 /* Encodes a cairo image surface as PNG, for pictures pulled out of a PDF. */
 GBytes  *w42_image_surface_to_png (cairo_surface_t *surface);
 

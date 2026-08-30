@@ -92,10 +92,24 @@ w42_builder_object (W42Builder *b, GBytes *data, const char *format,
   b->in_para = TRUE;
 }
 
+/* A paragraph's properties are known only once it ends, and they belong to
+ * the BLOCK strux in front of its text.  w42_pt_apply_para_fmt widens
+ * backwards to find that strux, so it has to start from the last thing
+ * written rather than from `pos` itself: a document that opens with a table
+ * keeps its final empty paragraph's BLOCK sitting at `pos`, and widening
+ * from there would format that one instead -- which is why the first
+ * paragraph of every cell used to come back with nothing on it. */
+static void
+builder_apply_para (W42Builder *b)
+{
+  w42_pt_apply_para_fmt (b->pt, b->pos > 0 ? b->pos - 1 : 0, 0,
+                         W42_PARA_ALL, &b->pa);
+}
+
 void
 w42_builder_end_paragraph (W42Builder *b)
 {
-  w42_pt_apply_para_fmt (b->pt, b->pos, 0, W42_PARA_ALL, &b->pa);
+  builder_apply_para (b);
 
   if (b->table >= 0 && b->in_cell)
     {
@@ -139,7 +153,8 @@ w42_builder_end_note (W42Builder *b)
 {
   if (b->note_return == (gsize) -1)
     return;
-  w42_pt_apply_para_fmt (b->pt, b->pos, 0, W42_PARA_ALL, &b->pa);
+  if (b->in_para)
+    builder_apply_para (b);
   b->pos = b->note_return;
   b->note_return = (gsize) -1;
   b->in_para = TRUE;
@@ -160,17 +175,27 @@ w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths)
     return;
   n_cols = CLAMP (n_cols, 1, 1023);
 
-  w42_builder_end_paragraph (b);
-
-  /* The paragraph mark just made would sit between the table and the
-   * text before it; the table goes in ahead of it instead. */
   b->table_before_block = FALSE;
-  if (b->pos >= 2 && b->pos == w42_pt_length (b->pt))
+  if (b->in_para || b->pos > w42_pt_first_caret_pos (b->pt))
     {
-      char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
+      w42_builder_end_paragraph (b);
 
-      b->table_before_block = (tail != NULL && *tail == '\n');
-      g_free (tail);
+      /* The paragraph mark just made would sit between the table and the
+       * text before it; the table goes in ahead of it instead. */
+      if (b->pos >= 2 && b->pos == w42_pt_length (b->pt))
+        {
+          char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
+
+          b->table_before_block = (tail != NULL && *tail == '\n');
+          g_free (tail);
+        }
+    }
+  else
+    {
+      /* Nothing written yet: a document that opens with a table.  The
+       * empty paragraph it started life with is the one that follows the
+       * table, not one in front of it. */
+      b->table_before_block = TRUE;
     }
   if (b->table_before_block)
     b->pos -= 1;
@@ -211,7 +236,8 @@ w42_builder_end_cell (W42Builder *b)
 {
   if (b->table < 0 || !b->in_cell)
     return;
-  w42_pt_apply_para_fmt (b->pt, b->pos, 0, W42_PARA_ALL, &b->pa);
+  if (b->in_para)
+    builder_apply_para (b);
   b->in_cell = FALSE;
   b->in_para = FALSE;
   b->cell_break_pending = FALSE;
@@ -280,7 +306,7 @@ w42_builder_finish (W42Builder *b)
         w42_pt_delete (b->pt, b->pos - 1, 1);
     }
   else if (b->in_para)
-    w42_pt_apply_para_fmt (b->pt, b->pos, 0, W42_PARA_ALL, &b->pa);
+    builder_apply_para (b);
 }
 
 void

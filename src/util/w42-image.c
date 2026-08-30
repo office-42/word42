@@ -214,6 +214,38 @@ w42_image_to_png (GBytes *data)
   return g_bytes_new_take (buffer, length);
 }
 
+GBytes *
+w42_image_for_container (GBytes *data, const char **ext, const char **mime)
+{
+  /* What a .docx and an .odt both carry as it stands.  Everything else --
+   * WebP, AVIF, an SVG, a TIFF that Word would rather not see -- becomes a
+   * PNG, which they are both certain to read. */
+  static const struct { const char *format, *ext, *mime; } kept[] = {
+    { "png",  "png",  "image/png"  },
+    { "jpeg", "jpeg", "image/jpeg" },
+    { "gif",  "gif",  "image/gif"  },
+    { "bmp",  "bmp",  "image/bmp"  },
+  };
+  const char *format = NULL;
+  int w = 0, h = 0;
+
+  if (ext != NULL)  *ext = "png";
+  if (mime != NULL) *mime = "image/png";
+  if (data == NULL)
+    return NULL;
+
+  if (w42_image_probe (data, &w, &h, &format) && format != NULL)
+    for (gsize i = 0; i < G_N_ELEMENTS (kept); i++)
+      if (g_str_equal (format, kept[i].format))
+        {
+          if (ext != NULL)  *ext = kept[i].ext;
+          if (mime != NULL) *mime = kept[i].mime;
+          return g_bytes_ref (data);
+        }
+
+  return w42_image_to_png (data);
+}
+
 static cairo_status_t
 append_to_bytes (void *closure, const unsigned char *data, unsigned int length)
 {

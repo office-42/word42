@@ -1732,7 +1732,9 @@ typedef struct {
   GString   *body;
   GPtrArray *pa_keys;          /* W42ParaFmt copies: P1.. */
   GPtrArray *ch_keys;          /* W42CharFmt copies: T1.. */
-  GPtrArray *pictures;         /* GBytes*, Pictures/imageN.png */
+  GPtrArray *pictures;         /* GBytes*, Pictures/imageN.<ext> */
+  GPtrArray *picture_exts;     /* const char*, static: "png", "jpeg", ... */
+  GPtrArray *picture_mimes;    /* const char*, static */
   int        n_tables;
   int        n_index_marks;    /* index entries written, for their ids */
   int        list_style_used[W42_LIST_KINDS];
@@ -2054,11 +2056,15 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
       if (run->object != W42_OBJECT_NONE)
         {
           const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
-          GBytes *png = object != NULL ? w42_image_to_png (object->data) : NULL;
+          const char *ext = "png", *mime = "image/png";
+          GBytes *png = object != NULL
+                          ? w42_image_for_container (object->data, &ext, &mime) : NULL;
 
           if (png != NULL)
             {
               g_ptr_array_add (w->pictures, png);
+              g_ptr_array_add (w->picture_exts, (gpointer) ext);
+              g_ptr_array_add (w->picture_mimes, (gpointer) mime);
               if (object->wrap == W42_WRAP_INLINE)
                 g_string_append_printf (w->body, "<draw:frame draw:name=\"Picture %u\" text:anchor-type=\"as-char\" svg:width=\"",
                                         w->pictures->len);
@@ -2068,8 +2074,8 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
               twips_out (w->body, object->width);
               g_string_append (w->body, "\" svg:height=\"");
               twips_out (w->body, object->height);
-              g_string_append_printf (w->body, "\"><draw:image xlink:href=\"Pictures/image%u.png\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>",
-                                      w->pictures->len);
+              g_string_append_printf (w->body, "\"><draw:image xlink:href=\"Pictures/image%u.%s\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>",
+                                      w->pictures->len, ext);
             }
           continue;
         }
@@ -2226,6 +2232,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.pa_keys = g_ptr_array_new_with_free_func (g_free);
   w.ch_keys = g_ptr_array_new_with_free_func (g_free);
   w.pictures = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
+  w.picture_exts = g_ptr_array_new ();
+  w.picture_mimes = g_ptr_array_new ();
   {
     const W42Style *normal = w42_stylesheet_find (styles, "Normal");
     W42Fmt def;
@@ -2615,7 +2623,9 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
                            "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>"
                            "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>");
   for (guint i = 0; i < w.pictures->len; i++)
-    g_string_append_printf (manifest, "<manifest:file-entry manifest:full-path=\"Pictures/image%u.png\" manifest:media-type=\"image/png\"/>", i + 1);
+    g_string_append_printf (manifest, "<manifest:file-entry manifest:full-path=\"Pictures/image%u.%s\" manifest:media-type=\"%s\"/>",
+                            i + 1, (const char *) g_ptr_array_index (w.picture_exts, i),
+                            (const char *) g_ptr_array_index (w.picture_mimes, i));
   g_string_append (manifest, "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>");
   g_string_append (manifest, "</manifest:manifest>");
 
@@ -2655,7 +2665,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   }
   for (guint i = 0; i < w.pictures->len; i++)
     {
-      char *name = g_strdup_printf ("Pictures/image%u.png", i + 1);
+      char *name = g_strdup_printf ("Pictures/image%u.%s", i + 1,
+                                    (const char *) g_ptr_array_index (w.picture_exts, i));
       GBytes *png = g_ptr_array_index (w.pictures, i);
 
       w42_zip_writer_add (zip, name, g_bytes_get_data (png, NULL), g_bytes_get_size (png));
@@ -2673,6 +2684,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_ptr_array_free (w.pa_keys, TRUE);
   g_ptr_array_free (w.ch_keys, TRUE);
   g_ptr_array_free (w.pictures, TRUE);
+  g_ptr_array_free (w.picture_exts, TRUE);
+  g_ptr_array_free (w.picture_mimes, TRUE);
   g_ptr_array_free (blocks, TRUE);
   return ok;
 }
