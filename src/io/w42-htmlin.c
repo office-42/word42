@@ -40,6 +40,8 @@ typedef struct {
 
   int            table;             /* the table being read, or -1 */
   int            table_row, table_col, table_cols;
+  int            col_widths[1023];  /* what its <colgroup> said, in twips */
+  int            n_col_widths;
   gboolean       in_cell;
   gboolean       table_before_block;
 
@@ -150,10 +152,8 @@ add_text (Html *h, const char *text, gsize len)
         }
       n = g_utf8_skip[(guchar) text[i]];
 
-      /* A page's &nbsp; is mostly a placeholder for nothing; treat it as
-       * the space it looks like. */
-      if (c == 0xA0)
-        c = ' ';
+      /* A no-break space is a character an author chose, not whitespace
+       * to be collapsed: it is kept as it is. */
 
       if (h->pre_depth == 0 && (c == ' ' || c == '\t' || c == '\n' || c == '\r'))
         {
@@ -193,7 +193,8 @@ end_paragraph (Html *h)
       return;
     }
 
-  w42_pt_apply_para_fmt (h->pt, h->pos, 0, W42_PARA_ALL, &h->pa);
+  w42_pt_apply_para_fmt (h->pt, h->pos > 0 ? h->pos - 1 : 0, 0,
+                         W42_PARA_ALL, &h->pa);
 
   if (h->table >= 0 && h->in_cell)
     {
@@ -241,7 +242,8 @@ close_cell (Html *h)
     return;
 
   flush_text (h);
-  w42_pt_apply_para_fmt (h->pt, h->pos, 0, W42_PARA_ALL, &h->pa);
+  w42_pt_apply_para_fmt (h->pt, h->pos > 0 ? h->pos - 1 : 0, 0,
+                         W42_PARA_ALL, &h->pa);
   h->in_cell = FALSE;
   h->in_para = FALSE;
   h->pa_dirty = FALSE;
@@ -444,14 +446,38 @@ text_run (Html *h, const char *text, gsize len)
 static int
 css_twips (const char *value)
 {
-  double v = g_ascii_strtod (value, NULL);
+  char *unit = NULL;
+  double v = g_ascii_strtod (value, &unit);
+  double per;
 
-  if (strstr (value, "in") != NULL)      return (int) (v * 1440.0);
-  if (strstr (value, "cm") != NULL)      return (int) (v * 1440.0 / 2.54);
-  if (strstr (value, "mm") != NULL)      return (int) (v * 1440.0 / 25.4);
-  if (strstr (value, "pt") != NULL)      return (int) (v * 20.0);
-  if (strstr (value, "px") != NULL)      return (int) (v * 15.0);
-  return 0;
+  /* The unit is the one that follows the number, not any two letters
+   * elsewhere in the declaration: "margin" ends in an "in". */
+  if (unit == NULL || unit == value)
+    return 0;
+  while (*unit == ' ')
+    unit++;
+
+  if      (g_str_has_prefix (unit, "in")) per = 1440.0;
+  else if (g_str_has_prefix (unit, "cm")) per = 1440.0 / 2.54;
+  else if (g_str_has_prefix (unit, "mm")) per = 1440.0 / 25.4;
+  else if (g_str_has_prefix (unit, "pt")) per = 20.0;
+  else if (g_str_has_prefix (unit, "px")) per = 15.0;
+  else if (g_str_has_prefix (unit, "pc")) per = 240.0;
+  else                                    return 0;
+
+  v *= per;
+  return (int) (v < 0 ? v - 0.5 : v + 0.5);
+}
+
+/* The colour a CSS value names, or -1 if it names none. */
+static gint64
+css_colour (const char *value)
+{
+  const char *hash = strchr (value, '#');
+
+  if (hash == NULL || strlen (hash) < 7)
+    return -1;
+  return (gint64) (strtoul (hash + 1, NULL, 16) & 0xFFFFFF);
 }
 
 /* The grey of a CSS colour, as a shading percentage: a pale background
@@ -501,8 +527,10 @@ apply_style (Html *h, const char *style, gboolean para)
           double v = g_ascii_strtod (value, NULL);
           if (strstr (value, "px") != NULL) v = v * 0.75;
           if (v > 0)
-            h->ch[h->depth].size = CLAMP ((int) (v * 2), 2, 3276);
+            h->ch[h->depth].size = CLAMP ((int) (v * 2 + 0.5), 2, 3276);
         }
+      else if (g_ascii_strcasecmp (key, "letter-spacing") == 0)
+        h->ch[h->depth].spacing = (gint16) CLAMP (css_twips (value), -720, 720);
       else if (g_ascii_strcasecmp (key, "color") == 0 && value[0] == '#' && strlen (value) == 7)
         h->ch[h->depth].color = (guint32) strtoul (value + 1, NULL, 16);
       else if (g_ascii_strcasecmp (key, "font-weight") == 0)
@@ -616,7 +644,16 @@ apply_style (Html *h, const char *style, gboolean para)
       else if (para && (g_ascii_strcasecmp (key, "background") == 0 ||
                         g_ascii_strcasecmp (key, "background-color") == 0))
         {
-          h->pa.shading = (guint8) css_shading (value);
+          gint64 rgb = css_colour (value);
+
+          if (rgb >= 0)
+            {
+              h->pa.shading_color = (guint32) rgb;
+              h->pa.has_shading_color = 1;
+              h->pa.shading = 0;
+            }
+          else
+            h->pa.shading = (guint8) css_shading (value);
           h->pa_dirty = TRUE;
         }
       else if (para && g_str_has_prefix (key, "border"))
@@ -634,6 +671,15 @@ apply_style (Html *h, const char *style, gboolean para)
                 h->pa.border |= W42_BORDER_LEFT;
               else if (g_ascii_strcasecmp (key, "border-right") == 0)
                 h->pa.border |= W42_BORDER_RIGHT;
+              {
+                gint64 rgb = css_colour (value);
+                int w = css_twips (value);
+
+                if (rgb >= 0)
+                  h->pa.border_color = (guint32) rgb;
+                if (w > 0)
+                  h->pa.border_width = (guint8) CLAMP (w, 5, 120);
+              }
               h->pa_dirty = TRUE;
             }
         }
@@ -829,8 +875,14 @@ picture (Html *h, const char *src, const char *width, const char *height)
       g_bytes_unref (data);
       return;
     }
-  w = width != NULL && atoi (width) > 0 ? CLAMP (atoi (width), 1, 2000) * 15 : MIN (pw, 2000) * 15;
-  hh = height != NULL && atoi (height) > 0 ? CLAMP (atoi (height), 1, 2000) * 15 : MIN (ph, 2000) * 15;
+  /* A size with a unit is measured; a bare number is screen pixels, which
+   * is what the width and height attributes hold. */
+  w = width != NULL && css_twips (width) > 0 ? CLAMP (css_twips (width), 15, 30000)
+    : width != NULL && atoi (width) > 0 ? CLAMP (atoi (width), 1, 2000) * 15
+    : MIN (pw, 2000) * 15;
+  hh = height != NULL && css_twips (height) > 0 ? CLAMP (css_twips (height), 15, 30000)
+     : height != NULL && atoi (height) > 0 ? CLAMP (atoi (height), 1, 2000) * 15
+     : MIN (ph, 2000) * 15;
 
   idx = w42_object_table_add (w42_pt_object_table (h->pt), data, format, pw, ph, w, hh);
   g_bytes_unref (data);
@@ -1046,9 +1098,38 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
   if (g_str_equal (name, "table"))
     {
       if (!closing)
-        open_table (h, count_columns (after, end));
+        {
+          char *cls = attr_value (attrs, "class");
+
+          open_table (h, count_columns (after, end));
+          /* Word42 writes class="ruled" for a table that is; anything else
+           * rules its cells itself, or not at all. */
+          if (h->table >= 0)
+            w42_pt_table_set_borders (h->pt, h->table,
+                                      cls != NULL && strstr (cls, "ruled") != NULL);
+          g_free (cls);
+        }
       else
         close_table (h);
+      return;
+    }
+  if (g_str_equal (name, "col") && !closing && h->table >= 0)
+    {
+      /* A <colgroup> gives the columns their widths; one <col> with no
+       * width of its own still takes its place among them. */
+      char *cw = attr_value (attrs, "style");
+      const char *w = cw != NULL ? strstr (cw, "width:") : NULL;
+
+      if (h->n_col_widths < 1023)
+        h->col_widths[h->n_col_widths++] = w != NULL ? css_twips (w + 6) : 0;
+      g_free (cw);
+      return;
+    }
+  if (g_str_equal (name, "colgroup") && closing && h->table >= 0 && h->n_col_widths > 0)
+    {
+      w42_pt_table_set_widths (h->pt, h->table, h->col_widths,
+                               MIN (h->n_col_widths, 1023));
+      h->n_col_widths = 0;
       return;
     }
   if (g_str_equal (name, "tr"))
@@ -1069,7 +1150,24 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
             h->ch[h->depth].bold = 1;
           if ((style = attr_value (attrs, "style")) != NULL)
             {
+              /* A <td>'s style is the cell's, not the paragraph's inside
+               * it: its rules and its background belong to the mark. */
+              W42ParaFmt saved = h->pa;
+              gboolean saved_dirty = h->pa_dirty;
+              gsize cell_pos = h->pos >= 2 ? h->pos - 2 : 0;
+
               apply_style (h, style, TRUE);
+              if (h->in_cell)
+                {
+                  w42_pt_cell_set_borders_at (h->pt, cell_pos,
+                                              (h->pa.border & W42_BORDER_BOX) |
+                                              W42_BORDER_CELL_SET);
+                  if (h->pa.has_shading_color)
+                    w42_pt_cell_set_fill_at (h->pt, cell_pos, TRUE,
+                                             h->pa.shading_color);
+                }
+              h->pa = saved;
+              h->pa_dirty = saved_dirty;
               g_free (style);
             }
         }
@@ -1160,11 +1258,22 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
       char *src = attr_value (attrs, "src");
       char *w = attr_value (attrs, "width");
       char *hh = attr_value (attrs, "height");
+      char *st = attr_value (attrs, "style");
 
+      /* A style says the size to the twip; the attributes only to the
+       * screen pixel, so they are the fallback. */
+      if (st != NULL)
+        {
+          const char *sw = strstr (st, "width:");
+          const char *sh = strstr (st, "height:");
+
+          if (sw != NULL) { g_free (w);  w  = g_strdup (sw + 6); }
+          if (sh != NULL) { g_free (hh); hh = g_strdup (sh + 7); }
+        }
       if (h->table >= 0)
         open_cell (h);
       picture (h, src, w, hh);
-      g_free (src); g_free (w); g_free (hh);
+      g_free (src); g_free (w); g_free (hh); g_free (st);
       return;
     }
 
@@ -1382,6 +1491,71 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
   h.ch[0] = def.ch;
   h.pa = def.pa;
 
+  /* What the stylesheet says the page is.  Word42 writes an @page rule,
+   * and so does anything else that expects to be printed. */
+  if (page != NULL)
+    {
+      const char *at = g_strstr_len (contents, length, "@page");
+
+      if (at != NULL)
+        {
+          const char *brace = strchr (at, '{');
+          const char *close = brace != NULL ? strchr (brace, '}') : NULL;
+
+          if (close != NULL)
+            {
+              char *rule = g_strndup (brace + 1, close - brace - 1);
+              const char *size = strstr (rule, "size:");
+              const char *margin = strstr (rule, "margin:");
+
+              if (size != NULL)
+                {
+                  const char *q = size + 5;
+                  const char *sp;
+                  int w, hh;
+
+                  while (*q == ' ') q++;
+                  w = css_twips (q);
+                  sp = strchr (q, ' ');
+                  hh = sp != NULL ? css_twips (sp) : 0;
+
+                  if (w > 0 && hh > 0)
+                    {
+                      page->width = w;
+                      page->height = hh;
+                    }
+                }
+              if (margin != NULL)
+                {
+                  const char *q = margin + 7;
+                  int m[4] = { 0, 0, 0, 0 };
+                  int n = 0;
+
+                  while (n < 4 && *q != '\0')
+                    {
+                      while (*q == ' ') q++;
+                      if (*q == '\0') break;
+                      m[n++] = css_twips (q);
+                      while (*q != '\0' && *q != ' ') q++;
+                    }
+                  /* The CSS shorthand: one value for all four sides, two
+                   * for the pairs, three or four naming them round. */
+                  if (n == 1)      { m[1] = m[2] = m[3] = m[0]; }
+                  else if (n == 2) { m[2] = m[0]; m[3] = m[1]; }
+                  else if (n == 3) { m[3] = m[1]; }
+                  if (n >= 1)
+                    {
+                      page->margin_top = m[0];
+                      page->margin_right = m[1];
+                      page->margin_bottom = m[2];
+                      page->margin_left = m[3];
+                    }
+                }
+              g_free (rule);
+            }
+        }
+    }
+
   /* The body only, if there is one marked. */
   p = contents;
   end = contents + length;
@@ -1481,7 +1655,8 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
   close_table (&h);
   flush_text (&h);
   if (h.pa_dirty)
-    w42_pt_apply_para_fmt (pt, h.pos, 0, W42_PARA_ALL, &h.pa);
+    w42_pt_apply_para_fmt (pt, h.pos > 0 ? h.pos - 1 : 0, 0,
+                           W42_PARA_ALL, &h.pa);
 
   /* The last block element's close left an empty paragraph behind, as a
    * trailing newline would in a text file.  Drop it. */

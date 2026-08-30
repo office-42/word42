@@ -35,6 +35,11 @@ append_escaped (GString *out, const char *text, gsize len)
               g_string_append (out, "&shy;");
               i += 1;
             }
+          else if ((guchar) text[i] == 0xC2 && i + 1 < len && (guchar) text[i + 1] == 0xA0)
+            {
+              g_string_append (out, "&nbsp;");
+              i += 1;
+            }
           else
             g_string_append_c (out, text[i]);
         }
@@ -89,17 +94,26 @@ write_para_style (GString *out, const W42ParaFmt *pa)
   if (pa->space_after)
     g_string_append_printf (css, "margin-bottom:%dpt;", pa->space_after / 20);
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
+    /* A browser's line-height is a multiple of the type size; Word's is a
+     * multiple of the line, which is about a fifth taller. */
     g_string_append_printf (css, "line-height:%d%%;", pa->line_spacing_pct + 20);
+  else if (pa->line_spacing > 0)
+    css_num (css, "line-height", pa->line_spacing / 20.0, "pt");
   if (pa->border != 0)
     {
       double w = (pa->border_width > 0 ? pa->border_width : 15) / 20.0;
-      if (pa->border & W42_BORDER_TOP)    css_num (css, "border-top", w, "pt solid");
-      if (pa->border & W42_BORDER_BOTTOM) css_num (css, "border-bottom", w, "pt solid");
-      if (pa->border & W42_BORDER_LEFT)   css_num (css, "border-left", w, "pt solid");
-      if (pa->border & W42_BORDER_RIGHT)  css_num (css, "border-right", w, "pt solid");
+      char unit[32];
+
+      g_snprintf (unit, sizeof unit, "pt solid #%06x", pa->border_color & 0xFFFFFF);
+      if (pa->border & W42_BORDER_TOP)    css_num (css, "border-top", w, unit);
+      if (pa->border & W42_BORDER_BOTTOM) css_num (css, "border-bottom", w, unit);
+      if (pa->border & W42_BORDER_LEFT)   css_num (css, "border-left", w, unit);
+      if (pa->border & W42_BORDER_RIGHT)  css_num (css, "border-right", w, unit);
       g_string_append (css, "padding:2pt;");
     }
-  if (pa->shading > 0)
+  if (pa->has_shading_color)
+    g_string_append_printf (css, "background:#%06x;", pa->shading_color & 0xFFFFFF);
+  else if (pa->shading > 0)
     {
       int g = 255 - pa->shading * 255 / 100;
       g_string_append_printf (css, "background:rgb(%d,%d,%d);", g, g, g);
@@ -122,20 +136,36 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
   if (run->object != W42_OBJECT_NONE)
     {
       const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
+      const char *mime = "image/png";
       GBytes *png;
 
       if (object == NULL)
         return;
-      png = w42_image_to_png (object->data);
+      if (ch->family != base->family && ch->family != NULL)
+        g_string_append_printf (css, "font-family:'%s';", ch->family);
+      if (ch->size != base->size)
+        css_num (css, "font-size", ch->size / 2.0, "pt");
+      if (ch->color != 0)
+        g_string_append_printf (css, "color:#%06x;", ch->color);
+      png = w42_image_for_container (object->data, NULL, &mime);
       if (png != NULL)
         {
           char *b64 = g_base64_encode (g_bytes_get_data (png, NULL), g_bytes_get_size (png));
 
-          g_string_append_printf (out, "<img src=\"data:image/png;base64,%s\" "
-                                  "width=\"%d\" height=\"%d\" alt=\"\"%s>",
-                                  b64, (int) (object->width / 15.0), (int) (object->height / 15.0),
-                                  object->wrap == W42_WRAP_LEFT ? " style=\"float:left;margin:0 0.125in 0.125in 0\""
-                                  : object->wrap == W42_WRAP_RIGHT ? " style=\"float:right;margin:0 0 0.125in 0.125in\"" : "");
+          if (css->len > 0)
+            g_string_append_printf (out, "<span style=\"%s\">", css->str);
+          char iw[G_ASCII_DTOSTR_BUF_SIZE], ih[G_ASCII_DTOSTR_BUF_SIZE];
+
+          g_string_append_printf (out, "<img src=\"data:%s;base64,%s\" "
+                                  "width=\"%d\" height=\"%d\" alt=\"\""
+                                  " style=\"width:%sin;height:%sin;%s\">",
+                                  mime, b64, (int) (object->width / 15.0), (int) (object->height / 15.0),
+                                  g_ascii_formatd (iw, sizeof iw, "%.5f", object->width / 1440.0),
+                                  g_ascii_formatd (ih, sizeof ih, "%.5f", object->height / 1440.0),
+                                  object->wrap == W42_WRAP_LEFT ? "float:left;margin:0 0.125in 0.125in 0"
+                                  : object->wrap == W42_WRAP_RIGHT ? "float:right;margin:0 0 0.125in 0.125in" : "");
+          if (css->len > 0)
+            g_string_append (out, "</span>");
           g_free (b64);
           g_bytes_unref (png);
         }
@@ -170,7 +200,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
       g_string_append (css, "';");
     }
   if (ch->size != base->size)
-    g_string_append_printf (css, "font-size:%dpt;", ch->size / 2);
+    css_num (css, "font-size", ch->size / 2.0, "pt");
   if (ch->color != 0 && ch->link == NULL)
     g_string_append_printf (css, "color:#%06x;", ch->color);
   if (ch->highlight)
@@ -308,9 +338,16 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
     "body { font-family: '%s'; font-size: %dpt; max-width: %.2fin; margin: 1em auto; padding: 0 1em; }\n",
     base.ch.family != NULL ? base.ch.family : "Times New Roman", base.ch.size / 2,
     page != NULL ? (page->width - page->margin_left - page->margin_right) / 1440.0 : 6.5);
+  if (page != NULL && page->width > 0 && page->height > 0)
+    g_string_append_printf (out,
+      "@page { size: %.4fin %.4fin; margin: %.4fin %.4fin %.4fin %.4fin; }\n",
+      page->width / 1440.0, page->height / 1440.0,
+      page->margin_top / 1440.0, page->margin_right / 1440.0,
+      page->margin_bottom / 1440.0, page->margin_left / 1440.0);
   g_string_append (out,
     "p { margin: 0; }\nh1, h2, h3 { margin: 0.5em 0 0.25em; }\n"
-    "table { border-collapse: collapse; }\ntd { border: 1px solid #000; padding: 2pt 4pt; vertical-align: top; }\n"
+    "table { border-collapse: collapse; }\ntd { padding: 2pt 4pt; vertical-align: top; }\n"
+    "table.ruled td { border: 1px solid #000; }\n"
     "a { color: #000080; }\n.notes { margin-top: 1em; border-top: 1px solid #000; width: 33%; padding-top: 0.5em; }\n"
     ".note { font-size: smaller; }\n");
   g_string_append (out, "</style>\n</head>\n");
@@ -381,7 +418,29 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       /* Tables: open and close rows and the table around the cells. */
       if (block->table >= 0 && block->table != table_open)
         {
-          g_string_append (out, "<table>\n");
+          const W42TableProps *tp = w42_pt_table_props (pt, block->table);
+
+          g_string_append_printf (out, "<table%s>\n",
+                                  (tp == NULL || tp->borders) ? " class=\"ruled\"" : "");
+          if (tp != NULL && tp->widths != NULL)
+            {
+              g_string_append (out, "<colgroup>");
+              for (int c = 0; c < tp->n_cols && c < (int) tp->widths->len; c++)
+                {
+                  int cw = g_array_index (tp->widths, int, c);
+
+                  if (cw > 0)
+                    {
+                      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+                      g_string_append_printf (out, "<col style=\"width:%sin\">",
+                                              g_ascii_formatd (buf, sizeof buf, "%.5f", cw / 1440.0));
+                    }
+                  else
+                    g_string_append (out, "<col>");
+                }
+              g_string_append (out, "</colgroup>\n");
+            }
           table_open = block->table;
           row_open = -1;
         }
@@ -404,10 +463,27 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
 
           if (cell_start)
             {
+              const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
+              GString *css = g_string_new (NULL);
+
+              if (cpa->border & W42_BORDER_CELL_SET)
+                {
+                  static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
+                  static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
+
+                  for (int k = 0; k < 4; k++)
+                    g_string_append_printf (css, "%s:%s;", names[k],
+                                            (cpa->border & bits[k]) ? "1px solid #000" : "none");
+                }
+              if (cpa->has_shading_color)
+                g_string_append_printf (css, "background:#%06x;", cpa->shading_color & 0xFFFFFF);
+              g_string_append (out, "<td");
               if (block->span > 1)
-                g_string_append_printf (out, "<td colspan=\"%d\">", block->span);
-              else
-                g_string_append (out, "<td>");
+                g_string_append_printf (out, " colspan=\"%d\"", block->span);
+              if (css->len > 0)
+                g_string_append_printf (out, " style=\"%s\"", css->str);
+              g_string_append (out, ">");
+              g_string_free (css, TRUE);
             }
           g_string_append (out, "<p");
           if (pa->rtl)
