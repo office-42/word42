@@ -41,17 +41,22 @@ attr (const char **names, const char **values, const char *want)
 static int
 length_twips (const char *value)
 {
-  double v;
+  double v, per;
 
   if (value == NULL)
     return 0;
   v = g_ascii_strtod (value, NULL);
-  if (strstr (value, "pt") != NULL) return (int) (v * 20.0);
-  if (strstr (value, "cm") != NULL) return (int) (v * 1440.0 / 2.54);
-  if (strstr (value, "mm") != NULL) return (int) (v * 1440.0 / 25.4);
-  if (strstr (value, "in") != NULL) return (int) (v * 1440.0);
-  if (strstr (value, "px") != NULL) return (int) (v * 15.0);
-  return (int) (v * 20.0);
+  if      (strstr (value, "pt") != NULL) per = 20.0;
+  else if (strstr (value, "cm") != NULL) per = 1440.0 / 2.54;
+  else if (strstr (value, "mm") != NULL) per = 1440.0 / 25.4;
+  else if (strstr (value, "in") != NULL) per = 1440.0;
+  else if (strstr (value, "px") != NULL) per = 15.0;
+  else                                   per = 20.0;
+
+  /* To the nearest twip.  Truncating loses one on nearly every round trip:
+   * a 1 cm margin is written as 0.3937in and read back as 566. */
+  v *= per;
+  return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
 static void
@@ -75,7 +80,7 @@ twips_out (GString *s, int twips)
 {
   char buf[G_ASCII_DTOSTR_BUF_SIZE];
 
-  g_string_append (s, g_ascii_formatd (buf, sizeof buf, "%.4f", twips / 1440.0));
+  g_string_append (s, g_ascii_formatd (buf, sizeof buf, "%.5f", twips / 1440.0));
   g_string_append (s, "in");
 }
 
@@ -111,8 +116,10 @@ typedef struct {
   GHashTable    *col_widths;    /* table-column style -> twips */
   GHashTable    *row_heights;   /* table-row style -> least height in twips */
   GHashTable    *cell_sides;    /* table-cell style -> W42_BORDER_CELL_SET | sides */
+  GHashTable    *cell_fills;    /* table-cell style -> 0x1000000 | 0x00RRGGBB */
   char          *cur_cell_style;
   int            pending_cell_sides;   /* for the cell about to begin; -1 none */
+  guint          pending_cell_fill;    /* and its background; 0 none */
   char          *cur_row_style;
   int            table_row;     /* rows begun in the table being read */
   gboolean       in_header_rows;
@@ -226,18 +233,22 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
                       : g_str_equal (k, "fo:border-bottom") ? W42_BORDER_BOTTOM
                       : g_str_equal (k, "fo:border-left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
 
+              const char *hash = strchr (v, '#');
+
               pa->border |= bit;
               pa->border_width = (guint8) CLAMP (length_twips (v), 5, 120);
+              /* "0.75pt solid #14828c": the colour is the last of the three. */
+              if (hash != NULL && strlen (hash) >= 7)
+                pa->border_color = (guint32) strtoul (hash + 1, NULL, 16) & 0xFFFFFF;
             }
         }
       else if (g_str_equal (k, "fo:background-color"))
         {
           if (v[0] == '#' && strlen (v) >= 7)
             {
-              guint32 rgb = (guint32) strtoul (v + 1, NULL, 16);
-              int grey = ((rgb >> 16) & 0xff) * 30 / 100 + ((rgb >> 8) & 0xff) * 59 / 100 + (rgb & 0xff) * 11 / 100;
-
-              pa->shading = (guint8) CLAMP (100 - grey * 100 / 255, 0, 100);
+              pa->shading_color = (guint32) strtoul (v + 1, NULL, 16) & 0xFFFFFF;
+              pa->has_shading_color = 1;
+              pa->shading = 0;
             }
         }
     }
@@ -282,7 +293,13 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
       else if (g_str_equal (k, "fo:font-size"))
         {
           if (strchr (v, '%') == NULL)
-            ch->size = CLAMP (length_twips (v) / 10, 2, 3276);
+            {
+              /* Half-points, as the model counts them, from however many
+               * decimals the file gave. */
+              double pt = g_ascii_strtod (v, NULL);
+
+              ch->size = CLAMP ((int) (pt * 2.0 + 0.5), 2, 3276);
+            }
         }
       else if (g_str_equal (k, "fo:color"))
         {
@@ -377,8 +394,10 @@ resolve_style (Odt *o, const char *name, int depth)
               if (s->pa.page_break_before) pa.page_break_before = 1;
               if (s->pa.keep_next) pa.keep_next = 1;
               if (s->pa.keep_together) pa.keep_together = 1;
-              if (s->pa.border) { pa.border = s->pa.border; pa.border_width = s->pa.border_width; }
+              if (s->pa.border) { pa.border = s->pa.border; pa.border_width = s->pa.border_width; pa.border_color = s->pa.border_color; }
               if (s->pa.shading) pa.shading = s->pa.shading;
+              if (s->pa.has_shading_color)
+                { pa.has_shading_color = 1; pa.shading_color = s->pa.shading_color; pa.shading = 0; }
               if (s->pa.rtl) pa.rtl = 1;
               if (s->pa.n_tabs) { pa.n_tabs = s->pa.n_tabs; memcpy (pa.tab_pos, s->pa.tab_pos, sizeof pa.tab_pos); memcpy (pa.tab_kind, s->pa.tab_kind, sizeof pa.tab_kind); }
               if (s->pa.drop_cap) pa.drop_cap = s->pa.drop_cap;
@@ -627,6 +646,12 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
       if (sides >= 0)
         g_hash_table_insert (o->cell_sides, g_strdup (o->cur_cell_style),
                              GINT_TO_POINTER (W42_BORDER_CELL_SET | sides));
+      for (int i = 0; an != NULL && an[i] != NULL; i++)
+        if (g_str_equal (an[i], "fo:background-color") && av[i][0] == '#' &&
+            strlen (av[i]) >= 7)
+          g_hash_table_insert (o->cell_fills, g_strdup (o->cur_cell_style),
+                               GUINT_TO_POINTER (
+                                 (guint) (strtoul (av[i] + 1, NULL, 16) & 0xFFFFFF) | 0x1000000u));
     }
   else if (g_str_equal (tag, "table-row-properties") && o->cur_row_style != NULL)
     {
@@ -898,6 +923,9 @@ open_pending_cell (Odt *o)
     return;
   if (o->pending_cell_sides >= 0)
     w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
+  if (o->pending_cell_fill != 0)
+    w42_pt_cell_set_fill_at (o->pt, o->b.cell_pos, TRUE,
+                             o->pending_cell_fill & 0xFFFFFF);
   if (o->cell_vspan != 1)
     w42_pt_set_cell_vspan (o->pt, o->b.cell_pos, o->cell_vspan);
 }
@@ -1199,6 +1227,11 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
         gpointer v = sn != NULL ? g_hash_table_lookup (o->cell_sides, sn) : NULL;
 
         o->pending_cell_sides = v != NULL ? (GPOINTER_TO_INT (v) & W42_BORDER_BOX) : -1;
+        {
+          gpointer f = sn != NULL ? g_hash_table_lookup (o->cell_fills, sn) : NULL;
+
+          o->pending_cell_fill = f != NULL ? GPOINTER_TO_UINT (f) : 0;
+        }
       }
     }
   else if (g_str_equal (tag, "frame"))
@@ -1654,6 +1687,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   o.col_widths = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.row_heights = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.cell_sides = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  o.cell_fills = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.pending_cell_sides = -1;
   o.hf_text = g_string_new (NULL);
   o.text = g_string_new (NULL);
@@ -1702,6 +1736,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_hash_table_destroy (o.row_heights);
   g_free (o.cur_cell_style);
   g_hash_table_destroy (o.cell_sides);
+  g_hash_table_destroy (o.cell_fills);
   g_free (o.cur_style_name);
   g_free (o.cur_col_style);
   if (styles != NULL)
@@ -1741,7 +1776,7 @@ typedef struct {
   W42CharFmt base_ch;
   int        note_id;
   int        annotation_id;
-  guint cell_styles_made;   /* per table: a bit per set of sides written */
+  GHashTable *cell_styles;  /* the names of the table-cell styles written */
 } OdtWriter;
 
 /* The style name a paragraph's own properties get, one per distinct set. */
@@ -1804,7 +1839,12 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     g_string_append_printf (s, " fo:line-height=\"%d%%\"", pa->line_spacing_pct);
   else if (pa->line_spacing > 0)
-    g_string_append_printf (s, " fo:line-height=\"%dpt\"", pa->line_spacing / 20);
+    {
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      g_ascii_formatd (buf, sizeof buf, "%.2f", pa->line_spacing / 20.0);
+      g_string_append_printf (s, " fo:line-height=\"%spt\"", buf);
+    }
   if (pa->page_break_before) g_string_append (s, " fo:break-before=\"page\"");
   if (pa->keep_next)     g_string_append (s, " fo:keep-with-next=\"always\"");
   if (pa->keep_together) g_string_append (s, " fo:keep-together=\"always\"");
@@ -1817,11 +1857,15 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
 
       for (int i = 0; i < 4; i++)
         if (pa->border & bits[i])
-          g_string_append_printf (s, " %s=\"%spt solid #000000\"", names[i],
-                                  g_ascii_formatd (buf, sizeof buf, "%.2f", (pa->border_width > 0 ? pa->border_width : 15) / 20.0));
+          g_string_append_printf (s, " %s=\"%spt solid #%06x\"", names[i],
+                                  g_ascii_formatd (buf, sizeof buf, "%.2f", (pa->border_width > 0 ? pa->border_width : 15) / 20.0),
+                                  pa->border_color & 0xFFFFFF);
       g_string_append (s, " fo:padding=\"0.02in\"");
     }
-  if (pa->shading > 0)
+  if (pa->has_shading_color)
+    g_string_append_printf (s, " fo:background-color=\"#%06x\"",
+                            pa->shading_color & 0xFFFFFF);
+  else if (pa->shading > 0)
     {
       int grey = 255 - pa->shading * 255 / 100;
 
@@ -1878,7 +1922,13 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
       g_string_append_c (s, '"');
     }
   if (base == NULL || ch->size != base->size)
-    g_string_append_printf (s, " fo:font-size=\"%dpt\"", ch->size / 2);
+    {
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      /* Half-points: 19 of them is 9.5pt, not 9. */
+      g_ascii_formatd (buf, sizeof buf, "%.1f", ch->size / 2.0);
+      g_string_append_printf (s, " fo:font-size=\"%spt\"", buf);
+    }
   if (base == NULL || ch->bold != base->bold)
     g_string_append_printf (s, " fo:font-weight=\"%s\"", ch->bold ? "bold" : "normal");
   if (base == NULL || ch->italic != base->italic)
@@ -1908,7 +1958,13 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->script < 0) g_string_append (s, " style:text-position=\"sub 58%\"");
   if (ch->smallcaps) g_string_append (s, " fo:font-variant=\"small-caps\"");
   if (ch->allcaps)   g_string_append (s, " fo:text-transform=\"uppercase\"");
-  if (ch->spacing)   g_string_append_printf (s, " fo:letter-spacing=\"%dpt\"", ch->spacing / 20);
+  if (ch->spacing)
+    {
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      g_ascii_formatd (buf, sizeof buf, "%.2f", ch->spacing / 20.0);
+      g_string_append_printf (s, " fo:letter-spacing=\"%spt\"", buf);
+    }
   if (ch->lang != NULL)
     {
       /* OpenDocument keeps the language and the country apart, and says
@@ -2062,9 +2118,23 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
 
           if (png != NULL)
             {
+              W42CharFmt bare = *ch, base_ch = *para_ch;
+              gboolean own;
+
               g_ptr_array_add (w->pictures, png);
               g_ptr_array_add (w->picture_exts, (gpointer) ext);
               g_ptr_array_add (w->picture_mimes, (gpointer) mime);
+
+              /* The picture's run has a font and a size like any other, and
+               * the line it sits on is as tall as they make it. */
+              bare.link = bare.bookmark = bare.comment = bare.field = NULL;
+              bare.revision = 0;
+              base_ch.link = base_ch.bookmark = base_ch.comment = base_ch.field = NULL;
+              base_ch.revision = 0;
+              own = memcmp (&bare, &base_ch, sizeof bare) != 0;
+              if (own)
+                g_string_append_printf (w->body, "<text:span text:style-name=\"T%d\">",
+                                        text_style_index (w, &bare));
               if (object->wrap == W42_WRAP_INLINE)
                 g_string_append_printf (w->body, "<draw:frame draw:name=\"Picture %u\" text:anchor-type=\"as-char\" svg:width=\"",
                                         w->pictures->len);
@@ -2076,6 +2146,8 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
               twips_out (w->body, object->height);
               g_string_append_printf (w->body, "\"><draw:image xlink:href=\"Pictures/image%u.%s\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>",
                                       w->pictures->len, ext);
+              if (own)
+                g_string_append (w->body, "</text:span>");
             }
           continue;
         }
@@ -2232,6 +2304,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.pa_keys = g_ptr_array_new_with_free_func (g_free);
   w.ch_keys = g_ptr_array_new_with_free_func (g_free);
   w.pictures = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
+  w.cell_styles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   w.picture_exts = g_ptr_array_new ();
   w.picture_mimes = g_ptr_array_new ();
   {
@@ -2290,8 +2363,6 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
           const W42TableProps *tp = w42_pt_table_props (pt, block->table);
           int n_cols = tp != NULL ? tp->n_cols : 1;
           int t = ++w.n_tables;
-
-          w.cell_styles_made = 0;
 
           g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d\" style:family=\"table\"><style:table-properties style:width=\"", t);
           twips_out (w.auto_styles, pg.width - pg.margin_left - pg.margin_right);
@@ -2358,23 +2429,32 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
               {
                 const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
 
-                if (cpa->border & W42_BORDER_CELL_SET)
+                if ((cpa->border & W42_BORDER_CELL_SET) || cpa->has_shading_color)
                   {
-                    /* A style of the cell's own, one per set of sides. */
+                    /* A style of the cell's own, one per set of sides and
+                     * background. */
                     static const char *names[4] = { "fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right" };
                     static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
-                    int sides = cpa->border & W42_BORDER_BOX;
+                    int sides = (cpa->border & W42_BORDER_CELL_SET)
+                                  ? (cpa->border & W42_BORDER_BOX) : -1;
+                    char name[64];
 
-                    if (!(w.cell_styles_made & (1 << sides)))
+                    g_snprintf (name, sizeof name, "Table%d.Cell%d_%06x", w.n_tables,
+                                sides, cpa->has_shading_color ? cpa->shading_color & 0xFFFFFF : 0xFFFFFFu & 0);
+                    if (!g_hash_table_contains (w.cell_styles, name))
                       {
-                        w.cell_styles_made |= (1 << sides);
-                        g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d.Cell%d\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\"",
-                                                w.n_tables, sides);
-                        for (int k = 0; k < 4; k++)
-                          g_string_append_printf (w.auto_styles, " %s=\"%s\"", names[k], (sides & bits[k]) ? "0.5pt solid #000000" : "none");
+                        g_hash_table_add (w.cell_styles, g_strdup (name));
+                        g_string_append_printf (w.auto_styles, "<style:style style:name=\"%s\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\"",
+                                                name);
+                        if (sides >= 0)
+                          for (int k = 0; k < 4; k++)
+                            g_string_append_printf (w.auto_styles, " %s=\"%s\"", names[k], (sides & bits[k]) ? "0.5pt solid #000000" : "none");
+                        if (cpa->has_shading_color)
+                          g_string_append_printf (w.auto_styles, " fo:background-color=\"#%06x\"",
+                                                  cpa->shading_color & 0xFFFFFF);
                         g_string_append (w.auto_styles, "/></style:style>");
                       }
-                    g_string_append_printf (w.body, "<table:table-cell table:style-name=\"Table%d.Cell%d\" office:value-type=\"string\"", w.n_tables, sides);
+                    g_string_append_printf (w.body, "<table:table-cell table:style-name=\"%s\" office:value-type=\"string\"", name);
                   }
                 else
                   g_string_append_printf (w.body, "<table:table-cell table:style-name=\"Table%d.Cell\" office:value-type=\"string\"", w.n_tables);
@@ -2684,6 +2764,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_ptr_array_free (w.pa_keys, TRUE);
   g_ptr_array_free (w.ch_keys, TRUE);
   g_ptr_array_free (w.pictures, TRUE);
+  g_hash_table_destroy (w.cell_styles);
   g_ptr_array_free (w.picture_exts, TRUE);
   g_ptr_array_free (w.picture_mimes, TRUE);
   g_ptr_array_free (blocks, TRUE);
