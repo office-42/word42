@@ -44,12 +44,18 @@ static int
 length_twips (const char *value)
 {
   double v = g_ascii_strtod (value, NULL);
+  double per;
 
-  if (strstr (value, "pt") != NULL) return (int) (v * 20.0);
-  if (strstr (value, "cm") != NULL) return (int) (v * 1440.0 / 2.54);
-  if (strstr (value, "mm") != NULL) return (int) (v * 1440.0 / 25.4);
-  if (strstr (value, "px") != NULL) return (int) (v * 15.0);
-  return (int) (v * 1440.0);       /* inches, AbiWord's default */
+  if      (strstr (value, "pt") != NULL) per = 20.0;
+  else if (strstr (value, "cm") != NULL) per = 1440.0 / 2.54;
+  else if (strstr (value, "mm") != NULL) per = 1440.0 / 25.4;
+  else if (strstr (value, "px") != NULL) per = 15.0;
+  else                                   per = 1440.0;   /* inches, AbiWord's default */
+
+  /* To the nearest twip.  Truncating loses one on nearly every round trip:
+   * a 1 cm margin written as 0.3937in would come back as 566. */
+  v *= per;
+  return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
 static const char *
@@ -154,8 +160,7 @@ list_style_kind (const char *name)
 static void
 para_prop (const char *key, const char *value, gpointer data)
 {
-  Abw *a = data;
-  W42ParaFmt *pa = &a->b.pa;
+  W42ParaFmt *pa = data;
 
   if (g_str_equal (key, "text-align"))
     {
@@ -174,7 +179,7 @@ para_prop (const char *key, const char *value, gpointer data)
       if (strchr (value, '+') != NULL)          /* "14pt+": at least */
         pa->line_spacing = length_twips (value);
       else if (g_ascii_isdigit (value[strlen (value) - 1]))
-        pa->line_spacing_pct = (int) (g_ascii_strtod (value, NULL) * 100.0);
+        pa->line_spacing_pct = (int) (g_ascii_strtod (value, NULL) * 100.0 + 0.5);
       else
         pa->line_spacing = length_twips (value);
     }
@@ -219,14 +224,19 @@ para_prop (const char *key, const char *value, gpointer data)
     }
   else if (g_str_has_suffix (key, "-thickness"))
     pa->border_width = (guint8) CLAMP (length_twips (value), 5, 120);
+  else if (g_str_has_suffix (key, "-color") && (g_str_has_prefix (key, "top") || g_str_has_prefix (key, "bot") ||
+                                                g_str_has_prefix (key, "left") || g_str_has_prefix (key, "right")))
+    {
+      if (strlen (value) >= 6)
+        pa->border_color = (guint32) strtoul (value + (value[0] == '#'), NULL, 16) & 0xFFFFFF;
+    }
   else if (g_str_equal (key, "bgcolor") || g_str_equal (key, "background-color"))
     {
       if (strlen (value) >= 6 && !g_str_equal (value, "transparent"))
         {
-          guint32 rgb = (guint32) strtoul (value + (value[0] == '#'), NULL, 16);
-          int grey = ((rgb >> 16) & 0xff) * 30 / 100 + ((rgb >> 8) & 0xff) * 59 / 100 + (rgb & 0xff) * 11 / 100;
-
-          pa->shading = (guint8) CLAMP (100 - grey * 100 / 255, 0, 100);
+          pa->shading_color = (guint32) strtoul (value + (value[0] == '#'), NULL, 16) & 0xFFFFFF;
+          pa->has_shading_color = 1;
+          pa->shading = 0;
         }
     }
 }
@@ -247,7 +257,16 @@ char_prop (const char *key, const char *value, gpointer data)
       ch->strikeout = strstr (value, "line-through") != NULL;
       ch->overline = strstr (value, "overline") != NULL;
     }
-  else if (g_str_equal (key, "font-size"))  ch->size = CLAMP (length_twips (value) / 10, 2, 3276);
+  else if (g_str_equal (key, "text-spacing"))
+    ch->spacing = (gint16) CLAMP (length_twips (value), -720, 720);
+  else if (g_str_equal (key, "font-size"))
+    {
+      /* Half-points, as the model counts them, from however many decimals
+       * the file gave: 9.5pt is 19 of them, not 18. */
+      double pt = g_ascii_strtod (value, NULL);
+
+      ch->size = CLAMP ((int) (pt * 2.0 + 0.5), 2, 3276);
+    }
   else if (g_str_equal (key, "font-family")) ch->family = g_intern_string (value);
   else if (g_str_equal (key, "color"))
     {
@@ -468,7 +487,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
               a->para_ch = s->ch;
             }
         }
-      each_prop (attr (an, av, "props"), para_prop, a);
+      each_prop (attr (an, av, "props"), para_prop, &a->b.pa);
       each_prop (attr (an, av, "props"), char_prop, &a->para_ch);
       a->b.ch = a->para_ch;
       if (list != NULL)
@@ -589,7 +608,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
                   st.ch = bs->ch;
                 }
             }
-          each_prop (props, para_prop, a);
+          each_prop (props, para_prop, &a->b.pa);
           each_prop (props, char_prop, &st.ch);
           st.pa = a->b.pa;
           st.pa.style = st.name;
@@ -716,14 +735,27 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
       if (w42_builder_in_table (&a->b))
         a->skip_depth = 1;            /* nested: not read */
       else
-        w42_builder_begin_table (&a->b, widths->len > 0 ? (int) widths->len : 1,
-                                 widths->len > 0 ? (const int *) widths->data : NULL);
+        {
+          w42_builder_begin_table (&a->b, widths->len > 0 ? (int) widths->len : 1,
+                                   widths->len > 0 ? (const int *) widths->data : NULL);
+          /* AbiWord keeps every rule in the cells, so the table's own
+           * "ruled" flag is off and each cell says what it wants. */
+          w42_pt_table_set_borders (a->pt, a->b.table, FALSE);
+        }
       g_array_free (widths, TRUE);
     }
   else if (g_str_equal (name, "cell"))
     {
       int left = 0, right = 1, top = 0;
+      W42ParaFmt cell_pa;
       char **items = g_strsplit (attr (an, av, "props") != NULL ? attr (an, av, "props") : "", ";", -1);
+
+      {
+        W42Fmt def;
+
+        w42_fmt_init_default (&def);
+        cell_pa = def.pa;
+      }
 
       for (int i = 0; items[i] != NULL; i++)
         {
@@ -734,6 +766,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
           if (g_str_equal (g_strstrip (items[i]), "left-attach")) left = CLAMP (atoi (colon + 1), 0, 1023);
           if (g_str_equal (g_strstrip (items[i]), "right-attach")) right = CLAMP (atoi (colon + 1), 0, 1024);
           if (g_str_equal (g_strstrip (items[i]), "top-attach")) top = CLAMP (atoi (colon + 1), 0, 4096);
+          para_prop (g_strstrip (items[i]), g_strstrip (colon + 1), &cell_pa);
         }
       g_strfreev (items);
       abw_flush (a);
@@ -751,6 +784,14 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
                 break;
             }
           w42_builder_begin_cell (&a->b, MAX (right - left, 1));
+          if (a->b.cell_pos != (gsize) -1)
+            {
+              w42_pt_cell_set_borders_at (a->pt, a->b.cell_pos,
+                                          cell_pa.border | W42_BORDER_CELL_SET);
+              if (cell_pa.has_shading_color)
+                w42_pt_cell_set_fill_at (a->pt, a->b.cell_pos, TRUE,
+                                         cell_pa.shading_color);
+            }
         }
     }
   else if (g_str_equal (name, "d"))
@@ -1118,7 +1159,7 @@ append_twips (GString *s, const char *key, int twips)
   char buf[G_ASCII_DTOSTR_BUF_SIZE];
 
   g_string_append_printf (s, "%s%s:%sin", s->len > 0 ? "; " : "", key,
-                          g_ascii_formatd (buf, sizeof buf, "%.4f", twips / 1440.0));
+                          g_ascii_formatd (buf, sizeof buf, "%.5f", twips / 1440.0));
 }
 
 static void
@@ -1141,7 +1182,12 @@ para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
                               g_ascii_formatd (buf, sizeof buf, "%.2f", pa->line_spacing_pct / 100.0));
     }
   else if (pa->line_spacing > 0)
-    g_string_append_printf (s, "%sline-height:%dpt", s->len > 0 ? "; " : "", pa->line_spacing / 20);
+    {
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      g_string_append_printf (s, "%sline-height:%spt", s->len > 0 ? "; " : "",
+                              g_ascii_formatd (buf, sizeof buf, "%.2f", pa->line_spacing / 20.0));
+    }
   if (pa->n_tabs > 0)
     {
       g_string_append_printf (s, "%stabstops:", s->len > 0 ? "; " : "");
@@ -1166,10 +1212,20 @@ para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
 
       for (int i = 0; i < 4; i++)
         if (pa->border & bits[i])
-          g_string_append_printf (s, "%s%s-style:1; %s-thickness:%dpt; %s-color:000000", s->len > 0 ? "; " : "",
-                                  sides[i], sides[i], MAX ((pa->border_width > 0 ? pa->border_width : 15) / 20, 1), sides[i]);
+          {
+            char bw[G_ASCII_DTOSTR_BUF_SIZE];
+
+            g_string_append_printf (s, "%s%s-style:1; %s-thickness:%spt; %s-color:%06x", s->len > 0 ? "; " : "",
+                                    sides[i], sides[i],
+                                    g_ascii_formatd (bw, sizeof bw, "%.2f",
+                                                     (pa->border_width > 0 ? pa->border_width : 15) / 20.0),
+                                    sides[i], pa->border_color & 0xFFFFFF);
+          }
     }
-  if (pa->shading > 0)
+  if (pa->has_shading_color)
+    g_string_append_printf (s, "%sbgcolor:%06x", s->len > 0 ? "; " : "",
+                            pa->shading_color & 0xFFFFFF);
+  else if (pa->shading > 0)
     {
       int grey = 255 - pa->shading * 255 / 100;
 
@@ -1189,7 +1245,13 @@ char_props (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
       xml_escape (s, ch->family, strlen (ch->family));
     }
   if (base == NULL || ch->size != base->size)
-    g_string_append_printf (s, "%sfont-size:%dpt", s->len > 0 ? "; " : "", ch->size / 2);
+    {
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      /* Half-points: 19 of them is 9.5pt, not 9. */
+      g_string_append_printf (s, "%sfont-size:%spt", s->len > 0 ? "; " : "",
+                              g_ascii_formatd (buf, sizeof buf, "%.1f", ch->size / 2.0));
+    }
   if (base == NULL || ch->bold != base->bold)
     g_string_append_printf (s, "%sfont-weight:%s", s->len > 0 ? "; " : "", ch->bold ? "bold" : "normal");
   if (base == NULL || ch->italic != base->italic)
@@ -1208,6 +1270,13 @@ char_props (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
     g_string_append_printf (s, "%sfont-variant:small-caps", s->len > 0 ? "; " : "");
   if (ch->allcaps)
     g_string_append_printf (s, "%stext-transform:uppercase", s->len > 0 ? "; " : "");
+  if (ch->spacing != 0)
+    {
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      g_string_append_printf (s, "%stext-spacing:%spt", s->len > 0 ? "; " : "",
+                              g_ascii_formatd (buf, sizeof buf, "%.2f", ch->spacing / 20.0));
+    }
   if (ch->lang != NULL)
     g_string_append_printf (s, "%slang:%s", s->len > 0 ? "; " : "", ch->lang);
 }
@@ -1281,7 +1350,10 @@ write_block_runs (AbwWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *b
       if (run->object != W42_OBJECT_NONE)
         {
           const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
-          GBytes *png = object != NULL ? w42_image_to_png (object->data) : NULL;
+          const char *mime = "image/png";
+          GString *iprops = g_string_new (NULL);
+          GBytes *png = object != NULL
+                          ? w42_image_for_container (object->data, NULL, &mime) : NULL;
 
           if (png != NULL)
             {
@@ -1301,15 +1373,21 @@ write_block_runs (AbwWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *b
                                         g_ascii_formatd (hbuf, sizeof hbuf, "%.4f", object->height / 1440.0),
                                         w->n_images);
               else
-                g_string_append_printf (w->out, "<image dataid=\"image%d\" props=\"width:%sin; height:%sin\"/>",
-                                        w->n_images,
-                                        g_ascii_formatd (wbuf, sizeof wbuf, "%.4f", object->width / 1440.0),
-                                        g_ascii_formatd (hbuf, sizeof hbuf, "%.4f", object->height / 1440.0));
-              g_string_append_printf (w->data, "<d name=\"image%d\" mime-type=\"image/png\" base64=\"yes\">\n%s\n</d>\n",
-                                      w->n_images, b64);
+                {
+                  /* The picture's run has a font and a size like any other,
+                   * and the line it sits on is as tall as they make it. */
+                  char_props (iprops, ch, NULL);
+                  g_string_append_printf (w->out, "<c props=\"%s\"><image dataid=\"image%d\" props=\"width:%sin; height:%sin\"/></c>",
+                                          iprops->str, w->n_images,
+                                          g_ascii_formatd (wbuf, sizeof wbuf, "%.4f", object->width / 1440.0),
+                                          g_ascii_formatd (hbuf, sizeof hbuf, "%.4f", object->height / 1440.0));
+                }
+              g_string_append_printf (w->data, "<d name=\"image%d\" mime-type=\"%s\" base64=\"yes\">\n%s\n</d>\n",
+                                      w->n_images, mime, b64);
               g_free (b64);
               g_bytes_unref (png);
             }
+          g_string_free (iprops, TRUE);
           continue;
         }
       if (run->footnote > 0)
@@ -1501,8 +1579,24 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
                                 prev->row != block->row || prev->col != block->col;
 
           if (cell_start)
-            g_string_append_printf (body, "<cell props=\"left-attach:%d; right-attach:%d; top-attach:%d; bot-attach:%d\">\n",
-                                    block->col, block->col + MAX (block->span, 1), block->row, block->row + 1);
+            {
+              const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
+              GString *cell_props = g_string_new (NULL);
+
+              /* The cell's own rules and background, in the same words a
+               * paragraph's are written in. */
+              if (cpa->border & W42_BORDER_CELL_SET || cpa->has_shading_color)
+                {
+                  W42ParaFmt shown = *cpa;
+
+                  shown.border = cpa->border & W42_BORDER_BOX;
+                  para_props (cell_props, &shown, NULL);
+                }
+              g_string_append_printf (body, "<cell props=\"left-attach:%d; right-attach:%d; top-attach:%d; bot-attach:%d%s%s\">\n",
+                                      block->col, block->col + MAX (block->span, 1), block->row, block->row + 1,
+                                      cell_props->len > 0 ? "; " : "", cell_props->str);
+              g_string_free (cell_props, TRUE);
+            }
         }
 
       /* Lists: one <l> per run of items of a kind. */
