@@ -493,6 +493,11 @@ void w42_pt_table_split_cell (W42PieceTable *pt, int table, int row, int col);
  * One undo step.  The _at form takes the CELL mark's position and is
  * for importers: not recorded. */
 void w42_pt_cell_set_borders    (W42PieceTable *pt, int table, int row, int col, int sides);
+/* The cell's own background colour, 0x00RRGGBB; `has` off leaves it clear. */
+void w42_pt_cell_set_fill       (W42PieceTable *pt, int table, int row, int col,
+                                 gboolean has, guint32 rgb);
+gboolean w42_pt_cell_get_fill   (W42PieceTable *pt, int table, int row, int col,
+                                 guint32 *rgb);
 int  w42_pt_cell_get_borders    (W42PieceTable *pt, int table, int row, int col);
 void w42_pt_cell_set_borders_at (W42PieceTable *pt, gsize cell_pos, int sides);
 /* The cell's own background colour, 0x00RRGGBB; `has` off leaves it clear. */

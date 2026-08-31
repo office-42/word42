@@ -3724,9 +3724,12 @@ w42_pt_cell_set_borders (W42PieceTable *pt, int table, int row, int col, int sid
   if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
     return;
   payload = piece->offset;
-  w42_fmt_init_default (&fmt);
-  if (sides >= 0)
-    fmt.pa.border = (guint8) (W42_BORDER_CELL_SET | (sides & W42_BORDER_BOX));
+  /* The mark also carries the cell's background and its vertical merge, so
+   * start from what it has rather than from nothing. */
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.border = (sides >= 0)
+                    ? (guint8) (W42_BORDER_CELL_SET | (sides & W42_BORDER_BOX))
+                    : 0;
 
   /* The mark is replaced, so that undo puts the old one back. */
   w42_pt_begin_group (pt);
@@ -3735,6 +3738,59 @@ w42_pt_cell_set_borders (W42PieceTable *pt, int table, int row, int col, int sid
   pt_push (pt, cr_new (CR_INSERT, start - 2, 1));
   w42_pt_end_group (pt);
   pt->coalescing = FALSE;
+}
+
+void
+w42_pt_cell_set_fill (W42PieceTable *pt, int table, int row, int col,
+                      gboolean has, guint32 rgb)
+{
+  gsize start, offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+  gsize payload;
+
+  g_return_if_fail (pt != NULL);
+  start = w42_pt_cell_start (pt, table, row, col);
+  if (start == (gsize) -1 || start < 2)
+    return;
+  piece = pt_find (pt, start - 2, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  payload = piece->offset;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.has_shading_color = has ? 1 : 0;
+  fmt.pa.shading_color = has ? (rgb & 0xFFFFFF) : 0;
+
+  /* Replaced rather than changed in place, so that undo puts it back. */
+  w42_pt_begin_group (pt);
+  pt_push (pt, pt_do_delete (pt, start - 2, 1));
+  pt_insert_strux_at (pt, start - 2, W42_STRUX_CELL, payload, w42_ap_table_intern (pt->aps, &fmt));
+  pt_push (pt, cr_new (CR_INSERT, start - 2, 1));
+  w42_pt_end_group (pt);
+  pt->coalescing = FALSE;
+}
+
+/* The cell's own background, or FALSE if it has none. */
+gboolean
+w42_pt_cell_get_fill (W42PieceTable *pt, int table, int row, int col, guint32 *rgb)
+{
+  gsize start, offset = 0;
+  W42Piece *piece;
+  const W42Fmt *fmt;
+
+  g_return_val_if_fail (pt != NULL, FALSE);
+  start = w42_pt_cell_start (pt, table, row, col);
+  if (start == (gsize) -1 || start < 2)
+    return FALSE;
+  piece = pt_find (pt, start - 2, &offset);
+  if (piece == NULL || !piece_is_strux (piece, W42_STRUX_CELL))
+    return FALSE;
+  fmt = w42_ap_table_get (pt->aps, piece->ap);
+  if (!fmt->pa.has_shading_color)
+    return FALSE;
+  if (rgb != NULL)
+    *rgb = fmt->pa.shading_color;
+  return TRUE;
 }
 
 int

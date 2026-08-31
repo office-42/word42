@@ -211,8 +211,9 @@ Early, but real. Word42 today is a working word processor:
   Deleting a mark deletes its note, and undo brings both back. RTF carries
   them as `{\footnote ...}` with `\chftn`.
 - **Borders and shading** — Format ▸ Borders and Shading puts a line
-  above, below, beside or round a paragraph in three weights, and a shading
-  behind it; drawn by every painter, so it prints and exports as it shows,
+  above, below, beside or round a paragraph in three weights and any of
+  Word's sixteen colours, and behind it either a percentage of black or a
+  colour; drawn by every painter, so it prints and exports as it shows,
   inside a table cell as much as outside one, and across the column the
   paragraph was broken to rather than across the page. A rule read from a
   file keeps its colour, and a background read from one keeps its colour
@@ -352,8 +353,8 @@ Early, but real. Word42 today is a working word processor:
   into a table; and Table Gridlines, which shows the cells of an unruled
   table faintly on screen without printing them.
 - **Cell borders and backgrounds** — Table Properties rules any of a cell's
-  four sides on its own, over the table's setting; Word, RTF, OpenDocument,
-  AbiWord and HTML carry them, and a cell's background colour with them. A
+  four sides on its own, over the table's setting, and gives the cell a
+  background colour; Word, RTF, OpenDocument, AbiWord and HTML carry both. A
   table read from a file is ruled only where the file says: every format
   keeps its rules in the cells, so a layout table -- the two columns of a
   CV, say -- comes back without the grid it never had. Every table property

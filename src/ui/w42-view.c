@@ -4791,6 +4791,35 @@ w42_view_cell_get_borders (W42View *self)
   return props == NULL || props->borders ? W42_BORDER_BOX : 0;
 }
 
+/* The colour behind the caret's cell, which the cell's own mark carries and
+ * every format that has a way to say it keeps. */
+void
+w42_view_cell_set_fill (W42View *self, gboolean has, guint32 rgb)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  w42_pt_cell_set_fill (pt, table, row, col, has, rgb);
+  view_edited (self);
+}
+
+gboolean
+w42_view_cell_get_fill (W42View *self, guint32 *rgb)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return FALSE;
+  return w42_pt_cell_get_fill (pt, table, row, col, rgb);
+}
+
 void
 w42_view_cell_set_borders (W42View *self, int sides)
 {

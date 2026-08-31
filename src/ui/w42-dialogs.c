@@ -2146,8 +2146,39 @@ typedef struct {
   W42View   *view;
   GtkWidget *sides[4];     /* top, bottom, left, right */
   GtkWidget *width;
+  GtkWidget *line_colour;
   GtkWidget *shading;
+  GtkWidget *fill;
 } BordersBox;
+
+/* The sixteen colours Word 6 offered, which is what a colour is chosen from
+ * anywhere in Word42. */
+static const char *const PALETTE_NAMES[] = {
+  "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
+  "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red",
+  "Dark Yellow", "Dark Gray", "Light Gray", NULL
+};
+static const guint32 PALETTE_VALUES[] = {
+  0x000000, 0x0000FF, 0x00FFFF, 0x00FF00, 0xFF00FF, 0xFF0000, 0xFFFF00, 0xFFFFFF,
+  0x000080, 0x008080, 0x008000, 0x800080, 0x800000, 0x808000, 0x808080, 0xC0C0C0
+};
+/* The same list with "None" in front, for a background that may have none. */
+static const char *const FILL_NAMES[] = {
+  "None",
+  "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
+  "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red",
+  "Dark Yellow", "Dark Gray", "Light Gray", NULL
+};
+
+/* Which entry of the palette a colour is, or 0 for one that is not in it. */
+static guint
+palette_index (guint32 rgb)
+{
+  for (guint i = 0; i < G_N_ELEMENTS (PALETTE_VALUES); i++)
+    if (PALETTE_VALUES[i] == (rgb & 0xFFFFFF))
+      return i;
+  return 0;
+}
 
 static const char * const BORDER_WIDTHS[] = { "\302\276 pt", "1\302\275 pt", "2\302\274 pt", NULL };
 static const int BORDER_WIDTH_TWIPS[] = { 15, 30, 45 };
@@ -2163,6 +2194,8 @@ on_borders_ok (GtkButton *button, gpointer data)
   W42ParaFmt want;
   guint w = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->width));
   guint sh = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->shading));
+  guint lc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->line_colour));
+  guint bg = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->fill));
   static const guint8 bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM,
                                   W42_BORDER_LEFT, W42_BORDER_RIGHT };
 
@@ -2173,7 +2206,16 @@ on_borders_ok (GtkButton *button, gpointer data)
     if (gtk_check_button_get_active (GTK_CHECK_BUTTON (box->sides[i])))
       want.border |= bits[i];
   want.border_width = (guint8) BORDER_WIDTH_TWIPS[MIN (w, 2)];
-  want.shading = (guint8) SHADING_VALUES[MIN (sh, 7)];
+  want.border_color = PALETTE_VALUES[MIN (lc, G_N_ELEMENTS (PALETTE_VALUES) - 1)];
+  /* A colour behind the paragraph is a colour; without one it is a
+   * percentage of black, as Word 6 had it. */
+  if (bg > 0)
+    {
+      want.has_shading_color = 1;
+      want.shading_color = PALETTE_VALUES[MIN (bg - 1, G_N_ELEMENTS (PALETTE_VALUES) - 1)];
+    }
+  else
+    want.shading = (guint8) SHADING_VALUES[MIN (sh, 7)];
 
   w42_view_apply_para_fmt (box->view, W42_PARA_BORDER | W42_PARA_SHADING, &want);
   gtk_window_destroy (GTK_WINDOW (box->window));
@@ -2234,12 +2276,17 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
     if (BORDER_WIDTH_TWIPS[i] == now.border_width)
       width_index = i;
   box->width = choice_row (grid, 3, 0, "Line _Width:", BORDER_WIDTHS, width_index);
+  box->line_colour = choice_row (grid, 4, 0, "Line _Color:", PALETTE_NAMES,
+                                 palette_index (now.border_color));
 
   grid = group (content, "Shading");
   for (guint i = 0; i < G_N_ELEMENTS (SHADING_VALUES); i++)
     if (SHADING_VALUES[i] == now.shading)
       shading_index = i;
   box->shading = choice_row (grid, 0, 0, "_Shading:", SHADINGS, shading_index);
+  box->fill = choice_row (grid, 1, 0, "Bac_kground:", FILL_NAMES,
+                          now.has_shading_color
+                            ? palette_index (now.shading_color) + 1 : 0);
 
   button_row (content, box->window, G_CALLBACK (on_borders_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -3533,6 +3580,7 @@ typedef struct {
   GtkWidget *header;
   GtkWidget *row_height;
   GtkWidget *shading;
+  GtkWidget *fill;
   GtkWidget *side[4];      /* top, bottom, left, right */
   int        sides_before;
 } TablePropsBox;
@@ -3562,6 +3610,21 @@ on_table_props_ok (GtkButton *button, gpointer data)
   w42_view_get_para_fmt (box->view, &now);
   if ((int) SHADING_VALUES[MIN (sh, 7)] != (int) now.shading)
     w42_view_cell_set_shading (box->view, SHADING_VALUES[MIN (sh, 7)]);
+  {
+    guint bg = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->fill));
+    guint32 was = 0;
+    gboolean had = w42_view_cell_get_fill (box->view, &was);
+
+    if (bg > 0)
+      {
+        guint32 want_rgb = PALETTE_VALUES[MIN (bg - 1, G_N_ELEMENTS (PALETTE_VALUES) - 1)];
+
+        if (!had || was != want_rgb)
+          w42_view_cell_set_fill (box->view, TRUE, want_rgb);
+      }
+    else if (had)
+      w42_view_cell_set_fill (box->view, FALSE, 0);
+  }
   {
     static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
     int sides = 0;
@@ -3616,18 +3679,25 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
       shading_index = i;
   box->shading = choice_row (grid, 0, 0, "_Shading:", SHADINGS, shading_index);
   {
+    guint32 fill_rgb = 0;
+    gboolean has_fill = w42_view_cell_get_fill (view, &fill_rgb);
+
+    box->fill = choice_row (grid, 1, 0, "Bac_kground:", FILL_NAMES,
+                            has_fill ? palette_index (fill_rgb) + 1 : 0);
+  }
+  {
     static const char *const names[4] = { "_Top", "Botto_m", "Le_ft", "Ri_ght" };
     static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
     GtkWidget *label = gtk_label_new ("Borders:");
 
     box->sides_before = w42_view_cell_get_borders (view);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-    gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 1, 1);
     for (int i = 0; i < 4; i++)
       {
         box->side[i] = gtk_check_button_new_with_mnemonic (names[i]);
         gtk_check_button_set_active (GTK_CHECK_BUTTON (box->side[i]), (box->sides_before & bits[i]) != 0);
-        gtk_grid_attach (GTK_GRID (grid), box->side[i], 1 + i % 2, 1 + i / 2, 1, 1);
+        gtk_grid_attach (GTK_GRID (grid), box->side[i], 1 + i % 2, 2 + i / 2, 1, 1);
       }
   }
 

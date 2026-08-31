@@ -93,6 +93,9 @@ void     w42_view_cell_set_shading (W42View *self, int percent);
  * table's), and setting its own; -1 takes them away again. */
 int      w42_view_cell_get_borders (W42View *self);
 void     w42_view_cell_set_borders (W42View *self, int sides);
+/* The colour behind the caret's cell. */
+void     w42_view_cell_set_fill    (W42View *self, gboolean has, guint32 rgb);
+gboolean w42_view_cell_get_fill    (W42View *self, guint32 *rgb);
 
 /* Merges the cells the selection touches, if they lie in one row. */
 void     w42_view_table_merge_cells (W42View *self);
