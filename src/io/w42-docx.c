@@ -1982,6 +1982,12 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   d.rels = outer->rels;
   d.styles = outer->styles;
   d.numbering = outer->numbering;
+  /* A note can hold a picture, a comment or a field like any other text,
+   * and the parser looks these up without asking whether they are there. */
+  d.footnotes = outer->footnotes;
+  d.endnotes = outer->endnotes;
+  d.comments = outer->comments;
+  d.comment_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   d.text = g_string_new (NULL);
   d.fld_instr = g_string_new (NULL);
   d.grid = g_array_new (FALSE, FALSE, sizeof (int));
@@ -2007,6 +2013,7 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   g_array_free (d.grid, TRUE);
   g_hash_table_destroy (d.bookmarks);
   g_hash_table_destroy (d.bookmark_start);
+  g_hash_table_destroy (d.comment_start);
   g_free (d.note_open);
   g_free (d.blip);
   g_bytes_unref (xml);
@@ -2060,13 +2067,15 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   d.numbering = read_numbering (zip);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
   d.endnotes = read_notes (zip, "word/endnotes.xml");
+  d.comments = read_notes (zip, "word/comments.xml");
+  d.comment_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  /* The notes' own parts, read the way the document is, after everything
+   * their parser may look something up in. */
   d.note_pt[0] = w42_pt_new ();
   d.note_pt[1] = w42_pt_new ();
   d.note_spans = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   read_note_bodies (&d, zip, "word/footnotes.xml", "f", 0);
   read_note_bodies (&d, zip, "word/endnotes.xml", "e", 1);
-  d.comments = read_notes (zip, "word/comments.xml");
-  d.comment_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   d.text = g_string_new (NULL);
   d.fld_instr = g_string_new (NULL);
   d.grid = g_array_new (FALSE, FALSE, sizeof (int));
