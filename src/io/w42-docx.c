@@ -2066,7 +2066,12 @@ write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->highlight != 0)
     g_string_append_printf (rpr, "<w:highlight w:val=\"%s\"/>", HIGHLIGHT_NAMES[CLAMP (ch->highlight, 1, 16)]);
   if (ch->underline || ch->link != NULL)
-    g_string_append_printf (rpr, "<w:u w:val=\"%s\"/>", underline_val (ch->underline));
+    /* A link is underlined even when the run says nothing of its own, and
+     * underline_val has no name for "none" to write. */
+    g_string_append_printf (rpr, "<w:u w:val=\"%s\"/>",
+                            underline_val (ch->underline != W42_UNDERLINE_NONE
+                                             ? ch->underline
+                                             : (guint) W42_UNDERLINE_SINGLE));
   if (ch->script > 0) g_string_append (rpr, "<w:vertAlign w:val=\"superscript\"/>");
   if (ch->script < 0) g_string_append (rpr, "<w:vertAlign w:val=\"subscript\"/>");
   if (ch->lang != NULL)

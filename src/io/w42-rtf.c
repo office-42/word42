@@ -2416,6 +2416,29 @@ scan_list_tables (const char *d, gsize len)
   return by_ls;
 }
 
+/* The destinations this reader understands.  A writer may put \* in front
+ * of any of them -- LibreOffice writes its footnotes as {\*\footnote ...},
+ * and a reader that took the hint would throw every note away -- so \*
+ * only means "skip" for a name that is not on this list. */
+static gboolean
+rtf_known_destination (const char *word)
+{
+  static const char *names[] = {
+    "fonttbl", "colortbl", "stylesheet", "info", "pict", "shppict",
+    "footnote", "field", "fldinst", "fldrslt",
+    "header", "headerl", "headerr", "headerf",
+    "footer", "footerl", "footerr", "footerf",
+    "wfnumhead", "pn", "bkmkstart", "bkmkend",
+    "atrfstart", "atrfend", "atnref", "annotation",
+  };
+
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    if (g_str_equal (word, names[i]))
+      return TRUE;
+
+  return FALSE;
+}
+
 static gboolean
 is_ignorable_destination (const char *word)
 {
@@ -2752,18 +2775,8 @@ w42_rtf_load (W42PieceTable *pt,
                         q++;
                       {
                         char *name = g_strndup (w, (gsize) (q - w));
-                        if (!g_str_equal (name, "fonttbl") &&
-                            !g_str_equal (name, "colortbl") &&
-                            !g_str_equal (name, "shppict") &&
-                            !g_str_equal (name, "wfnumhead") &&
-                            !g_str_equal (name, "pn") &&
-                            !g_str_equal (name, "bkmkstart") &&
-                            !g_str_equal (name, "bkmkend") &&
-                            !g_str_equal (name, "atrfstart") &&
-                            !g_str_equal (name, "atrfend") &&
-                            !g_str_equal (name, "atnref") &&
-                            !g_str_equal (name, "annotation") &&
-                            !g_str_equal (name, "fldinst"))
+
+                        if (!rtf_known_destination (name))
                           r.state.skip = TRUE;
                         g_free (name);
                       }

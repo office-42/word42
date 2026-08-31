@@ -175,27 +175,24 @@ w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths)
     return;
   n_cols = CLAMP (n_cols, 1, 1023);
 
+  /* Only a paragraph that is actually open needs ending; one that has just
+   * ended left its mark behind, and ending it again would leave an empty
+   * paragraph in front of the table. */
+  if (b->in_para)
+    w42_builder_end_paragraph (b);
+
+  /* The document now ends in a paragraph mark -- the one just made, the one
+   * the paragraph before left, or the one an empty document started life
+   * with.  The table goes in ahead of it, and it becomes the paragraph that
+   * follows the table; otherwise every table would arrive with a blank line
+   * above it. */
   b->table_before_block = FALSE;
-  if (b->in_para || b->pos > w42_pt_first_caret_pos (b->pt))
+  if (b->pos >= 2 && b->pos == w42_pt_length (b->pt))
     {
-      w42_builder_end_paragraph (b);
+      char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
 
-      /* The paragraph mark just made would sit between the table and the
-       * text before it; the table goes in ahead of it instead. */
-      if (b->pos >= 2 && b->pos == w42_pt_length (b->pt))
-        {
-          char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
-
-          b->table_before_block = (tail != NULL && *tail == '\n');
-          g_free (tail);
-        }
-    }
-  else
-    {
-      /* Nothing written yet: a document that opens with a table.  The
-       * empty paragraph it started life with is the one that follows the
-       * table, not one in front of it. */
-      b->table_before_block = TRUE;
+      b->table_before_block = (tail != NULL && *tail == '\n');
+      g_free (tail);
     }
   if (b->table_before_block)
     b->pos -= 1;
@@ -297,16 +294,25 @@ w42_builder_finish (W42Builder *b)
   w42_builder_end_table (b);
 
   /* The last paragraph's end left an empty paragraph behind, as a
-   * trailing newline would in a text file.  Drop it. */
-  if (!b->in_para && b->pos >= 1 && b->pos == w42_pt_length (b->pt))
-    {
-      gsize first = w42_pt_first_caret_pos (b->pt);
+   * trailing newline would in a text file.  Drop it -- remembering that the
+   * body ends where the notes begin, not where the document does, so that a
+   * document with footnotes drops it too. */
+  {
+    gsize body_end = w42_pt_notes_start (b->pt);
 
-      if (b->pos - 1 > first)
-        w42_pt_delete (b->pt, b->pos - 1, 1);
-    }
-  else if (b->in_para)
-    builder_apply_para (b);
+    if (body_end == (gsize) -1)
+      body_end = w42_pt_length (b->pt);
+
+    if (!b->in_para && b->pos >= 1 && b->pos == body_end)
+      {
+        gsize first = w42_pt_first_caret_pos (b->pt);
+
+        if (b->pos - 1 > first)
+          w42_pt_delete (b->pt, b->pos - 1, 1);
+      }
+    else if (b->in_para)
+      builder_apply_para (b);
+  }
 }
 
 void

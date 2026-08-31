@@ -94,9 +94,16 @@ write_para_style (GString *out, const W42ParaFmt *pa)
   if (pa->space_after)
     g_string_append_printf (css, "margin-bottom:%dpt;", pa->space_after / 20);
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
-    /* A browser's line-height is a multiple of the type size; Word's is a
-     * multiple of the line, which is about a fifth taller. */
-    g_string_append_printf (css, "line-height:%d%%;", pa->line_spacing_pct + 20);
+    {
+      /* A browser's line-height is a multiple of the type size; Word's is a
+       * multiple of the line, which is about a fifth taller.  The browser
+       * gets the taller figure so the page looks right, and the figure the
+       * document actually holds rides along in a custom property, which
+       * browsers ignore and this reader does not -- otherwise a document
+       * saved twice would grow a fifth taller each time. */
+      g_string_append_printf (css, "line-height:%d%%;", pa->line_spacing_pct + 20);
+      g_string_append_printf (css, "--w42-line-height:%d%%;", pa->line_spacing_pct);
+    }
   else if (pa->line_spacing > 0)
     css_num (css, "line-height", pa->line_spacing / 20.0, "pt");
   if (pa->border != 0)

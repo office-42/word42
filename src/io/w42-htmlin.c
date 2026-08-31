@@ -641,6 +641,19 @@ apply_style (Html *h, const char *style, gboolean para)
             h->pa.line_spacing = css_twips (value);
           h->pa_dirty = TRUE;
         }
+      else if (g_ascii_strcasecmp (key, "--w42-line-height") == 0)
+        {
+          /* What the document says, rather than what the browser is being
+           * asked to do with it; see the exporter. */
+          int pct = atoi (value);
+
+          if (strchr (value, '%') != NULL && pct >= 20 && pct <= 1000)
+            {
+              h->pa.line_spacing_pct = pct;
+              h->pa.line_spacing = 0;
+            }
+          h->pa_dirty = TRUE;
+        }
       else if (para && (g_ascii_strcasecmp (key, "background") == 0 ||
                         g_ascii_strcasecmp (key, "background-color") == 0))
         {
@@ -933,8 +946,6 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
 {
   char *style;
 
-  (void) self_closing;
-
   if (g_str_equal (name, "title") && closing)
     {
       h->in_title = FALSE;
@@ -952,6 +963,41 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
     {
       h->skip_depth++;
       return;
+    }
+
+  /* The page's own copy of a note, at its end: the document has the note
+   * already -- scan_notes harvested it before the body was read -- so the
+   * copy is passed over.  This has to come before the block elements are
+   * handled: a note's copy is a <p> or a <div>, and those never fall
+   * through to anything below them. */
+  if (h->note_skip > 0)
+    {
+      if (g_str_equal (name, h->note_tag))
+        {
+          if (closing)
+            {
+              h->note_skip--;
+              if (h->note_skip == 0)
+                h->note_tag[0] = '\0';
+            }
+          else if (!self_closing)
+            h->note_skip++;
+        }
+      return;
+    }
+  if (!closing && !self_closing && h->notes != NULL)
+    {
+      char *id = attr_value (attrs, "id");
+
+      if (id != NULL && g_hash_table_contains (h->notes, id))
+        {
+          end_paragraph (h);
+          g_strlcpy (h->note_tag, name, sizeof h->note_tag);
+          h->note_skip = 1;
+          g_free (id);
+          return;
+        }
+      g_free (id);
     }
 
   /* Block elements end the paragraph they are in. */
@@ -1187,13 +1233,6 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
           h->in_note_anchor = FALSE;
           return;
         }
-      if (h->note_skip > 0 && g_str_equal (name, h->note_tag))
-        {
-          h->note_skip--;
-          if (h->note_skip == 0)
-            h->note_tag[0] = '\0';
-          return;
-        }
       if (g_str_equal (name, "b") || g_str_equal (name, "strong") || g_str_equal (name, "i") ||
           g_str_equal (name, "em") || g_str_equal (name, "u") || g_str_equal (name, "s") ||
           g_str_equal (name, "strike") || g_str_equal (name, "del") || g_str_equal (name, "a") ||
@@ -1206,25 +1245,6 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
         }
       return;
     }
-
-  /* The page's own copy of a note, at its end: the document has the note
-   * already, so this is passed over. */
-  {
-    char *id = attr_value (attrs, "id");
-
-    if (id != NULL && h->notes != NULL && g_hash_table_contains (h->notes, id) &&
-        h->note_skip == 0)
-      {
-        g_strlcpy (h->note_tag, name, sizeof h->note_tag);
-        h->note_skip = 1;
-        end_paragraph (h);
-        g_free (id);
-        return;
-      }
-    g_free (id);
-    if (h->note_skip > 0 && g_str_equal (name, h->note_tag))
-      h->note_skip++;
-  }
 
   if (g_str_equal (name, "meta"))
     {
@@ -1321,7 +1341,18 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
 
           if (body != (gsize) -1)
             {
-              w42_pt_insert_text (h->pt, body, note_text, w42_pt_ap_at (h->pt, body));
+              W42Fmt nf;
+
+              /* The reference is a superscript and may be a link; the note
+               * it points at is neither. */
+              w42_fmt_init_default (&nf);
+              nf.ch = h->ch[0];
+              nf.ch.script = 0;
+              nf.ch.link = NULL;
+              nf.ch.bookmark = NULL;
+              nf.ch.comment = NULL;
+              w42_pt_insert_text (h->pt, body, note_text,
+                                  w42_ap_table_intern (w42_pt_ap_table (h->pt), &nf));
               h->pos += 1;             /* the mark the note left behind */
               h->in_note_anchor = TRUE;
               h->at_para_start = FALSE;
@@ -1659,13 +1690,24 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
                            W42_PARA_ALL, &h.pa);
 
   /* The last block element's close left an empty paragraph behind, as a
-   * trailing newline would in a text file.  Drop it. */
-  if (!h.in_para && h.pos >= 1 && h.pos == w42_pt_length (pt))
-    {
-      gsize first = w42_pt_first_caret_pos (pt);
-      if (h.pos - 1 > first)
-        w42_pt_delete (pt, h.pos - 1, 1);
-    }
+   * trailing newline would in a text file.  Drop it -- the body ends where
+   * the notes begin, not where the document does, so a page with footnotes
+   * drops it too rather than saving a blank line that grows a paragraph
+   * every time the file goes out and comes back. */
+  {
+    gsize body_end = w42_pt_notes_start (pt);
+
+    if (body_end == (gsize) -1)
+      body_end = w42_pt_length (pt);
+
+    if (!h.in_para && h.pos >= 1 && h.pos == body_end)
+      {
+        gsize first = w42_pt_first_caret_pos (pt);
+
+        if (h.pos - 1 > first)
+          w42_pt_delete (pt, h.pos - 1, 1);
+      }
+  }
 
   g_string_free (h.pending, TRUE);
   if (h.meta[0] != NULL || h.meta[1] != NULL || h.meta[2] != NULL ||

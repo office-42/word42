@@ -807,30 +807,68 @@ odt_internal_style (const char *display)
   return FALSE;
 }
 
+/* The name word42's own sheet already has for this one, when the file names
+ * the same style: "Heading 1" is "Heading 1" in both.  The aliases
+ * our_style_name accepts -- a file's "Standard" or "Text body" standing in
+ * for Normal -- are deliberately not among them: those say where a
+ * paragraph belongs, not what Normal itself looks like. */
+static const char *
+sheet_style_named (Odt *o, const char *display)
+{
+  W42StyleSheet *sheet = w42_pt_stylesheet (o->pt);
+
+  if (display == NULL)
+    return NULL;
+  for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
+    {
+      const W42Style *st = w42_stylesheet_get (sheet, i);
+
+      if (g_ascii_strcasecmp (st->name, display) == 0)
+        return st->name;
+    }
+  return NULL;
+}
+
 static void
 styles_end (Odt *o, const char *tag)
 {
   if (g_str_equal (tag, "styles"))
     o->in_named_styles = FALSE;
   if (g_str_equal (tag, "style") && o->cur_style != NULL && o->in_named_styles &&
-      o->cur_style->display != NULL &&
-      our_style_name (o, o->cur_style->display) == NULL &&
-      !odt_internal_style (o->cur_style->display) && strlen (o->cur_style->display) < 64 &&
-      w42_stylesheet_size (w42_pt_stylesheet (o->pt)) < 128)
+      o->cur_style->display != NULL && strlen (o->cur_style->display) < 64 &&
+      (sheet_style_named (o, o->cur_style->display) != NULL ||
+       (!odt_internal_style (o->cur_style->display) &&
+        w42_stylesheet_size (w42_pt_stylesheet (o->pt)) < 128)))
     {
       /* A named style of the file's own joins the sheet, so that the
-       * document keeps it and Format > Style shows it. */
+       * document keeps it and Format > Style shows it.  One that is a name
+       * word42 already has -- Heading 1, Title -- is not skipped but
+       * updated: a document that sets its headings in Times must not get
+       * word42's Arial back when it is read. */
       OdtStyle *s = o->cur_style;
+      const char *mine = sheet_style_named (o, s->display);
+      const W42Style *have = mine != NULL
+        ? w42_stylesheet_find (w42_pt_stylesheet (o->pt), mine) : NULL;
       W42Style st;
       W42Fmt def;
 
       w42_fmt_init_default (&def);
-      memset (&st, 0, sizeof st);
-      st.name = g_intern_string (s->display);
-      st.ch = s->has_ch ? s->ch : def.ch;
-      st.pa = s->has_pa ? s->pa : def.pa;
+      if (have != NULL)
+        st = *have;                    /* what word42 has, then what the file says */
+      else
+        {
+          memset (&st, 0, sizeof st);
+          st.ch = def.ch;
+          st.pa = def.pa;
+        }
+      st.name = g_intern_string (mine != NULL ? mine : s->display);
+      if (s->has_ch)
+        st.ch = s->ch;
+      if (s->has_pa)
+        st.pa = s->pa;
       st.pa.style = st.name;
-      st.outline = s->outline;
+      if (s->outline > 0 || have == NULL)
+        st.outline = s->outline;
       st.character = o->cur_style_text ? 1 : 0;
       st.pa_own = W42_STYLE_PA_ALL;    /* read resolved: all its own */
       st.ch_own = W42_STYLE_CH_ALL;
@@ -2539,7 +2577,12 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   for (guint i = 0; i < w.ch_keys->len; i++)
     {
       g_string_append_printf (content, "<style:style style:name=\"T%u\" style:family=\"text\">", i + 1);
-      write_text_props_xml (content, g_ptr_array_index (w.ch_keys, i), &w.base_ch);
+      /* In full, with nothing left to the document's default: a span is
+       * applied over its paragraph's style, and that style may say
+       * something quite different from the default.  A heading's run whose
+       * font happened to match the default would otherwise come back
+       * wearing the heading style's font instead of its own. */
+      write_text_props_xml (content, g_ptr_array_index (w.ch_keys, i), NULL);
       g_string_append (content, "</style:style>");
     }
   for (int k = 1; k < W42_LIST_KINDS; k++)
