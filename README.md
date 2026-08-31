@@ -208,8 +208,10 @@ Early, but real. Word42 today is a working word processor:
   the caret and takes you to the note at the foot of the page; notes are
   numbered in order, move with their lines from page to page, and sit after
   the text in Normal view. Ctrl+Alt+N jumps between a mark and its note.
-  Deleting a mark deletes its note, and undo brings both back. RTF carries
-  them as `{\footnote ...}` with `\chftn`.
+  Deleting a mark deletes its note, and undo brings both back. A note keeps
+  its own formatting -- its paragraphs, their alignment and rules, and the
+  type its text is set in -- through Word, RTF, OpenDocument and AbiWord
+  files. RTF carries them as `{\footnote ...}` with `\chftn`.
 - **Borders and shading** — Format ▸ Borders and Shading puts a line
   above, below, beside or round a paragraph in three weights and any of
   Word's sixteen colours, and behind it either a percentage of black or a

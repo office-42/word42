@@ -2676,6 +2676,10 @@ w42_rtf_load (W42PieceTable *pt,
           if (r.in_note && r.stack->len == r.note_depth)
             {
               flush_text (&r);
+              /* A note's last paragraph ends with the group rather than
+                 with a \par, so this is where its properties are set. */
+              w42_pt_apply_para_fmt (r.pt, r.pos > 0 ? r.pos - 1 : 0, 0,
+                                     PARA_MASK, &r.state.pa);
               r.in_note = FALSE;
               r.pos = r.note_return;
             }

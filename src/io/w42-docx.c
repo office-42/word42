@@ -846,7 +846,27 @@ typedef struct {
   int         page_cols, page_gap;
 
   gboolean    in_note_body;       /* text goes to a note */
+
+  /* The notes parts are read with this same parser into a piece table of
+   * their own, so that a note keeps its paragraphs and its formatting
+   * rather than coming back as a line of plain text.  `note_spans` says
+   * which stretch of that table each note is. */
+  gboolean       reading_notes;   /* this parser is on footnotes.xml */
+  W42PieceTable *note_pt[2];      /* the footnotes' table and the endnotes' */
+  GHashTable    *note_spans;      /* "f1", "e1" -> W42NoteSpan */
+  char          *note_kind;       /* "f" or "e", for the part being read */
+  char          *note_open;       /* the id of the note being read */
+  gsize          note_from;
+  gboolean       note_skipped;    /* a separator, not a note */
+  gboolean       note_lead;       /* drop the space Word puts after the mark */
 } Docx;
+
+typedef struct {
+  gsize      start, end;
+  W42ParaFmt pa;              /* the note's first paragraph, whose mark is
+                               * not in the span: the note's body has one
+                               * of its own for the text to go into. */
+} W42NoteSpan;
 
 static const char *
 map_style (Docx *d, const char *id)
@@ -861,6 +881,23 @@ docx_flush_text (Docx *d)
 {
   if (d->text->len == 0)
     return;
+  /* Word puts its note's own number and a space in front of the note's
+   * text; the number is a field word42 paints itself, and the space came
+   * with it. */
+  if (d->note_lead)
+    {
+      const char *p = d->text->str;
+
+      while (*p == ' ' || *p == '\t')
+        p++;
+      if (*p == '\0')
+        {
+          g_string_truncate (d->text, 0);
+          return;
+        }
+      g_string_erase (d->text, 0, (gssize) (p - d->text->str));
+      d->note_lead = FALSE;
+    }
   d->b.ch = d->run_ch;
   d->b.ch.link = d->link;
   d->b.ch.revision = (guint8) d->revision;
@@ -1371,14 +1408,56 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     d->revision = 1;
   else if (g_str_equal (tag, "del"))
     d->revision = 2;
+  else if (d->reading_notes &&
+           (g_str_equal (tag, "footnote") || g_str_equal (tag, "endnote")))
+    {
+      const char *id = attr (an, av, "id");
+      const char *kind = attr (an, av, "type");
+
+      docx_flush_text (d);
+      if (d->b.in_para)
+        w42_builder_end_paragraph (&d->b);
+      g_free (d->note_open);
+      d->note_open = id != NULL ? g_strdup (id) : NULL;
+      d->note_from = d->b.pos;
+      /* The separator rules Word keeps at the head of the part are not
+       * notes and have no text of their own worth having. */
+      d->note_skipped = kind != NULL && strstr (kind, "eparator") != NULL;
+      d->note_lead = TRUE;
+      w42_builder_reset_char (&d->b);
+      w42_builder_reset_para (&d->b);
+    }
   else if (g_str_equal (tag, "footnoteReference") || g_str_equal (tag, "endnoteReference"))
     {
       gboolean endnote = g_str_equal (tag, "endnoteReference");
       const char *id = attr (an, av, "id");
       const char *body = id != NULL ? g_hash_table_lookup (endnote ? d->endnotes : d->footnotes, id) : NULL;
 
+      char *key = id != NULL ? g_strdup_printf ("%s%s", endnote ? "e" : "f", id) : NULL;
+      const W42NoteSpan *span = key != NULL && d->note_spans != NULL
+        ? g_hash_table_lookup (d->note_spans, key) : NULL;
+
       docx_flush_text (d);
-      if (body != NULL && !w42_builder_in_table (&d->b))
+      if (span != NULL && d->note_pt[endnote ? 1 : 0] != NULL &&
+          !w42_builder_in_table (&d->b))
+        {
+          /* The note as it was written: its paragraphs, their formatting
+           * and their runs, copied whole out of the notes part. */
+          W42PieceTable *frag = w42_pt_extract (d->note_pt[endnote ? 1 : 0],
+                                                span->start,
+                                                span->end - span->start);
+          W42ParaFmt keep = d->b.pa;
+
+          w42_builder_begin_note (&d->b, endnote);
+          w42_pt_apply_para_fmt (d->pt, d->b.pos > 0 ? d->b.pos - 1 : 0, 0,
+                                 W42_PARA_ALL, &span->pa);
+          d->b.pos += w42_pt_insert_fragment (d->pt, d->b.pos, frag);
+          d->b.in_para = FALSE;
+          w42_builder_end_note (&d->b);
+          d->b.pa = keep;
+          w42_pt_free (frag);
+        }
+      else if (body != NULL && !w42_builder_in_table (&d->b))
         {
           char **paras = g_strsplit (body, "\n", -1);
           W42ParaFmt keep = d->b.pa;
@@ -1396,6 +1475,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->b.pa = keep;
           g_strfreev (paras);
         }
+      g_free (key);
     }
 
   /* Pictures. */
@@ -1666,6 +1746,45 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       d->in_t = FALSE;
       docx_flush_text (d);
     }
+  else if (d->reading_notes &&
+           (g_str_equal (tag, "footnote") || g_str_equal (tag, "endnote")))
+    {
+      /* The span ends where the note's last paragraph's text ends, before
+       * the mark that closes it: what is copied into a note's body is
+       * paragraphs of text, and the body already has a mark of its own. */
+      docx_flush_text (d);
+      if (d->note_open != NULL && !d->note_skipped && d->b.pos > d->note_from)
+        {
+          gsize end = d->b.pos;
+          char *tail = w42_pt_get_text (d->pt, end - 1, 1);
+
+          /* The mark the last paragraph's close left behind is not part of
+           * the note: what goes into a note's body is paragraphs of text,
+           * and the body has a mark of its own already.  Keeping it would
+           * add an empty paragraph to every note, and another every time
+           * the file was saved. */
+          if (tail != NULL && *tail == '\n')
+            end--;
+          g_free (tail);
+
+          if (end > d->note_from)
+            {
+              W42NoteSpan *span = g_new0 (W42NoteSpan, 1);
+
+              span->start = d->note_from;
+              span->end = end;
+              span->pa = w42_ap_table_get (w42_pt_ap_table (d->pt),
+                                           w42_pt_block_ap_at (d->pt, d->note_from))->pa;
+              g_hash_table_insert (d->note_spans,
+                                   g_strdup_printf ("%s%s", d->note_kind, d->note_open),
+                                   span);
+            }
+        }
+      if (d->b.in_para)
+        w42_builder_end_paragraph (&d->b);
+      g_free (d->note_open);
+      d->note_open = NULL;
+    }
   else if (g_str_equal (tag, "instrText"))
     d->in_instr = FALSE;
   else if (g_str_equal (tag, "fldSimple"))
@@ -1836,6 +1955,63 @@ docx_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data,
     }
 }
 
+/* footnotes.xml and endnotes.xml read the way document.xml is, into a piece
+ * table of their own: a note keeps its paragraphs, their formatting and
+ * their runs, and the body's references copy the stretch that is theirs.
+ * The two parts share one table, told apart by the "f" or "e" in front of
+ * each note's id. */
+static void
+read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
+                  int which)
+{
+  GBytes *xml = w42_zip_read (zip, part);
+  GMarkupParser parser = { docx_start, docx_end, docx_text, NULL, NULL };
+  GMarkupParseContext *ctx;
+  Docx d;
+
+  if (xml == NULL)
+    return;
+
+  /* A reader of its own, over the same tables of styles, numbering and
+   * relationships, writing into the notes' table. */
+  memset (&d, 0, sizeof d);
+  w42_builder_init (&d.b, outer->note_pt[which]);
+  d.pt = outer->note_pt[which];
+  d.page = outer->page;
+  d.zip = zip;
+  d.rels = outer->rels;
+  d.styles = outer->styles;
+  d.numbering = outer->numbering;
+  d.text = g_string_new (NULL);
+  d.fld_instr = g_string_new (NULL);
+  d.grid = g_array_new (FALSE, FALSE, sizeof (int));
+  d.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  d.bookmark_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  d.section_first = (gsize) -1;
+  d.first_para = TRUE;
+  d.reading_notes = TRUE;
+  d.note_kind = (char *) kind;
+  d.note_spans = outer->note_spans;
+
+  ctx = g_markup_parse_context_new (&parser, 0, &d, NULL);
+  if (g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL),
+                                    g_bytes_get_size (xml), NULL))
+    g_markup_parse_context_end_parse (ctx, NULL);
+  g_markup_parse_context_free (ctx);
+
+  docx_flush_text (&d);
+  w42_builder_finish (&d.b);
+
+  g_string_free (d.text, TRUE);
+  g_string_free (d.fld_instr, TRUE);
+  g_array_free (d.grid, TRUE);
+  g_hash_table_destroy (d.bookmarks);
+  g_hash_table_destroy (d.bookmark_start);
+  g_free (d.note_open);
+  g_free (d.blip);
+  g_bytes_unref (xml);
+}
+
 gboolean
 w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 {
@@ -1884,6 +2060,11 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   d.numbering = read_numbering (zip);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
   d.endnotes = read_notes (zip, "word/endnotes.xml");
+  d.note_pt[0] = w42_pt_new ();
+  d.note_pt[1] = w42_pt_new ();
+  d.note_spans = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  read_note_bodies (&d, zip, "word/footnotes.xml", "f", 0);
+  read_note_bodies (&d, zip, "word/endnotes.xml", "e", 1);
   d.comments = read_notes (zip, "word/comments.xml");
   d.comment_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   d.text = g_string_new (NULL);
@@ -1913,6 +2094,9 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   g_hash_table_destroy (d.numbering);
   g_hash_table_destroy (d.footnotes);
   g_hash_table_destroy (d.endnotes);
+  g_hash_table_destroy (d.note_spans);
+  w42_pt_free (d.note_pt[0]);
+  w42_pt_free (d.note_pt[1]);
   g_hash_table_destroy (d.comments);
   g_hash_table_destroy (d.comment_start);
   g_free (d.blip);
@@ -2065,13 +2249,9 @@ write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
     g_string_append_printf (rpr, "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/>", ch->size, ch->size);
   if (ch->highlight != 0)
     g_string_append_printf (rpr, "<w:highlight w:val=\"%s\"/>", HIGHLIGHT_NAMES[CLAMP (ch->highlight, 1, 16)]);
-  if (ch->underline || ch->link != NULL)
-    /* A link is underlined even when the run says nothing of its own, and
-     * underline_val has no name for "none" to write. */
+  if (ch->underline)
     g_string_append_printf (rpr, "<w:u w:val=\"%s\"/>",
-                            underline_val (ch->underline != W42_UNDERLINE_NONE
-                                             ? ch->underline
-                                             : (guint) W42_UNDERLINE_SINGLE));
+                            underline_val (ch->underline));
   if (ch->script > 0) g_string_append (rpr, "<w:vertAlign w:val=\"superscript\"/>");
   if (ch->script < 0) g_string_append (rpr, "<w:vertAlign w:val=\"subscript\"/>");
   if (ch->lang != NULL)
@@ -2807,6 +2987,8 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
               g_string_append_printf (target, "<w:%s w:id=\"%d\">", block->note_end ? "endnote" : "footnote", block->note + 1);
             }
           g_string_append (target, "<w:p>");
+          write_ppr (target, &parts, &w42_ap_table_get (aps, block->ap)->pa,
+                     &pg, FALSE, 0, 0);
           if (first)
             g_string_append_printf (target,
               "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:%sRef/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>",

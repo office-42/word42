@@ -157,6 +157,20 @@ list_style_kind (const char *name)
   return W42_LIST_BULLET;
 }
 
+/* A paragraph's props carry character properties too -- the font its text
+ * starts in -- but a bgcolor among them is the paragraph's background, not
+ * a highlight on its text.  Reading it as both put a yellow highlight on
+ * every run of a shaded paragraph. */
+static void char_prop (const char *key, const char *value, gpointer data);
+
+static void
+para_char_prop (const char *key, const char *value, gpointer data)
+{
+  if (g_str_equal (key, "bgcolor") || g_str_equal (key, "background-color"))
+    return;
+  char_prop (key, value, data);
+}
+
 static void
 para_prop (const char *key, const char *value, gpointer data)
 {
@@ -488,7 +502,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
             }
         }
       each_prop (attr (an, av, "props"), para_prop, &a->b.pa);
-      each_prop (attr (an, av, "props"), char_prop, &a->para_ch);
+      each_prop (attr (an, av, "props"), para_char_prop, &a->para_ch);
       a->b.ch = a->para_ch;
       if (list != NULL)
         {
@@ -609,7 +623,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
                 }
             }
           each_prop (props, para_prop, &a->b.pa);
-          each_prop (props, char_prop, &st.ch);
+          each_prop (props, para_char_prop, &st.ch);
           st.pa = a->b.pa;
           st.pa.style = st.name;
           st.pa_own = W42_STYLE_PA_ALL;
