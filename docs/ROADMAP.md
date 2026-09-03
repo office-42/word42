@@ -55,6 +55,12 @@ Tab leaders are done: a stop can be filled with dots, dashes or a rule,
 the Tabs dialog chooses which, and every format that has a way to say it
 carries it.
 
+Drag-and-drop of text, Edit ▸ Repeat and Window ▸ Split are done: the
+selection drags to a new place with a drop caret showing where (Ctrl
+drops a copy), F4 does the last typing, formatting, style or change of
+case again, and Split puts two panes on one document with the toolbars
+and ruler following the pane being edited.
+
 ## After that
 
 - Text boxes placed anywhere on the page, and frames with borders.

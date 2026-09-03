@@ -404,6 +404,21 @@ Early, but real. Word42 today is a working word processor:
 - **Find and Replace** — match case, whole words, search up, wrap-around, and
   a Replace All that is one undo step and keeps the formatting of the text it
   replaces.
+- **Drag-and-drop of text** — press inside the selection and pull: a grey
+  caret follows the pointer, and letting go moves the text there,
+  formatting and all, as one undo step; Ctrl held while letting go puts a
+  copy there instead. With revisions being marked, the move marks the old
+  text deleted and the new inserted, as Word did.
+- **Repeat** — Edit ▸ Repeat (F4) does the last thing again: the last run
+  of typing goes in at the caret, or the last character or paragraph
+  formatting, style, or change of case goes on to the selection. Only the
+  last action is repeatable — any other edit since, and Repeat greys out
+  rather than repeating something older.
+- **Window ▸ Split** — two panes on the same document, one above the
+  other, with a bar to drag between them: read one part while writing in
+  another. Each pane scrolls and keeps a caret of its own, and the
+  toolbars, the ruler and the status bar follow the pane being edited;
+  Split again is one pane again.
 - **Safety** — closing a modified document asks before discarding it.
 
 What it does not do yet is listed in [Word42.md](Word42.md), with the
