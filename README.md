@@ -4,16 +4,11 @@
      alt="The Word42 logo: a sheet of paper marked W42, beside the name in blue underlined serif">
 
 A classic word processor, written from scratch in C on GTK 4, Pango and
-Cairo: a menu bar, two toolbars, a ruler, a status bar and a page. It aims
-at the shape and restraint of the word processors of 1993 — and at the
-feature set of [AbiWord](https://github.com/AbiWord/abiword/) — on a modern
-text stack that does Unicode, OpenType and complex scripts properly.
+Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
 
 word42.org
 
-[![Linux](https://github.com/office-42/word42/actions/workflows/linux.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/linux.yml)
-[![macOS](https://github.com/office-42/word42/actions/workflows/macos.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/macos.yml)
-[![Windows](https://github.com/office-42/word42/actions/workflows/windows.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/windows.yml)
+
 
 ![Word42 in Page Layout view: the opening of Genesis — "In the beginning God created the heaven and the earth" — set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending](docs/images/screenshot.png)
 
@@ -57,6 +52,11 @@ pagination in twips at a fixed reference resolution, so a page breaks in
 the same place at every zoom and on every screen.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) tells the whole story.
 
+## Build status 
+
+[![Linux](https://github.com/office-42/word42/actions/workflows/linux.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/linux.yml)
+[![macOS](https://github.com/office-42/word42/actions/workflows/macos.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/macos.yml)
+[![Windows](https://github.com/office-42/word42/actions/workflows/windows.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/windows.yml)
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
