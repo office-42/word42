@@ -2,175 +2,339 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Word42 — a classic word processor</title>
 <meta name="description" content="Word42 is a classic word processor, written from scratch in C on GTK 4, Pango and Cairo: the shape and restraint of the word processors of 1993 on a modern text stack. Free software, GPL-3.0-or-later.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
 <style>
   :root {
-    --blue: #1a5fb4;
-    --ink: #241f31;
-    --rule: #c0bfbc;
-    --paper: #ffffff;
-    --ground: #f2f1ef;
+    --w42-blue: #1a5fb4;
+    --w42-ink: #241f31;
+    --w42-rule: #c0bfbc;
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--ground);
-    color: var(--ink);
+  .font-serif {
     font-family: 'Times New Roman', 'Liberation Serif', Tinos, Times, serif;
-    font-size: 1.125rem;
-    line-height: 1.55;
   }
-  a { color: var(--blue); }
-  .page {
-    max-width: 46rem;
-    margin: 2.5rem auto;
-    background: var(--paper);
-    border: 1px solid var(--rule);
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
-    padding: 2.5rem 3rem 3rem;
+  .text-w42 { color: var(--w42-blue) !important; }
+  .bg-w42 { background-color: var(--w42-blue) !important; }
+  .btn-w42 {
+    background-color: var(--w42-blue);
+    border-color: var(--w42-blue);
+    color: #fff;
   }
-  header { text-align: center; margin-bottom: 2rem; }
-  header svg { max-width: 100%; height: auto; }
-  .tagline {
-    font-size: 1.25rem;
-    margin: 1rem auto 0;
-    max-width: 38rem;
+  .btn-w42:hover, .btn-w42:focus {
+    background-color: #164f96;
+    border-color: #164f96;
+    color: #fff;
   }
-  h2 {
-    font-size: 1.4rem;
-    color: var(--blue);
-    border-bottom: 2px solid var(--blue);
-    padding-bottom: .15rem;
-    margin: 2.25rem 0 .75rem;
+  .btn-outline-w42 {
+    border-color: var(--w42-blue);
+    color: var(--w42-blue);
   }
-  figure { margin: 2rem 0; text-align: center; }
-  figure img {
-    max-width: 100%;
-    height: auto;
-    border: 1px solid var(--rule);
+  .btn-outline-w42:hover, .btn-outline-w42:focus {
+    background-color: var(--w42-blue);
+    color: #fff;
   }
-  figcaption {
-    font-size: .95rem;
-    color: #5e5c64;
+  .navbar-brand svg { vertical-align: middle; }
+  .hero {
+    background: linear-gradient(180deg, #ffffff 0%, #f2f1ef 100%);
+    border-bottom: 1px solid var(--w42-rule);
+  }
+  .hero h1 {
+    font-weight: 700;
+    color: var(--w42-blue);
+  }
+  .screenshot {
+    border: 1px solid var(--w42-rule);
+    border-radius: .25rem;
+    box-shadow: 0 .5rem 2rem rgba(0,0,0,.12);
+  }
+  .section-title {
+    font-weight: 700;
+    color: var(--w42-ink);
+  }
+  .section-title::after {
+    content: "";
+    display: block;
+    width: 3.5rem;
+    height: .25rem;
+    border-radius: .125rem;
+    background: var(--w42-blue);
     margin-top: .5rem;
-    font-style: italic;
   }
-  ul { padding-left: 1.4rem; }
-  li { margin: .2rem 0; }
-  pre {
-    background: var(--ground);
-    border: 1px solid var(--rule);
-    padding: .75rem 1rem;
-    overflow-x: auto;
-    font-size: .95rem;
+  .text-center > .section-title::after { margin-left: auto; margin-right: auto; }
+  .feature-card {
+    border: 1px solid var(--w42-rule);
+    transition: box-shadow .15s ease-in-out;
   }
-  code { font-family: 'Courier New', Courier, monospace; }
-  .badges { text-align: center; margin: 1.25rem 0 0; }
-  .badges img { vertical-align: middle; margin: 0 .2rem; }
-  footer {
-    margin-top: 2.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--rule);
-    font-size: .95rem;
-    color: #5e5c64;
+  .feature-card:hover { box-shadow: 0 .25rem 1rem rgba(0,0,0,.1); }
+  .feature-icon {
+    font-size: 1.75rem;
+    line-height: 1;
   }
-  @media (max-width: 40rem) {
-    .page { margin: 0; padding: 1.5rem 1.25rem 2rem; border: none; }
-    body { font-size: 1.05rem; }
+  .format-badge { font-size: .95rem; font-weight: 600; }
+  pre.build {
+    background: #241f31;
+    color: #f6f5f4;
+    border-radius: .25rem;
+    padding: 1.25rem 1.5rem;
   }
+  footer { border-top: 1px solid var(--w42-rule); }
 </style>
 </head>
 <body>
-<div class="page">
 
-<header>
-  <svg xmlns="http://www.w3.org/2000/svg" width="420" height="112" viewBox="0 8 420 104" role="img"
-       aria-label="The Word42 logo: a sheet of paper marked W42, beside the name in blue underlined serif">
-    <g transform="translate(20,16) scale(1.5)">
-      <path d="M9.5 8.5a4 4 0 0 1 4-4h23l14 14v33a4 4 0 0 1-4 4h-33a4 4 0 0 1-4-4Z" fill="#ffffff" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M36.5 4.5v10a4 4 0 0 0 4 4h10Z" fill="#deddda" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/>
-      <text x="13" y="43" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="17" font-weight="700" fill="none" stroke="#000000" stroke-width="0.7" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>
-      <text x="13" y="43" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="17" font-weight="700" fill="#1a5fb4" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>
-      <rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="#c0bfbc"/>
-      <rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="#c0bfbc"/>
-    </g>
-    <text x="136" y="68" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="48" font-weight="700" fill="none" stroke="#000000" stroke-width="2" textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
-    <text x="136" y="68" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="48" font-weight="700" fill="#1a5fb4" textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
-    <rect x="136" y="75" width="198" height="3.5" rx="1.75" fill="#1a5fb4"/>
-    <text x="137" y="97" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="14" fill="#241f31">A classic word processor &#183; word42.org</text>
-  </svg>
-  <p class="tagline">A classic word processor, written from scratch in C on GTK&nbsp;4, Pango and
-  Cairo: a menu bar, two toolbars, a ruler, a status bar and a page. It aims at the shape and
-  restraint of the word processors of 1993 — on a modern text stack that does Unicode, OpenType
-  and complex scripts properly.</p>
-  <p class="badges">
-    <a href="https://github.com/office-42/word42/actions/workflows/linux.yml"><img src="https://github.com/office-42/word42/actions/workflows/linux.yml/badge.svg" alt="Linux build status"></a>
-    <a href="https://github.com/office-42/word42/actions/workflows/macos.yml"><img src="https://github.com/office-42/word42/actions/workflows/macos.yml/badge.svg" alt="macOS build status"></a>
-    <a href="https://github.com/office-42/word42/actions/workflows/windows.yml"><img src="https://github.com/office-42/word42/actions/workflows/windows.yml/badge.svg" alt="Windows build status"></a>
-  </p>
+<nav class="navbar navbar-expand-md navbar-light bg-white border-bottom sticky-top">
+  <div class="container">
+    <a class="navbar-brand font-serif font-weight-bold text-w42" href="#" style="font-size:1.5rem;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="34" height="38" viewBox="4 0 56 62" role="img" aria-hidden="true">
+        <path d="M9.5 8.5a4 4 0 0 1 4-4h23l14 14v33a4 4 0 0 1-4 4h-33a4 4 0 0 1-4-4Z" fill="#ffffff" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M36.5 4.5v10a4 4 0 0 0 4 4h10Z" fill="#deddda" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/>
+        <text x="13" y="43" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="17" font-weight="700" fill="#1a5fb4" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>
+        <rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="#c0bfbc"/>
+        <rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="#c0bfbc"/>
+      </svg>
+      Word42
+    </a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navContent"
+            aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navContent">
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
+        <li class="nav-item"><a class="nav-link" href="#formats">File formats</a></li>
+        <li class="nav-item"><a class="nav-link" href="#download">Download</a></li>
+        <li class="nav-item"><a class="nav-link" href="#building">Building</a></li>
+        <li class="nav-item"><a class="nav-link" href="#architecture">How it works</a></li>
+        <li class="nav-item"><a class="nav-link" href="https://github.com/office-42/word42">GitHub</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<header class="hero py-5">
+  <div class="container py-4">
+    <div class="row align-items-center">
+      <div class="col-lg-6 mb-4 mb-lg-0">
+        <h1 class="font-serif display-4">Word42</h1>
+        <p class="lead">A classic word processor, written from scratch in C on GTK&nbsp;4, Pango and
+        Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.</p>
+        <p>It aims at the shape and restraint of the word processors of 1993 — on a modern text
+        stack that does Unicode, OpenType and complex scripts properly. Free software,
+        GPL-3.0-or-later.</p>
+        <p class="mt-4">
+          <a class="btn btn-w42 btn-lg mr-2 mb-2" href="#download">Download</a>
+          <a class="btn btn-outline-w42 btn-lg mb-2" href="https://github.com/office-42/word42">View on GitHub</a>
+        </p>
+        <p class="mb-0">
+          <a href="https://github.com/office-42/word42/actions/workflows/linux.yml"><img src="https://github.com/office-42/word42/actions/workflows/linux.yml/badge.svg" alt="Linux build status"></a>
+          <a href="https://github.com/office-42/word42/actions/workflows/macos.yml"><img src="https://github.com/office-42/word42/actions/workflows/macos.yml/badge.svg" alt="macOS build status"></a>
+          <a href="https://github.com/office-42/word42/actions/workflows/windows.yml"><img src="https://github.com/office-42/word42/actions/workflows/windows.yml/badge.svg" alt="Windows build status"></a>
+        </p>
+      </div>
+      <div class="col-lg-6">
+        <img src="images/screenshot.png" class="img-fluid screenshot"
+             alt="Word42 in Page Layout view: the opening of Genesis set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending">
+        <p class="text-muted small text-center mt-2 mb-0"><em>Word42 in Page Layout view.</em></p>
+      </div>
+    </div>
+  </div>
 </header>
 
-<figure>
-  <img src="images/screenshot.png" width="1280"
-       alt="Word42 in Page Layout view: the opening of Genesis set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending">
-  <figcaption>Word42 in Page Layout view.</figcaption>
-</figure>
+<section id="features" class="py-5">
+  <div class="container">
+    <h2 class="section-title mb-4">A working word processor</h2>
+    <p class="mb-4">Everything on the menus works — and the
+    <a href="https://github.com/office-42/word42/blob/main/docs/GUIDE.md">user guide</a>
+    describes every command in the program. The
+    <a href="https://github.com/office-42/word42/blob/main/docs/STATUS.md">status page</a>
+    lists it all in detail.</p>
+    <div class="row">
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card feature-card h-100">
+          <div class="card-body">
+            <div class="feature-icon mb-2" aria-hidden="true">✍️</div>
+            <h5 class="card-title font-serif font-weight-bold">Writing and formatting</h5>
+            <p class="card-text mb-0">Typing, character and paragraph formatting, styles and
+            numbered headings, lists, columns, find and replace, autocorrect.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card feature-card h-100">
+          <div class="card-body">
+            <div class="feature-icon mb-2" aria-hidden="true">📄</div>
+            <h5 class="card-title font-serif font-weight-bold">Real page layout</h5>
+            <p class="card-text mb-0">Headers and footers, footnotes and endnotes, sections, a
+            page-layout view, print preview — a page that breaks in the same place at every zoom
+            and on every screen.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card feature-card h-100">
+          <div class="card-body">
+            <div class="feature-icon mb-2" aria-hidden="true">🖼️</div>
+            <h5 class="card-title font-serif font-weight-bold">Tables and pictures</h5>
+            <p class="card-text mb-0">Tables, pictures with text wrap, and the classic
+            table-and-figure toolbox a document needs.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card feature-card h-100">
+          <div class="card-body">
+            <div class="feature-icon mb-2" aria-hidden="true">🔤</div>
+            <h5 class="card-title font-serif font-weight-bold">Language tools</h5>
+            <p class="card-text mb-0">Spelling and hyphenation, on a text stack that does
+            Unicode, OpenType and complex scripts properly.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card feature-card h-100">
+          <div class="card-body">
+            <div class="feature-icon mb-2" aria-hidden="true">📬</div>
+            <h5 class="card-title font-serif font-weight-bold">Mail merge</h5>
+            <p class="card-text mb-0">Mail merge for letters and envelopes, the way the classics
+            did it.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card feature-card h-100">
+          <div class="card-body">
+            <div class="feature-icon mb-2" aria-hidden="true">🪟</div>
+            <h5 class="card-title font-serif font-weight-bold">The classic frame</h5>
+            <p class="card-text mb-0">A menu bar, two toolbars, a ruler, a status bar and a split
+            window — the shape and restraint of 1993.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-<h2>What it does</h2>
-<p>A working word processor: typing, formatting, styles and numbered headings, headers and
-footers, footnotes and endnotes, tables, pictures, lists, columns, find and replace, spelling,
-hyphenation, mail merge, a split window, a page-layout view and print preview — reading and
-writing RTF, OpenDocument <code>.odt</code>, Word <code>.docx</code> and <code>.doc</code>,
-AbiWord <code>.abw</code>, HTML, PDF and plain text.</p>
-<p>The <a href="https://github.com/office-42/word42/blob/main/docs/STATUS.md">status page</a>
-lists what it does, and the
-<a href="https://github.com/office-42/word42/blob/main/docs/GUIDE.md">user guide</a> describes
-every command in the program.</p>
+<section id="formats" class="py-5 bg-light border-top border-bottom">
+  <div class="container text-center">
+    <h2 class="section-title mb-3">Reads and writes your documents</h2>
+    <p class="mb-4">Open and save the formats the world actually uses.</p>
+    <p class="mb-0">
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">RTF</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">OpenDocument .odt</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">Word .docx</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">Word .doc</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">AbiWord .abw</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">HTML</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">PDF</span>
+      <span class="badge badge-pill badge-primary bg-w42 format-badge px-3 py-2 m-1">Plain text</span>
+    </p>
+  </div>
+</section>
 
-<h2>Getting it</h2>
-<ul>
-  <li><strong>Windows</strong> — every push to <code>main</code> builds a bundle and installer:
-      artifacts of the
-      <a href="https://github.com/office-42/word42/actions/workflows/windows.yml">Windows workflow</a>.</li>
-  <li><strong>macOS</strong> — an unsigned <code>Word42.app</code> from the
-      <a href="https://github.com/office-42/word42/actions/workflows/macos.yml">macOS workflow</a>
-      (first launch is a right-click&nbsp;▸&nbsp;Open).</li>
-  <li><strong>Linux</strong> — build from source; a Flatpak manifest is in the repository's
-      <a href="https://github.com/office-42/word42/tree/main/build-aux"><code>build-aux/</code></a>.</li>
-</ul>
+<section id="download" class="py-5">
+  <div class="container">
+    <h2 class="section-title mb-4">Get Word42</h2>
+    <p class="mb-4">Every push to <code>main</code> builds fresh packages on GitHub Actions.</p>
+    <div class="row">
+      <div class="col-md-4 mb-4">
+        <div class="card feature-card h-100 text-center">
+          <div class="card-body d-flex flex-column">
+            <div class="feature-icon mb-2" aria-hidden="true">🪟</div>
+            <h5 class="card-title font-serif font-weight-bold">Windows</h5>
+            <p class="card-text">A bundle and an installer, built by CI on every push — download
+            them as workflow artifacts.</p>
+            <a class="btn btn-w42 mt-auto" href="https://github.com/office-42/word42/actions/workflows/windows.yml">Windows builds</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4 mb-4">
+        <div class="card feature-card h-100 text-center">
+          <div class="card-body d-flex flex-column">
+            <div class="feature-icon mb-2" aria-hidden="true">🍎</div>
+            <h5 class="card-title font-serif font-weight-bold">macOS</h5>
+            <p class="card-text">An unsigned <code>Word42.app</code> from the macOS workflow.
+            First launch is a right-click&nbsp;▸&nbsp;Open.</p>
+            <a class="btn btn-w42 mt-auto" href="https://github.com/office-42/word42/actions/workflows/macos.yml">macOS builds</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4 mb-4">
+        <div class="card feature-card h-100 text-center">
+          <div class="card-body d-flex flex-column">
+            <div class="feature-icon mb-2" aria-hidden="true">🐧</div>
+            <h5 class="card-title font-serif font-weight-bold">Linux</h5>
+            <p class="card-text">Build from source in three commands; a Flatpak manifest is in
+            <code>build-aux/</code>.</p>
+            <a class="btn btn-w42 mt-auto" href="#building">Build from source</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-<h2>Building</h2>
-<p>Word42 needs a C11 compiler, Meson, Ninja, and GTK&nbsp;4.10 or newer with Pango, Cairo and
-gdk-pixbuf, plus <a href="https://lexbor.com/">Lexbor</a> for HTML. Per-platform dependency
-lists are in <a href="https://github.com/office-42/word42/blob/main/docs/BUILD.md">docs/BUILD.md</a>.</p>
-<pre><code>meson setup builddir
+<section id="building" class="py-5 bg-light border-top border-bottom">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-6 mb-4 mb-lg-0">
+        <h2 class="section-title mb-3">Building from source</h2>
+        <p>Word42 needs a C11 compiler, Meson, Ninja, and GTK&nbsp;4.10 or newer with Pango,
+        Cairo and gdk-pixbuf, plus <a href="https://lexbor.com/">Lexbor</a> for HTML. Reading PDF
+        needs poppler-glib; without it Word42 still builds, writes PDF, and simply cannot open
+        one.</p>
+        <p class="mb-0">Per-platform dependency lists are in
+        <a href="https://github.com/office-42/word42/blob/main/docs/BUILD.md">docs/BUILD.md</a>.</p>
+      </div>
+      <div class="col-lg-6">
+        <pre class="build mb-0"><code>meson setup builddir
 meson compile -C builddir
 ./builddir/src/word42</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
 
-<h2>How it works</h2>
-<p>The document is a <strong>piece table</strong> — the design several word processors have used
-since the 1980s — with formatting interned in an attribute table, symmetric undo records,
-structural marks for paragraphs and sections, and pagination in twips at a fixed reference
-resolution, so a page breaks in the same place at every zoom and on every screen.
-<a href="https://github.com/office-42/word42/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>
-tells the whole story.</p>
+<section id="architecture" class="py-5">
+  <div class="container">
+    <h2 class="section-title mb-3">How it works</h2>
+    <p>The document is a <strong>piece table</strong> — the design several word processors have
+    used since the 1980s — with formatting interned in an attribute table, symmetric undo
+    records, structural marks for paragraphs and sections, and pagination in twips at a fixed
+    reference resolution, so a page breaks in the same place at every zoom and on every
+    screen.</p>
+    <p class="mb-0"><a href="https://github.com/office-42/word42/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>
+    tells the whole story.</p>
+  </div>
+</section>
 
-<h2>Free software</h2>
-<p>Word42 is free software, licensed
-<a href="https://github.com/office-42/word42/blob/main/LICENSE">GPL-3.0-or-later</a>.
-Development happens on <a href="https://github.com/office-42/word42">GitHub</a>;
-contributions are welcome — see the
-<a href="https://github.com/office-42/word42/blob/main/CONTRIBUTING.md">contributing guide</a>.</p>
+<section class="py-5 bg-w42 text-white">
+  <div class="container text-center">
+    <h2 class="font-serif font-weight-bold mb-3">Free software</h2>
+    <p class="lead mb-4">Word42 is free software, licensed GPL-3.0-or-later.<br>
+    Development happens in the open — contributions are welcome.</p>
+    <a class="btn btn-light btn-lg mr-2 mb-2" href="https://github.com/office-42/word42">Source on GitHub</a>
+    <a class="btn btn-outline-light btn-lg mb-2" href="https://github.com/office-42/word42/blob/main/CONTRIBUTING.md">Contributing guide</a>
+  </div>
+</section>
 
-<footer>
-<p>Word42 is not affiliated with, endorsed by, or derived from any Microsoft product or from
-<a href="https://github.com/AbiWord/abiword/">AbiWord</a>; both are named only as the yardsticks
-Word42 measures itself against and for the file formats it reads and writes. It contains no
-code, artwork, fonts or text from either; its icons, logo and stylesheet are its own work.</p>
+<footer class="py-4 bg-white">
+  <div class="container">
+    <p class="small text-muted mb-2">Word42 is not affiliated with, endorsed by, or derived from
+    any Microsoft product or from <a href="https://github.com/AbiWord/abiword/">AbiWord</a>; both
+    are named only as the yardsticks Word42 measures itself against and for the file formats it
+    reads and writes. It contains no code, artwork, fonts or text from either; its icons, logo
+    and stylesheet are its own work.</p>
+    <p class="small text-muted mb-0">
+      <a href="https://github.com/office-42/word42/blob/main/LICENSE">GPL-3.0-or-later</a> ·
+      <a href="https://github.com/office-42/word42">github.com/office-42/word42</a> ·
+      word42.org
+    </p>
+  </div>
 </footer>
 
-</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
