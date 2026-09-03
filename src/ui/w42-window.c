@@ -1169,15 +1169,6 @@ action_help_index (GSimpleAction *action, GVariant *param, gpointer data)
   w42_help_index_show (GTK_WINDOW (self));
 }
 
-static void
-action_tip_of_the_day (GSimpleAction *action, GVariant *param, gpointer data)
-{
-  W42Window *self = data;
-
-  (void) action; (void) param;
-  w42_tip_of_the_day_show (GTK_WINDOW (self), FALSE);
-}
-
 /* The project's own pages, opened in whatever the desktop uses for the
  * web.  Nothing about the document goes with it. */
 static void
@@ -3969,7 +3960,6 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "help-contents", action_help_contents, NULL, NULL, NULL, { 0 } },
   { "help-search",  action_help_search,  NULL, NULL, NULL, { 0 } },
   { "help-index",   action_help_index,   NULL, NULL, NULL, { 0 } },
-  { "tip-of-the-day", action_tip_of_the_day, NULL, NULL, NULL, { 0 } },
   { "help-web",     action_help_web,     NULL, NULL, NULL, { 0 } },
   { "report-bug",   action_report_bug,   NULL, NULL, NULL, { 0 } },
   { "tabs",          action_tabs,          NULL, NULL, NULL, { 0 } },

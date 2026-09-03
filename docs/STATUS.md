@@ -91,8 +91,7 @@ Early, but real. Word42 today is a working word processor:
   (F1) opens a window with the guide's sections on the left and the one
   chosen on the right, Search for Help on... narrows the list to the
   sections that mention a word, and Index lists every sub-heading
-  alphabetically. Help ▸ Tip of the Day shows one thing worth knowing,
-  at every start unless you turn it off.
+  alphabetically.
 - **AutoText** — Edit ▸ AutoText keeps a piece of text under a name — a
   closing, an address — and puts it in wherever the caret is; typing the
   name and pressing Ctrl+F3 puts it in without the box. The entries are

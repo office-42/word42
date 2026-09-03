@@ -1986,7 +1986,6 @@ typedef struct {
   GtkWidget *zoom;
   GtkWidget *auto_spell;
   GtkWidget *auto_correct;
-  GtkWidget *tips;
   GtkWidget *user_name;
 } OptionsBox;
 
@@ -2019,8 +2018,6 @@ on_options_ok (GtkButton *button, gpointer data)
     w42_settings_set_bool ("auto-correct", want_correct);
     w42_view_set_autocorrect (box->view, want_correct);
   }
-  w42_settings_set_bool ("tips-at-startup",
-                         gtk_check_button_get_active (GTK_CHECK_BUTTON (box->tips)));
   /* The view and zoom chosen apply to this window now, not only to the
    * next one opened. */
   {
@@ -2125,12 +2122,6 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_spell),
                                w42_settings_get_bool ("auto-spell", TRUE));
   gtk_grid_attach (GTK_GRID (grid), box->auto_spell, 0, 0, 2, 1);
-
-  grid = group (content, "Starting up");
-  box->tips = gtk_check_button_new_with_mnemonic ("Show the _tip of the day when Word42 starts");
-  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->tips),
-                               w42_settings_get_bool ("tips-at-startup", TRUE));
-  gtk_grid_attach (GTK_GRID (grid), box->tips, 0, 0, 2, 1);
 
   button_row (content, box->window, G_CALLBACK (on_options_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));

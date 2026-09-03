@@ -660,10 +660,6 @@
           <attribute name="label" translatable="yes">_Index</attribute>
           <attribute name="action">win.help-index</attribute>
         </item>
-        <item>
-          <attribute name="label" translatable="yes">_Tip of the Day...</attribute>
-          <attribute name="action">win.tip-of-the-day</attribute>
-        </item>
       </section>
       <section>
         <item>

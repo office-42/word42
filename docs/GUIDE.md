@@ -799,11 +799,6 @@ type a word and the list narrows to the sections that mention it, the
 ones with it in their title first. **Index** turns the list into every
 sub-heading in the guide, in alphabetical order.
 
-**Tip of the Day** shows one of the things worth knowing about the
-program, with **Next Tip** for another. Word 6 showed one at every start
-and so does this; the switch in the box, or Tools ▸ Options, turns
-that off. Word42 remembers which tip you last saw.
-
 **Word42 on the Web** and **Report a Bug** open word42.org and the
 project's issue list in whatever the desktop uses for the web. Nothing
 about the document is sent anywhere.

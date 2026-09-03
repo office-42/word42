@@ -372,7 +372,7 @@ gaps the command-by-command count named, closed together.
     their spaces, paragraphs and lines, a switch for whether the notes
     are counted, and a column for the selection when there is one.
 
-**A help window, and the tip of the day.**  Help was the weakest menu
+**A help window.**  Help was the weakest menu
 against Word 6: one item where Word 6 had nine.  The user guide now
 travels inside the program, and the help window reads it: **Contents**
 lists the guide's sections and shows the one chosen, **Search for Help
@@ -381,11 +381,9 @@ matches first), and **Index** turns it into every sub-heading in the
 guide, alphabetically.  The guide is the only copy -- the help cannot
 drift from the documentation, because it is the documentation.
 
-**Tip of the Day** shows one thing worth knowing, with Next Tip for
-another; Word 6 showed one at every start and so does this, unless the
-switch in the box or in Tools > Options says otherwise.  **Word42 on the
-Web** and **Report a Bug** open the project's pages, which is what
-Word 6's Technical Support and AbiWord's bug report are for.
+**Word42 on the Web** and **Report a Bug** open the project's pages,
+which is what Word 6's Technical Support and AbiWord's bug report are
+for.
 
 **A colour behind the page.**  Format > Background sets the colour the
 paper is, chosen from a list with a sample that shows it behind text.

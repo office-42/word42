@@ -1,12 +1,12 @@
-/* w42-help.h - the help window, and the tip of the day
+/* w42-help.h - the help window
  *
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6's Help menu had Contents, a search, an index and a tip of the
- * day.  This is the same, built from the user guide that ships with the
- * program: the guide's sections are the topics, its sub-headings are the
- * index, and the search looks through the lot.
+ * Word 6's Help menu had Contents, a search and an index.  This is the
+ * same, built from the user guide that ships with the program: the
+ * guide's sections are the topics, its sub-headings are the index,
+ * and the search looks through the lot.
  */
 
 #pragma once
@@ -23,10 +23,6 @@ void w42_help_window_show (GtkWindow *parent, const char *find);
 /* Help > Index: the same window, showing the index rather than the
  * contents. */
 void w42_help_index_show (GtkWindow *parent);
-
-/* Help > Tip of the Day.  `at_startup` is for the one the program shows
- * itself: it does nothing when the tips have been turned off. */
-void w42_tip_of_the_day_show (GtkWindow *parent, gboolean at_startup);
 
 /* The guide as the help window sees it: the titles of its sections, and
  * one section's text with and without the markup.  NULL for a title the
