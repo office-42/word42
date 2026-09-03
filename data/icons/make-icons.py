@@ -246,12 +246,18 @@ ICONS['w42-align-justify'] = _align([(2, 12), (2, 12), (2, 12), (2, 12)])
 # The application icon, on a 64-unit grid
 # ---------------------------------------------------------------------------
 
-def app_icon_body(with_number=True):
-    """A sheet of paper carrying a W, and the number when there is room.
+# The face of the wordmark, on the banner and the sheet alike: Playfair
+# Display where it is installed -- fetch it from Google Fonts before
+# regenerating, or the rasters fall back down this list -- then the
+# system's own book faces.
+WORDMARK_FONT = ("'Playfair Display', Didot, Georgia, 'Palatino Linotype', "
+                 "Palatino, P052, 'Liberation Serif', serif")
 
-    The W is a stroked polyline rather than a typeset letter: at the sizes
-    that matter it is four strokes either way, and four strokes that meet at
-    known points stay crisp where a font's outline would not."""
+
+def app_icon_body(with_number=True):
+    """A sheet of paper carrying the wordmark's W, and the number when
+    there is room, set in the wordmark's own face so the icon and the
+    banner are one design."""
     body = [
         # Sheet, with the corner turned back.
         '<path d="M9.5 8.5a4 4 0 0 1 4-4h23l14 14v33a4 4 0 0 1-4 4h-33'
@@ -262,31 +268,24 @@ def app_icon_body(with_number=True):
     ]
 
     if with_number:
-        # "W42" as one word: the three glyphs share a baseline, a pen and
-        # a colour, so nothing suggests a W with a number tacked on.
+        # "W42" as one word, set in the wordmark's face; textLength pins
+        # the width so the word fills the sheet whichever face answers.
         body.append(
-            '<path d="M13.5 27.5 17.5 42 21.5 32.5 25.5 42 29.5 27.5" fill="none" '
-            'stroke="%s" stroke-width="3.4" stroke-linecap="round" '
-            'stroke-linejoin="round"/>' % BLUE_4)
-        body.append(
-            '<path d="M37 27.5 32.5 37.5H40M37.5 31V42" fill="none" '
-            'stroke="%s" stroke-width="3.4" stroke-linecap="round" '
-            'stroke-linejoin="round"/>' % BLUE_4)
-        body.append(
-            '<path d="M42 30.5a3.3 3.3 0 0 1 6.6 1c0 3-6.6 4.6-6.6 10.5h7" '
-            'fill="none" stroke="%s" stroke-width="3.4" stroke-linecap="round" '
-            'stroke-linejoin="round"/>' % BLUE_4)
+            '<text x="13" y="43" font-family="%s" font-size="17" '
+            'font-weight="700" fill="%s" textLength="34" '
+            'lengthAdjust="spacingAndGlyphs">W42</text>' % (WORDMARK_FONT, BLUE_4))
         # Two lines of text below the word, so the sheet reads as a page.
         body.append(
             '<rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="%s"/>'
             '<rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="%s"/>'
             % (LIGHT_4, LIGHT_4))
     else:
-        # No number: the W grows into the space and stays legible small.
+        # No number: the W grows into the space, and takes the face's
+        # heaviest weight so it stays legible at sixteen pixels.
         body.append(
-            '<path d="M15 25 23 48 32 33 41 48 49 25" fill="none" '
-            'stroke="%s" stroke-width="7" stroke-linecap="round" '
-            'stroke-linejoin="round"/>' % BLUE_4)
+            '<text x="30" y="49" font-family="%s" font-size="34" '
+            'font-weight="900" fill="%s" text-anchor="middle">W</text>'
+            % (WORDMARK_FONT, BLUE_4))
 
     return "".join(body)
 
@@ -328,14 +327,12 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
   <rect x="0" y="127" width="420" height="1" fill="#c0bfbc"/>
 
   <g transform="translate(20,16) scale(1.5)">
-%s
+%(body)s
   </g>
 
-  <!-- The wordmark is a book face, as befits a word processor: Georgia
-       and Palatino where the system has them, P052 (the free Palatino)
-       where the banner is rasterised.  textLength pins the width, so
-       the rule drawn under it fits whichever face answers. -->
-  <text x="136" y="74" font-family="Georgia, 'Palatino Linotype', Palatino, P052, 'URW Palladio L', 'Liberation Serif', serif"
+  <!-- The wordmark's face, from WORDMARK_FONT.  textLength pins the
+       width, so the rule drawn under it fits whichever face answers. -->
+  <text x="136" y="74" font-family="%(font)s"
         font-size="44" font-weight="700" fill="#1c8cff"
         textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
   <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="#1c8cff"/>
@@ -346,7 +343,8 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
 def write_about(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
-        fh.write(ABOUT_SVG % ('    ' + app_icon_body(with_number=True)))
+        fh.write(ABOUT_SVG % {'body': '    ' + app_icon_body(with_number=True),
+                              'font': WORDMARK_FONT})
 
 
 def rasterise(svg, png, width=None, height=None):
