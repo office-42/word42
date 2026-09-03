@@ -3,7 +3,9 @@
 Word42 needs a C11 compiler, Meson (>= 1.0), Ninja, and GTK 4.10 or newer
 along with Pango, Cairo and GLib. GTK 4.10 is the floor because Word42 uses
 `GtkFileDialog`, `GtkFontDialog` and `GtkAlertDialog`, which arrived in that
-release.
+release. Reading HTML needs [Lexbor](https://lexbor.com/) (>= 2.0), the
+HTML5 parser; Homebrew and MSYS2 package it, and on Linux distributions
+that do not yet, it builds from source in a minute (see below).
 
 ```sh
 meson setup builddir
@@ -36,10 +38,25 @@ sudo dnf install gcc meson ninja-build pkgconf-pkg-config \
 sudo pacman -S base-devel meson ninja pkgconf gtk4 pango cairo glib2
 ```
 
+Debian, Ubuntu and Fedora do not package Lexbor yet; it builds from
+source in about a minute:
+
+```sh
+git clone --depth 1 --branch v2.7.0 https://github.com/lexbor/lexbor.git
+cmake -S lexbor -B lexbor/build -DCMAKE_BUILD_TYPE=Release
+cmake --build lexbor/build -j"$(nproc)"
+sudo cmake --install lexbor/build
+sudo ldconfig
+```
+
+(Lexbor before 3.0 installs no pkg-config file; Word42's Meson looks for
+the library directly when pkg-config comes back empty-handed, so the
+above is all that is needed.)
+
 ## macOS
 
 ```sh
-brew install meson ninja pkg-config gtk4 pango cairo glib
+brew install meson ninja pkg-config gtk4 pango cairo glib lexbor
 ```
 
 Homebrew builds GTK 4 against native Quartz, so no X server is involved. If
@@ -61,7 +78,8 @@ pacman -S --needed \
   mingw-w64-x86_64-gtk4 \
   mingw-w64-x86_64-pango \
   mingw-w64-x86_64-cairo \
-  mingw-w64-x86_64-glib2
+  mingw-w64-x86_64-glib2 \
+  mingw-w64-x86_64-lexbor
 
 meson setup builddir
 meson compile -C builddir

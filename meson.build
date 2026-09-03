@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 project('word42', 'c',
-  version: '0.9.0',
+  version: '1.0.0',
   license: 'GPL-3.0-or-later',
   meson_version: '>= 1.0',
   default_options: [
@@ -49,6 +49,20 @@ gtk_dep        = dependency('gtk4',        version: '>= 4.10')
 pixbuf_dep     = dependency('gdk-pixbuf-2.0', version: '>= 2.42')
 m_dep          = cc.find_library('m', required: false)
 
+# Reading HTML uses Lexbor's HTML5 parser: the tokenizer the browsers
+# specify, not one of our own.  Distros that do not package it yet can
+# build it from source; docs/BUILD.md says how.  Lexbor before 3.0
+# installs no pkg-config file, so the library is looked for directly
+# when pkg-config comes back empty-handed.
+lexbor_dep = dependency('lexbor', 'liblexbor', version: '>= 2.0', required: false)
+if not lexbor_dep.found()
+  lexbor_lib = cc.find_library('lexbor', required: false)
+  if not lexbor_lib.found() or not cc.has_header('lexbor/html/html.h')
+    error('lexbor is required to read HTML; see docs/BUILD.md for how to get it.')
+  endif
+  lexbor_dep = declare_dependency(dependencies: [lexbor_lib])
+endif
+
 # Reading PDF needs poppler.  Writing it does not -- cairo does that -- so a
 # build without poppler still exports PDF and simply cannot open one.
 poppler_dep = dependency('poppler-glib', version: '>= 20.0', required: false)
@@ -76,7 +90,7 @@ if hyphen_dep.found()
 endif
 
 core_deps = [glib_dep, gobject_dep, gio_dep, cairo_dep, pango_dep,
-             pangocairo_dep, pixbuf_dep, m_dep]
+             pangocairo_dep, pixbuf_dep, lexbor_dep, m_dep]
 if hyphen_dep.found()
   core_deps += [hyphen_dep]
 endif
@@ -96,6 +110,7 @@ summary({
     'GTK'     : gtk_dep.version(),
     'Pango'   : pango_dep.version(),
     'Cairo'   : cairo_dep.version(),
+    'Lexbor'  : lexbor_dep.version(),
     'PDF import (poppler)' : poppler_dep.found(),
     'Spelling (enchant)'   : enchant_dep.found(),
     'Hyphenation (hyphen)' : hyphen_dep.found(),
