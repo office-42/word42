@@ -80,27 +80,39 @@ Requirements the manifest is built around
 
 ## Partner Center identity
 
-The defaults in `pack-msix.sh` are placeholders and **will be rejected**:
-the Package Family Name is derived from `Identity/Name` and the publisher
-certificate, so the Store will not take a package whose identity it did
-not mint.
+The name **Word42** is reserved, so the identity exists and
+`pack-msix.sh` has it built in — a plain run makes the package the Store
+expects, with nothing to pass:
 
-Reserve the name **Word42** in Partner Center first — that is what mints
-the real values — then read them off the product's *Product identity*
-page and pass them in:
+| Manifest | Value |
+|---|---|
+| `Package/Identity/Name` | `29567TheFreecivProject.Word42` |
+| `Package/Identity/Publisher` | `CN=631F98F7-2280-49EE-8EF8-534CC36D09CF` |
+| `Package/Properties/PublisherDisplayName` | `Nordstjernen` |
 
-```sh
-W42_MSIX_IDENTITY_NAME='<publisher-prefix>.Word42' \
-W42_MSIX_PUBLISHER='CN=<the GUID Partner Center shows>' \
-W42_MSIX_PUBLISHER_DISPLAY='Andreas Røsdal' \
-W42_MSIX_PHONE_PRODUCT_ID='<PhoneProductId>' \
-W42_MSIX_PHONE_PUBLISHER_ID='<PhonePublisherId>' \
-bash build-aux/pack-msix.sh builddir dist msix
-```
+None of the three is ours to choose. The Package Family Name is derived
+from the name and the publisher, so a package that renames either is
+refused on upload. The prefix `29567TheFreecivProject` and the publisher
+display name `Nordstjernen` belong to the Partner Center account rather
+than to this product, and they stay as they are; the name a customer sees
+is the `DisplayName`, which is **Word42**.
 
-Fill those in here once they exist, so the next build is one command.
-`mp:PhoneIdentity` is in the manifest because Microsoft's schema still
-asks for both GUIDs; the desktop identity is `Package/Identity`.
+Calculated from those, and worth checking a package against:
+
+- Package Family Name `29567TheFreecivProject.Word42_ga6t65cntcpba`
+- Store ID `9NKG7V7CRX06`
+- <https://apps.microsoft.com/detail/9NKG7V7CRX06>, and
+  `ms-windows-store://pdp/?productid=9NKG7V7CRX06`
+
+That last suffix is a hash of the publisher string, which makes it a
+free check that the identity is right: register the staged layout (below)
+and, even when the install itself is refused, Windows names the package
+it was about to make. `..._x64__ga6t65cntcpba` means the publisher
+matches to the byte.
+
+`W42_MSIX_IDENTITY_NAME`, `W42_MSIX_PUBLISHER` and
+`W42_MSIX_PUBLISHER_DISPLAY` override the three for a different product
+or a different account.
 
 ## Trying it on this machine
 
@@ -119,7 +131,7 @@ unsigned MSIX. Two ways round that:
 
    ```powershell
    New-SelfSignedCertificate -Type Custom -CertStoreLocation Cert:\CurrentUser\My `
-     -Subject 'CN=Andreas Rosdal' `
+     -Subject 'CN=631F98F7-2280-49EE-8EF8-534CC36D09CF' `
      -KeyUsage DigitalSignature -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3')
    # export it to a .pfx, trust it in the machine's Trusted People store, then
    #   W42_MSIX_CERT_PFX=/c/path/test.pfx bash build-aux/pack-msix.sh builddir dist msix
@@ -166,19 +178,20 @@ again before submitting — the version number moves several times a year.
 
 ## The submission itself
 
-1. A developer account at
-   [Partner Center](https://partner.microsoft.com/dashboard/registration).
-   One-time fee, about 19 USD for an individual, 99 for a company; a
-   company account is what gets publisher verification.
-2. Reserve the name **Word42**.
-3. Build with the identity above and upload the `.msix`. **Do not sign
-   it** — the Store signs it after certification.
-4. Properties: category *Productivity*; Windows 10 1809 or later, x64.
-5. Age rating: the IARC questionnaire.
-6. Privacy policy URL — the form will not take a full-trust program
-   without one.
-7. The listing, en-US at least.
-8. Certification takes roughly one to three days.
+The account exists and the name **Word42** is reserved; what is left is
+the submission itself.
+
+1. Build the package — `bash build-aux/pack-msix.sh builddir dist msix`
+   — and upload `msix/word42-<version>-win64.msix`. **Do not sign it**:
+   the Store signs it after certification, and an already-signed package
+   is refused.
+2. Properties: category *Productivity*; Windows 10 1809 or later, x64.
+3. Age rating: the IARC questionnaire.
+4. Privacy policy URL. The form will not take a full-trust program
+   without one, and there is nothing at word42.org/privacy yet — this is
+   the one thing still missing.
+5. The listing, en-US at least; the copy below is ready to paste.
+6. Certification takes roughly one to three days.
 
 ## The listing, ready to paste
 

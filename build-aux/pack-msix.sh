@@ -20,14 +20,13 @@
 # .pfx whose subject is exactly the Publisher below and it is signed with
 # signtool.  docs/WINDOWS-STORE.md has the whole procedure.
 #
-# The identity below is a placeholder.  A real submission uses the values
-# Partner Center shows under Product identity once the name is reserved:
+# The identity below is the one Partner Center assigned to the reserved
+# name Word42, so a plain run makes the package the Store expects.  These
+# override it, for a different product or a different account:
 #
 #   W42_MSIX_IDENTITY_NAME      Package/Identity/Name
 #   W42_MSIX_PUBLISHER          Package/Identity/Publisher (CN=<GUID>)
 #   W42_MSIX_PUBLISHER_DISPLAY  PublisherDisplayName
-#   W42_MSIX_PHONE_PRODUCT_ID   mp:PhoneIdentity/PhoneProductId
-#   W42_MSIX_PHONE_PUBLISHER_ID mp:PhoneIdentity/PhonePublisherId
 #
 set -euo pipefail
 
@@ -48,12 +47,15 @@ version=$(sed -n "s/^  version: '\([^']*\)',/\1/p" "$root/meson.build" | head -1
 # on submission, so the project's Major.Minor.Patch becomes X.Y.Z.0.
 msix_version=${W42_MSIX_VERSION:-$(awk -F. '{printf "%d.%d.%d.0", $1, $2, $3}' <<<"${version%%-*}")}
 
-identity_name=${W42_MSIX_IDENTITY_NAME:-AndreasRosdal.Word42}
-publisher=${W42_MSIX_PUBLISHER:-CN=Andreas Rosdal}
-publisher_display=${W42_MSIX_PUBLISHER_DISPLAY:-Andreas Røsdal}
+# The identity Partner Center assigned when the name Word42 was reserved.
+# The prefix is the publisher account's, not this product's, and the
+# publisher display name is the account's too: both are the Store's to
+# choose, and a package that renames either is refused, because the
+# package family name is derived from them.
+identity_name=${W42_MSIX_IDENTITY_NAME:-29567TheFreecivProject.Word42}
+publisher=${W42_MSIX_PUBLISHER:-CN=631F98F7-2280-49EE-8EF8-534CC36D09CF}
+publisher_display=${W42_MSIX_PUBLISHER_DISPLAY:-Nordstjernen}
 display_name=${W42_MSIX_DISPLAY_NAME:-Word42}
-phone_product_id=${W42_MSIX_PHONE_PRODUCT_ID:-6a1f9c34-4b2e-42f0-9f77-1b5c0a2d4e42}
-phone_publisher_id=${W42_MSIX_PHONE_PUBLISHER_ID:-00000000-0000-0000-0000-000000000000}
 
 template=$root/data/msix/AppxManifest.xml.in
 svg=$root/data/icons/scalable/apps/org.word42.word42.svg
@@ -118,8 +120,6 @@ sed -e "s|@MSIX_VERSION@|$msix_version|g" \
     -e "s|@PUBLISHER@|$publisher|g" \
     -e "s|@PUBLISHER_DISPLAY_NAME@|$publisher_display|g" \
     -e "s|@DISPLAY_NAME@|$display_name|g" \
-    -e "s|@PHONE_PRODUCT_ID@|$phone_product_id|g" \
-    -e "s|@PHONE_PUBLISHER_ID@|$phone_publisher_id|g" \
     "$template" > "$stage/AppxManifest.xml"
 
 winpath () { command -v cygpath >/dev/null 2>&1 && cygpath -w "$1" || printf '%s' "$1"; }
@@ -205,3 +205,14 @@ fi
 
 printf 'packed %s (%s, identity %s, version %s)\n' \
   "$msix" "$(du -h "$msix" | cut -f1)" "$identity_name" "$msix_version"
+
+# A package whose identity the Store did not mint is refused on upload,
+# after the wait.  Better to hear it here.
+case $publisher in
+  CN=[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]-*) ;;
+  *)
+    echo "pack-msix: NOTE -- Publisher is '$publisher', not the CN=<GUID> that" >&2
+    echo "pack-msix: Partner Center assigns.  Good for testing here; the Store" >&2
+    echo "pack-msix: will refuse it.  See docs/WINDOWS-STORE.md." >&2
+    ;;
+esac
