@@ -256,7 +256,10 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
         g_hash_table_insert (s->map, g_strdup (s->current_id), (gpointer) ours);
       else if (val != NULL && *val != '\0' && (s->cur_paragraph || s->cur_character) &&
                !g_str_has_prefix (val, "toc ") && !g_str_has_prefix (val, "TOC ") &&
-               strlen (val) < 64)
+               strlen (val) < 64 &&
+               /* Every added style is looked up by a scan of all of them,
+                * so a file of millions would cost their square. */
+               w42_stylesheet_size (s->sheet) < 512)
         {
           /* The file's own style: read on, and add it when it closes. */
           s->cur.name = g_intern_string (val);
@@ -1129,12 +1132,12 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           const char *hanging = attr (an, av, "hanging");
           const char *first = attr (an, av, "firstLine");
 
-          pa->indent_left = attr_int (an, av, "left", attr_int (an, av, "start", pa->indent_left));
-          pa->indent_right = attr_int (an, av, "right", attr_int (an, av, "end", pa->indent_right));
+          pa->indent_left = CLAMP (attr_int (an, av, "left", attr_int (an, av, "start", pa->indent_left)), -31680, 31680);
+          pa->indent_right = CLAMP (attr_int (an, av, "right", attr_int (an, av, "end", pa->indent_right)), -31680, 31680);
           if (hanging != NULL)
-            pa->indent_first = -atoi (hanging);
+            pa->indent_first = -CLAMP (atoi (hanging), 0, 31680);
           else if (first != NULL)
-            pa->indent_first = atoi (first);
+            pa->indent_first = CLAMP (atoi (first), -31680, 31680);
         }
       else if (g_str_equal (tag, "spacing"))
         {
@@ -1575,7 +1578,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "gridCol") && d->depth_tbl == 1)
     {
-      int w = attr_int (an, av, "w", 1440);
+      int w = CLAMP (attr_int (an, av, "w", 1440), 0, 31680);
 
       g_array_append_val (d->grid, w);
     }
@@ -1676,15 +1679,15 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     {
       if (g_str_equal (tag, "pgSz"))
         {
-          d->page->width = attr_int (an, av, "w", d->page->width);
-          d->page->height = attr_int (an, av, "h", d->page->height);
+          d->page->width = CLAMP (attr_int (an, av, "w", d->page->width), 720, 31680);
+          d->page->height = CLAMP (attr_int (an, av, "h", d->page->height), 720, 31680);
         }
       else if (g_str_equal (tag, "pgMar"))
         {
-          d->page->margin_top = attr_int (an, av, "top", d->page->margin_top);
-          d->page->margin_bottom = attr_int (an, av, "bottom", d->page->margin_bottom);
-          d->page->margin_left = attr_int (an, av, "left", d->page->margin_left);
-          d->page->margin_right = attr_int (an, av, "right", d->page->margin_right);
+          d->page->margin_top = CLAMP (attr_int (an, av, "top", d->page->margin_top), 0, 31680);
+          d->page->margin_bottom = CLAMP (attr_int (an, av, "bottom", d->page->margin_bottom), 0, 31680);
+          d->page->margin_left = CLAMP (attr_int (an, av, "left", d->page->margin_left), 0, 31680);
+          d->page->margin_right = CLAMP (attr_int (an, av, "right", d->page->margin_right), 0, 31680);
         }
       else if (g_str_equal (tag, "cols"))
         docx_apply_section_columns (d, attr_int (an, av, "num", 1), attr_int (an, av, "space", 720));
@@ -1920,8 +1923,10 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
     d->in_tblborders = FALSE;
   else if (g_str_equal (tag, "tcBorders"))
     d->in_tcborders = FALSE;
-  else if (g_str_equal (tag, "tbl"))
+  else if (g_str_equal (tag, "tbl") && d->depth_tbl > 0)
     {
+      /* > 0: a stray tbl inside pPr was never counted on the way in, so
+       * its close must not walk the depth below the tables that were. */
       if (d->depth_tbl == 1)
         {
           int table = d->b.table;
@@ -2402,7 +2407,13 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
         }
       if (ch->field != NULL && open_field == NULL && run->object == W42_OBJECT_NONE && run->footnote == 0)
         {
-          g_string_append_printf (out, "<w:fldSimple w:instr=\" %s \">", ch->field);
+          GString *esc = g_string_new (NULL);
+
+          /* An XE code carries the file's own term: escaped, or a quote
+           * in it would close the attribute and write markup of its own. */
+          xml_escape (esc, ch->field, strlen (ch->field));
+          g_string_append_printf (out, "<w:fldSimple w:instr=\" %s \">", esc->str);
+          g_string_free (esc, TRUE);
           open_field = ch->field;
         }
       if (open_comment != NULL && ch->comment != open_comment)

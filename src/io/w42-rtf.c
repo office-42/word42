@@ -867,7 +867,14 @@ w42_rtf_save (W42PieceTable      *pt,
               g_string_append (out, "\"}}{\\fldrslt ");
             }
           else if (fmt->ch.field != NULL)
-            g_string_append_printf (out, "{\\field{\\*\\fldinst %s }{\\fldrslt ", fmt->ch.field);
+            {
+              /* An XE code carries the file's own term: escaped, or a
+               * brace in it would close the group and write RTF of its
+               * own. */
+              g_string_append (out, "{\\field{\\*\\fldinst ");
+              write_text (out, fmt->ch.field, strlen (fmt->ch.field));
+              g_string_append (out, " }{\\fldrslt ");
+            }
 
           /* Each run reopens a group, so the properties it sets fall away
            * again at its end and cannot leak into the next one. */
