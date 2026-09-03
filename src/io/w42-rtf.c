@@ -1163,7 +1163,8 @@ table_sync (RtfReader *r)
        * to cover it; no cell of its own is made. */
       /* More cells than the row definition has, or rows than the marks
        * can hold: dropped, as the other readers drop them. */
-      if (r->table_col >= MAX ((int) r->cellx->len, 1) || r->table_row > 4095)
+      if (r->table_col >= MAX ((int) r->cellx->len, 1) ||
+          r->table_col > 1023 || r->table_row > 4095)
         {
           r->in_cell = TRUE;
           return;
@@ -1420,7 +1421,7 @@ finish_style (RtfReader *r)
       style.pa.style = style.name;
 
       if (g_ascii_strncasecmp (name, "heading ", 8) == 0)
-        style.outline = CLAMP (atoi (name + 8), 0, 9);
+        style.outline = (int) CLAMP (g_ascii_strtoll (name + 8, NULL, 10), 0, 9);
       else if (r->style_outline > 0 &&
                w42_stylesheet_find (w42_pt_stylesheet (r->pt), "Heading 1") != NULL)
         {
@@ -1480,8 +1481,8 @@ finish_pict (RtfReader *r)
       return;
     }
 
-  width  = r->pict_wgoal > 0 ? r->pict_wgoal : pw * 15;
-  height = r->pict_hgoal > 0 ? r->pict_hgoal : ph * 15;
+  width  = r->pict_wgoal > 0 ? r->pict_wgoal : (int) MIN ((gint64) pw * 15, 31680);
+  height = r->pict_hgoal > 0 ? r->pict_hgoal : (int) MIN ((gint64) ph * 15, 31680);
 
   idx = w42_object_table_add (w42_pt_object_table (r->pt), data, format,
                               pw, ph, width, height);
@@ -1510,6 +1511,11 @@ static void
 apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
 {
   RtfState *st = &r->state;
+
+  /* A destination being skipped is skipped whole: its text is already
+   * dropped, and a \par or \cell inside it must not act either. */
+  if (st->skip)
+    return;
 
   /* What the document says about itself. */
   if (g_str_equal (word, "info"))
@@ -1969,9 +1975,9 @@ formatting:
   else if (g_str_equal (word, "expndtw") && has_param)
     { flush_text (r); st->ch.spacing = (gint16) CLAMP (param, -720, 720); }
   else if (g_str_equal (word, "expnd") && has_param)
-    { flush_text (r); st->ch.spacing = (gint16) CLAMP (param * 5, -720, 720); }
+    { flush_text (r); st->ch.spacing = (gint16) (CLAMP (param, -144, 144) * 5); }
   else if (g_str_equal (word, "fs") && has_param)
-    { flush_text (r); st->ch.size = param > 0 ? param : 20; }
+    { flush_text (r); st->ch.size = param > 0 ? CLAMP (param, 2, 3276) : 20; }
   else if (g_str_equal (word, "f") && has_param)
     {
       const char *name = reader_font_name (r, param);
@@ -2152,13 +2158,14 @@ formatting:
     st->pntxtb = TRUE;  /* the bullet character: read it, then skip */
   else if (g_str_equal (word, "pntxta"))
     st->skip = TRUE;    /* the marker text; word42 paints its own */
-  else if (g_str_equal (word, "sb") && has_param) st->pa.space_before = param;
-  else if (g_str_equal (word, "sa") && has_param) st->pa.space_after = param;
+  else if (g_str_equal (word, "sb") && has_param) st->pa.space_before = CLAMP (param, 0, 31680);
+  else if (g_str_equal (word, "sa") && has_param) st->pa.space_after = CLAMP (param, 0, 31680);
   else if (g_str_equal (word, "sl") && has_param)
     {
       /* Positive is "at least", negative is "exactly"; word42 treats both as
-       * an exact leading, and \slmult1 later reinterprets it as a multiple. */
-      st->pa.line_spacing = ABS (param);
+       * an exact leading, and \slmult1 later reinterprets it as a multiple.
+       * Clamped, so the multiple's * 100 stays well inside an int. */
+      st->pa.line_spacing = CLAMP (ABS (param), 0, 31680);
     }
   else if (g_str_equal (word, "slmult") && has_param)
     {
@@ -2194,10 +2201,10 @@ formatting:
     {
       if      (g_str_equal (word, "paperw")) r->page->width = CLAMP (param, 720, 31680);
       else if (g_str_equal (word, "paperh")) r->page->height = CLAMP (param, 720, 31680);
-      else if (g_str_equal (word, "margl"))  r->page->margin_left = param;
-      else if (g_str_equal (word, "margr"))  r->page->margin_right = param;
-      else if (g_str_equal (word, "margt"))  r->page->margin_top = param;
-      else if (g_str_equal (word, "margb"))  r->page->margin_bottom = param;
+      else if (g_str_equal (word, "margl"))  r->page->margin_left = CLAMP (param, 0, 31680);
+      else if (g_str_equal (word, "margr"))  r->page->margin_right = CLAMP (param, 0, 31680);
+      else if (g_str_equal (word, "margt"))  r->page->margin_top = CLAMP (param, 0, 31680);
+      else if (g_str_equal (word, "margb"))  r->page->margin_bottom = CLAMP (param, 0, 31680);
       else if (g_str_equal (word, "cols"))
         {
           if (r->sect_pending)
@@ -2279,7 +2286,8 @@ word_param (const char *d, gsize len, gsize from, gsize to, const char *word)
       /* The control word must end here, not be the start of a longer one. */
       if (g_ascii_isalpha (d[i + 1 + wlen]))
         continue;
-      return atoi (d + i + 1 + wlen);
+      return (int) CLAMP (g_ascii_strtoll (d + i + 1 + wlen, NULL, 10),
+                          G_MININT, G_MAXINT);
     }
   return -1;
 }
@@ -2877,7 +2885,7 @@ w42_rtf_load (W42PieceTable *pt,
                 /* Skip the fallback characters that follow. */
                 for (int i = 0; i < r.state.uc && p < end; i++)
                   {
-                    if (*p == '\\' && p + 1 < end && p[1] == '\'')
+                    if (*p == '\\' && p + 3 < end && p[1] == '\'')
                       p += 4;
                     else if (*p != '{' && *p != '}' && *p != '\\')
                       p++;
