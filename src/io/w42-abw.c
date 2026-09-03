@@ -6,6 +6,7 @@
 
 #include "w42-abw.h"
 
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -53,8 +54,12 @@ length_twips (const char *value)
   else                                   per = 1440.0;   /* inches, AbiWord's default */
 
   /* To the nearest twip.  Truncating loses one on nearly every round trip:
-   * a 1 cm margin written as 0.3937in would come back as 566. */
+   * a 1 cm margin written as 0.3937in would come back as 566.  Clamped
+   * first, because a cast that does not fit an int is undefined. */
   v *= per;
+  if (isnan (v))
+    return 0;
+  v = CLAMP (v, -1000000.0, 1000000.0);
   return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
@@ -193,7 +198,7 @@ para_prop (const char *key, const char *value, gpointer data)
       if (strchr (value, '+') != NULL)          /* "14pt+": at least */
         pa->line_spacing = length_twips (value);
       else if (g_ascii_isdigit (value[strlen (value) - 1]))
-        pa->line_spacing_pct = (int) (g_ascii_strtod (value, NULL) * 100.0 + 0.5);
+        pa->line_spacing_pct = (int) (CLAMP (g_ascii_strtod (value, NULL), 0.0, 100.0) * 100.0 + 0.5);
       else
         pa->line_spacing = length_twips (value);
     }
@@ -276,10 +281,12 @@ char_prop (const char *key, const char *value, gpointer data)
   else if (g_str_equal (key, "font-size"))
     {
       /* Half-points, as the model counts them, from however many decimals
-       * the file gave: 9.5pt is 19 of them, not 18. */
+       * the file gave: 9.5pt is 19 of them, not 18.  Range-checked before
+       * the cast, which is undefined for a size that does not fit. */
       double pt = g_ascii_strtod (value, NULL);
 
-      ch->size = CLAMP ((int) (pt * 2.0 + 0.5), 2, 3276);
+      if (pt > 0.0 && pt < 1700.0)
+        ch->size = CLAMP ((int) (pt * 2.0 + 0.5), 2, 3276);
     }
   else if (g_str_equal (key, "font-family")) ch->family = g_intern_string (value);
   else if (g_str_equal (key, "color"))
@@ -445,8 +452,10 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
       if (w != NULL && h != NULL)
         {
-          int pw = (int) (g_ascii_strtod (w, NULL) * scale);
-          int ph = (int) (g_ascii_strtod (h, NULL) * scale);
+          double dw = g_ascii_strtod (w, NULL) * scale;
+          double dh = g_ascii_strtod (h, NULL) * scale;
+          int pw = (int) (isnan (dw) ? 0.0 : CLAMP (dw, 0.0, 31680.0));
+          int ph = (int) (isnan (dh) ? 0.0 : CLAMP (dh, 0.0, 31680.0));
 
           if (orientation != NULL && g_str_equal (orientation, "landscape") && pw < ph)
             {
@@ -786,6 +795,10 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
       abw_flush (a);
       if (w42_builder_in_table (&a->b))
         {
+          /* A cell that teleports thousands of empty rows down is broken
+           * input, and every row it skips is a full row of cells to make. */
+          if (top - a->b.row > 256)
+            top = a->b.row;
           while (a->b.row < top)
             w42_builder_end_row (&a->b);
           while (a->b.col < left && a->b.col < a->b.n_cols)
@@ -1039,6 +1052,8 @@ w42_abw_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
               res = G_CONVERTER_ERROR;   /* a small file that would unpack without end */
               break;
             }
+          if (read == 0 && written == 0 && in_pos >= length)
+            break;                       /* nothing more can happen */
         }
       while (res == G_CONVERTER_CONVERTED);
       g_object_unref (dec);

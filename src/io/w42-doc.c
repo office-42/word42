@@ -107,6 +107,12 @@ ole_open (Ole *ole, const guint8 *data, gsize len, GError **error)
   ole->mini_sector = 1u << mini_shift;
   per_sector = ole->sector / 4;
 
+  /* No more FAT sectors than the file has sectors at all: the count is
+   * the attacker's, and every claimed sector is a sector's worth of
+   * entries appended below before the size is put right. */
+  if (n_fat > len / ole->sector + 1)
+    n_fat = (guint32) (len / ole->sector) + 1;
+
   /* The DIFAT lists the FAT's sectors: 109 in the header, the rest in a
    * chain of DIFAT sectors. */
   fat_sectors = g_array_new (FALSE, FALSE, sizeof (guint32));
@@ -136,7 +142,7 @@ ole_open (Ole *ole, const guint8 *data, gsize len, GError **error)
   }
 
   ole->fat = g_array_new (FALSE, FALSE, sizeof (guint32));
-  for (guint i = 0; i < fat_sectors->len; i++)
+  for (guint i = 0; i < fat_sectors->len && ole->fat->len <= len / ole->sector; i++)
     {
       guint32 s = g_array_index (fat_sectors, guint32, i);
       gsize off = (gsize) (s + 1) * ole->sector;
@@ -240,12 +246,15 @@ ole_stream (Ole *ole, const char *name, GError **error)
             guint32 s = start;
             guint steps = 0;
 
-            while (s != OLE_END_OF_CHAIN && s != OLE_FREE)
+            while (s != OLE_END_OF_CHAIN && s != OLE_FREE && out->len < size)
               {
                 gsize off = (gsize) s * ole->mini_sector;
 
+                /* A chain that visits more links than the mini stream has
+                 * sectors is going round in a circle. */
                 if (off + ole->mini_sector > ole->ministream->len ||
-                    s >= ole->minifat->len || ++steps > ole->minifat->len)
+                    s >= ole->minifat->len || ++steps > ole->minifat->len ||
+                    steps > ole->ministream->len / ole->mini_sector + 1)
                   {
                     g_byte_array_free (out, TRUE);
                     g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
@@ -347,8 +356,10 @@ typedef struct {
   gint32    ccp_ftn;
   guint32   cp_max;      /* one past the last cp the pieces cover */
   GArray   *pieces;       /* Piece */
+  guint     piece_cursor; /* where the last cp lookup landed */
   GArray   *chpx_fc, *chpx_pn;
   GArray   *papx_fc, *papx_pn;
+  guint     chpx_cursor, papx_cursor;   /* where the last fc lookups landed */
   GArray   *styles;       /* DocStyle */
   GPtrArray *fonts;       /* char* */
   int       default_ftc;  /* the stylesheet's standard font */
@@ -429,8 +440,12 @@ read_pieces (Doc *doc, GError **error)
        * after its start. */
       if (piece.fc >= doc->wd_len || piece.cp_end < piece.cp_start)
         continue;
-      /* The piece table is contiguous: a gap or an overlap is a broken
-       * file, and the pieces so far are all there is. */
+      /* The piece table is contiguous from cp 0: a gap, an overlap, or a
+       * first piece starting elsewhere is a broken file, and the pieces so
+       * far are all there is.  Without the start check a single piece at a
+       * huge cp makes every later walk to cp_max spin billions of times. */
+      if (doc->pieces->len == 0 && piece.cp_start != 0)
+        break;
       if (doc->pieces->len > 0 &&
           piece.cp_start != g_array_index (doc->pieces, Piece, doc->pieces->len - 1).cp_end)
         break;
@@ -455,12 +470,20 @@ read_pieces (Doc *doc, GError **error)
 static gboolean
 cp_to_fc (Doc *doc, guint32 cp, guint32 *fc, gboolean *compressed)
 {
-  for (guint i = 0; i < doc->pieces->len; i++)
+  guint n = doc->pieces->len;
+
+  /* The text is walked in order, so look first where the last cp was
+   * found: a file of a million one-character pieces would otherwise cost
+   * their square, one full scan per character. */
+  for (guint k = 0; k < n; k++)
     {
+      guint i = doc->piece_cursor + k < n ? doc->piece_cursor + k
+                                          : doc->piece_cursor + k - n;
       const Piece *piece = &g_array_index (doc->pieces, Piece, i);
 
       if (cp >= piece->cp_start && cp < piece->cp_end)
         {
+          doc->piece_cursor = i;
           *fc = piece->fc + (cp - piece->cp_start) * (piece->compressed ? 1 : 2);
           *compressed = piece->compressed;
           return TRUE;
@@ -510,7 +533,9 @@ char_at (Doc *doc, guint32 cp)
         if (lo >= 0xDC00 && lo < 0xE000)
           return 0x10000 + (((gunichar) u - 0xD800) << 10) + (lo - 0xDC00);
       }
-    if (u >= 0xDC00 && u < 0xE000)
+    /* Either half on its own is not a character, and must not become
+     * invalid UTF-8 in the model. */
+    if (u >= 0xD800 && u < 0xE000)
       return 0;
     return u;
   }
@@ -545,14 +570,23 @@ read_bins (Doc *doc, guint index, GArray **fcs, GArray **pns)
 }
 
 static const guint8 *
-fkp_page (Doc *doc, GArray *fcs, GArray *pns, guint32 fc)
+fkp_page (Doc *doc, GArray *fcs, GArray *pns, guint32 fc, guint *cursor)
 {
-  for (guint i = 0; i < pns->len && i + 1 < fcs->len; i++)
+  guint n = pns->len;
+
+  /* Like cp_to_fc: the callers walk forwards, so start where the last
+   * lookup landed rather than scanning every bin every time. */
+  for (guint k = 0; k < n; k++)
     {
-      if (fc >= g_array_index (fcs, guint32, i) &&
+      guint i = *cursor + k < n ? *cursor + k : *cursor + k - n;
+
+      if (i + 1 < fcs->len &&
+          fc >= g_array_index (fcs, guint32, i) &&
           fc < g_array_index (fcs, guint32, i + 1))
         {
           gsize off = (gsize) g_array_index (pns, guint32, i) * 512;
+
+          *cursor = i;
           return in_wd (doc, off, 512) ? doc->wd + off : NULL;
         }
     }
@@ -585,7 +619,7 @@ fkp_run (const guint8 *page, guint32 fc, guint32 *run_end)
 static const guint8 *
 chpx_at (Doc *doc, guint32 fc, guint *len, guint32 *run_end)
 {
-  const guint8 *page = fkp_page (doc, doc->chpx_fc, doc->chpx_pn, fc);
+  const guint8 *page = fkp_page (doc, doc->chpx_fc, doc->chpx_pn, fc, &doc->chpx_cursor);
   int i;
   guint crun, off;
 
@@ -617,7 +651,7 @@ chpx_at (Doc *doc, guint32 fc, guint *len, guint32 *run_end)
 static const guint8 *
 papx_at (Doc *doc, guint32 fc, guint *len)
 {
-  const guint8 *page = fkp_page (doc, doc->papx_fc, doc->papx_pn, fc);
+  const guint8 *page = fkp_page (doc, doc->papx_fc, doc->papx_pn, fc, &doc->papx_cursor);
   guint32 end;
   int i;
   guint crun, off, cb;
@@ -680,18 +714,38 @@ property_string (const guint8 *d, gsize len, gsize at, guint codepage)
       while (n > 0 && d[at + 8 + n - 1] == '\0')
         n--;
       if (codepage == 1200)  /* the "bytes" are really UTF-16 */
-        return g_utf16_to_utf8 ((const gunichar2 *) (d + at + 8), n / 2, NULL, NULL, NULL);
+        {
+          /* Copied first: `at` is the file's own offset and can be odd,
+           * and a gunichar2 read wants its alignment. */
+          gunichar2 *aligned = g_memdup2 (d + at + 8, (gsize) (n / 2) * 2);
+          char *s = g_utf16_to_utf8 (aligned, n / 2, NULL, NULL, NULL);
+
+          g_free (aligned);
+          return s;
+        }
       out = g_convert ((const char *) d + at + 8, n, "UTF-8",
                        codepage == 65001 ? "UTF-8" : "WINDOWS-1252", NULL, NULL, NULL);
       if (out == NULL)
-        out = g_strndup ((const char *) d + at + 8, n);
+        {
+          /* Whatever the bytes were, what leaves here must be UTF-8. */
+          char *raw = g_strndup ((const char *) d + at + 8, n);
+
+          out = g_utf8_make_valid (raw, -1);
+          g_free (raw);
+        }
       return out;
     }
   if (type == 0x1F)          /* VT_LPWSTR */
     {
+      gunichar2 *aligned;
+      char *s;
+
       if (n == 0 || at + 8 + n * 2 > len || n > (1u << 20))
         return NULL;
-      return g_utf16_to_utf8 ((const gunichar2 *) (d + at + 8), n, NULL, NULL, NULL);
+      aligned = g_memdup2 (d + at + 8, (gsize) n * 2);
+      s = g_utf16_to_utf8 (aligned, n, NULL, NULL, NULL);
+      g_free (aligned);
+      return s;
     }
   return NULL;
 }
@@ -726,7 +780,9 @@ read_summary (Ole *ole, W42PieceTable *pt)
       return;
     }
   section_at = rd32 (d + 44);           /* after the first FMTID */
-  if (section_at + 8 > len)
+  /* Widened before the sum: two 32-bit offsets wrap where the pointer
+   * arithmetic below would not, and the check must see what it sees. */
+  if ((gsize) section_at + 8 > len)
     {
       g_byte_array_free (stream, TRUE);
       return;
@@ -738,13 +794,13 @@ read_summary (Ole *ole, W42PieceTable *pt)
   /* The code page comes first, since the strings are read in it. */
   for (guint32 i = 0; i < count; i++)
     {
-      gsize at = section_at + 8 + i * 8;
+      gsize at = (gsize) section_at + 8 + (gsize) i * 8;
 
       if (at + 8 > len)
         break;
       if (rd32 (d + at) == 1)
         {
-          gsize value_at = section_at + rd32 (d + at + 4);
+          gsize value_at = (gsize) section_at + rd32 (d + at + 4);
 
           if (value_at + 6 <= len && rd32 (d + value_at) == 2)   /* VT_I2 */
             codepage = rd16 (d + value_at + 4);
@@ -753,7 +809,7 @@ read_summary (Ole *ole, W42PieceTable *pt)
 
   for (guint32 i = 0; i < count; i++)
     {
-      gsize at = section_at + 8 + i * 8;
+      gsize at = (gsize) section_at + 8 + (gsize) i * 8;
       guint32 pid;
       gsize value_at;
       int slot = -1;
@@ -761,7 +817,7 @@ read_summary (Ole *ole, W42PieceTable *pt)
       if (at + 8 > len)
         break;
       pid = rd32 (d + at);
-      value_at = section_at + rd32 (d + at + 4);
+      value_at = (gsize) section_at + rd32 (d + at + 4);
 
       switch (pid)
         {
@@ -1279,6 +1335,8 @@ read_fonts (Doc *doc)
           guint16 c = rd16 (doc->tb + p + 1 + j);
           if (c == 0)
             break;
+          if (c >= 0xD800 && c < 0xE000)   /* half a pair is not a character */
+            continue;
           g_string_append_unichar (name, c);
         }
       g_ptr_array_add (doc->fonts, g_string_free (name, FALSE));
@@ -1623,6 +1681,16 @@ collect_paragraphs (Doc *doc)
 
           g_array_append_val (paras, dp);
           start = cp + 1;
+
+          /* Each entry is the better part of a kilobyte, and a file that
+           * is nothing but paragraph marks buys one per byte: past any
+           * document's worth of them, the rest run on as the last one. */
+          if (paras->len >= 262144)
+            {
+              g_array_index (paras, DocPara, paras->len - 1).cp_end =
+                doc->ccp_text > 0 ? (guint32) doc->ccp_text - 1 : 0;
+              break;
+            }
         }
     }
 
@@ -2224,7 +2292,7 @@ read_headers (Doc *doc, W42PieceTable *pt)
     return;
 
   n = lcb / 4;
-  base = (guint32) (doc->ccp_text + doc->ccp_ftn);
+  base = (guint32) doc->ccp_text + (guint32) doc->ccp_ftn;
 
   /* Six separator stories come first, then per section: even header, odd
    * header, even footer, odd footer, first-page header, first-page

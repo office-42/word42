@@ -214,7 +214,23 @@ w42_merge_to_file (W42PieceTable *pt, const W42PageSetup *page,
     g_close (fd, NULL);
   }
   tmp = g_file_new_for_path (tmp_path);
-  copy_path = g_strconcat (tmp_path, ".copy.rtf", NULL);
+  /* Made with g_mkstemp like the first, not derived from its name: a
+   * predictable name in a shared directory is anyone's to plant a
+   * symlink under before this process writes there. */
+  copy_path = g_build_filename (g_get_tmp_dir (), "word42-merge-XXXXXX.rtf", NULL);
+  {
+    int fd = g_mkstemp (copy_path);
+    if (fd < 0)
+      {
+        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Could not make a temporary file.");
+        g_object_unref (tmp);
+        g_unlink (tmp_path);
+        g_free (tmp_path);
+        g_free (copy_path);
+        return FALSE;
+      }
+    g_close (fd, NULL);
+  }
   copy_file = g_file_new_for_path (copy_path);
 
   if (!w42_rtf_save (pt, page, tmp, error) ||
@@ -223,6 +239,7 @@ w42_merge_to_file (W42PieceTable *pt, const W42PageSetup *page,
       g_object_unref (tmp);
       g_object_unref (copy_file);
       g_unlink (tmp_path);
+      g_unlink (copy_path);
       g_free (tmp_path);
       g_free (copy_path);
       return FALSE;

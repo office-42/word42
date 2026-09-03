@@ -71,6 +71,20 @@ css_num (GString *css, const char *name, double value, const char *unit)
   g_string_append_printf (css, "%s:%s%s;", name, g_ascii_formatd (buf, sizeof buf, "%.2f", value), unit);
 }
 
+/* The name goes inside quotes inside an attribute or a stylesheet: no
+ * quotes of either kind, and the markup characters escaped, or a font
+ * called "</style><script>" would be exactly that in the output. */
+static void
+append_family (GString *css, const char *family)
+{
+  g_string_append (css, "font-family:'");
+  for (const char *p = family; *p; p++)
+    if (*p == '&') g_string_append (css, "&amp;");
+    else if (*p == '<') g_string_append (css, "&lt;");
+    else if (*p != '\'' && *p != '"') g_string_append_c (css, *p);
+  g_string_append (css, "';");
+}
+
 static void
 write_para_style (GString *out, const W42ParaFmt *pa)
 {
@@ -149,7 +163,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
       if (object == NULL)
         return;
       if (ch->family != base->family && ch->family != NULL)
-        g_string_append_printf (css, "font-family:'%s';", ch->family);
+        append_family (css, ch->family);
       if (ch->size != base->size)
         css_num (css, "font-size", ch->size / 2.0, "pt");
       if (ch->color != 0)
@@ -196,16 +210,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
     }
 
   if (ch->family != base->family && ch->family != NULL)
-    {
-      /* The name goes inside quotes inside an attribute: no quotes of
-       * either kind, and the markup characters escaped. */
-      g_string_append (css, "font-family:'");
-      for (const char *p = ch->family; *p; p++)
-        if (*p == '&') g_string_append (css, "&amp;");
-        else if (*p == '<') g_string_append (css, "&lt;");
-        else if (*p != '\'' && *p != '"') g_string_append_c (css, *p);
-      g_string_append (css, "';");
-    }
+    append_family (css, ch->family);
   if (ch->size != base->size)
     css_num (css, "font-size", ch->size / 2.0, "pt");
   if (ch->color != 0 && ch->link == NULL)
@@ -341,9 +346,11 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
   g_string_append (out, "<meta name=\"generator\" content=\"Word42\">\n<title>");
   append_escaped (out, title, strlen (title));
   g_string_append (out, "</title>\n<style>\n.dropcap::first-letter{float:left;font-size:3em;line-height:0.8;margin:0.05em 0.05em 0 0}\n");
+  g_string_append (out, "body { ");
+  append_family (out, base.ch.family != NULL ? base.ch.family : "Times New Roman");
   g_string_append_printf (out,
-    "body { font-family: '%s'; font-size: %dpt; max-width: %.2fin; margin: 1em auto; padding: 0 1em; }\n",
-    base.ch.family != NULL ? base.ch.family : "Times New Roman", base.ch.size / 2,
+    " font-size: %dpt; max-width: %.2fin; margin: 1em auto; padding: 0 1em; }\n",
+    base.ch.size / 2,
     page != NULL ? (page->width - page->margin_left - page->margin_right) / 1440.0 : 6.5);
   if (page != NULL && page->width > 0 && page->height > 0)
     g_string_append_printf (out,

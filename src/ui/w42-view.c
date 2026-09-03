@@ -1022,11 +1022,34 @@ w42_view_get_link (W42View *self)
   return fmt->ch.link;
 }
 
+typedef struct {
+  GtkWindow *window;   /* or NULL, both refs owned here */
+  char      *url;
+} FollowLink;
+
+static void
+follow_link_response (GObject *source, GAsyncResult *result, gpointer data)
+{
+  FollowLink *fl = data;
+
+  if (gtk_alert_dialog_choose_finish (GTK_ALERT_DIALOG (source), result, NULL) == 1)
+    {
+      GtkUriLauncher *launcher = gtk_uri_launcher_new (fl->url);
+
+      gtk_uri_launcher_launch (launcher, fl->window, NULL, NULL, NULL);
+      g_object_unref (launcher);
+    }
+  g_clear_object (&fl->window);
+  g_free (fl->url);
+  g_free (fl);
+}
+
 gboolean
 w42_view_follow_link (W42View *self, const char *url)
 {
-  GtkUriLauncher *launcher;
   GtkRoot *root;
+  GtkWindow *window;
+  const char *scheme;
 
   g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
 
@@ -1034,10 +1057,37 @@ w42_view_follow_link (W42View *self, const char *url)
     return FALSE;
 
   root = gtk_widget_get_root (GTK_WIDGET (self));
-  launcher = gtk_uri_launcher_new (url);
-  gtk_uri_launcher_launch (launcher, GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL,
-                           NULL, NULL, NULL);
-  g_object_unref (launcher);
+  window = GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL;
+
+  /* The address is the document's, not the user's.  The web and mail are
+   * what a link in a document means; anything else -- file:, a UNC path,
+   * whatever scheme has a handler here -- is shown in full and asked
+   * about first, because the text the user clicked need not look like
+   * the place it goes. */
+  scheme = g_uri_peek_scheme (url);
+  if (scheme != NULL && (g_str_equal (scheme, "http") || g_str_equal (scheme, "https") ||
+                         g_str_equal (scheme, "mailto")))
+    {
+      GtkUriLauncher *launcher = gtk_uri_launcher_new (url);
+
+      gtk_uri_launcher_launch (launcher, window, NULL, NULL, NULL);
+      g_object_unref (launcher);
+    }
+  else
+    {
+      const char *buttons[] = { "Cancel", "Open", NULL };
+      GtkAlertDialog *dialog = gtk_alert_dialog_new ("Open this link?");
+      FollowLink *fl = g_new0 (FollowLink, 1);
+
+      fl->window = window != NULL ? g_object_ref (window) : NULL;
+      fl->url = g_strdup (url);
+      gtk_alert_dialog_set_detail (dialog, url);
+      gtk_alert_dialog_set_buttons (dialog, buttons);
+      gtk_alert_dialog_set_cancel_button (dialog, 0);
+      gtk_alert_dialog_set_default_button (dialog, 0);
+      gtk_alert_dialog_choose (dialog, window, NULL, follow_link_response, fl);
+      g_object_unref (dialog);
+    }
   return TRUE;
 }
 

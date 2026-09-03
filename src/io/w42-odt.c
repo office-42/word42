@@ -6,6 +6,7 @@
 
 #include "w42-odt.h"
 
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -54,8 +55,12 @@ length_twips (const char *value)
   else                                   per = 20.0;
 
   /* To the nearest twip.  Truncating loses one on nearly every round trip:
-   * a 1 cm margin is written as 0.3937in and read back as 566. */
+   * a 1 cm margin is written as 0.3937in and read back as 566.  Clamped
+   * first, because a cast that does not fit an int is undefined. */
   v *= per;
+  if (isnan (v))
+    return 0;
+  v = CLAMP (v, -1000000.0, 1000000.0);
   return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
@@ -213,7 +218,7 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
       else if (g_str_equal (k, "fo:line-height"))
         {
           if (strchr (v, '%') != NULL)
-            pa->line_spacing_pct = atoi (v);
+            pa->line_spacing_pct = CLAMP (atoi (v), 0, 10000);
           else if (!g_str_equal (v, "normal"))
             pa->line_spacing = length_twips (v);
         }
@@ -295,10 +300,12 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
           if (strchr (v, '%') == NULL)
             {
               /* Half-points, as the model counts them, from however many
-               * decimals the file gave. */
+               * decimals the file gave.  Clamped before the cast, which
+               * would be undefined for a size that does not fit. */
               double pt = g_ascii_strtod (v, NULL);
 
-              ch->size = CLAMP ((int) (pt * 2.0 + 0.5), 2, 3276);
+              if (pt > 0.0 && pt < 1700.0)
+                ch->size = CLAMP ((int) (pt * 2.0 + 0.5), 2, 3276);
             }
         }
       else if (g_str_equal (k, "fo:color"))
@@ -2376,8 +2383,10 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         {
           if (list_depth == 0)
             {
-              g_string_append_printf (w.body, "<text:list text:style-name=\"L%d\">", (int) pa->list);
-              w.list_style_used[pa->list] = 1;
+              int kind = pa->list < W42_LIST_KINDS ? pa->list : W42_LIST_NUMBER;
+
+              g_string_append_printf (w.body, "<text:list text:style-name=\"L%d\">", kind);
+              w.list_style_used[kind] = 1;
             }
           else
             g_string_append (w.body, "<text:list>");
