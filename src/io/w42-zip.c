@@ -171,7 +171,9 @@ w42_zip_new_from_bytes (GBytes *bytes, GError **error)
   n_entries = rd16 (d + eocd + 10);
   cd_size   = rd32 (d + eocd + 12);
   cd_offset = rd32 (d + eocd + 16);
-  if ((gsize) cd_offset + cd_size > len)
+  /* Summed in 64 bits: on a 32-bit gsize the two offsets could wrap
+   * past this check and the pointers below would follow them out. */
+  if ((guint64) cd_offset + cd_size > len)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "The zip file is cut short.");
       return NULL;
@@ -265,12 +267,12 @@ w42_zip_read (W42Zip *zip, const char *name)
   if (e == NULL)
     return NULL;
   d = g_bytes_get_data (zip->bytes, &len);
-  if ((gsize) e->local_offset + 30 > len || rd32 (d + e->local_offset) != 0x04034b50)
+  if ((guint64) e->local_offset + 30 > len || rd32 (d + e->local_offset) != 0x04034b50)
     return NULL;
   name_len  = rd16 (d + e->local_offset + 26);
   extra_len = rd16 (d + e->local_offset + 28);
   data_at = (gsize) e->local_offset + 30 + name_len + extra_len;
-  if (data_at + e->comp_size > len)
+  if ((guint64) data_at + e->comp_size > len)
     return NULL;
 
   if (e->method == 0)
