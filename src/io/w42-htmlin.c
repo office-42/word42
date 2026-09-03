@@ -6,6 +6,7 @@
 
 #include "w42-htmlin.h"
 
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -49,7 +50,7 @@ typedef struct {
   char          *base;              /* the page's own directory, for its pictures */
   GHashTable    *notes;             /* note id -> its text, found before the body */
   int            note_skip;         /* inside a note's own division: not body text */
-  char           note_tag[8];       /* the element that opened it */
+  char           note_tag[16];      /* the element that opened it */
   gboolean       in_note_anchor;    /* inside the <a> that refers to a note */
   const char    *pending_bookmark;  /* an empty <a name>: a place, not a run */
   gboolean       in_title;          /* inside <title>, whose text is the title */
@@ -227,6 +228,13 @@ open_cell (Html *h)
     return;
 
   flush_text (h);
+  /* More cells than the row definition has, or rows than the marks can
+   * hold: dropped, as the other readers drop them. */
+  if (h->table_col >= h->table_cols || h->table_row > 4095)
+    {
+      h->in_cell = TRUE;
+      return;
+    }
   w42_pt_insert_cell (h->pt, h->pos, h->table, h->table_row, h->table_col,
                       html_ap (h));
   h->pos += 2;
@@ -465,7 +473,13 @@ css_twips (const char *value)
   else if (g_str_has_prefix (unit, "pc")) per = 240.0;
   else                                    return 0;
 
+  /* "9e999in" is infinity by the time it is twips, and a cast that does
+   * not fit an int is undefined; a million twips is more page than any
+   * reader of this file allows anyway. */
   v *= per;
+  if (isnan (v))
+    return 0;
+  v = CLAMP (v, -1000000.0, 1000000.0);
   return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
@@ -780,7 +794,9 @@ scan_notes (Html *h, const char *data, gsize len)
             close = g_strstr_len (gt, end - gt, closer);
             g_free (closer);
           }
-          text = element_text (gt + 1, close != NULL ? close : end);
+          text = element_text (gt + 1,
+                               close != NULL ? close
+                               : end - gt > 65536 ? gt + 65536 : end);
 
           /* A note's text begins with its own number, which is the
            * anchor back to the reference: that is not part of it. */
@@ -808,7 +824,10 @@ scan_notes (Html *h, const char *data, gsize len)
               g_free (text);
             }
           g_free (tag);
-          p = gt;
+          /* The element's '>' can sit before the match when the key was
+           * plain body text; going back to it would find the same match
+           * for ever. */
+          p = gt > p ? gt : p + 1;
         }
     }
 }
@@ -867,12 +886,19 @@ picture (Html *h, const char *src, const char *width, const char *height)
       char *contents = NULL;
       gsize len = 0;
 
-      if (h->base == NULL || strstr (src, "://") != NULL || strchr (src, ':') != NULL ||
-          g_str_has_prefix (src, "/") || strstr (src, "..") != NULL)
-        return;
-
+      /* The checks must look at the decoded name, or "%2e%2e" walks
+       * straight past them and out of the directory. */
       unescaped = g_uri_unescape_string (src, NULL);
-      path = g_build_filename (h->base, unescaped != NULL ? unescaped : src, NULL);
+      if (unescaped == NULL)
+        return;
+      if (h->base == NULL || strstr (unescaped, "://") != NULL ||
+          strchr (unescaped, ':') != NULL ||
+          g_str_has_prefix (unescaped, "/") || strstr (unescaped, "..") != NULL)
+        {
+          g_free (unescaped);
+          return;
+        }
+      path = g_build_filename (h->base, unescaped, NULL);
       g_free (unescaped);
       if (!g_file_get_contents (path, &contents, &len, NULL) || len == 0)
         {
@@ -1147,7 +1173,10 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
         {
           char *cls = attr_value (attrs, "class");
 
-          open_table (h, count_columns (after, end));
+          /* Counting the columns scans ahead to the row's end, so a file
+           * of nothing but <table> tags must not count once per tag. */
+          if (h->table < 0)
+            open_table (h, count_columns (after, end));
           /* Word42 writes class="ruled" for a table that is; anything else
            * rules its cells itself, or not at all. */
           if (h->table >= 0)
@@ -1365,7 +1394,12 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
         }
       g_free (note_id);
 
-      if (href != NULL && *href != '\0' && *href != '#')
+      /* A link is somewhere to go, not something to run: a script scheme
+       * would execute when the exported page is opened in a browser. */
+      if (href != NULL && *href != '\0' && *href != '#' &&
+          g_ascii_strncasecmp (href, "javascript:", 11) != 0 &&
+          g_ascii_strncasecmp (href, "vbscript:", 9) != 0 &&
+          g_ascii_strncasecmp (href, "data:", 5) != 0)
         h->ch[h->depth].link = g_intern_string (href);
       if (anchor == NULL)
         anchor = attr_value (attrs, "id");
