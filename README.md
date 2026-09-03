@@ -12,7 +12,7 @@ word42.org
 [![macOS](https://github.com/office-42/word42/actions/workflows/macos.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/macos.yml)
 [![Windows](https://github.com/office-42/word42/actions/workflows/windows.yml/badge.svg)](https://github.com/office-42/word42/actions/workflows/windows.yml)
 
-![Word42 in Page Layout view: a document with a title, headings, a bulleted list, a dropped capital, a footnote, a line of text in eight scripts, a right-to-left Arabic paragraph, a table, a contents block with dotted leaders and a picture](docs/images/screenshot.png)
+![Word42 in Page Layout view: the opening of Genesis — "In the beginning God created the heaven and the earth" — set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending](docs/images/screenshot.png)
 
 The [user guide](docs/GUIDE.md) describes every command in the program.
 
