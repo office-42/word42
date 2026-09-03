@@ -24,3 +24,4 @@ compile_commands.json
 # Generated only for looking at the icon work
 data/icons/contact-sheet.*
 .claude/settings.local.json
+__pycache__/
