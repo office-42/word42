@@ -53,7 +53,9 @@ Requirements the manifest is built around
 
 - The version is four numbers, `Major.Minor.Build.Revision`, and the
   Store keeps the fourth for itself: it must be 0 on submission. The
-  script maps meson's `1.0.0` to `1.0.0.0`.
+  script maps meson's version to that, dropping any suffix on the way:
+  `1.0.1-dev` becomes `1.0.1.0`. The suffix stays in the file's name,
+  so a development build is still telling you what it is.
 - `Identity/Name` and `Identity/Publisher` have to be exactly what
   Partner Center assigns. See below.
 - A full-trust desktop program declares
@@ -135,7 +137,7 @@ unsigned MSIX. Two ways round that:
      -KeyUsage DigitalSignature -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3')
    # export it to a .pfx, trust it in the machine's Trusted People store, then
    #   W42_MSIX_CERT_PFX=/c/path/test.pfx bash build-aux/pack-msix.sh builddir dist msix
-   Add-AppxPackage msix\word42-1.0.0-win64.msix
+   Add-AppxPackage msix\word42-<version>-win64.msix
    ```
 
 Then check that Word42 starts from the Start menu, that a `.rtf` offers
