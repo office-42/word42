@@ -67,11 +67,26 @@ if not lexbor_ok
               cc.has_header('lexbor/html/html.h', dependencies: lexbor_dep)
 endif
 if not lexbor_ok
-  lexbor_lib = cc.find_library('lexbor', required: false)
-  if not lexbor_lib.found() or not cc.has_header('lexbor/html/html.h')
+  # The bare library, last.  On macOS the compiler does not look in
+  # Homebrew's prefix on its own, so it is named outright.
+  lexbor_dirs = host_machine.system() == 'darwin' \
+    ? ['/opt/homebrew/lib', '/usr/local/lib'] : []
+  lexbor_incs = host_machine.system() == 'darwin' \
+    ? ['/opt/homebrew/include', '/usr/local/include'] : []
+  lexbor_lib = cc.find_library('lexbor', dirs: lexbor_dirs, required: false)
+  lexbor_args = []
+  lexbor_hdr = cc.has_header('lexbor/html/html.h')
+  foreach d : lexbor_incs
+    if not lexbor_hdr and cc.has_header('lexbor/html/html.h', args: ['-I' + d])
+      lexbor_args = ['-I' + d]
+      lexbor_hdr = true
+    endif
+  endforeach
+  if not lexbor_lib.found() or not lexbor_hdr
     error('lexbor is required to read HTML; see docs/BUILD.md for how to get it.')
   endif
-  lexbor_dep = declare_dependency(dependencies: [lexbor_lib])
+  lexbor_dep = declare_dependency(compile_args: lexbor_args,
+                                  dependencies: [lexbor_lib])
 endif
 
 # Reading PDF needs poppler.  Writing it does not -- cairo does that -- so a

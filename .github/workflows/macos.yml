@@ -43,6 +43,10 @@ jobs:
         run: |
           export CC="ccache clang"
           ccache --max-size=200M
+          # Homebrew's lexbor pkg-config file is broken (a bare -I), so
+          # Meson falls back to the CMake package config; point CMake at
+          # the Homebrew prefix so it can find it.
+          export CMAKE_PREFIX_PATH="$(brew --prefix)"
           # No --werror here: Apple clang warns about different things than
           # the GCC the other two jobs use, and a warning it invents on its
           # own should not turn the tree red.  Warnings are still in the log.

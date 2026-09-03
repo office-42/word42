@@ -335,12 +335,10 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
        and Palatino where the system has them, P052 (the free Palatino)
        where the banner is rasterised.  textLength pins the width, so
        the rule drawn under it fits whichever face answers. -->
-  <text x="136" y="62" font-family="Georgia, 'Palatino Linotype', Palatino, P052, 'URW Palladio L', 'Liberation Serif', serif"
+  <text x="136" y="74" font-family="Georgia, 'Palatino Linotype', Palatino, P052, 'URW Palladio L', 'Liberation Serif', serif"
         font-size="44" font-weight="700" fill="#1c8cff"
         textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
-  <rect x="136" y="69" width="182" height="3.5" rx="1.75" fill="#1c8cff"/>
-  <text x="137" y="92" font-family="Georgia, 'Palatino Linotype', Palatino, P052, 'URW Palladio L', 'Liberation Serif', serif"
-        font-size="14" font-style="italic" fill="#5e5c64">A word processor, written from scratch in C</text>
+  <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="#1c8cff"/>
 </svg>
 """
 
