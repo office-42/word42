@@ -70,6 +70,21 @@ struct _W42View {
   gboolean       text_drag_armed;
   gboolean       text_dragging;
   gsize          drop_pos;
+
+  /* Edit > Repeat: the last action Repeat can do again, stamped with the
+   * undo history's state when it was recorded.  Any edit since is one the
+   * record does not cover, and the stamp no longer matches, so Repeat
+   * offers nothing rather than repeating an older action. */
+  guint8         repeat_kind;       /* W42_REPEAT_* */
+  GString       *repeat_text;       /* the last run of typing */
+  W42CharMask    repeat_char_mask;
+  W42CharFmt     repeat_char_fmt;   /* its pointers are interned */
+  W42ParaMask    repeat_para_mask;
+  W42ParaFmt     repeat_para_fmt;
+  const char    *repeat_style;      /* interned */
+  guint8         repeat_case;       /* W42CaseKind */
+  gsize          repeat_undo_pos;
+  guint64        repeat_serial;
   guint          blink_id;
   gboolean       blink_on;
 };
@@ -138,6 +153,49 @@ static void
 view_state_changed (W42View *self)
 {
   g_signal_emit (self, signals[SIGNAL_STATE_CHANGED], 0);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Edit > Repeat                                                           */
+/* ---------------------------------------------------------------------- */
+
+enum {
+  W42_REPEAT_NONE = 0,
+  W42_REPEAT_TYPING,
+  W42_REPEAT_CHAR_FMT,
+  W42_REPEAT_PARA_FMT,
+  W42_REPEAT_STYLE,
+  W42_REPEAT_CASE
+};
+
+/* Stamps the record with where the undo history stands now: Repeat is
+ * offered only while the history still stands there, so it repeats the
+ * last action or nothing. */
+static void
+view_record_repeat (W42View *self, int kind)
+{
+  W42PieceTable *pt = view_pt (self);
+
+  self->repeat_kind = kind;
+  if (pt != NULL)
+    w42_pt_undo_state (pt, &self->repeat_undo_pos, &self->repeat_serial);
+
+  /* The edit's own state-changed went out before the record was made,
+   * with Repeat looking stale; say again, so the menu enables it. */
+  view_state_changed (self);
+}
+
+static gboolean
+view_repeat_stamp_current (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  gsize pos = 0;
+  guint64 serial = 0;
+
+  if (pt == NULL || self->repeat_kind == W42_REPEAT_NONE)
+    return FALSE;
+  w42_pt_undo_state (pt, &pos, &serial);
+  return pos == self->repeat_undo_pos && serial == self->repeat_serial;
 }
 
 static void
@@ -422,6 +480,10 @@ w42_view_apply_para_fmt (W42View *self, W42ParaMask mask,
   w42_pt_apply_para_fmt (pt, w42_view_has_selection (self) ? sel_start (self) : para_pos (self, sel_start (self)),
                          sel_end (self) - sel_start (self), mask, value);
   view_edited (self);
+
+  self->repeat_para_mask = mask;
+  self->repeat_para_fmt  = *value;
+  view_record_repeat (self, W42_REPEAT_PARA_FMT);
 }
 
 W42ListKind
@@ -892,6 +954,9 @@ w42_view_change_case (W42View *self, W42CaseKind kind)
   self->anchor = start;
   self->caret = end;
   view_edited (self);
+
+  self->repeat_case = (guint8) kind;
+  view_record_repeat (self, W42_REPEAT_CASE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1495,7 +1560,20 @@ w42_view_apply_char_fmt (W42View *self, W42CharMask mask, const W42CharFmt *valu
 {
   g_return_if_fail (W42_IS_VIEW (self));
   g_return_if_fail (value != NULL);
-  view_apply_char_fmt (self, mask, value);
+
+  {
+    /* Formatting a selection is repeatable; toggling formatting for the
+     * text yet to be typed is not an edit, and is not recorded. */
+    gboolean edited = w42_view_has_selection (self);
+
+    view_apply_char_fmt (self, mask, value);
+    if (edited)
+      {
+        self->repeat_char_mask = mask;
+        self->repeat_char_fmt  = *value;
+        view_record_repeat (self, W42_REPEAT_CHAR_FMT);
+      }
+  }
 }
 
 void
@@ -1614,6 +1692,9 @@ w42_view_apply_style (W42View *self, const char *name)
   w42_pt_apply_style (pt, sel_start (self),
                       sel_end (self) - sel_start (self), name);
   view_edited (self);
+
+  self->repeat_style = g_intern_string (name);
+  view_record_repeat (self, W42_REPEAT_STYLE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1738,6 +1819,8 @@ w42_view_insert_text (W42View *self, const char *utf8)
   W42PieceTable *pt;
   W42ApIdx ap;
   gboolean grouped;
+  gboolean repeat_continues;
+  gsize repeat_pos0 = 0;
 
   g_return_if_fail (W42_IS_VIEW (self));
   g_return_if_fail (utf8 != NULL);
@@ -1745,6 +1828,14 @@ w42_view_insert_text (W42View *self, const char *utf8)
   pt = view_pt (self);
   if (pt == NULL || *utf8 == '\0')
     return;
+
+  /* For Edit > Repeat: whether this insert carries on the recorded run
+   * of typing, or begins one.  It carries on when nothing else has been
+   * done since (the stamp still matches) and, checked at the end, the
+   * insert coalesced into the same undo record. */
+  repeat_continues = self->repeat_kind == W42_REPEAT_TYPING &&
+                     view_repeat_stamp_current (self);
+  w42_pt_undo_state (pt, &repeat_pos0, NULL);
 
   ap = view_effective_ap (self);
 
@@ -1772,6 +1863,19 @@ w42_view_insert_text (W42View *self, const char *utf8)
 
   self->pending_mask = 0;
   view_edited (self);
+
+  {
+    gsize pos1 = 0;
+
+    w42_pt_undo_state (pt, &pos1, NULL);
+    if (self->repeat_text == NULL)
+      self->repeat_text = g_string_new (NULL);
+    if (repeat_continues && pos1 == repeat_pos0)
+      g_string_append (self->repeat_text, utf8);
+    else
+      g_string_assign (self->repeat_text, utf8);
+    view_record_repeat (self, W42_REPEAT_TYPING);
+  }
 }
 
 /* Insert > Caption: a paragraph of its own under the caret's, in the
@@ -2713,6 +2817,52 @@ w42_view_redo (W42View *self)
     {
       w42_document_set_modified (self->doc, FALSE);
       w42_document_touch (self->doc);
+    }
+}
+
+gboolean
+w42_view_can_repeat (W42View *self)
+{
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  return view_repeat_stamp_current (self);
+}
+
+void
+w42_view_repeat (W42View *self)
+{
+  g_return_if_fail (W42_IS_VIEW (self));
+
+  if (!view_repeat_stamp_current (self))
+    return;
+
+  switch (self->repeat_kind)
+    {
+    case W42_REPEAT_TYPING:
+      {
+        /* Inserting re-records the run; keep it as it was, so Repeat
+         * again puts in the same text rather than twice as much. */
+        char *text = g_strdup (self->repeat_text->str);
+
+        w42_view_insert_text (self, text);
+        g_string_assign (self->repeat_text, text);
+        g_free (text);
+      }
+      break;
+    case W42_REPEAT_CHAR_FMT:
+      view_apply_char_fmt (self, self->repeat_char_mask, &self->repeat_char_fmt);
+      view_record_repeat (self, W42_REPEAT_CHAR_FMT);
+      break;
+    case W42_REPEAT_PARA_FMT:
+      w42_view_apply_para_fmt (self, self->repeat_para_mask, &self->repeat_para_fmt);
+      break;
+    case W42_REPEAT_STYLE:
+      w42_view_apply_style (self, self->repeat_style);
+      break;
+    case W42_REPEAT_CASE:
+      w42_view_change_case (self, (W42CaseKind) self->repeat_case);
+      break;
+    default:
+      break;
     }
 }
 
@@ -4504,6 +4654,12 @@ w42_view_dispose (GObject *object)
   g_clear_object (&self->doc);
   g_clear_object (&self->im);
   g_clear_pointer (&self->layout, w42_layout_free);
+
+  if (self->repeat_text != NULL)
+    {
+      g_string_free (self->repeat_text, TRUE);
+      self->repeat_text = NULL;
+    }
 
   G_OBJECT_CLASS (w42_view_parent_class)->dispose (object);
 }

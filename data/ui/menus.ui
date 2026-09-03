@@ -95,8 +95,12 @@
           <attribute name="action">win.undo</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">_Redo</attribute>
+          <attribute name="label" translatable="yes">Re_do</attribute>
           <attribute name="action">win.redo</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Repeat</attribute>
+          <attribute name="action">win.repeat</attribute>
         </item>
       </section>
       <section>

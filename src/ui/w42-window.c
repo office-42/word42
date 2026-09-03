@@ -1127,6 +1127,7 @@ action_close (GSimpleAction *action, GVariant *param, gpointer data)
 
 VIEW_ACTION (undo,       w42_view_undo)
 VIEW_ACTION (redo,       w42_view_redo)
+VIEW_ACTION (repeat,     w42_view_repeat)
 VIEW_ACTION (cut,        w42_view_cut)
 VIEW_ACTION (copy,       w42_view_copy)
 VIEW_ACTION (paste,      w42_view_paste)
@@ -3754,6 +3755,11 @@ window_sync_state (W42Window *self)
     a = g_action_map_lookup_action (G_ACTION_MAP (self), "redo");
     if (a != NULL)
       g_simple_action_set_enabled (G_SIMPLE_ACTION (a), w42_pt_can_redo (pt));
+
+    a = g_action_map_lookup_action (G_ACTION_MAP (self), "repeat");
+    if (a != NULL)
+      g_simple_action_set_enabled (G_SIMPLE_ACTION (a),
+                                   w42_view_can_repeat (self->view));
   }
 
   window_update_title (self);
@@ -3794,6 +3800,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "close",      action_close,      NULL, NULL,    NULL, { 0 } },
   { "undo",       action_undo,       NULL, NULL,    NULL, { 0 } },
   { "redo",       action_redo,       NULL, NULL,    NULL, { 0 } },
+  { "repeat",     action_repeat,     NULL, NULL,    NULL, { 0 } },
   { "cut",        action_cut,        NULL, NULL,    NULL, { 0 } },
   { "copy",       action_copy,       NULL, NULL,    NULL, { 0 } },
   { "paste",      action_paste,      NULL, NULL,    NULL, { 0 } },

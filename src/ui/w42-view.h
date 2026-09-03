@@ -142,6 +142,13 @@ void     w42_view_set_picture (W42View *self, int width, int height, W42Wrap wra
 
 void w42_view_undo        (W42View *self);
 void w42_view_redo        (W42View *self);
+/* Edit > Repeat (Ctrl+Y, F4): does the last thing again — the last run of
+ * typing put in at the caret, or the last character or paragraph
+ * formatting, style, or change of case done to the selection.  Only the
+ * last action is repeatable: any edit since, and there is nothing to
+ * repeat. */
+gboolean w42_view_can_repeat (W42View *self);
+void     w42_view_repeat     (W42View *self);
 void w42_view_cut         (W42View *self);
 void w42_view_copy        (W42View *self);
 void w42_view_paste       (W42View *self);

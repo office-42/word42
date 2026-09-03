@@ -34,6 +34,7 @@ static const struct {
   { "win.close",      { "<Control>w", NULL } },
   { "win.undo",       { "<Control>z", NULL } },
   { "win.redo",       { "<Control>y", "<Control><Shift>z", NULL } },
+  { "win.repeat",     { "F4", NULL } },
   { "win.cut",        { "<Control>x", NULL } },
   { "win.copy",       { "<Control>c", NULL } },
   { "win.paste",      { "<Control>v", NULL } },
