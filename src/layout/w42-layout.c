@@ -619,7 +619,14 @@ add_attr (PangoAttrList  *list,
  * that cover the scripts a Latin font has no glyphs for.  Pango tries
  * them in turn, character by character, so a paragraph in one font can
  * still show Chinese, Japanese, Korean, Thai and emoji.  Only the
- * display uses this; the document keeps the family it was given. */
+ * display uses this; the document keeps the family it was given.
+ *
+ * No emoji face is named here, on purpose.  The digits 0-9 carry
+ * Unicode's Emoji property, and an emoji family anywhere in the list
+ * makes Pango set every number in the document in it -- thin, grey and
+ * a keycap's width apart.  Left unnamed, digits stay in the text font,
+ * and an actual emoji still finds the platform's emoji face through
+ * Pango's own fallback, which searches every installed font. */
 static const char *
 family_chain (const char *family)
 {
@@ -642,9 +649,7 @@ family_chain (const char *family)
                        /* Thai, Devanagari, Arabic and Hebrew */
                        ",Noto Sans Thai,Leelawadee UI,Tahoma"
                        ",Noto Sans Devanagari,Nirmala UI"
-                       ",Noto Naskh Arabic,Segoe UI,Arial Unicode MS"
-                       /* and the emoji */
-                       ",Noto Color Emoji,Segoe UI Emoji,Apple Color Emoji,Symbola",
+                       ",Noto Naskh Arabic,Segoe UI,Arial Unicode MS",
                        NULL);
   found = g_intern_string (chain);
   g_hash_table_insert (cache, g_strdup (want), (gpointer) found);
