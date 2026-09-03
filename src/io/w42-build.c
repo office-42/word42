@@ -210,7 +210,11 @@ void
 w42_builder_begin_cell (W42Builder *b, int span)
 {
   if (b->table < 0 || b->in_cell)
-    return;
+    {
+      b->cell_pos = (gsize) -1;       /* or a stray cell element would hang
+                                       * its properties on an earlier cell */
+      return;
+    }
   if (b->col >= b->n_cols || b->row > 4095)
     {
       b->cell_pos = (gsize) -1;       /* nothing to hang cell properties on */
