@@ -61,6 +61,15 @@ struct _W42View {
   int            col_page;
   double         col_x0;        /* page px, where the edge was */
   double         col_x;         /* page px, where it is going */
+
+  /* Dragging the selection itself.  Pressing inside the selection arms
+   * the drag; moving beyond a click's worth starts it, a grey drop caret
+   * follows the pointer, and the button going up moves the text there —
+   * or copies it, with Ctrl held.  A press that never moves is a click,
+   * and places the caret when the button goes up. */
+  gboolean       text_drag_armed;
+  gboolean       text_dragging;
+  gsize          drop_pos;
   guint          blink_id;
   gboolean       blink_on;
 };
@@ -1673,6 +1682,54 @@ view_delete_selection (W42View *self)
   self->caret = self->anchor = w42_pt_clamp_pos (pt, start);
 
   return TRUE;
+}
+
+/* Drops the dragged selection at target: the text moves there, or a copy
+ * of it goes there with Ctrl held, formatting and all, as one undo step.
+ * A drop back on the selection itself is the drag cancelled.  With
+ * revisions being marked, the move marks the old text deleted and the
+ * new inserted, as Word did. */
+static void
+view_drop_text (W42View *self, gsize target, gboolean copy)
+{
+  W42PieceTable *pt = view_pt (self);
+  W42PieceTable *frag;
+  gsize start, end, n;
+
+  if (pt == NULL || !w42_view_has_selection (self))
+    return;
+
+  start = sel_start (self);
+  end   = sel_end (self);
+  if (target >= start && target <= end)
+    return;
+
+  frag = w42_pt_extract (pt, start, end - start);
+
+  w42_pt_begin_group (pt);
+  if (!copy && !view_tracked_delete (self, start, end))
+    {
+      w42_pt_delete (pt, start, end - start);
+      if (target > end)
+        target -= end - start;
+    }
+  target = w42_pt_clamp_pos (pt, target);
+  n = w42_pt_insert_fragment (pt, target, frag);
+  if (self->track_changes && n > 0)
+    {
+      W42CharFmt want;
+
+      memset (&want, 0, sizeof want);
+      want.revision = 1;
+      w42_pt_apply_char_fmt (pt, target, n, W42_CHAR_REVISION, &want);
+    }
+  w42_pt_end_group (pt);
+  w42_pt_free (frag);
+
+  /* The dropped text stays selected, as Word left it. */
+  self->anchor = w42_pt_clamp_pos (pt, target);
+  self->caret  = w42_pt_clamp_pos (pt, target + n);
+  view_edited (self);
 }
 
 void
@@ -3697,6 +3754,24 @@ view_draw_handles (W42View *self, cairo_t *cr)
   cairo_fill (cr);
 }
 
+/* Whether a press at widget coordinates (x, y) lands inside the
+ * selection — the press that begins a drag of the selected text. */
+static gboolean
+view_press_in_selection (W42View *self, double x, double y)
+{
+  int page = 0;
+  double px = 0, py = 0;
+  gsize pos;
+
+  if (view_pt (self) == NULL || !w42_view_has_selection (self))
+    return FALSE;
+
+  view_widget_to_page (self, x, y, &page, &px, &py);
+  pos = w42_pt_clamp_pos (view_pt (self),
+                          w42_layout_point_to_pos (self->layout, page, px, py));
+  return pos >= sel_start (self) && pos < sel_end (self);
+}
+
 static void
 on_click_pressed (GtkGestureClick *gesture,
                   int              n_press,
@@ -3778,6 +3853,17 @@ on_click_pressed (GtkGestureClick *gesture,
       /* Shift+click extends the selection to the click, as in Word. */
       GdkModifierType mods = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
 
+      /* A press inside the selection arms a drag of the selected text;
+       * the selection stands until the button goes up or the drag moves. */
+      if (!(mods & GDK_SHIFT_MASK) &&
+          w42_view_has_selection (self) &&
+          pos >= sel_start (self) && pos < sel_end (self))
+        {
+          self->text_drag_armed = TRUE;
+          self->dragging = FALSE;
+          return;
+        }
+
       self->caret = pos;
       if (!(mods & GDK_SHIFT_MASK))
         self->anchor = pos;
@@ -3796,8 +3882,23 @@ on_click_released (GtkGestureClick *gesture,
 {
   W42View *self = data;
 
-  (void) gesture; (void) n_press; (void) x; (void) y;
+  (void) gesture; (void) n_press;
 
+  /* The press was inside the selection but never became a drag: a plain
+   * click, so the caret goes where it pointed. */
+  if (self->text_drag_armed && !self->text_dragging && self->doc != NULL)
+    {
+      int page = 0;
+      double px = 0, py = 0;
+
+      view_widget_to_page (self, x, y, &page, &px, &py);
+      self->caret = self->anchor =
+        w42_pt_clamp_pos (view_pt (self),
+                          w42_layout_point_to_pos (self->layout, page, px, py));
+      view_caret_moved (self, FALSE);
+    }
+
+  self->text_drag_armed = FALSE;
   self->dragging = FALSE;
 }
 
@@ -3832,6 +3933,22 @@ on_drag_begin (GtkGestureDrag *gesture, double x, double y, gpointer data)
           return;
         }
 
+      /* Pressed inside the selection: the drag, if it becomes one, moves
+       * the text.  Undecided until it moves, so a plain click can still
+       * place the caret when the button goes up.  This runs before the
+       * click gesture's own press handler, so it looks at the press
+       * itself rather than at the flag that handler sets. */
+      if (view_press_in_selection (self, x, y) &&
+          !(gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture)) &
+            GDK_SHIFT_MASK))
+        {
+          self->text_drag_armed = TRUE;
+          self->drag_x0 = x;
+          self->drag_y0 = y;
+          self->dragging = FALSE;
+          return;
+        }
+
       gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
       return;
     }
@@ -3863,6 +3980,28 @@ on_drag_update (GtkGestureDrag *gesture, double dx, double dy, gpointer data)
       self->col_x = self->col_x0 + dx / self->zoom;
       gtk_widget_queue_draw (GTK_WIDGET (self));
     }
+  else if (self->text_drag_armed)
+    {
+      int page = 0;
+      double px = 0, py = 0;
+
+      if (!self->text_dragging)
+        {
+          /* Still a click until it moves a click's worth. */
+          if (ABS (dx) < 4 && ABS (dy) < 4)
+            return;
+          self->text_dragging = TRUE;
+          gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+          gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "move");
+        }
+
+      view_widget_to_page (self, self->drag_x0 + dx, self->drag_y0 + dy,
+                           &page, &px, &py);
+      self->drop_pos = w42_pt_clamp_pos (view_pt (self),
+                                         w42_layout_point_to_pos (self->layout,
+                                                                  page, px, py));
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
 }
 
 static void
@@ -3882,6 +4021,24 @@ on_drag_end (GtkGestureDrag *gesture, double dx, double dy, gpointer data)
       self->col_x = self->col_x0 + dx / self->zoom;
       view_finish_column_drag (self);
     }
+  else if (self->text_dragging)
+    {
+      GdkModifierType mods = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
+      int page = 0;
+      double px = 0, py = 0;
+
+      view_widget_to_page (self, self->drag_x0 + dx, self->drag_y0 + dy,
+                           &page, &px, &py);
+      view_drop_text (self,
+                      w42_pt_clamp_pos (view_pt (self),
+                                        w42_layout_point_to_pos (self->layout,
+                                                                 page, px, py)),
+                      (mods & GDK_CONTROL_MASK) != 0);
+      self->text_dragging = FALSE;
+      self->text_drag_armed = FALSE;
+      gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "text");
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
 }
 
 static void
@@ -3899,7 +4056,7 @@ on_motion (GtkEventControllerMotion *controller,
   if (self->doc == NULL)
     return;
 
-  if (self->handle >= 0 || self->col_table >= 0)
+  if (self->handle >= 0 || self->col_table >= 0 || self->text_dragging)
     return;
 
   if (!self->dragging)
@@ -4196,6 +4353,23 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
 
           cairo_set_source_rgb (cr, 0.0, 0.0, 0.0);
           cairo_rectangle (cr, floor (x), y, 1.0, ch * zoom);
+          cairo_fill (cr);
+        }
+    }
+
+  /* Dragging the selection: a grey caret marks where the text will drop. */
+  if (self->text_dragging)
+    {
+      int cpage = 0;
+      double cx = 0, cy = 0, ch = 0;
+
+      if (w42_layout_pos_to_caret (layout, self->drop_pos, &cpage, &cx, &cy, &ch))
+        {
+          double x = ox + cx * zoom;
+          double y = view_page_origin_y (self, cpage) + cy * zoom;
+
+          cairo_set_source_rgb (cr, 0.4, 0.4, 0.4);
+          cairo_rectangle (cr, floor (x), y, 2.0, ch * zoom);
           cairo_fill (cr);
         }
     }
