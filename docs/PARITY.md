@@ -14,8 +14,9 @@ is listed so the distance to the current product is honest.
 |---|---|---|---|---|
 | Typing, selection (mouse, keyboard, word/paragraph clicks) | full | full | full | full |
 | Undo/redo, unlimited, typing coalesced | full (saved-state aware) | full | limited | full |
+| Repeat the last action (F4) | yes (typing, formatting, style, case) | no | yes | yes |
 | Cut/copy/paste | rich (RTF and text) | rich (RTF/HTML/images) | rich | rich |
-| Drag-and-drop text | no | yes | yes | yes |
+| Drag-and-drop text | yes (move; Ctrl copies; one undo step) | yes | yes | yes |
 | Find/Replace (case, whole word, wrap, replace all) | full | full + regex | full | full + formats |
 | Go To (page, line, bookmark) | full | full | full | full |
 | Change Case | full | full | full | full |
@@ -105,6 +106,7 @@ is listed so the distance to the current product is honest.
 | Full Screen (chrome away, Escape back) | full | full | full | full |
 | Outline view / document map | no | no | yes | yes |
 | Multiple windows on one document | full | yes | full | full |
+| Split window: two panes on one document | full | no | full | full |
 | Typing in a long document (173 pages) | 12 ms a keystroke: the changed paragraph is shaped, the rest reused | incremental | incremental | incremental |
 | Autosave and crash recovery | full | yes | yes | yes |
 | Recent files, options, units | full | full | full | full |
@@ -132,8 +134,8 @@ file formats.
 
 The order of work that closes the most ground now: editing the header and
 footer on the page itself rather than in a box, positioned text boxes,
-a real Help window (the weakest menu against Word 6), then translations
-and accessibility.
+then translations and accessibility.  Drag-and-drop of text, Edit >
+Repeat and Window > Split are done since the tenth round.
 
 ## Completeness, command by command
 
@@ -143,20 +145,20 @@ Pa = partial, M = missing.
 | Menu | vs Word 6 (P/Pa/M) | Most missed there | vs AbiWord (P/Pa/M) | Most missed there |
 |---|---|---|---|---|
 | File | 14/0/1 | Find File | 14/0/0 | -- |
-| Edit | 12/1/2 | Repeat, Links | 13/0/1 | Paste Unformatted styles |
+| Edit | 13/1/1 | Links | 13/0/1 | Paste Unformatted styles |
 | View | 5/3/3 | Outline, Master Document, Footnotes pane | 7/1/2 | Web Layout |
 | Insert | 8/6/2 | Object, Form Field | 12/2/2 | Text Box, Clip Art |
 | Format | 7/8/1 | Style Gallery, one Font box | 17/4/2 | two the earlier review did not name |
 | Tools | 6/3/5 | Thesaurus, Grammar, Protect Document | 6/2/2 | Plugins and Scripts |
 | Table | 11/2/2 | Insert/Delete Cells, Select Column | 13/2/0 | -- |
-| Window | 3/0/1 | Split | 2/0/0 | -- |
+| Window | 4/0/0 | -- | 2/0/0 | -- |
 | Help | 5/1/3 | Quick Preview, Examples and Demos | 5/1/0 | -- |
-| **Total** | **69/24/22** | | **87/12/11** | |
+| **Total** | **71/24/20** | | **87/12/11** | |
 
 | Yardstick | Estimate | Why |
 |---|---|---|
 | Word 6 | about 65 % | everything typed and formatted in the first hour is there -- fonts, paragraphs, tabs, lists, tables, pictures, frames, drop caps, headers and footers, spelling, AutoText, find and replace, printing, a help window with contents, search and index, RTF/DOCX/ODT/ABW/DOC/PDF -- but Outline view, templates, a single tabbed Font box, thesaurus and grammar, and table selection are not |
-| AbiWord | about 76 % | the same document model and daily editing set, ahead on mail merge, hyphenation, revisions, drop caps and period fidelity; behind on view modes, positioned text boxes, table selection, drag and drop |
+| AbiWord | about 76 % | the same document model and daily editing set, ahead on mail merge, hyphenation, revisions, drop caps and period fidelity; behind on view modes, positioned text boxes, table selection |
 
 Where the dialogs stop short of their Word 6 counterparts: Paragraph
 (no preview or Tabs button), Font (no underline styles, hidden text,
@@ -280,6 +282,26 @@ Two more from the review of the interface:
 The command counts are unchanged from the eighth round.
 
 ## Since the tenth round
+
+**Drag-and-drop of text.**  Press inside the selection and pull: a grey
+drop caret follows the pointer, and the button going up moves the text
+there, formatting and all, as one undo step; Ctrl held drops a copy
+instead.  A press that never moves is a click, and places the caret as
+it always did.  With revisions being marked, the move marks the old text
+deleted and the new inserted, as Word did.
+
+**Edit > Repeat (F4).**  Does the last thing again: the last run of
+typing goes in at the caret, or the last character or paragraph
+formatting, style, or change of case goes on to the selection.  The
+record is stamped with where the undo history stands, so only the last
+action is ever offered: any other edit since, and Repeat greys out
+rather than repeating something older.
+
+**Window > Split.**  Two panes on the same document, one above the
+other, with a bar to drag between them.  Each pane scrolls and keeps a
+caret of its own; the toolbars, the ruler and the status bar follow the
+pane being edited, and Split again is one pane again.  The Window menu's
+one missing command against Word 6 is there.
 
 **AutoCorrect.**  Word 6 put four things right as you typed them, and so
 does this: straight quotes take the shape that fits where they stand, two

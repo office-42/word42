@@ -15,4 +15,8 @@ G_BEGIN_DECLS
 /* Returns a drawing area that tracks `view` for its page setup and zoom. */
 GtkWidget *w42_ruler_new (W42View *view);
 
+/* Points the ruler at another view: with the window split into two panes,
+ * the ruler follows the pane being edited. */
+void w42_ruler_set_view (GtkWidget *ruler, W42View *view);
+
 G_END_DECLS

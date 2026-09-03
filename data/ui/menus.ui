@@ -95,8 +95,12 @@
           <attribute name="action">win.undo</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">_Redo</attribute>
+          <attribute name="label" translatable="yes">Re_do</attribute>
           <attribute name="action">win.redo</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Repeat</attribute>
+          <attribute name="action">win.repeat</attribute>
         </item>
       </section>
       <section>
@@ -628,6 +632,10 @@
         <item>
           <attribute name="label" translatable="yes">_New Window</attribute>
           <attribute name="action">win.new-window</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Split</attribute>
+          <attribute name="action">win.split-window</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">_Arrange All</attribute>

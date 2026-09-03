@@ -554,3 +554,23 @@ w42_ruler_new (W42View *view)
 
   return area;
 }
+
+void
+w42_ruler_set_view (GtkWidget *ruler, W42View *view)
+{
+  Ruler *self = g_object_get_data (G_OBJECT (ruler), "w42-ruler");
+
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (self->view == view)
+    return;
+
+  g_signal_handlers_disconnect_by_func (self->view,
+                                        G_CALLBACK (on_view_state_changed),
+                                        ruler);
+  self->view = view;
+  g_signal_connect_object (view, "state-changed",
+                           G_CALLBACK (on_view_state_changed), ruler, 0);
+  gtk_widget_queue_draw (ruler);
+}

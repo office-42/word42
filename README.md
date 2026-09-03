@@ -37,9 +37,9 @@ text smoothed and lightly hinted.
 A working word processor. Typing, formatting, styles and numbered
 headings, headers and footers, footnotes and endnotes, tables, pictures,
 lists, columns, find and replace, spelling, hyphenation, mail merge, a
-page-layout view and print preview — and it reads and writes RTF,
-OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and
-plain text.
+split window, a page-layout view and print preview — and it reads and
+writes RTF, OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML,
+PDF and plain text.
 
 The full list of what it does is in [docs/STATUS.md](docs/STATUS.md).
 What it does not do yet is listed in [Word42.md](Word42.md), with the

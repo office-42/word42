@@ -61,6 +61,30 @@ struct _W42View {
   int            col_page;
   double         col_x0;        /* page px, where the edge was */
   double         col_x;         /* page px, where it is going */
+
+  /* Dragging the selection itself.  Pressing inside the selection arms
+   * the drag; moving beyond a click's worth starts it, a grey drop caret
+   * follows the pointer, and the button going up moves the text there —
+   * or copies it, with Ctrl held.  A press that never moves is a click,
+   * and places the caret when the button goes up. */
+  gboolean       text_drag_armed;
+  gboolean       text_dragging;
+  gsize          drop_pos;
+
+  /* Edit > Repeat: the last action Repeat can do again, stamped with the
+   * undo history's state when it was recorded.  Any edit since is one the
+   * record does not cover, and the stamp no longer matches, so Repeat
+   * offers nothing rather than repeating an older action. */
+  guint8         repeat_kind;       /* W42_REPEAT_* */
+  GString       *repeat_text;       /* the last run of typing */
+  W42CharMask    repeat_char_mask;
+  W42CharFmt     repeat_char_fmt;   /* its pointers are interned */
+  W42ParaMask    repeat_para_mask;
+  W42ParaFmt     repeat_para_fmt;
+  const char    *repeat_style;      /* interned */
+  guint8         repeat_case;       /* W42CaseKind */
+  gsize          repeat_undo_pos;
+  guint64        repeat_serial;
   guint          blink_id;
   gboolean       blink_on;
 };
@@ -129,6 +153,49 @@ static void
 view_state_changed (W42View *self)
 {
   g_signal_emit (self, signals[SIGNAL_STATE_CHANGED], 0);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Edit > Repeat                                                           */
+/* ---------------------------------------------------------------------- */
+
+enum {
+  W42_REPEAT_NONE = 0,
+  W42_REPEAT_TYPING,
+  W42_REPEAT_CHAR_FMT,
+  W42_REPEAT_PARA_FMT,
+  W42_REPEAT_STYLE,
+  W42_REPEAT_CASE
+};
+
+/* Stamps the record with where the undo history stands now: Repeat is
+ * offered only while the history still stands there, so it repeats the
+ * last action or nothing. */
+static void
+view_record_repeat (W42View *self, int kind)
+{
+  W42PieceTable *pt = view_pt (self);
+
+  self->repeat_kind = kind;
+  if (pt != NULL)
+    w42_pt_undo_state (pt, &self->repeat_undo_pos, &self->repeat_serial);
+
+  /* The edit's own state-changed went out before the record was made,
+   * with Repeat looking stale; say again, so the menu enables it. */
+  view_state_changed (self);
+}
+
+static gboolean
+view_repeat_stamp_current (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  gsize pos = 0;
+  guint64 serial = 0;
+
+  if (pt == NULL || self->repeat_kind == W42_REPEAT_NONE)
+    return FALSE;
+  w42_pt_undo_state (pt, &pos, &serial);
+  return pos == self->repeat_undo_pos && serial == self->repeat_serial;
 }
 
 static void
@@ -413,6 +480,10 @@ w42_view_apply_para_fmt (W42View *self, W42ParaMask mask,
   w42_pt_apply_para_fmt (pt, w42_view_has_selection (self) ? sel_start (self) : para_pos (self, sel_start (self)),
                          sel_end (self) - sel_start (self), mask, value);
   view_edited (self);
+
+  self->repeat_para_mask = mask;
+  self->repeat_para_fmt  = *value;
+  view_record_repeat (self, W42_REPEAT_PARA_FMT);
 }
 
 W42ListKind
@@ -883,6 +954,9 @@ w42_view_change_case (W42View *self, W42CaseKind kind)
   self->anchor = start;
   self->caret = end;
   view_edited (self);
+
+  self->repeat_case = (guint8) kind;
+  view_record_repeat (self, W42_REPEAT_CASE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1536,7 +1610,20 @@ w42_view_apply_char_fmt (W42View *self, W42CharMask mask, const W42CharFmt *valu
 {
   g_return_if_fail (W42_IS_VIEW (self));
   g_return_if_fail (value != NULL);
-  view_apply_char_fmt (self, mask, value);
+
+  {
+    /* Formatting a selection is repeatable; toggling formatting for the
+     * text yet to be typed is not an edit, and is not recorded. */
+    gboolean edited = w42_view_has_selection (self);
+
+    view_apply_char_fmt (self, mask, value);
+    if (edited)
+      {
+        self->repeat_char_mask = mask;
+        self->repeat_char_fmt  = *value;
+        view_record_repeat (self, W42_REPEAT_CHAR_FMT);
+      }
+  }
 }
 
 void
@@ -1655,6 +1742,9 @@ w42_view_apply_style (W42View *self, const char *name)
   w42_pt_apply_style (pt, sel_start (self),
                       sel_end (self) - sel_start (self), name);
   view_edited (self);
+
+  self->repeat_style = g_intern_string (name);
+  view_record_repeat (self, W42_REPEAT_STYLE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1725,12 +1815,62 @@ view_delete_selection (W42View *self)
   return TRUE;
 }
 
+/* Drops the dragged selection at target: the text moves there, or a copy
+ * of it goes there with Ctrl held, formatting and all, as one undo step.
+ * A drop back on the selection itself is the drag cancelled.  With
+ * revisions being marked, the move marks the old text deleted and the
+ * new inserted, as Word did. */
+static void
+view_drop_text (W42View *self, gsize target, gboolean copy)
+{
+  W42PieceTable *pt = view_pt (self);
+  W42PieceTable *frag;
+  gsize start, end, n;
+
+  if (pt == NULL || !w42_view_has_selection (self))
+    return;
+
+  start = sel_start (self);
+  end   = sel_end (self);
+  if (target >= start && target <= end)
+    return;
+
+  frag = w42_pt_extract (pt, start, end - start);
+
+  w42_pt_begin_group (pt);
+  if (!copy && !view_tracked_delete (self, start, end))
+    {
+      w42_pt_delete (pt, start, end - start);
+      if (target > end)
+        target -= end - start;
+    }
+  target = w42_pt_clamp_pos (pt, target);
+  n = w42_pt_insert_fragment (pt, target, frag);
+  if (self->track_changes && n > 0)
+    {
+      W42CharFmt want;
+
+      memset (&want, 0, sizeof want);
+      want.revision = 1;
+      w42_pt_apply_char_fmt (pt, target, n, W42_CHAR_REVISION, &want);
+    }
+  w42_pt_end_group (pt);
+  w42_pt_free (frag);
+
+  /* The dropped text stays selected, as Word left it. */
+  self->anchor = w42_pt_clamp_pos (pt, target);
+  self->caret  = w42_pt_clamp_pos (pt, target + n);
+  view_edited (self);
+}
+
 void
 w42_view_insert_text (W42View *self, const char *utf8)
 {
   W42PieceTable *pt;
   W42ApIdx ap;
   gboolean grouped;
+  gboolean repeat_continues;
+  gsize repeat_pos0 = 0;
 
   g_return_if_fail (W42_IS_VIEW (self));
   g_return_if_fail (utf8 != NULL);
@@ -1738,6 +1878,14 @@ w42_view_insert_text (W42View *self, const char *utf8)
   pt = view_pt (self);
   if (pt == NULL || *utf8 == '\0')
     return;
+
+  /* For Edit > Repeat: whether this insert carries on the recorded run
+   * of typing, or begins one.  It carries on when nothing else has been
+   * done since (the stamp still matches) and, checked at the end, the
+   * insert coalesced into the same undo record. */
+  repeat_continues = self->repeat_kind == W42_REPEAT_TYPING &&
+                     view_repeat_stamp_current (self);
+  w42_pt_undo_state (pt, &repeat_pos0, NULL);
 
   ap = view_effective_ap (self);
 
@@ -1765,6 +1913,19 @@ w42_view_insert_text (W42View *self, const char *utf8)
 
   self->pending_mask = 0;
   view_edited (self);
+
+  {
+    gsize pos1 = 0;
+
+    w42_pt_undo_state (pt, &pos1, NULL);
+    if (self->repeat_text == NULL)
+      self->repeat_text = g_string_new (NULL);
+    if (repeat_continues && pos1 == repeat_pos0)
+      g_string_append (self->repeat_text, utf8);
+    else
+      g_string_assign (self->repeat_text, utf8);
+    view_record_repeat (self, W42_REPEAT_TYPING);
+  }
 }
 
 /* Insert > Caption: a paragraph of its own under the caret's, in the
@@ -2706,6 +2867,52 @@ w42_view_redo (W42View *self)
     {
       w42_document_set_modified (self->doc, FALSE);
       w42_document_touch (self->doc);
+    }
+}
+
+gboolean
+w42_view_can_repeat (W42View *self)
+{
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  return view_repeat_stamp_current (self);
+}
+
+void
+w42_view_repeat (W42View *self)
+{
+  g_return_if_fail (W42_IS_VIEW (self));
+
+  if (!view_repeat_stamp_current (self))
+    return;
+
+  switch (self->repeat_kind)
+    {
+    case W42_REPEAT_TYPING:
+      {
+        /* Inserting re-records the run; keep it as it was, so Repeat
+         * again puts in the same text rather than twice as much. */
+        char *text = g_strdup (self->repeat_text->str);
+
+        w42_view_insert_text (self, text);
+        g_string_assign (self->repeat_text, text);
+        g_free (text);
+      }
+      break;
+    case W42_REPEAT_CHAR_FMT:
+      view_apply_char_fmt (self, self->repeat_char_mask, &self->repeat_char_fmt);
+      view_record_repeat (self, W42_REPEAT_CHAR_FMT);
+      break;
+    case W42_REPEAT_PARA_FMT:
+      w42_view_apply_para_fmt (self, self->repeat_para_mask, &self->repeat_para_fmt);
+      break;
+    case W42_REPEAT_STYLE:
+      w42_view_apply_style (self, self->repeat_style);
+      break;
+    case W42_REPEAT_CASE:
+      w42_view_change_case (self, (W42CaseKind) self->repeat_case);
+      break;
+    default:
+      break;
     }
 }
 
@@ -3747,6 +3954,24 @@ view_draw_handles (W42View *self, cairo_t *cr)
   cairo_fill (cr);
 }
 
+/* Whether a press at widget coordinates (x, y) lands inside the
+ * selection — the press that begins a drag of the selected text. */
+static gboolean
+view_press_in_selection (W42View *self, double x, double y)
+{
+  int page = 0;
+  double px = 0, py = 0;
+  gsize pos;
+
+  if (view_pt (self) == NULL || !w42_view_has_selection (self))
+    return FALSE;
+
+  view_widget_to_page (self, x, y, &page, &px, &py);
+  pos = w42_pt_clamp_pos (view_pt (self),
+                          w42_layout_point_to_pos (self->layout, page, px, py));
+  return pos >= sel_start (self) && pos < sel_end (self);
+}
+
 static void
 on_click_pressed (GtkGestureClick *gesture,
                   int              n_press,
@@ -3828,6 +4053,17 @@ on_click_pressed (GtkGestureClick *gesture,
       /* Shift+click extends the selection to the click, as in Word. */
       GdkModifierType mods = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
 
+      /* A press inside the selection arms a drag of the selected text;
+       * the selection stands until the button goes up or the drag moves. */
+      if (!(mods & GDK_SHIFT_MASK) &&
+          w42_view_has_selection (self) &&
+          pos >= sel_start (self) && pos < sel_end (self))
+        {
+          self->text_drag_armed = TRUE;
+          self->dragging = FALSE;
+          return;
+        }
+
       self->caret = pos;
       if (!(mods & GDK_SHIFT_MASK))
         self->anchor = pos;
@@ -3846,8 +4082,23 @@ on_click_released (GtkGestureClick *gesture,
 {
   W42View *self = data;
 
-  (void) gesture; (void) n_press; (void) x; (void) y;
+  (void) gesture; (void) n_press;
 
+  /* The press was inside the selection but never became a drag: a plain
+   * click, so the caret goes where it pointed. */
+  if (self->text_drag_armed && !self->text_dragging && self->doc != NULL)
+    {
+      int page = 0;
+      double px = 0, py = 0;
+
+      view_widget_to_page (self, x, y, &page, &px, &py);
+      self->caret = self->anchor =
+        w42_pt_clamp_pos (view_pt (self),
+                          w42_layout_point_to_pos (self->layout, page, px, py));
+      view_caret_moved (self, FALSE);
+    }
+
+  self->text_drag_armed = FALSE;
   self->dragging = FALSE;
 }
 
@@ -3882,6 +4133,22 @@ on_drag_begin (GtkGestureDrag *gesture, double x, double y, gpointer data)
           return;
         }
 
+      /* Pressed inside the selection: the drag, if it becomes one, moves
+       * the text.  Undecided until it moves, so a plain click can still
+       * place the caret when the button goes up.  This runs before the
+       * click gesture's own press handler, so it looks at the press
+       * itself rather than at the flag that handler sets. */
+      if (view_press_in_selection (self, x, y) &&
+          !(gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture)) &
+            GDK_SHIFT_MASK))
+        {
+          self->text_drag_armed = TRUE;
+          self->drag_x0 = x;
+          self->drag_y0 = y;
+          self->dragging = FALSE;
+          return;
+        }
+
       gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
       return;
     }
@@ -3913,6 +4180,28 @@ on_drag_update (GtkGestureDrag *gesture, double dx, double dy, gpointer data)
       self->col_x = self->col_x0 + dx / self->zoom;
       gtk_widget_queue_draw (GTK_WIDGET (self));
     }
+  else if (self->text_drag_armed)
+    {
+      int page = 0;
+      double px = 0, py = 0;
+
+      if (!self->text_dragging)
+        {
+          /* Still a click until it moves a click's worth. */
+          if (ABS (dx) < 4 && ABS (dy) < 4)
+            return;
+          self->text_dragging = TRUE;
+          gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+          gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "move");
+        }
+
+      view_widget_to_page (self, self->drag_x0 + dx, self->drag_y0 + dy,
+                           &page, &px, &py);
+      self->drop_pos = w42_pt_clamp_pos (view_pt (self),
+                                         w42_layout_point_to_pos (self->layout,
+                                                                  page, px, py));
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
 }
 
 static void
@@ -3932,6 +4221,24 @@ on_drag_end (GtkGestureDrag *gesture, double dx, double dy, gpointer data)
       self->col_x = self->col_x0 + dx / self->zoom;
       view_finish_column_drag (self);
     }
+  else if (self->text_dragging)
+    {
+      GdkModifierType mods = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
+      int page = 0;
+      double px = 0, py = 0;
+
+      view_widget_to_page (self, self->drag_x0 + dx, self->drag_y0 + dy,
+                           &page, &px, &py);
+      view_drop_text (self,
+                      w42_pt_clamp_pos (view_pt (self),
+                                        w42_layout_point_to_pos (self->layout,
+                                                                 page, px, py)),
+                      (mods & GDK_CONTROL_MASK) != 0);
+      self->text_dragging = FALSE;
+      self->text_drag_armed = FALSE;
+      gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "text");
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
 }
 
 static void
@@ -3949,7 +4256,7 @@ on_motion (GtkEventControllerMotion *controller,
   if (self->doc == NULL)
     return;
 
-  if (self->handle >= 0 || self->col_table >= 0)
+  if (self->handle >= 0 || self->col_table >= 0 || self->text_dragging)
     return;
 
   if (!self->dragging)
@@ -4249,6 +4556,23 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
           cairo_fill (cr);
         }
     }
+
+  /* Dragging the selection: a grey caret marks where the text will drop. */
+  if (self->text_dragging)
+    {
+      int cpage = 0;
+      double cx = 0, cy = 0, ch = 0;
+
+      if (w42_layout_pos_to_caret (layout, self->drop_pos, &cpage, &cx, &cy, &ch))
+        {
+          double x = ox + cx * zoom;
+          double y = view_page_origin_y (self, cpage) + cy * zoom;
+
+          cairo_set_source_rgb (cr, 0.4, 0.4, 0.4);
+          cairo_rectangle (cr, floor (x), y, 2.0, ch * zoom);
+          cairo_fill (cr);
+        }
+    }
 }
 
 static void
@@ -4380,6 +4704,12 @@ w42_view_dispose (GObject *object)
   g_clear_object (&self->doc);
   g_clear_object (&self->im);
   g_clear_pointer (&self->layout, w42_layout_free);
+
+  if (self->repeat_text != NULL)
+    {
+      g_string_free (self->repeat_text, TRUE);
+      self->repeat_text = NULL;
+    }
 
   G_OBJECT_CLASS (w42_view_parent_class)->dispose (object);
 }

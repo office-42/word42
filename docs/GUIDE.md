@@ -141,6 +141,12 @@ Hold Shift with any of them to select as you move. With the mouse: click to
 place the caret, drag to select, double-click for a word, triple-click for a
 paragraph. **Edit ▸ Select All** (Ctrl+A) selects everything.
 
+Selected text can be dragged: press inside the selection and pull, and a
+grey caret shows where the text will land; let go and it moves there,
+formatting and all, as one undo step. Hold **Ctrl** while letting go and a
+copy lands instead, the original staying put. A click inside the selection
+that never moves simply places the caret, as it always did.
+
 **Edit ▸ Go To** (Ctrl+G or F5) jumps to a page or a line by number, or to a
 bookmark by name.
 
@@ -152,6 +158,7 @@ bookmark by name.
 | --- | --- | --- |
 | Undo | Ctrl+Z | Steps back. There is no limit; a run of typing undoes as one step, and a compound change — a table property, a style edit — as one step. |
 | Redo | Ctrl+Y or Ctrl+Shift+Z | Steps forward again. |
+| Repeat | F4 | Does the last thing again: the last run of typing goes in at the caret, or the last character or paragraph formatting, style, or change of case goes on the selection. Only the last action can be repeated — edit anything else and Repeat greys out. |
 | Cut | Ctrl+X | Removes the selection and puts it on the clipboard. |
 | Copy | Ctrl+C | Puts the selection on the clipboard. |
 | Paste | Ctrl+V | Puts the clipboard in at the caret, with its formatting. |
@@ -714,7 +721,12 @@ talk was made from.
 ### The Window menu
 
 **New Window** opens a second window on the *same* document: type in one
-and the other shows it. **Arrange All** puts the open windows side by side.
+and the other shows it. **Split** divides the window into two panes on the
+same document, one above the other, with a bar to drag between them — read
+one part while writing in another, each pane scrolling and keeping a caret
+of its own, with the toolbars, the ruler and the status bar following the
+pane you are editing; Split again puts the window back to one pane.
+**Arrange All** puts the open windows side by side.
 Below them, the menu lists and numbers every open document; pick one to
 raise it.
 
@@ -819,6 +831,7 @@ about the document is sent anywhere.
 | --- | --- |
 | Ctrl+Z | Undo |
 | Ctrl+Y, Ctrl+Shift+Z | Redo |
+| F4 | Repeat |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / Copy / Paste |
 | Ctrl+A | Select All |
 | Ctrl+F | Find |

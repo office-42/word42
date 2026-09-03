@@ -50,7 +50,11 @@ struct _W42Window {
   GtkApplicationWindow parent_instance;
 
   W42Document *doc;
-  W42View     *view;
+  W42View     *view;          /* the pane being edited: commands, toolbars
+                               * and the ruler follow it */
+  W42View     *view1;         /* the top pane's view, the one made at start */
+  W42View     *view2;         /* the bottom pane's, while the window is split */
+  GtkWidget   *paned;         /* holds the pane(s) below the ruler */
 
   GtkWidget   *standard_bar;
   GtkWidget   *format_bar;
@@ -114,6 +118,7 @@ struct _W42Window {
 G_DEFINE_FINAL_TYPE (W42Window, w42_window, GTK_TYPE_APPLICATION_WINDOW)
 
 static void window_sync_state (W42Window *self);
+static void on_view_state_changed (W42View *view, gpointer data);
 
 /* Commands that can do nothing at all -- no fields to update, no
  * revisions to accept -- say so in the status bar rather than looking
@@ -972,6 +977,117 @@ action_new_window (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_window_present (GTK_WINDOW (window));
 }
 
+/* Window > Split: a second pane on the same document, under the first,
+ * with a bar to drag between them; each pane scrolls and keeps a caret of
+ * its own, and the commands, the toolbars and the ruler follow the pane
+ * being edited.  Split again puts the window back to one pane. */
+
+static void
+on_pane_focus_enter (GtkEventControllerFocus *controller, gpointer data)
+{
+  W42Window *self = data;
+  GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+
+  if (!W42_IS_VIEW (widget) || W42_VIEW (widget) == self->view)
+    return;
+  self->view = W42_VIEW (widget);
+  w42_ruler_set_view (self->ruler, self->view);
+  window_sync_state (self);
+}
+
+static void
+window_track_pane_focus (W42Window *self, W42View *view)
+{
+  GtkEventController *focus = gtk_event_controller_focus_new ();
+
+  g_signal_connect (focus, "enter", G_CALLBACK (on_pane_focus_enter), self);
+  gtk_widget_add_controller (GTK_WIDGET (view), focus);
+}
+
+/* A window action's boolean state, for the settings the new pane copies. */
+static gboolean
+window_action_state (W42Window *self, const char *name)
+{
+  GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), name);
+  GVariant *state;
+  gboolean on;
+
+  if (a == NULL)
+    return FALSE;
+  state = g_action_get_state (a);
+  if (state == NULL)
+    return FALSE;
+  on = g_variant_get_boolean (state);
+  g_variant_unref (state);
+  return on;
+}
+
+static void
+window_set_split (W42Window *self, gboolean split)
+{
+  if (split == (self->view2 != NULL))
+    return;
+
+  if (split)
+    {
+      GtkWidget *scrolled = gtk_scrolled_window_new ();
+      W42View *view = W42_VIEW (w42_view_new ());
+
+      /* The new pane shows the same document with the same settings;
+       * only its caret and its scroll position are its own. */
+      w42_view_set_document (view, self->doc);
+      w42_view_set_mode (view, w42_view_get_mode (self->view1));
+      w42_view_set_zoom (view, w42_view_get_zoom (self->view1));
+      w42_view_set_autocorrect (view, w42_view_get_autocorrect (self->view1));
+      w42_view_set_track_changes (view, w42_view_get_track_changes (self->view1));
+      w42_view_set_show_marks (view, window_action_state (self, "show-marks"));
+      w42_view_set_gridlines (view, window_action_state (self, "gridlines"));
+      if (self->spell != NULL && window_action_state (self, "auto-spell"))
+        w42_view_set_spell (view, self->spell);
+
+      gtk_widget_set_vexpand (scrolled, TRUE);
+      gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled),
+                                      GTK_POLICY_AUTOMATIC, GTK_POLICY_ALWAYS);
+      gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled),
+                                     GTK_WIDGET (view));
+      gtk_paned_set_end_child (GTK_PANED (self->paned), scrolled);
+      gtk_paned_set_resize_end_child (GTK_PANED (self->paned), TRUE);
+      gtk_paned_set_shrink_end_child (GTK_PANED (self->paned), FALSE);
+      gtk_paned_set_position (GTK_PANED (self->paned),
+                              gtk_widget_get_height (self->paned) / 2);
+
+      g_signal_connect (view, "state-changed",
+                        G_CALLBACK (on_view_state_changed), self);
+      window_track_pane_focus (self, view);
+      self->view2 = view;
+    }
+  else
+    {
+      if (self->view == self->view2)
+        {
+          self->view = self->view1;
+          w42_ruler_set_view (self->ruler, self->view);
+        }
+      self->view2 = NULL;
+      gtk_paned_set_end_child (GTK_PANED (self->paned), NULL);
+      gtk_widget_grab_focus (GTK_WIDGET (self->view1));
+      window_sync_state (self);
+    }
+}
+
+static void
+action_split_window (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GVariant *state = g_action_get_state (G_ACTION (action));
+  gboolean on = !g_variant_get_boolean (state);
+
+  (void) param;
+  g_variant_unref (state);
+  g_simple_action_set_state (action, g_variant_new_boolean (on));
+  window_set_split (self, on);
+}
+
 static void
 action_options (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -1127,6 +1243,7 @@ action_close (GSimpleAction *action, GVariant *param, gpointer data)
 
 VIEW_ACTION (undo,       w42_view_undo)
 VIEW_ACTION (redo,       w42_view_redo)
+VIEW_ACTION (repeat,     w42_view_repeat)
 VIEW_ACTION (cut,        w42_view_cut)
 VIEW_ACTION (copy,       w42_view_copy)
 VIEW_ACTION (paste,      w42_view_paste)
@@ -3754,6 +3871,11 @@ window_sync_state (W42Window *self)
     a = g_action_map_lookup_action (G_ACTION_MAP (self), "redo");
     if (a != NULL)
       g_simple_action_set_enabled (G_SIMPLE_ACTION (a), w42_pt_can_redo (pt));
+
+    a = g_action_map_lookup_action (G_ACTION_MAP (self), "repeat");
+    if (a != NULL)
+      g_simple_action_set_enabled (G_SIMPLE_ACTION (a),
+                                   w42_view_can_repeat (self->view));
   }
 
   window_update_title (self);
@@ -3794,6 +3916,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "close",      action_close,      NULL, NULL,    NULL, { 0 } },
   { "undo",       action_undo,       NULL, NULL,    NULL, { 0 } },
   { "redo",       action_redo,       NULL, NULL,    NULL, { 0 } },
+  { "repeat",     action_repeat,     NULL, NULL,    NULL, { 0 } },
   { "cut",        action_cut,        NULL, NULL,    NULL, { 0 } },
   { "copy",       action_copy,       NULL, NULL,    NULL, { 0 } },
   { "paste",      action_paste,      NULL, NULL,    NULL, { 0 } },
@@ -3841,6 +3964,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "spelling",   action_spelling,   NULL, NULL,   NULL, { 0 } },
   { "go-to",         action_go_to,         NULL, NULL, NULL, { 0 } },
   { "new-window",    action_new_window,    NULL, NULL, NULL, { 0 } },
+  { "split-window",  action_split_window,  NULL, "false", NULL, { 0 } },
   { "options",       action_options,       NULL, NULL, NULL, { 0 } },
   { "help-contents", action_help_contents, NULL, NULL, NULL, { 0 } },
   { "help-search",  action_help_search,  NULL, NULL, NULL, { 0 } },
@@ -4041,6 +4165,8 @@ w42_window_init (W42Window *self)
   gtk_box_append (GTK_BOX (box), self->standard_bar);
 
   self->view = W42_VIEW (w42_view_new ());
+  self->view1 = self->view;
+  window_track_pane_focus (self, self->view);
 
   /* Check spelling as you type, when there is a dictionary to check it
    * against; otherwise the toggle is greyed out rather than lying. */
@@ -4107,7 +4233,16 @@ w42_window_init (W42Window *self)
                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_ALWAYS);
   gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled),
                                  GTK_WIDGET (self->view));
-  gtk_box_append (GTK_BOX (box), scrolled);
+
+  /* The page sits in a paned so that Window > Split can put a second
+   * pane on the same document under it; unsplit, the paned is just the
+   * one pane. */
+  self->paned = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
+  gtk_widget_set_vexpand (self->paned, TRUE);
+  gtk_paned_set_start_child (GTK_PANED (self->paned), scrolled);
+  gtk_paned_set_resize_start_child (GTK_PANED (self->paned), TRUE);
+  gtk_paned_set_shrink_start_child (GTK_PANED (self->paned), FALSE);
+  gtk_box_append (GTK_BOX (box), self->paned);
 
   {
     GtkEventController *keys = gtk_event_controller_key_new ();
