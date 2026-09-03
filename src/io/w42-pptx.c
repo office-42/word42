@@ -450,7 +450,8 @@ slide_start (GMarkupParseContext *ctx, const char *name, const char **an,
     {
       r->in_shape = TRUE;
       r->is_title = FALSE;
-      r->paras = g_ptr_array_new_with_free_func (g_free);
+      if (r->paras == NULL)      /* a shape inside a shape keeps the outer's */
+        r->paras = g_ptr_array_new_with_free_func (g_free);
     }
   else if (g_str_has_suffix (name, ":ph"))
     {
@@ -535,10 +536,13 @@ slide_order (W42Zip *zip)
   if (rels != NULL)
     {
       gsize len = 0;
-      const char *d = g_bytes_get_data (rels, &len);
+      const char *raw = g_bytes_get_data (rels, &len);
+      /* A terminated copy: the zip's bytes carry no NUL of their own, so
+       * strchr on them could run past the end of the entry. */
+      char *d = g_strndup (raw, len);
       const char *p = d;
 
-      while (p != NULL && (p = g_strstr_len (p, d + len - p, "<Relationship ")) != NULL)
+      while (p != NULL && (p = strstr (p, "<Relationship ")) != NULL)
         {
           const char *gt = strchr (p, '>');
           char *id = NULL, *target = NULL;
@@ -563,16 +567,18 @@ slide_order (W42Zip *zip)
           g_free (target);
           p = gt + 1;
         }
+      g_free (d);
       g_bytes_unref (rels);
     }
 
   if (pres != NULL)
     {
       gsize len = 0;
-      const char *d = g_bytes_get_data (pres, &len);
+      const char *raw = g_bytes_get_data (pres, &len);
+      char *d = g_strndup (raw, len);
       const char *p = d;
 
-      while ((p = g_strstr_len (p, d + len - p, "r:id=\"")) != NULL)
+      while ((p = strstr (p, "r:id=\"")) != NULL)
         {
           const char *e = strchr (p + 6, '"');
           char *id;
@@ -587,6 +593,7 @@ slide_order (W42Zip *zip)
           g_free (id);
           p = e + 1;
         }
+      g_free (d);
       g_bytes_unref (pres);
     }
 
