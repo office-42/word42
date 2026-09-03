@@ -21,6 +21,7 @@
 # ordinary build never runs this.
 
 import os
+import re
 import subprocess
 import sys
 
@@ -251,8 +252,8 @@ ICONS['w42-align-justify'] = _align([(2, 12), (2, 12), (2, 12), (2, 12)])
 # the same metrics as its stand-in -- where the rasters are made.
 WORDMARK_FONT = ("'Times New Roman', 'Liberation Serif', Tinos, Times, serif")
 
-# And its blue, a brighter one than the toolbar's.
-WORDMARK_BLUE = '#2ba1ff'
+# And its blue: the dark one the title bar wears.
+WORDMARK_BLUE = '#1a5fb4'
 
 
 def app_icon_body(with_number=True):
@@ -348,16 +349,26 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
        width, so the rule drawn under it fits whichever face answers.
        Two layers: a black-stroked copy underneath, the blue on top, so
        the black shows only as a thin rim round the letters. -->
-  <text x="136" y="74" font-family="%(font)s"
-        font-size="44" font-weight="700" fill="none"
-        stroke="#000000" stroke-width="1.8"
-        textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
-  <text x="136" y="74" font-family="%(font)s"
-        font-size="44" font-weight="700" fill="%(blue)s"
-        textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
-  <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="%(blue)s"/>
+  <text x="136" y="68" font-family="%(font)s"
+        font-size="48" font-weight="700" fill="none"
+        stroke="#000000" stroke-width="2"
+        textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
+  <text x="136" y="68" font-family="%(font)s"
+        font-size="48" font-weight="700" fill="%(blue)s"
+        textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
+  <rect x="136" y="75" width="198" height="3.5" rx="1.75" fill="%(blue)s"/>
+  <text x="137" y="97" font-family="%(font)s"
+        font-size="14" fill="#5e5c64">Version %(version)s</text>
 </svg>
 """
+
+
+def project_version():
+    """The version the banner claims is the one meson.build declares."""
+    root = os.path.join(HERE, '..', '..', 'meson.build')
+    with open(root, encoding='utf-8') as fh:
+        m = re.search(r"version:\s*'([^']+)'", fh.read())
+    return m.group(1) if m is not None else ''
 
 
 def write_about(path):
@@ -365,7 +376,8 @@ def write_about(path):
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(ABOUT_SVG % {'body': '    ' + app_icon_body(with_number=True),
                               'font': WORDMARK_FONT,
-                              'blue': WORDMARK_BLUE})
+                              'blue': WORDMARK_BLUE,
+                              'version': project_version()})
 
 
 def rasterise(svg, png, width=None, height=None):
