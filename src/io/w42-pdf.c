@@ -12,6 +12,7 @@
 #include "w42-object.h"
 
 #include <cairo-pdf.h>
+#include <math.h>
 #include <string.h>
 
 #ifdef HAVE_POPPLER
@@ -225,7 +226,7 @@ find_gutters (const char *text, const gsize *byte_of, gsize n_chars,
               const PopplerRectangle *rects, guint n_rects,
               double page_w, double *gutters, int max_gutters)
 {
-  int bins = (int) CLAMP (page_w, 32.0, 4096.0);
+  int bins = (int) CLAMP (isfinite (page_w) ? page_w : 0.0, 32.0, 4096.0);
   guint8 *covered = g_new0 (guint8, bins + 1);
   int n = 0;
 
@@ -236,8 +237,10 @@ find_gutters (const char *text, const gsize *byte_of, gsize n_chars,
       int a, b;
 
       /* A space is whatever gap the typesetter left, so it says nothing
-       * about where the text is. */
-      if (g_unichar_isspace (c) || r->x2 <= r->x1)
+       * about where the text is.  A rectangle that is not a number says
+       * even less, and CLAMP would let it straight through to the cast. */
+      if (g_unichar_isspace (c) || !isfinite (r->x1) || !isfinite (r->x2) ||
+          r->x2 <= r->x1)
         continue;
       a = (int) CLAMP (r->x1, 0.0, (double) bins);
       b = (int) CLAMP (r->x2 + 1.0, 0.0, (double) bins);
@@ -772,18 +775,22 @@ w42_pdf_import (W42PieceTable *pt,
 
           /* The first page's size becomes the document's, so that the
            * pagination matches the original as closely as the text allows. */
+          /* The size is the attacker's to declare, so it is clamped to the
+           * range the other readers allow before the cast can overflow. */
           poppler_page_get_size (pp, &w, &h);
-          if (w > 0 && h > 0)
+          if (isfinite (w) && isfinite (h) && w > 0 && h > 0)
             {
-              page->width  = (int) (w * 20.0);
-              page->height = (int) (h * 20.0);
+              page->width  = (int) CLAMP (w * 20.0, 720.0, 31680.0);
+              page->height = (int) CLAMP (h * 20.0, 720.0, 31680.0);
             }
         }
 
       read_page (pp, &b, chunks, i == 0 ? &text_box : NULL);
 
       /* And the margins are where the first page's text sits on it. */
-      if (i == 0 && page != NULL && text_box.x2 > text_box.x1)
+      if (i == 0 && page != NULL && text_box.x2 > text_box.x1 &&
+          isfinite (text_box.x1) && isfinite (text_box.x2) &&
+          isfinite (text_box.y1) && isfinite (text_box.y2))
         {
           double w = page->width / 20.0, h = page->height / 20.0;
 
@@ -819,11 +826,13 @@ w42_pdf_import (W42PieceTable *pt,
                   double shown_w = m->area.x2 - m->area.x1;
                   double shown_h = m->area.y2 - m->area.y1;
 
+                  if (!isfinite (shown_w) || !isfinite (shown_h))
+                    shown_w = shown_h = 0.0;
                   w42_builder_reset_char (&b);
                   w42_builder_reset_para (&b);
                   w42_builder_object (&b, png, format, pw, ph,
-                                      (int) (ABS (shown_w) * 20.0),
-                                      (int) (ABS (shown_h) * 20.0));
+                                      (int) CLAMP (ABS (shown_w) * 20.0, 0.0, 31680.0),
+                                      (int) CLAMP (ABS (shown_h) * 20.0, 0.0, 31680.0));
                   w42_builder_end_paragraph (&b);
                 }
               g_bytes_unref (png);

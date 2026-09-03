@@ -30,8 +30,8 @@ w42_shape_render (W42ShapeKind kind, int width, int height,
   double half = lw / 2.0;
   GBytes *png;
 
-  width  = MAX (width, 2);
-  height = MAX (height, 2);
+  width  = CLAMP (width, 2, 10000);
+  height = CLAMP (height, 2, 10000);
 
   /* A line thicker than the shape leaves it nothing to be drawn round:
    * the ellipse below would have no radius at all, and Cairo draws a
