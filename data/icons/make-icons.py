@@ -358,7 +358,7 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
         textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
   <rect x="136" y="75" width="198" height="3.5" rx="1.75" fill="%(blue)s"/>
   <text x="137" y="97" font-family="%(font)s"
-        font-size="14" fill="#241f31">Version %(version)s</text>
+        font-size="14" fill="#241f31">Version %(version)s &#183; word42.org</text>
 </svg>
 """
 

@@ -30,5 +30,5 @@
         textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
   <rect x="136" y="75" width="198" height="3.5" rx="1.75" fill="#1a5fb4"/>
   <text x="137" y="97" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif"
-        font-size="14" fill="#241f31">Version 1.0.0</text>
+        font-size="14" fill="#241f31">Version 1.0.0 &#183; word42.org</text>
 </svg>
