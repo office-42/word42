@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word42 — a classic word processor</title>
+<meta name="description" content="Word42 is a classic word processor, written from scratch in C on GTK 4, Pango and Cairo: the shape and restraint of the word processors of 1993 on a modern text stack. Free software, GPL-3.0-or-later.">
+<style>
+  :root {
+    --blue: #1a5fb4;
+    --ink: #241f31;
+    --rule: #c0bfbc;
+    --paper: #ffffff;
+    --ground: #f2f1ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: 'Times New Roman', 'Liberation Serif', Tinos, Times, serif;
+    font-size: 1.125rem;
+    line-height: 1.55;
+  }
+  a { color: var(--blue); }
+  .page {
+    max-width: 46rem;
+    margin: 2.5rem auto;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    padding: 2.5rem 3rem 3rem;
+  }
+  header { text-align: center; margin-bottom: 2rem; }
+  header svg { max-width: 100%; height: auto; }
+  .tagline {
+    font-size: 1.25rem;
+    margin: 1rem auto 0;
+    max-width: 38rem;
+  }
+  h2 {
+    font-size: 1.4rem;
+    color: var(--blue);
+    border-bottom: 2px solid var(--blue);
+    padding-bottom: .15rem;
+    margin: 2.25rem 0 .75rem;
+  }
+  figure { margin: 2rem 0; text-align: center; }
+  figure img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+  }
+  figcaption {
+    font-size: .95rem;
+    color: #5e5c64;
+    margin-top: .5rem;
+    font-style: italic;
+  }
+  ul { padding-left: 1.4rem; }
+  li { margin: .2rem 0; }
+  pre {
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    padding: .75rem 1rem;
+    overflow-x: auto;
+    font-size: .95rem;
+  }
+  code { font-family: 'Courier New', Courier, monospace; }
+  .badges { text-align: center; margin: 1.25rem 0 0; }
+  .badges img { vertical-align: middle; margin: 0 .2rem; }
+  footer {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-size: .95rem;
+    color: #5e5c64;
+  }
+  @media (max-width: 40rem) {
+    .page { margin: 0; padding: 1.5rem 1.25rem 2rem; border: none; }
+    body { font-size: 1.05rem; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <svg xmlns="http://www.w3.org/2000/svg" width="420" height="112" viewBox="0 8 420 104" role="img"
+       aria-label="The Word42 logo: a sheet of paper marked W42, beside the name in blue underlined serif">
+    <g transform="translate(20,16) scale(1.5)">
+      <path d="M9.5 8.5a4 4 0 0 1 4-4h23l14 14v33a4 4 0 0 1-4 4h-33a4 4 0 0 1-4-4Z" fill="#ffffff" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M36.5 4.5v10a4 4 0 0 0 4 4h10Z" fill="#deddda" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/>
+      <text x="13" y="43" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="17" font-weight="700" fill="none" stroke="#000000" stroke-width="0.7" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>
+      <text x="13" y="43" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="17" font-weight="700" fill="#1a5fb4" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>
+      <rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="#c0bfbc"/>
+      <rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="#c0bfbc"/>
+    </g>
+    <text x="136" y="68" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="48" font-weight="700" fill="none" stroke="#000000" stroke-width="2" textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
+    <text x="136" y="68" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="48" font-weight="700" fill="#1a5fb4" textLength="198" lengthAdjust="spacingAndGlyphs">Word42</text>
+    <rect x="136" y="75" width="198" height="3.5" rx="1.75" fill="#1a5fb4"/>
+    <text x="137" y="97" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="14" fill="#241f31">A classic word processor &#183; word42.org</text>
+  </svg>
+  <p class="tagline">A classic word processor, written from scratch in C on GTK&nbsp;4, Pango and
+  Cairo: a menu bar, two toolbars, a ruler, a status bar and a page. It aims at the shape and
+  restraint of the word processors of 1993 — on a modern text stack that does Unicode, OpenType
+  and complex scripts properly.</p>
+  <p class="badges">
+    <a href="https://github.com/office-42/word42/actions/workflows/linux.yml"><img src="https://github.com/office-42/word42/actions/workflows/linux.yml/badge.svg" alt="Linux build status"></a>
+    <a href="https://github.com/office-42/word42/actions/workflows/macos.yml"><img src="https://github.com/office-42/word42/actions/workflows/macos.yml/badge.svg" alt="macOS build status"></a>
+    <a href="https://github.com/office-42/word42/actions/workflows/windows.yml"><img src="https://github.com/office-42/word42/actions/workflows/windows.yml/badge.svg" alt="Windows build status"></a>
+  </p>
+</header>
+
+<figure>
+  <img src="images/screenshot.png" width="1280"
+       alt="Word42 in Page Layout view: the opening of Genesis set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending">
+  <figcaption>Word42 in Page Layout view.</figcaption>
+</figure>
+
+<h2>What it does</h2>
+<p>A working word processor: typing, formatting, styles and numbered headings, headers and
+footers, footnotes and endnotes, tables, pictures, lists, columns, find and replace, spelling,
+hyphenation, mail merge, a split window, a page-layout view and print preview — reading and
+writing RTF, OpenDocument <code>.odt</code>, Word <code>.docx</code> and <code>.doc</code>,
+AbiWord <code>.abw</code>, HTML, PDF and plain text.</p>
+<p>The <a href="https://github.com/office-42/word42/blob/main/docs/STATUS.md">status page</a>
+lists what it does, and the
+<a href="https://github.com/office-42/word42/blob/main/docs/GUIDE.md">user guide</a> describes
+every command in the program.</p>
+
+<h2>Getting it</h2>
+<ul>
+  <li><strong>Windows</strong> — every push to <code>main</code> builds a bundle and installer:
+      artifacts of the
+      <a href="https://github.com/office-42/word42/actions/workflows/windows.yml">Windows workflow</a>.</li>
+  <li><strong>macOS</strong> — an unsigned <code>Word42.app</code> from the
+      <a href="https://github.com/office-42/word42/actions/workflows/macos.yml">macOS workflow</a>
+      (first launch is a right-click&nbsp;▸&nbsp;Open).</li>
+  <li><strong>Linux</strong> — build from source; a Flatpak manifest is in the repository's
+      <a href="https://github.com/office-42/word42/tree/main/build-aux"><code>build-aux/</code></a>.</li>
+</ul>
+
+<h2>Building</h2>
+<p>Word42 needs a C11 compiler, Meson, Ninja, and GTK&nbsp;4.10 or newer with Pango, Cairo and
+gdk-pixbuf, plus <a href="https://lexbor.com/">Lexbor</a> for HTML. Per-platform dependency
+lists are in <a href="https://github.com/office-42/word42/blob/main/docs/BUILD.md">docs/BUILD.md</a>.</p>
+<pre><code>meson setup builddir
+meson compile -C builddir
+./builddir/src/word42</code></pre>
+
+<h2>How it works</h2>
+<p>The document is a <strong>piece table</strong> — the design several word processors have used
+since the 1980s — with formatting interned in an attribute table, symmetric undo records,
+structural marks for paragraphs and sections, and pagination in twips at a fixed reference
+resolution, so a page breaks in the same place at every zoom and on every screen.
+<a href="https://github.com/office-42/word42/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>
+tells the whole story.</p>
+
+<h2>Free software</h2>
+<p>Word42 is free software, licensed
+<a href="https://github.com/office-42/word42/blob/main/LICENSE">GPL-3.0-or-later</a>.
+Development happens on <a href="https://github.com/office-42/word42">GitHub</a>;
+contributions are welcome — see the
+<a href="https://github.com/office-42/word42/blob/main/CONTRIBUTING.md">contributing guide</a>.</p>
+
+<footer>
+<p>Word42 is not affiliated with, endorsed by, or derived from any Microsoft product or from
+<a href="https://github.com/AbiWord/abiword/">AbiWord</a>; both are named only as the yardsticks
+Word42 measures itself against and for the file formats it reads and writes. It contains no
+code, artwork, fonts or text from either; its icons, logo and stylesheet are its own work.</p>
+</footer>
+
+</div>
+</body>
+</html>
