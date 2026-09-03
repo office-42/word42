@@ -28,7 +28,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install meson ninja pkg-config gtk4 pango cairo glib gdk-pixbuf poppler enchant ccache dylibbundler
+          brew install meson ninja pkg-config gtk4 pango cairo glib gdk-pixbuf lexbor poppler enchant ccache dylibbundler
           # Hyphenation is optional; not every Homebrew has the formula.
           brew install hyphen || echo "no hyphen formula; building without hyphenation"
 

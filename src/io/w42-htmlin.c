@@ -2,6 +2,11 @@
  *
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * The page is parsed by Lexbor, the HTML5 parser the browsers' own rules
+ * specify, and this file walks the tree it builds: tokenizing hostile
+ * bytes is a solved problem, and turning elements into a document is the
+ * part that is word42's own.
  */
 
 #include "w42-htmlin.h"
@@ -9,6 +14,9 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include <lexbor/dom/dom.h>
+#include <lexbor/html/html.h>
 
 #include "w42-image.h"
 #include "w42-lang.h"
@@ -40,20 +48,16 @@ typedef struct {
   int            list_depth;
 
   int            table;             /* the table being read, or -1 */
+  int            tables_opened;     /* how many the page has had so far */
   int            table_row, table_col, table_cols;
   int            col_widths[1023];  /* what its <colgroup> said, in twips */
   int            n_col_widths;
   gboolean       in_cell;
   gboolean       table_before_block;
 
-  int            skip_depth;        /* inside <script> or <style> */
   char          *base;              /* the page's own directory, for its pictures */
   GHashTable    *notes;             /* note id -> its text, found before the body */
-  int            note_skip;         /* inside a note's own division: not body text */
-  char           note_tag[16];      /* the element that opened it */
-  gboolean       in_note_anchor;    /* inside the <a> that refers to a note */
   const char    *pending_bookmark;  /* an empty <a name>: a place, not a run */
-  gboolean       in_title;          /* inside <title>, whose text is the title */
   char          *meta[5];           /* title, subject, author, keywords, comments */
   int            pre_depth;         /* inside <pre>: whitespace kept */
   gboolean       cell_break_pending; /* a paragraph ended in a cell; the
@@ -129,18 +133,6 @@ pop_char (Html *h)
 static void
 add_text (Html *h, const char *text, gsize len)
 {
-  if (h->in_title)
-    {
-      if (h->meta[0] == NULL && len > 0)
-        h->meta[0] = g_strndup (text, len);
-      return;
-    }
-
-  /* Inside a note's reference, or inside the note's own text at the end
-   * of the page: neither belongs to the document's text. */
-  if (h->in_note_anchor || h->note_skip > 0)
-    return;
-
   for (gsize i = 0; i < len; )
     {
       gunichar c = g_utf8_get_char_validated (text + i, len - i);
@@ -284,8 +276,12 @@ end_row (Html *h)
 static void
 open_table (Html *h, int cols)
 {
-  if (h->table >= 0)
+  /* Each table costs the model a pass over what came before it, so a page
+   * of tens of thousands costs their square; past any document's worth,
+   * the rest are read as their text. */
+  if (h->table >= 0 || h->tables_opened >= 2048)
     return;
+  h->tables_opened++;
 
   end_paragraph (h);
   flush_text (h);
@@ -333,120 +329,76 @@ close_table (Html *h)
 }
 
 /* ---------------------------------------------------------------------- */
-/* The tokenizer                                                           */
+/* The tree Lexbor built, seen through small helpers                       */
 /* ---------------------------------------------------------------------- */
 
-/* The value of attribute `name` in a tag's attribute text, unescaped as
- * far as the entities in it; NULL when absent. */
+/* The value of attribute `name`, entity-decoded by the parser; NULL when
+ * the element does not carry it. */
 static char *
-attr_value (const char *attrs, const char *name)
+elem_attr (lxb_dom_element_t *el, const char *name)
 {
-  const char *p = attrs;
-  gsize nlen = strlen (name);
+  size_t len = 0;
+  const lxb_char_t *v = lxb_dom_element_get_attribute (el, (const lxb_char_t *) name,
+                                                       strlen (name), &len);
 
-  while ((p = strstr (p, name)) != NULL)
+  return v != NULL ? g_strndup ((const char *) v, len) : NULL;
+}
+
+/* The element's name, lowercased by the parser, into a small buffer: the
+ * names this reader acts on all fit, and one that does not is one it
+ * ignores anyway. */
+static void
+elem_name (lxb_dom_element_t *el, char *buf, gsize size)
+{
+  size_t len = 0;
+  const lxb_char_t *n = lxb_dom_element_local_name (el, &len);
+  gsize k = n != NULL ? MIN (len, size - 1) : 0;
+
+  memcpy (buf, n, k);
+  buf[k] = '\0';
+}
+
+/* The text of a whole subtree, tags left out: what a note says. */
+static char *
+node_text (lxb_dom_node_t *node)
+{
+  size_t len = 0;
+  lxb_char_t *raw = lxb_dom_node_text_content (node, &len);
+  char *out = g_strndup (raw != NULL ? (const char *) raw : "", raw != NULL ? len : 0);
+
+  if (raw != NULL)
+    lxb_dom_document_destroy_text (node->owner_document, raw);
+  return g_strstrip (out);
+}
+
+/* The first element of tag `tag` under `root`, walked without recursion:
+ * the tree's depth is the file's to choose, and the C stack is not. */
+static lxb_dom_node_t *
+first_descendant (lxb_dom_node_t *root, lxb_tag_id_t tag)
+{
+  lxb_dom_node_t *n = lxb_dom_node_first_child (root);
+
+  while (n != NULL)
     {
-      const char *q = p + nlen;
-      gboolean word_start = p == attrs || g_ascii_isspace (p[-1]);
-
-      p = q;
-      if (!word_start)
-        continue;
-      while (g_ascii_isspace (*q)) q++;
-      if (*q != '=')
-        continue;
-      q++;
-      while (g_ascii_isspace (*q)) q++;
-      if (*q == '"' || *q == '\'')
+      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT && lxb_dom_node_tag_id (n) == tag)
+        return n;
+      if (n->first_child != NULL)
         {
-          char quote = *q++;
-          const char *e = strchr (q, quote);
-
-          return g_strndup (q, e != NULL ? (gsize) (e - q) : strlen (q));
+          n = n->first_child;
+          continue;
         }
-      else
-        {
-          const char *e = q;
-          while (*e && !g_ascii_isspace (*e) && *e != '>') e++;
-          return g_strndup (q, (gsize) (e - q));
-        }
+      while (n != root && n->next == NULL)
+        n = n->parent;
+      if (n == root)
+        return NULL;
+      n = n->next;
     }
   return NULL;
 }
 
-static void
-append_entity (GString *out, const char *ent, gsize len)
-{
-  static const struct { const char *name; gunichar c; } table[] = {
-    { "amp", '&' }, { "lt", '<' }, { "gt", '>' }, { "quot", '"' }, { "apos", '\'' },
-    { "nbsp", 0xA0 }, { "emsp", 0x2003 }, { "ensp", 0x2002 }, { "thinsp", 0x2009 },
-    { "ndash", 0x2013 }, { "mdash", 0x2014 }, { "lsquo", 0x2018 }, { "rsquo", 0x2019 },
-    { "ldquo", 0x201C }, { "rdquo", 0x201D }, { "hellip", 0x2026 }, { "bull", 0x2022 },
-    { "copy", 0xA9 }, { "reg", 0xAE }, { "trade", 0x2122 }, { "euro", 0x20AC },
-    { "pound", 0xA3 }, { "yen", 0xA5 }, { "cent", 0xA2 }, { "sect", 0xA7 },
-    { "para", 0xB6 }, { "deg", 0xB0 }, { "plusmn", 0xB1 }, { "times", 0xD7 },
-    { "divide", 0xF7 }, { "laquo", 0xAB }, { "raquo", 0xBB }, { "middot", 0xB7 },
-    { "aring", 0xE5 }, { "Aring", 0xC5 }, { "aelig", 0xE6 }, { "AElig", 0xC6 },
-    { "oslash", 0xF8 }, { "Oslash", 0xD8 }, { "auml", 0xE4 }, { "ouml", 0xF6 },
-    { "uuml", 0xFC }, { "Auml", 0xC4 }, { "Ouml", 0xD6 }, { "Uuml", 0xDC },
-    { "szlig", 0xDF }, { "eacute", 0xE9 }, { "egrave", 0xE8 }, { "agrave", 0xE0 },
-    { "ccedil", 0xE7 }, { "ntilde", 0xF1 },
-  };
-
-  if (len > 1 && ent[0] == '#')
-    {
-      gunichar c = (ent[1] == 'x' || ent[1] == 'X')
-                     ? (gunichar) strtoul (ent + 2, NULL, 16)
-                     : (gunichar) strtoul (ent + 1, NULL, 10);
-      if (c > 0 && g_unichar_validate (c))
-        g_string_append_unichar (out, c);
-      return;
-    }
-
-  for (guint i = 0; i < G_N_ELEMENTS (table); i++)
-    if (strlen (table[i].name) == len && strncmp (table[i].name, ent, len) == 0)
-      {
-        g_string_append_unichar (out, table[i].c);
-        return;
-      }
-
-  /* Unknown: keep it as written. */
-  g_string_append_c (out, '&');
-  g_string_append_len (out, ent, len);
-  g_string_append_c (out, ';');
-}
-
-/* Text with its entities resolved, onto the end of `out`. */
-static void
-text_run_to (GString *out, const char *text, gsize len)
-{
-  for (gsize i = 0; i < len; i++)
-    {
-      if (text[i] == '&')
-        {
-          const char *semi = memchr (text + i, ';', len - i);
-
-          if (semi != NULL && semi - (text + i) < 12)
-            {
-              append_entity (out, text + i + 1, (gsize) (semi - text - i - 1));
-              i = (gsize) (semi - text);
-              continue;
-            }
-        }
-      g_string_append_c (out, text[i]);
-    }
-}
-
-/* Text between tags, with its entities resolved, handed to add_text. */
-static void
-text_run (Html *h, const char *text, gsize len)
-{
-  GString *out = g_string_new (NULL);
-
-  text_run_to (out, text, len);
-  add_text (h, out->str, out->len);
-  g_string_free (out, TRUE);
-}
+/* ---------------------------------------------------------------------- */
+/* CSS, as far as a word processor's HTML leans on it                      */
+/* ---------------------------------------------------------------------- */
 
 /* A CSS length in twips.  Points, inches, centimetres, millimetres and
  * pixels are what a word processor's HTML uses; anything else is left
@@ -714,121 +666,74 @@ apply_style (Html *h, const char *style, gboolean para)
   g_strfreev (decls);
 }
 
-/* The text of an element, with its tags taken out: what a note says. */
-static char *
-element_text (const char *start, const char *stop)
-{
-  GString *out = g_string_new (NULL);
-  const char *p = start;
-
-  while (p < stop)
-    {
-      const char *lt = memchr (p, '<', (gsize) (stop - p));
-      const char *gt;
-
-      if (lt == NULL)
-        {
-          text_run_to (out, p, (gsize) (stop - p));
-          break;
-        }
-      text_run_to (out, p, (gsize) (lt - p));
-      gt = memchr (lt, '>', (gsize) (stop - lt));
-      if (gt == NULL)
-        break;
-      p = gt + 1;
-    }
-  return g_strstrip (g_string_free (out, FALSE));
-}
+/* ---------------------------------------------------------------------- */
+/* Notes                                                                   */
+/* ---------------------------------------------------------------------- */
 
 /* A word processor writing HTML puts its footnotes at the end and links
  * to them: LibreOffice as <div id="sdfootnote1">, Word42 as a paragraph
  * with id="note1".  Both are gathered here, before the body is walked,
  * so that a reference can become a real note when it is met. */
 static void
-scan_notes (Html *h, const char *data, gsize len)
+harvest_notes (Html *h, lxb_dom_node_t *root)
 {
-  static const char *const KEYS[] = { "id=\"sdfootnote", "id=\"sdendnote",
-                                      "id=\"note", "id=\"notee" };
-  const char *end = data + len;
+  lxb_dom_node_t *n = lxb_dom_node_first_child (root);
 
   h->notes = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
 
-  for (guint k = 0; k < G_N_ELEMENTS (KEYS); k++)
+  while (n != NULL)
     {
-      const char *p = data;
-
-      while ((p = g_strstr_len (p, end - p, KEYS[k])) != NULL)
+      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT)
         {
-          const char *quote = strchr (p, '"');
-          const char *id_start = quote != NULL ? quote + 1 : NULL;
-          const char *id_end = id_start != NULL ? strchr (id_start, '"') : NULL;
-          const char *lt = p;
-          const char *gt;
-          char *id, *tag, *text;
-          const char *close;
+          char *id = elem_attr (lxb_dom_interface_element (n), "id");
 
-          if (id_end == NULL || id_end > end)
-            break;
-
-          /* Back to the element this attribute belongs to. */
-          while (lt > data && *lt != '<')
-            lt--;
-          gt = memchr (lt, '>', (gsize) (end - lt));
-          if (gt == NULL)
-            break;
-
-          {
-            const char *q = lt + 1;
-            GString *name = g_string_new (NULL);
-
-            while (q < gt && g_ascii_isalnum (*q))
-              g_string_append_c (name, g_ascii_tolower (*q++));
-            tag = g_string_free (name, FALSE);
-          }
-
-          id = g_strndup (id_start, (gsize) (id_end - id_start));
-
-          {
-            char *closer = g_strdup_printf ("</%s", tag);
-
-            close = g_strstr_len (gt, end - gt, closer);
-            g_free (closer);
-          }
-          text = element_text (gt + 1,
-                               close != NULL ? close
-                               : end - gt > 65536 ? gt + 65536 : end);
-
-          /* A note's text begins with its own number, which is the
-           * anchor back to the reference: that is not part of it. */
-          {
-            char *q = text;
-
-            while (*q != '\0' && (g_ascii_isdigit (*q) || strchr (".)ivxIVX", *q) != NULL))
-              q++;
-            while (*q == ' ')
-              q++;
-            if (q != text && *q != '\0')
-              {
-                char *rest = g_strdup (q);
-
-                g_free (text);
-                text = rest;
-              }
-          }
-
-          if (*text != '\0' && !g_hash_table_contains (h->notes, id))
-            g_hash_table_insert (h->notes, id, text);
-          else
+          if (id != NULL &&
+              (g_str_has_prefix (id, "sdfootnote") ||
+               g_str_has_prefix (id, "sdendnote") ||
+               g_str_has_prefix (id, "note")) &&
+              !g_hash_table_contains (h->notes, id))
             {
-              g_free (id);
-              g_free (text);
+              char *text = node_text (n);
+
+              /* A note's text begins with its own number, which is the
+               * anchor back to the reference: that is not part of it. */
+              {
+                char *q = text;
+
+                while (*q != '\0' && (g_ascii_isdigit (*q) || strchr (".)ivxIVX", *q) != NULL))
+                  q++;
+                while (*q == ' ')
+                  q++;
+                if (q != text && *q != '\0')
+                  {
+                    char *rest = g_strdup (q);
+
+                    g_free (text);
+                    text = rest;
+                  }
+              }
+
+              if (*text != '\0')
+                {
+                  g_hash_table_insert (h->notes, id, text);
+                  id = NULL;
+                }
+              else
+                g_free (text);
             }
-          g_free (tag);
-          /* The element's '>' can sit before the match when the key was
-           * plain body text; going back to it would find the same match
-           * for ever. */
-          p = gt > p ? gt : p + 1;
+          g_free (id);
         }
+
+      if (n->first_child != NULL)
+        {
+          n = n->first_child;
+          continue;
+        }
+      while (n != root && n->next == NULL)
+        n = n->parent;
+      if (n == root)
+        break;
+      n = n->next;
     }
 }
 
@@ -850,6 +755,10 @@ note_id_for (const char *href)
     id[n - 3] = '\0';
   return id;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Pictures                                                                */
+/* ---------------------------------------------------------------------- */
 
 /* A picture from a data: URI, or from a file kept beside the page: a
  * word processor writing HTML puts its pictures next to the document
@@ -935,185 +844,157 @@ picture (Html *h, const char *src, const char *width, const char *height)
 
 /* Columns of a table: the cells of its first row. */
 static int
-count_columns (const char *p, const char *end)
+count_columns (lxb_dom_node_t *table)
 {
+  lxb_dom_node_t *tr = first_descendant (table, LXB_TAG_TR);
   int cols = 0;
-  const char *row_end;
 
-  row_end = g_strstr_len (p, end - p, "</tr");
-  if (row_end == NULL)
-    row_end = end;
-  while (p < row_end)
+  for (lxb_dom_node_t *n = tr != NULL ? lxb_dom_node_first_child (tr) : NULL;
+       n != NULL; n = n->next)
     {
-      const char *lt = memchr (p, '<', row_end - p);
+      lxb_tag_id_t tag = lxb_dom_node_tag_id (n);
 
-      if (lt == NULL)
-        break;
-      if ((g_ascii_strncasecmp (lt, "<td", 3) == 0 || g_ascii_strncasecmp (lt, "<th", 3) == 0) &&
-          (lt[3] == '>' || g_ascii_isspace (lt[3]) || lt[3] == '/'))
+      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT &&
+          (tag == LXB_TAG_TD || tag == LXB_TAG_TH))
         {
-          const char *gt = memchr (lt, '>', row_end - lt);
-          char *tag = gt != NULL ? g_strndup (lt, gt - lt) : NULL;
-          char *span = tag != NULL ? attr_value (tag + 3, "colspan") : NULL;
+          char *span = elem_attr (lxb_dom_interface_element (n), "colspan");
 
           cols += span != NULL && atoi (span) > 1 ? CLAMP (atoi (span), 1, 1023) : 1;
           cols = MIN (cols, 1023);
           g_free (span);
-          g_free (tag);
         }
-      p = lt + 1;
     }
   return cols;
 }
 
-static void
-handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
-            gboolean self_closing, const char *after, const char *end)
+/* ---------------------------------------------------------------------- */
+/* The walk                                                                */
+/* ---------------------------------------------------------------------- */
+
+typedef enum {
+  WALK_DESCEND,       /* walk the element's children */
+  WALK_SKIP,          /* the whole subtree is handled, or not wanted */
+} WalkEnter;
+
+static gboolean
+known_inline (const char *name)
+{
+  return g_str_equal (name, "b") || g_str_equal (name, "strong") || g_str_equal (name, "i") ||
+         g_str_equal (name, "em") || g_str_equal (name, "u") || g_str_equal (name, "s") ||
+         g_str_equal (name, "strike") || g_str_equal (name, "del") || g_str_equal (name, "a") ||
+         g_str_equal (name, "sup") || g_str_equal (name, "sub") || g_str_equal (name, "span") ||
+         g_str_equal (name, "font") || g_str_equal (name, "code") || g_str_equal (name, "tt") ||
+         g_str_equal (name, "small") || g_str_equal (name, "big") || g_str_equal (name, "mark");
+}
+
+static gboolean
+block_element (const char *name)
+{
+  return g_str_equal (name, "p") || g_str_equal (name, "div") ||
+         (name[0] == 'h' && name[1] >= '1' && name[1] <= '6' && name[2] == '\0') ||
+         g_str_equal (name, "li") || g_str_equal (name, "blockquote") ||
+         g_str_equal (name, "pre");
+}
+
+static WalkEnter
+element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushed)
 {
   char *style;
 
-  if (g_str_equal (name, "title") && closing)
-    {
-      h->in_title = FALSE;
-      return;
-    }
+  *pushed = FALSE;
 
-  if (h->skip_depth > 0)
-    {
-      if (closing && (g_str_equal (name, "script") || g_str_equal (name, "style")))
-        h->skip_depth--;
-      return;
-    }
-
-  if (!closing && (g_str_equal (name, "script") || g_str_equal (name, "style")))
-    {
-      h->skip_depth++;
-      return;
-    }
+  /* A script or a stylesheet is not text; a title was read before the
+   * body was walked. */
+  if (g_str_equal (name, "script") || g_str_equal (name, "style") ||
+      g_str_equal (name, "title"))
+    return WALK_SKIP;
 
   /* The page's own copy of a note, at its end: the document has the note
-   * already -- scan_notes harvested it before the body was read -- so the
-   * copy is passed over.  This has to come before the block elements are
-   * handled: a note's copy is a <p> or a <div>, and those never fall
-   * through to anything below them. */
-  if (h->note_skip > 0)
+   * already -- harvest_notes gathered it before the body was walked -- so
+   * the copy is passed over whole. */
+  if (h->notes != NULL)
     {
-      if (g_str_equal (name, h->note_tag))
-        {
-          if (closing)
-            {
-              h->note_skip--;
-              if (h->note_skip == 0)
-                h->note_tag[0] = '\0';
-            }
-          else if (!self_closing)
-            h->note_skip++;
-        }
-      return;
-    }
-  if (!closing && !self_closing && h->notes != NULL)
-    {
-      char *id = attr_value (attrs, "id");
+      char *id = elem_attr (el, "id");
 
       if (id != NULL && g_hash_table_contains (h->notes, id))
         {
           end_paragraph (h);
-          g_strlcpy (h->note_tag, name, sizeof h->note_tag);
-          h->note_skip = 1;
           g_free (id);
-          return;
+          return WALK_SKIP;
         }
       g_free (id);
     }
 
   /* Block elements end the paragraph they are in. */
-  if (g_str_equal (name, "p") || g_str_equal (name, "div") ||
-      (name[0] == 'h' && name[1] >= '1' && name[1] <= '6' && name[2] == '\0') ||
-      g_str_equal (name, "li") || g_str_equal (name, "blockquote") ||
-      g_str_equal (name, "pre"))
+  if (block_element (name))
     {
-      if (!closing)
+      end_paragraph (h);
+      if (h->table >= 0)
+        open_cell (h);
+      if (name[0] == 'h' && name[2] == '\0')
         {
-          end_paragraph (h);
-          if (h->table >= 0)
-            open_cell (h);
-          if (name[0] == 'h' && name[2] == '\0')
-            {
-              static const char *heads[] = { "Heading 1", "Heading 2", "Heading 3" };
-              int level = name[1] - '0';
-              const W42Style *st;
+          static const char *heads[] = { "Heading 1", "Heading 2", "Heading 3" };
+          int level = name[1] - '0';
+          const W42Style *st;
 
-              h->pa.style = g_intern_string (heads[CLAMP (level, 1, 3) - 1]);
-              h->pa_dirty = TRUE;
-              /* the heading's own character formatting, as applying the
-               * style would give it */
-              for (guint i = 0; i < w42_stylesheet_size (w42_pt_stylesheet (h->pt)); i++)
+          h->pa.style = g_intern_string (heads[CLAMP (level, 1, 3) - 1]);
+          h->pa_dirty = TRUE;
+          /* the heading's own character formatting, as applying the
+           * style would give it */
+          for (guint i = 0; i < w42_stylesheet_size (w42_pt_stylesheet (h->pt)); i++)
+            {
+              st = w42_stylesheet_get (w42_pt_stylesheet (h->pt), i);
+              if (g_ascii_strcasecmp (st->name, h->pa.style) == 0)
                 {
-                  st = w42_stylesheet_get (w42_pt_stylesheet (h->pt), i);
-                  if (g_ascii_strcasecmp (st->name, h->pa.style) == 0)
-                    {
-                      h->ch[h->depth] = st->ch;
-                      h->pa = st->pa;
-                      h->pa.style = st->name;
-                      break;
-                    }
+                  h->ch[h->depth] = st->ch;
+                  h->pa = st->pa;
+                  h->pa.style = st->name;
+                  break;
                 }
             }
-          if (g_str_equal (name, "li"))
-            {
-              h->pa.list = h->list_kind != W42_LIST_NONE ? h->list_kind : W42_LIST_BULLET;
-              h->pa.list_level = (guint8) CLAMP (h->list_depth - 1, 0, 8);
-              h->pa.indent_left = 360 * (h->pa.list_level + 1);
-              h->pa.list_start = (guint8) h->list_start;
-              h->list_start = 0;
-              h->pa.indent_left = 360 * MAX (h->list_depth, 1);
-              h->pa.indent_first = -360;
-              h->pa_dirty = TRUE;
-            }
-          if (g_str_equal (name, "blockquote"))
-            {
-              h->pa.indent_left = 720;
-              h->pa.indent_right = 720;
-              h->pa_dirty = TRUE;
-            }
-          if (g_str_equal (name, "pre"))
-            {
-              h->pre_depth++;
-              h->ch[h->depth].family = g_intern_string ("Courier New");
-            }
-          if ((style = attr_value (attrs, "style")) != NULL)
-            {
-              apply_style (h, style, TRUE);
-              g_free (style);
-            }
-          if ((style = attr_value (attrs, "align")) != NULL)
-            {
-              if (g_ascii_strcasecmp (style, "center") == 0) h->pa.align = W42_ALIGN_CENTER;
-              else if (g_ascii_strcasecmp (style, "right") == 0) h->pa.align = W42_ALIGN_RIGHT;
-              else if (g_ascii_strcasecmp (style, "justify") == 0) h->pa.align = W42_ALIGN_JUSTIFY;
-              h->pa_dirty = TRUE;
-              g_free (style);
-            }
-          if ((style = attr_value (attrs, "dir")) != NULL)
-            {
-              h->pa.rtl = g_ascii_strcasecmp (style, "rtl") == 0;
-              h->pa_dirty = TRUE;
-              g_free (style);
-            }
         }
-      else
+      if (g_str_equal (name, "li"))
         {
-          end_paragraph (h);
-          if (g_str_equal (name, "pre") && h->pre_depth > 0)
-            h->pre_depth--;
-          if (name[0] == 'h' && name[2] == '\0')
-            {
-              W42Fmt def;
-              w42_fmt_init_default (&def);
-              h->ch[h->depth] = def.ch;
-            }
+          h->pa.list = h->list_kind != W42_LIST_NONE ? h->list_kind : W42_LIST_BULLET;
+          h->pa.list_level = (guint8) CLAMP (h->list_depth - 1, 0, 8);
+          h->pa.indent_left = 360 * (h->pa.list_level + 1);
+          h->pa.list_start = (guint8) h->list_start;
+          h->list_start = 0;
+          h->pa.indent_left = 360 * MAX (h->list_depth, 1);
+          h->pa.indent_first = -360;
+          h->pa_dirty = TRUE;
         }
-      return;
+      if (g_str_equal (name, "blockquote"))
+        {
+          h->pa.indent_left = 720;
+          h->pa.indent_right = 720;
+          h->pa_dirty = TRUE;
+        }
+      if (g_str_equal (name, "pre"))
+        {
+          h->pre_depth++;
+          h->ch[h->depth].family = g_intern_string ("Courier New");
+        }
+      if ((style = elem_attr (el, "style")) != NULL)
+        {
+          apply_style (h, style, TRUE);
+          g_free (style);
+        }
+      if ((style = elem_attr (el, "align")) != NULL)
+        {
+          if (g_ascii_strcasecmp (style, "center") == 0) h->pa.align = W42_ALIGN_CENTER;
+          else if (g_ascii_strcasecmp (style, "right") == 0) h->pa.align = W42_ALIGN_RIGHT;
+          else if (g_ascii_strcasecmp (style, "justify") == 0) h->pa.align = W42_ALIGN_JUSTIFY;
+          h->pa_dirty = TRUE;
+          g_free (style);
+        }
+      if ((style = elem_attr (el, "dir")) != NULL)
+        {
+          h->pa.rtl = g_ascii_strcasecmp (style, "rtl") == 0;
+          h->pa_dirty = TRUE;
+          g_free (style);
+        }
+      return WALK_DESCEND;
     }
 
   if (g_str_equal (name, "br"))
@@ -1123,156 +1004,101 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
       g_string_append_unichar (h->pending, 0x2028);
       h->space_pending = FALSE;
       h->at_para_start = FALSE;
-      return;
+      return WALK_SKIP;
     }
 
   if (g_str_equal (name, "ul") || g_str_equal (name, "ol"))
     {
-      end_paragraph (h);
-      if (!closing)
-        {
-          char *type = attr_value (attrs, "type");
-          char *start = attr_value (attrs, "start");
-          char *ul_style = attr_value (attrs, "style");
+      char *type = elem_attr (el, "type");
+      char *start = elem_attr (el, "start");
+      char *ul_style = elem_attr (el, "style");
 
-          h->list_kind = g_str_equal (name, "ul") ? W42_LIST_BULLET : W42_LIST_NUMBER;
-          if (g_str_equal (name, "ol") && type != NULL)
-            h->list_kind = g_str_equal (type, "a") ? W42_LIST_LOWER_LETTER
-                         : g_str_equal (type, "A") ? W42_LIST_UPPER_LETTER
-                         : g_str_equal (type, "i") ? W42_LIST_LOWER_ROMAN
-                         : g_str_equal (type, "I") ? W42_LIST_UPPER_ROMAN
-                         : W42_LIST_NUMBER;
-          if (g_str_equal (name, "ul") && ul_style != NULL)
-            {
-              if (strstr (ul_style, "circle") != NULL) h->list_kind = W42_LIST_BULLET_CIRCLE;
-              else if (strstr (ul_style, "square") != NULL) h->list_kind = W42_LIST_BULLET_SQUARE;
-              else if (strstr (ul_style, "2013") != NULL || strstr (ul_style, "'-'") != NULL)
-                h->list_kind = W42_LIST_BULLET_DASH;
-            }
-          h->list_start = start != NULL ? CLAMP (atoi (start), 0, 255) : 0;
-          g_free (type);
-          g_free (start);
-          g_free (ul_style);
-          if (h->list_depth < 9)
-            h->list_kinds[h->list_depth] = h->list_kind;
-          h->list_depth++;
-        }
-      else if (h->list_depth > 0)
+      end_paragraph (h);
+      h->list_kind = g_str_equal (name, "ul") ? W42_LIST_BULLET : W42_LIST_NUMBER;
+      if (g_str_equal (name, "ol") && type != NULL)
+        h->list_kind = g_str_equal (type, "a") ? W42_LIST_LOWER_LETTER
+                     : g_str_equal (type, "A") ? W42_LIST_UPPER_LETTER
+                     : g_str_equal (type, "i") ? W42_LIST_LOWER_ROMAN
+                     : g_str_equal (type, "I") ? W42_LIST_UPPER_ROMAN
+                     : W42_LIST_NUMBER;
+      if (g_str_equal (name, "ul") && ul_style != NULL)
         {
-          h->list_depth--;
-          /* Back out to the list around this one, with its own kind. */
-          h->list_kind = h->list_depth > 0 && h->list_depth <= 9
-                           ? h->list_kinds[h->list_depth - 1] : W42_LIST_NONE;
+          if (strstr (ul_style, "circle") != NULL) h->list_kind = W42_LIST_BULLET_CIRCLE;
+          else if (strstr (ul_style, "square") != NULL) h->list_kind = W42_LIST_BULLET_SQUARE;
+          else if (strstr (ul_style, "2013") != NULL || strstr (ul_style, "'-'") != NULL)
+            h->list_kind = W42_LIST_BULLET_DASH;
         }
-      return;
+      h->list_start = start != NULL ? CLAMP (atoi (start), 0, 255) : 0;
+      g_free (type);
+      g_free (start);
+      g_free (ul_style);
+      if (h->list_depth < 9)
+        h->list_kinds[h->list_depth] = h->list_kind;
+      h->list_depth++;
+      return WALK_DESCEND;
     }
 
   if (g_str_equal (name, "table"))
     {
-      if (!closing)
-        {
-          char *cls = attr_value (attrs, "class");
+      char *cls = elem_attr (el, "class");
 
-          /* Counting the columns scans ahead to the row's end, so a file
-           * of nothing but <table> tags must not count once per tag. */
-          if (h->table < 0)
-            open_table (h, count_columns (after, end));
-          /* Word42 writes class="ruled" for a table that is; anything else
-           * rules its cells itself, or not at all. */
-          if (h->table >= 0)
-            w42_pt_table_set_borders (h->pt, h->table,
-                                      cls != NULL && strstr (cls, "ruled") != NULL);
-          g_free (cls);
-        }
-      else
-        close_table (h);
-      return;
+      if (h->table < 0)
+        open_table (h, count_columns (lxb_dom_interface_node (el)));
+      /* Word42 writes class="ruled" for a table that is; anything else
+       * rules its cells itself, or not at all. */
+      if (h->table >= 0)
+        w42_pt_table_set_borders (h->pt, h->table,
+                                  cls != NULL && strstr (cls, "ruled") != NULL);
+      g_free (cls);
+      return WALK_DESCEND;
     }
-  if (g_str_equal (name, "col") && !closing && h->table >= 0)
+  if (g_str_equal (name, "col") && h->table >= 0)
     {
       /* A <colgroup> gives the columns their widths; one <col> with no
        * width of its own still takes its place among them. */
-      char *cw = attr_value (attrs, "style");
+      char *cw = elem_attr (el, "style");
       const char *w = cw != NULL ? strstr (cw, "width:") : NULL;
 
       if (h->n_col_widths < 1023)
         h->col_widths[h->n_col_widths++] = w != NULL ? css_twips (w + 6) : 0;
       g_free (cw);
-      return;
-    }
-  if (g_str_equal (name, "colgroup") && closing && h->table >= 0 && h->n_col_widths > 0)
-    {
-      w42_pt_table_set_widths (h->pt, h->table, h->col_widths,
-                               MIN (h->n_col_widths, 1023));
-      h->n_col_widths = 0;
-      return;
+      return WALK_SKIP;
     }
   if (g_str_equal (name, "tr"))
     {
-      if (closing)
+      if (h->table >= 0 && (h->in_cell || h->table_col > 0))
         end_row (h);
-      else if (h->table >= 0 && (h->in_cell || h->table_col > 0))
-        end_row (h);
-      return;
+      return WALK_DESCEND;
     }
   if (g_str_equal (name, "td") || g_str_equal (name, "th"))
     {
-      if (!closing)
+      close_cell (h);
+      open_cell (h);
+      if (g_str_equal (name, "th"))
+        h->ch[h->depth].bold = 1;
+      if ((style = elem_attr (el, "style")) != NULL)
         {
-          close_cell (h);
-          open_cell (h);
-          if (g_str_equal (name, "th"))
-            h->ch[h->depth].bold = 1;
-          if ((style = attr_value (attrs, "style")) != NULL)
+          /* A <td>'s style is the cell's, not the paragraph's inside
+           * it: its rules and its background belong to the mark. */
+          W42ParaFmt saved = h->pa;
+          gboolean saved_dirty = h->pa_dirty;
+          gsize cell_pos = h->pos >= 2 ? h->pos - 2 : 0;
+
+          apply_style (h, style, TRUE);
+          if (h->in_cell)
             {
-              /* A <td>'s style is the cell's, not the paragraph's inside
-               * it: its rules and its background belong to the mark. */
-              W42ParaFmt saved = h->pa;
-              gboolean saved_dirty = h->pa_dirty;
-              gsize cell_pos = h->pos >= 2 ? h->pos - 2 : 0;
-
-              apply_style (h, style, TRUE);
-              if (h->in_cell)
-                {
-                  w42_pt_cell_set_borders_at (h->pt, cell_pos,
-                                              (h->pa.border & W42_BORDER_BOX) |
-                                              W42_BORDER_CELL_SET);
-                  if (h->pa.has_shading_color)
-                    w42_pt_cell_set_fill_at (h->pt, cell_pos, TRUE,
-                                             h->pa.shading_color);
-                }
-              h->pa = saved;
-              h->pa_dirty = saved_dirty;
-              g_free (style);
+              w42_pt_cell_set_borders_at (h->pt, cell_pos,
+                                          (h->pa.border & W42_BORDER_BOX) |
+                                          W42_BORDER_CELL_SET);
+              if (h->pa.has_shading_color)
+                w42_pt_cell_set_fill_at (h->pt, cell_pos, TRUE,
+                                         h->pa.shading_color);
             }
+          h->pa = saved;
+          h->pa_dirty = saved_dirty;
+          g_free (style);
         }
-      else
-        {
-          close_cell (h);
-          h->ch[h->depth].bold = 0;
-        }
-      return;
-    }
-
-  /* Inline elements push and pop the character formatting. */
-  if (closing)
-    {
-      if (g_str_equal (name, "a") && h->in_note_anchor)
-        {
-          h->in_note_anchor = FALSE;
-          return;
-        }
-      if (g_str_equal (name, "b") || g_str_equal (name, "strong") || g_str_equal (name, "i") ||
-          g_str_equal (name, "em") || g_str_equal (name, "u") || g_str_equal (name, "s") ||
-          g_str_equal (name, "strike") || g_str_equal (name, "del") || g_str_equal (name, "a") ||
-          g_str_equal (name, "sup") || g_str_equal (name, "sub") || g_str_equal (name, "span") ||
-          g_str_equal (name, "font") || g_str_equal (name, "code") || g_str_equal (name, "tt") ||
-          g_str_equal (name, "small") || g_str_equal (name, "big") || g_str_equal (name, "mark"))
-        {
-          flush_text (h);
-          pop_char (h);
-        }
-      return;
+      return WALK_DESCEND;
     }
 
   if (g_str_equal (name, "meta"))
@@ -1283,8 +1109,8 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
         { "author", 2 }, { "changedby", 2 }, { "creator", 2 },
         { "keywords", 3 }, { "description", 4 }, { "comments", 4 },
       };
-      char *what = attr_value (attrs, "name");
-      char *content = attr_value (attrs, "content");
+      char *what = elem_attr (el, "name");
+      char *content = elem_attr (el, "content");
 
       if (what != NULL && content != NULL && *content != '\0')
         for (guint i = 0; i < G_N_ELEMENTS (NAMES); i++)
@@ -1293,21 +1119,15 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
             h->meta[NAMES[i].slot] = g_strdup (content);
       g_free (what);
       g_free (content);
-      return;
-    }
-
-  if (g_str_equal (name, "title"))
-    {
-      h->in_title = TRUE;
-      return;
+      return WALK_SKIP;
     }
 
   if (g_str_equal (name, "img"))
     {
-      char *src = attr_value (attrs, "src");
-      char *w = attr_value (attrs, "width");
-      char *hh = attr_value (attrs, "height");
-      char *st = attr_value (attrs, "style");
+      char *src = elem_attr (el, "src");
+      char *w = elem_attr (el, "width");
+      char *hh = elem_attr (el, "height");
+      char *st = elem_attr (el, "style");
 
       /* A style says the size to the twip; the attributes only to the
        * screen pixel, so they are the fallback. */
@@ -1323,11 +1143,19 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
         open_cell (h);
       picture (h, src, w, hh);
       g_free (src); g_free (w); g_free (hh); g_free (st);
-      return;
+      return WALK_SKIP;
+    }
+
+  if (!known_inline (name))
+    {
+      /* Something else, or unknown: no formatting of its own, but what
+       * is inside it is still text. */
+      return WALK_DESCEND;
     }
 
   flush_text (h);
   push_char (h);
+  *pushed = TRUE;
   if (g_str_equal (name, "b") || g_str_equal (name, "strong"))
     h->ch[h->depth].bold = 1;
   else if (g_str_equal (name, "i") || g_str_equal (name, "em"))
@@ -1350,8 +1178,8 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
     h->ch[h->depth].size = h->ch[h->depth].size + 4;
   else if (g_str_equal (name, "a"))
     {
-      char *href = attr_value (attrs, "href");
-      char *anchor = attr_value (attrs, "name");
+      char *href = elem_attr (el, "href");
+      char *anchor = elem_attr (el, "name");
       char *note_id = note_id_for (href);
       const char *note_text = note_id != NULL && h->notes != NULL
         ? g_hash_table_lookup (h->notes, note_id) : NULL;
@@ -1363,7 +1191,6 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
            * is left out, since a note numbers itself. */
           gsize body;
 
-          flush_text (h);
           body = g_str_has_prefix (note_id, "sdendnote") || g_str_has_prefix (note_id, "notee")
                    ? w42_pt_insert_endnote (h->pt, h->pos, html_ap (h))
                    : w42_pt_insert_footnote (h->pt, h->pos, html_ap (h));
@@ -1383,14 +1210,16 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
               w42_pt_insert_text (h->pt, body, note_text,
                                   w42_ap_table_intern (w42_pt_ap_table (h->pt), &nf));
               h->pos += 1;             /* the mark the note left behind */
-              h->in_note_anchor = TRUE;
               h->at_para_start = FALSE;
               h->in_para = TRUE;
             }
           g_free (note_id);
           g_free (href);
           g_free (anchor);
-          return;
+          /* The anchor's own text is the number the page shows. */
+          pop_char (h);
+          *pushed = FALSE;
+          return WALK_SKIP;
         }
       g_free (note_id);
 
@@ -1402,7 +1231,7 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
           g_ascii_strncasecmp (href, "data:", 5) != 0)
         h->ch[h->depth].link = g_intern_string (href);
       if (anchor == NULL)
-        anchor = attr_value (attrs, "id");
+        anchor = elem_attr (el, "id");
       /* <a name="x"> is where a link inside the page lands: a bookmark.
        * An empty one marks the place before what comes next. */
       if (anchor != NULL && *anchor != '\0')
@@ -1415,24 +1244,19 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
     }
   else if (g_str_equal (name, "font"))
     {
-      char *face = attr_value (attrs, "face");
-      char *color = attr_value (attrs, "color");
+      char *face = elem_attr (el, "face");
+      char *color = elem_attr (el, "color");
 
-      if (face != NULL) h->ch[h->depth].family = g_intern_string (face);
+      if (face != NULL && *face != '\0') h->ch[h->depth].family = g_intern_string (face);
       if (color != NULL && color[0] == '#' && strlen (color) == 7)
         h->ch[h->depth].color = (guint32) strtoul (color + 1, NULL, 16);
       g_free (face); g_free (color);
-    }
-  else if (!g_str_equal (name, "span"))
-    {
-      /* Something else inline, or unknown: no formatting of its own, but
-       * it still pops, so push the same. */
     }
 
   {
     /* An element may say the language of what is in it, and any element
      * may: it is not the span's alone. */
-    char *lang = attr_value (attrs, "lang");
+    char *lang = elem_attr (el, "lang");
     const char *known = lang != NULL ? w42_lang_normalise (lang) : NULL;
 
     if (known != NULL)
@@ -1440,76 +1264,296 @@ handle_tag (Html *h, const char *name, const char *attrs, gboolean closing,
     g_free (lang);
   }
 
-  if ((style = attr_value (attrs, "style")) != NULL)
+  if ((style = elem_attr (el, "style")) != NULL)
     {
       apply_style (h, style, FALSE);
       g_free (style);
     }
 
-  /* Unknown elements were pushed too; their closing tag is ignored above,
-   * so pop now unless it is one we track. */
-  if (!(g_str_equal (name, "b") || g_str_equal (name, "strong") || g_str_equal (name, "i") ||
-        g_str_equal (name, "em") || g_str_equal (name, "u") || g_str_equal (name, "s") ||
-        g_str_equal (name, "strike") || g_str_equal (name, "del") || g_str_equal (name, "a") ||
-        g_str_equal (name, "sup") || g_str_equal (name, "sub") || g_str_equal (name, "span") ||
-        g_str_equal (name, "font") || g_str_equal (name, "code") || g_str_equal (name, "tt") ||
-        g_str_equal (name, "small") || g_str_equal (name, "big") || g_str_equal (name, "mark")))
-    pop_char (h);
+  return WALK_DESCEND;
+}
+
+static void
+element_end (Html *h, const char *name, gboolean pushed)
+{
+  if (block_element (name))
+    {
+      end_paragraph (h);
+      if (g_str_equal (name, "pre") && h->pre_depth > 0)
+        h->pre_depth--;
+      if (name[0] == 'h' && name[2] == '\0')
+        {
+          W42Fmt def;
+          w42_fmt_init_default (&def);
+          h->ch[h->depth] = def.ch;
+        }
+      return;
+    }
+  if (g_str_equal (name, "ul") || g_str_equal (name, "ol"))
+    {
+      end_paragraph (h);
+      if (h->list_depth > 0)
+        {
+          h->list_depth--;
+          /* Back out to the list around this one, with its own kind. */
+          h->list_kind = h->list_depth > 0 && h->list_depth <= 9
+                           ? h->list_kinds[h->list_depth - 1] : W42_LIST_NONE;
+        }
+      return;
+    }
+  if (g_str_equal (name, "table"))
+    {
+      close_table (h);
+      return;
+    }
+  if (g_str_equal (name, "colgroup"))
+    {
+      if (h->table >= 0 && h->n_col_widths > 0)
+        {
+          w42_pt_table_set_widths (h->pt, h->table, h->col_widths,
+                                   MIN (h->n_col_widths, 1023));
+          h->n_col_widths = 0;
+        }
+      return;
+    }
+  if (g_str_equal (name, "tr"))
+    {
+      end_row (h);
+      return;
+    }
+  if (g_str_equal (name, "td") || g_str_equal (name, "th"))
+    {
+      close_cell (h);
+      h->ch[h->depth].bold = 0;
+      return;
+    }
+  if (pushed)
+    {
+      flush_text (h);
+      pop_char (h);
+    }
+}
+
+/* The body, walked without recursion: how deep the file nests is its own
+ * business, and must not become the C stack's. */
+static void
+walk_body (Html *h, lxb_dom_node_t *root)
+{
+  GByteArray *pushed = g_byte_array_new ();
+  lxb_dom_node_t *node = lxb_dom_node_first_child (root);
+
+  while (node != NULL && node != root)
+    {
+      gboolean descend = FALSE;
+
+      if (node->type == LXB_DOM_NODE_TYPE_TEXT)
+        {
+          lexbor_str_t *s = &lxb_dom_interface_text (node)->char_data.data;
+
+          add_text (h, (const char *) s->data, s->length);
+        }
+      else if (node->type == LXB_DOM_NODE_TYPE_ELEMENT)
+        {
+          char name[24];
+          gboolean did_push = FALSE;
+
+          elem_name (lxb_dom_interface_element (node), name, sizeof name);
+          if (element_start (h, name, lxb_dom_interface_element (node), &did_push) == WALK_DESCEND &&
+              node->first_child != NULL)
+            {
+              guint8 f = did_push ? 1 : 0;
+
+              g_byte_array_append (pushed, &f, 1);
+              descend = TRUE;
+            }
+          else
+            element_end (h, name, did_push);
+        }
+
+      if (descend)
+        {
+          node = node->first_child;
+          continue;
+        }
+      while (node->next == NULL)
+        {
+          node = node->parent;
+          if (node == NULL || node == root)
+            goto out;
+          {
+            char name[24];
+            guint8 f = 0;
+
+            if (pushed->len > 0)
+              {
+                f = pushed->data[pushed->len - 1];
+                g_byte_array_set_size (pushed, pushed->len - 1);
+              }
+            elem_name (lxb_dom_interface_element (node), name, sizeof name);
+            element_end (h, name, f != 0);
+          }
+        }
+      node = node->next;
+    }
+out:
+  g_byte_array_free (pushed, TRUE);
 }
 
 /* ---------------------------------------------------------------------- */
 
-/* The head is not walked with the body -- the reader starts at <body> --
- * so what it says about the document is picked out of it here: the title
- * and the <meta> names a word processor writes when it saves a page. */
+/* What the head says about the document: the title, and the <meta> names
+ * a word processor writes when it saves a page. */
 static void
-read_head (Html *h, const char *start, const char *stop)
+read_head (Html *h, lxb_html_document_t *ldoc)
 {
-  const char *p = start;
+  size_t len = 0;
+  const lxb_char_t *title = lxb_html_document_title (ldoc, &len);
+  lxb_html_head_element_t *head = lxb_html_document_head_element (ldoc);
 
-  while (p < stop)
+  if (title != NULL && len > 0 && h->meta[0] == NULL)
     {
-      const char *lt = memchr (p, '<', (gsize) (stop - p));
-      const char *gt;
+      char *t = g_strstrip (g_strndup ((const char *) title, len));
 
-      if (lt == NULL)
-        break;
-      gt = memchr (lt, '>', (gsize) (stop - lt));
-      if (gt == NULL)
-        break;
-
-      if (g_ascii_strncasecmp (lt, "<title", 6) == 0 && h->meta[0] == NULL)
-        {
-          const char *close = g_strstr_len (gt, stop - gt, "<");
-
-          if (close != NULL && close > gt + 1)
-            {
-              char *text = g_strndup (gt + 1, (gsize) (close - gt - 1));
-
-              h->meta[0] = g_strstrip (text);
-            }
-        }
-      else if (g_ascii_strncasecmp (lt, "<meta", 5) == 0)
-        {
-          static const struct { const char *name; int slot; } NAMES[] = {
-            { "title", 0 }, { "subject", 1 }, { "classification", 1 },
-            { "author", 2 }, { "changedby", 2 }, { "creator", 2 },
-            { "keywords", 3 }, { "description", 4 }, { "comments", 4 },
-          };
-          char *attrs = g_strndup (lt + 5, (gsize) (gt - lt - 5));
-          char *what = attr_value (attrs, "name");
-          char *content = attr_value (attrs, "content");
-
-          if (what != NULL && content != NULL && *content != '\0')
-            for (guint i = 0; i < G_N_ELEMENTS (NAMES); i++)
-              if (g_ascii_strcasecmp (what, NAMES[i].name) == 0 && h->meta[NAMES[i].slot] == NULL)
-                h->meta[NAMES[i].slot] = g_strdup (content);
-          g_free (what);
-          g_free (content);
-          g_free (attrs);
-        }
-      p = gt + 1;
+      if (*t != '\0')
+        h->meta[0] = t;
+      else
+        g_free (t);
     }
+
+  for (lxb_dom_node_t *n = head != NULL
+         ? lxb_dom_node_first_child (lxb_dom_interface_node (head)) : NULL;
+       n != NULL; n = n->next)
+    {
+      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT &&
+          lxb_dom_node_tag_id (n) == LXB_TAG_META)
+        {
+          char name[24];
+          gboolean did_push = FALSE;
+
+          elem_name (lxb_dom_interface_element (n), name, sizeof name);
+          element_start (h, name, lxb_dom_interface_element (n), &did_push);
+        }
+    }
+}
+
+/* True when the page's unclosed nesting is far past what any document
+ * means.  The HTML5 tree builder walks its open elements for many a
+ * token, so a file that is nothing but open tags costs the square of its
+ * depth to parse; the browsers flatten a tree past a few hundred deep,
+ * and a word processor can simply decline.  The estimate errs high --
+ * a close pops only the open it names -- which only ever declines a
+ * page no hand wrote. */
+static gboolean
+nests_too_deeply (const char *data, gsize len)
+{
+  /* Elements with no closing tag, those the parser refuses to repeat or
+   * to nest -- the formatting elements, kept shallow by the spec's own
+   * list -- and those the next of their own kind closes, do not stack
+   * up, and must not count. */
+  static const char *const UNCOUNTED[] = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+    "html", "head", "body",
+    "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small",
+    "strike", "strong", "tt", "u", NULL };
+  static const char *const SELF_CLOSING[] = {
+    "p", "li", "td", "th", "tr", "dt", "dd", "option", NULL };
+  GArray *open = g_array_new (FALSE, FALSE, sizeof (guint32));
+  gsize i = 0;
+  gboolean deep = FALSE;
+
+  while (i < len)
+    {
+      gboolean closing = FALSE;
+      char name[12] = { 0 };
+      guint n = 0;
+      guint32 packed;
+
+      if (data[i] != '<')
+        {
+          i++;
+          continue;
+        }
+
+      /* Comments, and the elements whose content is text that may hold
+       * markup of its own to a byte scan. */
+      if (i + 3 < len && memcmp (data + i, "<!--", 4) == 0)
+        {
+          const char *close = g_strstr_len (data + i + 4, len - i - 4, "-->");
+
+          i = close != NULL ? (gsize) (close - data) + 3 : len;
+          continue;
+        }
+      i++;
+      if (i < len && (data[i] == '!' || data[i] == '?'))
+        continue;
+      if (i < len && data[i] == '/')
+        {
+          closing = TRUE;
+          i++;
+        }
+      while (i < len && g_ascii_isalnum (data[i]) && n < sizeof name - 1)
+        name[n++] = (char) g_ascii_tolower (data[i++]);
+      name[n] = '\0';
+      if (n == 0)
+        continue;
+
+      if (!closing && (g_str_equal (name, "script") || g_str_equal (name, "style")))
+        {
+          const char *close = g_strstr_len (data + i, len - i, "</");
+
+          while (close != NULL &&
+                 g_ascii_strncasecmp (close + 2, name, strlen (name)) != 0)
+            close = g_strstr_len (close + 2, len - (close + 2 - data), "</");
+          i = close != NULL ? (gsize) (close - data) + 2 : len;
+          continue;
+        }
+
+      for (guint k = 0; UNCOUNTED[k] != NULL; k++)
+        if (g_str_equal (name, UNCOUNTED[k]))
+          {
+            n = 0;
+            break;
+          }
+      if (n == 0)
+        continue;
+
+      packed = ((guint32) (guchar) name[0]) | ((guint32) (guchar) name[1] << 8) |
+               ((guint32) (guchar) name[2] << 16) | ((guint32) (guchar) name[3] << 24);
+      if (closing)
+        {
+          if (open->len > 0 &&
+              g_array_index (open, guint32, open->len - 1) == packed)
+            g_array_set_size (open, open->len - 1);
+          continue;
+        }
+
+      /* A new <p> is the old one's close; the pair stays one deep. */
+      if (open->len > 0 &&
+          g_array_index (open, guint32, open->len - 1) == packed)
+        {
+          gboolean replaces = FALSE;
+
+          for (guint k = 0; SELF_CLOSING[k] != NULL; k++)
+            if (g_str_equal (name, SELF_CLOSING[k]))
+              {
+                replaces = TRUE;
+                break;
+              }
+          if (replaces)
+            continue;
+        }
+
+      g_array_append_val (open, packed);
+      if (open->len > 4096)
+        {
+          deep = TRUE;
+          break;
+        }
+    }
+
+  g_array_free (open, TRUE);
+  return deep;
 }
 
 gboolean
@@ -1517,7 +1561,8 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
 {
   char *contents = NULL;
   gsize length = 0;
-  const char *p, *end;
+  lxb_html_document_t *ldoc;
+  lxb_html_body_element_t *body;
   Html h;
   W42Fmt def;
 
@@ -1535,6 +1580,26 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
       g_free (contents);
       contents = conv != NULL ? conv : g_strdup ("");
       length = strlen (contents);
+    }
+
+  if (nests_too_deeply (contents, length))
+    {
+      g_free (contents);
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                   "The page nests its elements too deeply to be a document.");
+      return FALSE;
+    }
+
+  ldoc = lxb_html_document_create ();
+  if (ldoc == NULL ||
+      lxb_html_document_parse (ldoc, (const lxb_char_t *) contents, length) != LXB_STATUS_OK)
+    {
+      if (ldoc != NULL)
+        lxb_html_document_destroy (ldoc);
+      g_free (contents);
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                   "The page could not be parsed.");
+      return FALSE;
     }
 
   w42_pt_load_text (pt, "");
@@ -1621,100 +1686,25 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
         }
     }
 
-  /* The body only, if there is one marked. */
-  p = contents;
-  end = contents + length;
-  scan_notes (&h, contents, length);
-  {
-    const char *body = g_strstr_len (contents, length, "<body");
-    if (body == NULL)
-      body = g_strstr_len (contents, length, "<BODY");
-    if (body != NULL)
-      {
-        const char *gt = memchr (body, '>', end - body);
+  read_head (&h, ldoc);
+  harvest_notes (&h, lxb_dom_interface_node (ldoc));
 
-        if (gt != NULL)
-          {
-            /* What the body says about the colour behind the page. */
-            char *attrs = g_strndup (body + 5, (gsize) (gt - (body + 5)));
-            char *style = attr_value (attrs, "style");
-            const char *hash = style != NULL ? strchr (style, '#') : NULL;
-
-            if (page != NULL && style != NULL && hash != NULL && strlen (hash) >= 7 &&
-                strstr (style, "background") != NULL)
-              {
-                page->background = (guint32) strtoul (hash + 1, NULL, 16);
-                page->has_background = 1;
-              }
-            g_free (style);
-            g_free (attrs);
-            p = gt + 1;
-          }
-        read_head (&h, contents, body);
-      }
-  }
-
-  while (p < end)
+  body = lxb_html_document_body_element (ldoc);
+  if (body != NULL)
     {
-      const char *lt = memchr (p, '<', end - p);
+      /* What the body says about the colour behind the page. */
+      char *style = elem_attr (lxb_dom_interface_element (body), "style");
+      const char *hash = style != NULL ? strchr (style, '#') : NULL;
 
-      if (lt == NULL)
+      if (page != NULL && style != NULL && hash != NULL && strlen (hash) >= 7 &&
+          strstr (style, "background") != NULL)
         {
-          if (h.skip_depth == 0)
-            text_run (&h, p, end - p);
-          break;
+          page->background = (guint32) strtoul (hash + 1, NULL, 16);
+          page->has_background = 1;
         }
-      if (lt > p && h.skip_depth == 0)
-        text_run (&h, p, lt - p);
+      g_free (style);
 
-      /* Comments, doctype and the like. */
-      if (g_str_has_prefix (lt, "<!--"))
-        {
-          const char *close = g_strstr_len (lt, end - lt, "-->");
-          p = close != NULL ? close + 3 : end;
-          continue;
-        }
-      if (lt + 1 < end && (lt[1] == '!' || lt[1] == '?'))
-        {
-          const char *gt = memchr (lt, '>', end - lt);
-          p = gt != NULL ? gt + 1 : end;
-          continue;
-        }
-
-      {
-        const char *gt = memchr (lt, '>', end - lt);
-        const char *q = lt + 1;
-        gboolean closing = FALSE, self_closing = FALSE;
-        char name[16];
-        guint n = 0;
-        char *attrs;
-
-        if (gt == NULL)
-          break;
-        if (*q == '/')
-          {
-            closing = TRUE;
-            q++;
-          }
-        while (q < gt && (g_ascii_isalnum (*q)) && n < sizeof name - 1)
-          name[n++] = (char) g_ascii_tolower (*q++);
-        name[n] = '\0';
-        if (gt > lt && gt[-1] == '/')
-          self_closing = TRUE;
-        attrs = g_strndup (q, (gsize) (gt - q));
-
-        if (n > 0)
-          {
-            if (g_str_equal (name, "body") && closing)
-              {
-                g_free (attrs);
-                break;
-              }
-            handle_tag (&h, name, attrs, closing, self_closing, gt + 1, end);
-          }
-        g_free (attrs);
-        p = gt + 1;
-      }
+      walk_body (&h, lxb_dom_interface_node (body));
     }
 
   close_table (&h);
@@ -1763,6 +1753,7 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
     g_hash_table_destroy (h.notes);
   g_free (h.base);
   g_free (contents);
+  lxb_html_document_destroy (ldoc);
   w42_pt_clear_undo (pt);
   return TRUE;
 }

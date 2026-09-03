@@ -8,8 +8,10 @@
  * numbered lists, tables, pictures given as data URIs, and the little of
  * inline style that maps on to what word42 has -- font, size, colour,
  * alignment.  Scripts and stylesheets are skipped; everything else that is
- * not understood is read as its text.  No DOM, no CSS engine: enough to
- * bring in what word42 itself wrote, and most pages that are text.
+ * not understood is read as its text.  Lexbor parses the page by the
+ * browsers' own HTML5 rules; this reader walks the tree it builds.  No
+ * CSS engine: enough to bring in what word42 itself wrote, and most
+ * pages that are text.
  */
 
 #pragma once

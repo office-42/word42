@@ -43,6 +43,7 @@ jobs:
             cairo:p
             glib2:p
             gdk-pixbuf2:p
+            lexbor:p
             poppler:p
             enchant:p
             hunspell-en:p
