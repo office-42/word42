@@ -270,6 +270,13 @@ def app_icon_body(with_number=True):
     if with_number:
         # "W42" as one word, set in the wordmark's face; textLength pins
         # the width so the word fills the sheet whichever face answers.
+        # Two layers: a black-stroked copy underneath, the blue on top,
+        # so the black shows only as a thin rim round the letters.
+        body.append(
+            '<text x="13" y="43" font-family="%s" font-size="17" '
+            'font-weight="700" fill="none" stroke="#000000" stroke-width="1.35" '
+            'textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>'
+            % WORDMARK_FONT)
         body.append(
             '<text x="13" y="43" font-family="%s" font-size="17" '
             'font-weight="700" fill="%s" stroke="%s" stroke-width="0.65" '
@@ -281,8 +288,12 @@ def app_icon_body(with_number=True):
             '<rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="%s"/>'
             % (LIGHT_4, LIGHT_4))
     else:
-        # No number: the W grows into the space, and takes the face's
-        # heaviest weight so it stays legible at sixteen pixels.
+        # No number: the W grows into the space, very bold with the same
+        # thin black rim, so it stays legible at sixteen pixels.
+        body.append(
+            '<text x="30" y="49" font-family="%s" font-size="34" '
+            'font-weight="700" fill="none" stroke="#000000" stroke-width="2.8" '
+            'text-anchor="middle">W</text>' % WORDMARK_FONT)
         body.append(
             '<text x="30" y="49" font-family="%s" font-size="34" '
             'font-weight="700" fill="%s" stroke="%s" stroke-width="1.4" '
@@ -333,7 +344,13 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
   </g>
 
   <!-- The wordmark's face, from WORDMARK_FONT.  textLength pins the
-       width, so the rule drawn under it fits whichever face answers. -->
+       width, so the rule drawn under it fits whichever face answers.
+       Two layers: a black-stroked copy underneath, the blue on top, so
+       the black shows only as a thin rim round the letters. -->
+  <text x="136" y="74" font-family="%(font)s"
+        font-size="44" font-weight="700" fill="none"
+        stroke="#000000" stroke-width="3.5"
+        textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
   <text x="136" y="74" font-family="%(font)s"
         font-size="44" font-weight="700" fill="#1c8cff"
         stroke="#1c8cff" stroke-width="1.7"
