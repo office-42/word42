@@ -1611,6 +1611,10 @@ run_chars_only (gunichar *ucs4, glong n_chars)
         continue;
       else if (c == 0x7F)
         continue;
+      else if (c > 0x10FFFF || (c >= 0xD800 && c < 0xE000))
+        continue;   /* not a character: the fast decode above lets these
+                     * through, and re-encoding one writes more than the
+                     * four bytes the snapshot reserves per character */
 
       ucs4[out++] = c;
     }

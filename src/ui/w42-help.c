@@ -823,7 +823,9 @@ tip_free (gpointer data, GObject *where)
 static void
 tip_set (TipBox *box)
 {
-  box->which = box->which % (int) G_N_ELEMENTS (TIPS);
+  /* The saved number is anyone's to edit, and C's % keeps its sign. */
+  box->which = ((box->which % (int) G_N_ELEMENTS (TIPS)) + (int) G_N_ELEMENTS (TIPS))
+               % (int) G_N_ELEMENTS (TIPS);
   gtk_label_set_text (GTK_LABEL (box->text), TIPS[box->which]);
   w42_settings_set_int (TIP_KEY, box->which + 1);
 }
