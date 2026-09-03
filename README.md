@@ -1,6 +1,7 @@
 # Word42
 
-![The Word42 logo: a sheet of paper marked W42, beside the name in blue underlined serif](data/icons/about.svg)
+<img src="data/icons/about.svg" width="315"
+     alt="The Word42 logo: a sheet of paper marked W42, beside the name in blue underlined serif">
 
 A classic word processor, written from scratch in C on GTK 4, Pango and
 Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
