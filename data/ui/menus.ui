@@ -634,6 +634,10 @@
           <attribute name="action">win.new-window</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">_Split</attribute>
+          <attribute name="action">win.split-window</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">_Arrange All</attribute>
           <attribute name="action">win.arrange-all</attribute>
         </item>
