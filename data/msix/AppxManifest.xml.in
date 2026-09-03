@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AppxManifest.xml.in - the MSIX manifest for the Microsoft Store package.
+     The @PLACEHOLDERS@ are filled in by build-aux/pack-msix.sh; the values
+     that matter for a real submission come from Partner Center once the
+     name is reserved.  See docs/WINDOWS-STORE.md.
+
+     Copyright (C) 2026 Andreas Røsdal
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+    xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+    xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap uap3 desktop mp rescap">
+
+  <Identity
+      Name="@IDENTITY_NAME@"
+      Publisher="@PUBLISHER@"
+      Version="@MSIX_VERSION@"
+      ProcessorArchitecture="x64"/>
+
+  <mp:PhoneIdentity
+      PhoneProductId="@PHONE_PRODUCT_ID@"
+      PhonePublisherId="@PHONE_PUBLISHER_ID@"/>
+
+  <Properties>
+    <DisplayName>@DISPLAY_NAME@</DisplayName>
+    <PublisherDisplayName>@PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <!-- 10.0.17763 is Windows 10 1809, the floor for MSIX-packaged desktop
+       applications. -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop"
+                        MinVersion="10.0.17763.0"
+                        MaxVersionTested="10.0.22631.0"/>
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US"/>
+  </Resources>
+
+  <!-- A packaged Win32 program: it is an ordinary process, not a
+       sandboxed app, and needs to say so. -->
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+  </Capabilities>
+
+  <Applications>
+    <Application Id="Word42"
+                 Executable="bin\word42.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+          DisplayName="@DISPLAY_NAME@"
+          Description="Word42 is a word processor in the shape of the ones that taught people to write on a screen: menus, a ruler, a toolbar and a page."
+          BackgroundColor="transparent"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+            Square71x71Logo="Assets\Square71x71Logo.png"
+            Wide310x150Logo="Assets\Wide310x150Logo.png"
+            Square310x310Logo="Assets\Square310x310Logo.png"/>
+      </uap:VisualElements>
+      <Extensions>
+        <!-- The formats Word42 both reads and writes.  Declaring them puts
+             Word42 in the Open with list and in Settings > Default apps;
+             it does not take the association from whatever holds it. -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="worddocument">
+            <uap:DisplayName>Word Document</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.doc</uap:FileType>
+              <uap:FileType>.docx</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="richtext">
+            <uap:DisplayName>Rich Text Document</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.rtf</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="opendocumenttext">
+            <uap:DisplayName>OpenDocument Text</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.odt</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="abiworddocument">
+            <uap:DisplayName>AbiWord Document</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.abw</uap:FileType>
+              <uap:FileType>.zabw</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="plaintext">
+            <uap:DisplayName>Text Document</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.txt</uap:FileType>
+              <uap:FileType>.text</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <!-- So that `word42` works in a console whatever the install
+             path is; a packaged program has no fixed one. -->
+        <uap3:Extension Category="windows.appExecutionAlias"
+                        Executable="bin\word42.exe"
+                        EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="word42.exe"/>
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

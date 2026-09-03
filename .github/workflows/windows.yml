@@ -49,6 +49,7 @@ jobs:
             hunspell-en:p
             hyphen:p
             hyphen-en:p
+            librsvg:p
 
       - name: Show toolchain
         run: |
@@ -106,4 +107,21 @@ jobs:
         with:
           name: word42-windows-installer
           path: installer/*.exe
+          retention-days: 30
+
+      # The Store package.  The runner image carries the Windows SDK, so
+      # makeappx and makepri are there; the package comes out unsigned,
+      # which is what a Store submission wants.  A successful pack is also
+      # a check of the manifest, which makeappx validates.
+      - name: MSIX package
+        run: |
+          bash build-aux/pack-msix.sh builddir dist msix
+          ls -l msix
+
+      - name: Upload MSIX
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: word42-windows-msix
+          path: msix/*.msix
           retention-days: 30

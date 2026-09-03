@@ -69,7 +69,9 @@ and ruler following the pane being edited.
   is read today).  Writing .doc is probably never worth doing.
 - Translations (gettext; the menus are already marked translatable).
 - Accessibility: the drawn canvas exposes no text to screen readers.
-- Publishing: Windows Store (MSIX), a signed macOS .app, Flathub.
+- Publishing: the Windows Store submission itself (the MSIX is built --
+  docs/WINDOWS-STORE.md -- and wants a Partner Center identity and a
+  privacy policy), a signed macOS .app, Flathub.
 
 Slides are done: View ▸ Slide Show presents the document's outline, and
 `.pptx` is read and written as an outline of titles and lines.  What is

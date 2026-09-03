@@ -97,6 +97,12 @@ Word42 is built with `win_subsystem: 'windows'`, so it does not open a console
 window. To see warnings from GLib and GTK while debugging, change that to
 `'console'` in `src/meson.build` and rebuild.
 
+Two things are made out of that bundle. `build-aux/word42.iss` is the Inno
+Setup script for the installer word42.org offers. `build-aux/pack-msix.sh`
+makes the MSIX package the Microsoft Store takes; it needs
+`mingw-w64-x86_64-librsvg` for the tiles and the Windows 10/11 SDK for
+`makeappx`, and `docs/WINDOWS-STORE.md` covers the rest.
+
 ## Continuous integration
 
 Every push and pull request builds on Linux (`ubuntu-24.04`, GCC), macOS

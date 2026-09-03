@@ -29,8 +29,10 @@ See docs/PARITY.md for the full comparison with AbiWord and Word.
 ## To do — application
 
 - Arrange All (GTK 4 cannot place windows; may never happen).
-- Publish on the Windows Store (the installer exists; the Store wants an
-  MSIX and a signing identity); sign and notarise the macOS .app (the CI
-  makes one, unsigned); Flatpak on Flathub (the manifest is in build-aux;
-  the module checksums need confirming against the releases).
+- Publish on the Windows Store (the MSIX is built and CI keeps it
+  building; what is left is a Partner Center identity and a published
+  privacy policy -- docs/WINDOWS-STORE.md); sign and notarise the macOS
+  .app (the CI makes one, unsigned); Flatpak on Flathub (the manifest is
+  in build-aux; the module checksums need confirming against the
+  releases).
 - Translations.

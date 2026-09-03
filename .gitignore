@@ -21,6 +21,11 @@ compile_commands.json
 *.gresource.c
 *.gresource.h
 
+# What the Windows packaging leaves behind
+/dist/
+/installer/
+/msix/
+
 # Generated only for looking at the icon work
 data/icons/contact-sheet.*
 .claude/settings.local.json
