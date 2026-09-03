@@ -15,16 +15,17 @@
 
 /* --- palette ---------------------------------------------------------- */
 
-:root {
-  --w42-face:        #c0c0c0;
-  --w42-light:       #dfdfdf;
-  --w42-highlight:   #ffffff;
-  --w42-shadow:      #808080;
-  --w42-dark:        #000000;
-  --w42-title:       #000080;
-  --w42-title-text:  #ffffff;
-  --w42-select:      #000080;
-}
+/* Named with @define-color rather than CSS custom properties: GTK reads
+ * var() only from 4.16, and word42 runs on 4.10.  @define-color is
+ * deprecated there but parsed by every GTK 4, which is the point. */
+@define-color w42_face       #c0c0c0;
+@define-color w42_light      #dfdfdf;
+@define-color w42_highlight  #ffffff;
+@define-color w42_shadow     #808080;
+@define-color w42_dark       #000000;
+@define-color w42_title      #000080;
+@define-color w42_title_text #ffffff;
+@define-color w42_select     #000080;
 
 /* The whole of the chrome is set in one small sans, as the original was.
  * The dialogs are chrome too: they are their own windows, so they do not
@@ -62,16 +63,16 @@ popover.menu contents modelbutton label {
 .w42-titlebar button,
 .w42-dialog button,
 .w42-about button {
-  background-color: var(--w42-face);
+  background-color: @w42_face;
   background-image: none;
-  color: var(--w42-dark);
+  color: @w42_dark;
   border: 1px solid;
-  border-top-color: var(--w42-highlight);
-  border-left-color: var(--w42-highlight);
-  border-right-color: var(--w42-dark);
-  border-bottom-color: var(--w42-dark);
-  box-shadow: inset -1px -1px 0 var(--w42-shadow),
-              inset  1px  1px 0 var(--w42-light);
+  border-top-color: @w42_highlight;
+  border-left-color: @w42_highlight;
+  border-right-color: @w42_dark;
+  border-bottom-color: @w42_dark;
+  box-shadow: inset -1px -1px 0 @w42_shadow,
+              inset  1px  1px 0 @w42_light;
   border-radius: 0;
   padding: 1px;
   margin: 0;
@@ -84,7 +85,7 @@ popover.menu contents modelbutton label {
 .w42-titlebar button:hover,
 .w42-dialog button:hover,
 .w42-about button:hover {
-  background-color: var(--w42-light);
+  background-color: @w42_light;
 }
 
 /* Pressed and toggled-on turn the bevel inside out, which is the whole of
@@ -94,19 +95,19 @@ popover.menu contents modelbutton label {
 .w42-titlebar button:active,
 .w42-dialog button:active,
 .w42-about button:active {
-  border-top-color: var(--w42-dark);
-  border-left-color: var(--w42-dark);
-  border-right-color: var(--w42-highlight);
-  border-bottom-color: var(--w42-highlight);
-  box-shadow: inset  1px  1px 0 var(--w42-shadow),
-              inset -1px -1px 0 var(--w42-light);
-  background-color: var(--w42-face);
+  border-top-color: @w42_dark;
+  border-left-color: @w42_dark;
+  border-right-color: @w42_highlight;
+  border-bottom-color: @w42_highlight;
+  box-shadow: inset  1px  1px 0 @w42_shadow,
+              inset -1px -1px 0 @w42_light;
+  background-color: @w42_face;
   padding: 2px 0 0 2px;
 }
 
 .w42-toolbar button:disabled,
 .w42-dialog button:disabled {
-  color: var(--w42-shadow);
+  color: @w42_shadow;
 }
 
 .w42-toolbar button:disabled image {
@@ -116,11 +117,11 @@ popover.menu contents modelbutton label {
 /* --- title bar -------------------------------------------------------- */
 
 .w42-titlebar {
-  background-color: var(--w42-title);
+  background-color: @w42_title;
   background-image: none;
-  color: var(--w42-title-text);
+  color: @w42_title_text;
   border: none;
-  border-bottom: 1px solid var(--w42-dark);
+  border-bottom: 1px solid @w42_dark;
   min-height: 18px;
   padding: 0 2px;
 }
@@ -140,7 +141,7 @@ window.w42 .titlebar {
 }
 
 .w42-titlebar-label {
-  color: var(--w42-title-text);
+  color: @w42_title_text;
   font-weight: bold;
   font-size: 11px;
   padding: 0;
@@ -161,21 +162,21 @@ window.w42 .titlebar {
 /* The window is inactive: Windows 3.1 greyed the bar rather than fading the
  * text, and the difference is easy to miss if you do it the modern way. */
 .w42-titlebar:backdrop {
-  background-color: var(--w42-shadow);
+  background-color: @w42_shadow;
 }
 
 /* --- menu bar --------------------------------------------------------- */
 
 .w42-menubar {
-  background-color: var(--w42-face);
-  color: var(--w42-dark);
-  border-bottom: 1px solid var(--w42-shadow);
+  background-color: @w42_face;
+  color: @w42_dark;
+  border-bottom: 1px solid @w42_shadow;
   padding: 0 2px;
   min-height: 20px;
 }
 
 .w42-menubar > item {
-  color: var(--w42-dark);
+  color: @w42_dark;
   padding: 2px 8px;
   border-radius: 0;
   background-image: none;
@@ -183,20 +184,20 @@ window.w42 .titlebar {
 
 .w42-menubar > item:hover,
 .w42-menubar > item:selected {
-  background-color: var(--w42-select);
-  color: var(--w42-title-text);
+  background-color: @w42_select;
+  color: @w42_title_text;
 }
 
 popover.menu contents {
-  background-color: var(--w42-face);
-  color: var(--w42-dark);
+  background-color: @w42_face;
+  color: @w42_dark;
   border: 1px solid;
-  border-top-color: var(--w42-highlight);
-  border-left-color: var(--w42-highlight);
-  border-right-color: var(--w42-dark);
-  border-bottom-color: var(--w42-dark);
-  box-shadow: inset -1px -1px 0 var(--w42-shadow),
-              inset  1px  1px 0 var(--w42-light);
+  border-top-color: @w42_highlight;
+  border-left-color: @w42_highlight;
+  border-right-color: @w42_dark;
+  border-bottom-color: @w42_dark;
+  box-shadow: inset -1px -1px 0 @w42_shadow,
+              inset  1px  1px 0 @w42_light;
   border-radius: 0;
   padding: 2px;
 }
@@ -212,20 +213,20 @@ popover.menu contents modelbutton {
   border-radius: 0;
   padding: 3px 10px;
   min-height: 18px;
-  color: var(--w42-dark);
+  color: @w42_dark;
 }
 
 popover.menu contents modelbutton:hover {
-  background-color: var(--w42-select);
-  color: var(--w42-title-text);
+  background-color: @w42_select;
+  color: @w42_title_text;
 }
 
 popover.menu contents modelbutton:disabled {
-  color: var(--w42-shadow);
+  color: @w42_shadow;
 }
 
 popover.menu contents separator {
-  background-color: var(--w42-shadow);
+  background-color: @w42_shadow;
   min-height: 1px;
   margin: 2px 0;
 }
@@ -233,13 +234,13 @@ popover.menu contents separator {
 /* --- toolbars --------------------------------------------------------- */
 
 .w42-toolbar {
-  background-color: var(--w42-face);
-  border-bottom: 1px solid var(--w42-shadow);
+  background-color: @w42_face;
+  border-bottom: 1px solid @w42_shadow;
   padding: 2px 3px;
 }
 
 .w42-toolbar separator {
-  background-color: var(--w42-shadow);
+  background-color: @w42_shadow;
   min-width: 1px;
   margin: 2px 3px;
 }
@@ -249,15 +250,15 @@ popover.menu contents separator {
 .w42-toolbar dropdown > button,
 .w42-dialog entry,
 .w42-dialog entry text {
-  background-color: var(--w42-highlight);
+  background-color: @w42_highlight;
   background-image: none;
-  color: var(--w42-dark);
+  color: @w42_dark;
   border: 1px solid;
-  border-top-color: var(--w42-shadow);
-  border-left-color: var(--w42-shadow);
-  border-right-color: var(--w42-highlight);
-  border-bottom-color: var(--w42-highlight);
-  box-shadow: inset 1px 1px 0 var(--w42-dark);
+  border-top-color: @w42_shadow;
+  border-left-color: @w42_shadow;
+  border-right-color: @w42_highlight;
+  border-bottom-color: @w42_highlight;
+  box-shadow: inset 1px 1px 0 @w42_dark;
   border-radius: 0;
   padding: 1px 2px;
   min-height: 18px;
@@ -271,61 +272,61 @@ popover.menu contents separator {
 .w42-toolbar dropdown > button:hover,
 .w42-toolbar dropdown > button:active,
 .w42-toolbar dropdown > button:checked {
-  background-color: var(--w42-highlight);
+  background-color: @w42_highlight;
   padding: 1px 2px;
-  border-top-color: var(--w42-shadow);
-  border-left-color: var(--w42-shadow);
-  border-right-color: var(--w42-highlight);
-  border-bottom-color: var(--w42-highlight);
-  box-shadow: inset 1px 1px 0 var(--w42-dark);
+  border-top-color: @w42_shadow;
+  border-left-color: @w42_shadow;
+  border-right-color: @w42_highlight;
+  border-bottom-color: @w42_highlight;
+  box-shadow: inset 1px 1px 0 @w42_dark;
 }
 
 /* The arrow at the right of a field is itself a little raised button. */
 .w42-toolbar dropdown > button > arrow {
-  background-color: var(--w42-face);
+  background-color: @w42_face;
   border: 1px solid;
-  border-top-color: var(--w42-highlight);
-  border-left-color: var(--w42-highlight);
-  border-right-color: var(--w42-dark);
-  border-bottom-color: var(--w42-dark);
-  box-shadow: inset -1px -1px 0 var(--w42-shadow),
-              inset  1px  1px 0 var(--w42-light);
+  border-top-color: @w42_highlight;
+  border-left-color: @w42_highlight;
+  border-right-color: @w42_dark;
+  border-bottom-color: @w42_dark;
+  box-shadow: inset -1px -1px 0 @w42_shadow,
+              inset  1px  1px 0 @w42_light;
   min-width: 14px;
   min-height: 16px;
   margin: 0;
   -gtk-icon-size: 10px;
-  color: var(--w42-dark);
+  color: @w42_dark;
 }
 
 .w42-dialog entry:focus,
 .w42-dialog entry text:focus {
   outline: none;
-  box-shadow: inset 1px 1px 0 var(--w42-dark);
+  box-shadow: inset 1px 1px 0 @w42_dark;
 }
 
 /* --- ruler ------------------------------------------------------------ */
 
 .w42-ruler {
-  background-color: var(--w42-face);
-  border-bottom: 1px solid var(--w42-shadow);
+  background-color: @w42_face;
+  border-bottom: 1px solid @w42_shadow;
 }
 
 /* --- status bar ------------------------------------------------------- */
 
 .w42-statusbar {
-  background-color: var(--w42-face);
-  color: var(--w42-dark);
-  border-top: 1px solid var(--w42-highlight);
+  background-color: @w42_face;
+  color: @w42_dark;
+  border-top: 1px solid @w42_highlight;
   padding: 1px 4px;
 }
 
 /* Each reading sits in its own sunken well, as Word 6's did. */
 .w42-status-cell {
   border: 1px solid;
-  border-top-color: var(--w42-shadow);
-  border-left-color: var(--w42-shadow);
-  border-right-color: var(--w42-highlight);
-  border-bottom-color: var(--w42-highlight);
+  border-top-color: @w42_shadow;
+  border-left-color: @w42_shadow;
+  border-right-color: @w42_highlight;
+  border-bottom-color: @w42_highlight;
   padding: 0 6px;
   min-height: 16px;
 }
@@ -333,22 +334,22 @@ popover.menu contents separator {
 /* --- scrollbars ------------------------------------------------------- */
 
 scrollbar {
-  background-color: var(--w42-light);
+  background-color: @w42_light;
   border: none;
-  border-left: 1px solid var(--w42-shadow);
+  border-left: 1px solid @w42_shadow;
   min-width: 16px;
   min-height: 16px;
 }
 
 scrollbar slider {
-  background-color: var(--w42-face);
+  background-color: @w42_face;
   border: 1px solid;
-  border-top-color: var(--w42-highlight);
-  border-left-color: var(--w42-highlight);
-  border-right-color: var(--w42-dark);
-  border-bottom-color: var(--w42-dark);
-  box-shadow: inset -1px -1px 0 var(--w42-shadow),
-              inset  1px  1px 0 var(--w42-light);
+  border-top-color: @w42_highlight;
+  border-left-color: @w42_highlight;
+  border-right-color: @w42_dark;
+  border-bottom-color: @w42_dark;
+  box-shadow: inset -1px -1px 0 @w42_shadow,
+              inset  1px  1px 0 @w42_light;
   border-radius: 0;
   margin: 0;
   min-width: 14px;
@@ -357,7 +358,7 @@ scrollbar slider {
 
 scrollbar slider:hover,
 scrollbar slider:active {
-  background-color: var(--w42-light);
+  background-color: @w42_light;
 }
 
 /* --- the canvas ------------------------------------------------------- */
@@ -372,12 +373,12 @@ w42view {
 
 .w42-dialog,
 .w42-about {
-  background-color: var(--w42-face);
-  color: var(--w42-dark);
+  background-color: @w42_face;
+  color: @w42_dark;
 }
 
 .w42-dialog checkbutton {
-  color: var(--w42-dark);
+  color: @w42_dark;
 }
 
 .w42-dialog-status {
