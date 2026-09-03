@@ -51,11 +51,22 @@ m_dep          = cc.find_library('m', required: false)
 
 # Reading HTML uses Lexbor's HTML5 parser: the tokenizer the browsers
 # specify, not one of our own.  Distros that do not package it yet can
-# build it from source; docs/BUILD.md says how.  Lexbor before 3.0
-# installs no pkg-config file, so the library is looked for directly
-# when pkg-config comes back empty-handed.
-lexbor_dep = dependency('lexbor', 'liblexbor', version: '>= 2.0', required: false)
-if not lexbor_dep.found()
+# build it from source; docs/BUILD.md says how.  Each way of finding it
+# is trusted only once its headers actually compile: Lexbor before 3.0
+# installs no pkg-config file at all, and 3.0.0's says no include
+# directory -- a bare -I that swallows whatever flag follows it -- so an
+# unchecked answer can poison every compile in the build.
+lexbor_dep = dependency('lexbor', 'liblexbor', version: '>= 2.0',
+                        method: 'pkg-config', required: false)
+lexbor_ok = lexbor_dep.found() and \
+            cc.has_header('lexbor/html/html.h', dependencies: lexbor_dep)
+if not lexbor_ok
+  lexbor_dep = dependency('lexbor', method: 'cmake',
+                          modules: ['lexbor::lexbor'], required: false)
+  lexbor_ok = lexbor_dep.found() and \
+              cc.has_header('lexbor/html/html.h', dependencies: lexbor_dep)
+endif
+if not lexbor_ok
   lexbor_lib = cc.find_library('lexbor', required: false)
   if not lexbor_lib.found() or not cc.has_header('lexbor/html/html.h')
     error('lexbor is required to read HTML; see docs/BUILD.md for how to get it.')
