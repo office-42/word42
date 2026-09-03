@@ -4,13 +4,7 @@
      SPDX-License-Identifier: GPL-3.0-or-later -->
 <svg xmlns="http://www.w3.org/2000/svg" width="420" height="128"
      viewBox="0 0 420 128">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f6f5f4"/>
-      <stop offset="1" stop-color="#deddda"/>
-    </linearGradient>
-  </defs>
-  <rect width="420" height="128" fill="url(#sky)"/>
+  <rect width="420" height="128" fill="#ffffff"/>
   <rect x="0" y="127" width="420" height="1" fill="#c0bfbc"/>
 
   <g transform="translate(20,16) scale(1.5)">
