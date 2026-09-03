@@ -249,9 +249,10 @@ ICONS['w42-align-justify'] = _align([(2, 12), (2, 12), (2, 12), (2, 12)])
 # The face of the wordmark, on the banner and the sheet alike: Times
 # New Roman where the system has it, and Liberation Serif -- drawn to
 # the same metrics as its stand-in -- where the rasters are made.
-# Times has no weight past bold, so the wordmark strokes its own
-# outline to get the very bold it wants.
 WORDMARK_FONT = ("'Times New Roman', 'Liberation Serif', Tinos, Times, serif")
+
+# And its blue, a brighter one than the toolbar's.
+WORDMARK_BLUE = '#2ba1ff'
 
 
 def app_icon_body(with_number=True):
@@ -274,31 +275,31 @@ def app_icon_body(with_number=True):
         # so the black shows only as a thin rim round the letters.
         body.append(
             '<text x="13" y="43" font-family="%s" font-size="17" '
-            'font-weight="700" fill="none" stroke="#000000" stroke-width="1.35" '
+            'font-weight="700" fill="none" stroke="#000000" stroke-width="0.7" '
             'textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>'
             % WORDMARK_FONT)
         body.append(
             '<text x="13" y="43" font-family="%s" font-size="17" '
-            'font-weight="700" fill="%s" stroke="%s" stroke-width="0.65" '
+            'font-weight="700" fill="%s" '
             'textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>'
-            % (WORDMARK_FONT, BLUE_4, BLUE_4))
+            % (WORDMARK_FONT, WORDMARK_BLUE))
         # Two lines of text below the word, so the sheet reads as a page.
         body.append(
             '<rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="%s"/>'
             '<rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="%s"/>'
             % (LIGHT_4, LIGHT_4))
     else:
-        # No number: the W grows into the space, very bold with the same
-        # thin black rim, so it stays legible at sixteen pixels.
+        # No number: the W grows into the space, bold with the same thin
+        # black rim, so it stays legible at sixteen pixels.
         body.append(
             '<text x="30" y="49" font-family="%s" font-size="34" '
-            'font-weight="700" fill="none" stroke="#000000" stroke-width="2.8" '
+            'font-weight="700" fill="none" stroke="#000000" stroke-width="1.4" '
             'text-anchor="middle">W</text>' % WORDMARK_FONT)
         body.append(
             '<text x="30" y="49" font-family="%s" font-size="34" '
-            'font-weight="700" fill="%s" stroke="%s" stroke-width="1.4" '
+            'font-weight="700" fill="%s" '
             'text-anchor="middle">W</text>'
-            % (WORDMARK_FONT, BLUE_4, BLUE_4))
+            % (WORDMARK_FONT, WORDMARK_BLUE))
 
     return "".join(body)
 
@@ -349,13 +350,12 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
        the black shows only as a thin rim round the letters. -->
   <text x="136" y="74" font-family="%(font)s"
         font-size="44" font-weight="700" fill="none"
-        stroke="#000000" stroke-width="3.5"
+        stroke="#000000" stroke-width="1.8"
         textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
   <text x="136" y="74" font-family="%(font)s"
-        font-size="44" font-weight="700" fill="#1c8cff"
-        stroke="#1c8cff" stroke-width="1.7"
+        font-size="44" font-weight="700" fill="%(blue)s"
         textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
-  <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="#1c8cff"/>
+  <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="%(blue)s"/>
 </svg>
 """
 
@@ -364,7 +364,8 @@ def write_about(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(ABOUT_SVG % {'body': '    ' + app_icon_body(with_number=True),
-                              'font': WORDMARK_FONT})
+                              'font': WORDMARK_FONT,
+                              'blue': WORDMARK_BLUE})
 
 
 def rasterise(svg, png, width=None, height=None):
