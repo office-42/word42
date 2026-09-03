@@ -2663,11 +2663,26 @@ about_system_info (void)
   return out;
 }
 
+/* The address in the About box is a link, and it opens where Help â¸
+ * Word42 on the Web opens: whatever the desktop uses for the web.  GTK
+ * would launch it itself, but going through the launcher keeps the box
+ * the parent window, so the browser comes up over it. */
+static gboolean
+on_about_link (GtkLabel *label, const char *uri, gpointer data)
+{
+  GtkUriLauncher *launcher = gtk_uri_launcher_new (uri);
+
+  (void) label;
+  gtk_uri_launcher_launch (launcher, GTK_WINDOW (data), NULL, NULL, NULL);
+  g_object_unref (launcher);
+  return TRUE;
+}
+
 static void
 action_about (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
-  GtkWidget *window, *box, *banner, *version, *blurb, *licence, *button;
+  GtkWidget *window, *box, *banner, *version, *blurb, *link, *licence, *button;
 
   (void) action; (void) param;
 
@@ -2705,6 +2720,17 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_set_margin_start (blurb, 20);
   gtk_widget_set_margin_top (blurb, 8);
   gtk_box_append (GTK_BOX (box), blurb);
+
+  link = gtk_label_new (NULL);
+  gtk_label_set_markup (GTK_LABEL (link),
+                        "<a href=\"https://word42.org\">word42.org</a>");
+  gtk_label_set_xalign (GTK_LABEL (link), 0.0);
+  gtk_widget_set_halign (link, GTK_ALIGN_START);   /* the focus rectangle hugs the address */
+  gtk_widget_add_css_class (link, "w42-about-link");
+  gtk_widget_set_margin_start (link, 20);
+  gtk_widget_set_margin_top (link, 4);
+  g_signal_connect (link, "activate-link", G_CALLBACK (on_about_link), window);
+  gtk_box_append (GTK_BOX (box), link);
 
   /* What this copy is running on, for bug reports. */
   {
@@ -2750,6 +2776,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_box_append (GTK_BOX (box), button);
 
   gtk_window_present (GTK_WINDOW (window));
+  gtk_widget_grab_focus (button);
 }
 
 /* ---------------------------------------------------------------------- */

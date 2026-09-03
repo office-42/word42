@@ -394,6 +394,16 @@ w42view {
   color: #303030;
 }
 
+/* The address in the About box.  Navy underlined, as a link was before
+ * every theme had an opinion about it. */
+.w42-about-link link,
+.w42-about-link link:visited,
+.w42-about-link link:hover {
+  color: @w42_title;
+  text-decoration: underline;
+  background: none;
+}
+
 /* The Symbol box: a grid of characters, each its own little cell. */
 .w42-symbols {
   background: #ffffff;
