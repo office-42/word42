@@ -14,13 +14,14 @@
   <rect x="0" y="127" width="420" height="1" fill="#c0bfbc"/>
 
   <g transform="translate(20,16) scale(1.5)">
-    <path d="M9.5 8.5a4 4 0 0 1 4-4h23l14 14v33a4 4 0 0 1-4 4h-33a4 4 0 0 1-4-4Z" fill="#ffffff" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/><path d="M36.5 4.5v10a4 4 0 0 0 4 4h10Z" fill="#deddda" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/><text x="13" y="43" font-family="'Playfair Display', Didot, Georgia, 'Palatino Linotype', Palatino, P052, 'Liberation Serif', serif" font-size="17" font-weight="700" fill="#1c71d8" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text><rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="#c0bfbc"/><rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="#c0bfbc"/>
+    <path d="M9.5 8.5a4 4 0 0 1 4-4h23l14 14v33a4 4 0 0 1-4 4h-33a4 4 0 0 1-4-4Z" fill="#ffffff" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/><path d="M36.5 4.5v10a4 4 0 0 0 4 4h10Z" fill="#deddda" stroke="#c0bfbc" stroke-width="2.5" stroke-linejoin="round"/><text x="13" y="43" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif" font-size="17" font-weight="700" fill="#1c71d8" stroke="#1c71d8" stroke-width="0.65" textLength="34" lengthAdjust="spacingAndGlyphs">W42</text><rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="#c0bfbc"/><rect x="14" y="54.5" width="22" height="2.5" rx="1.25" fill="#c0bfbc"/>
   </g>
 
   <!-- The wordmark's face, from WORDMARK_FONT.  textLength pins the
        width, so the rule drawn under it fits whichever face answers. -->
-  <text x="136" y="74" font-family="'Playfair Display', Didot, Georgia, 'Palatino Linotype', Palatino, P052, 'Liberation Serif', serif"
+  <text x="136" y="74" font-family="'Times New Roman', 'Liberation Serif', Tinos, Times, serif"
         font-size="44" font-weight="700" fill="#1c8cff"
+        stroke="#1c8cff" stroke-width="1.7"
         textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
   <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="#1c8cff"/>
 </svg>

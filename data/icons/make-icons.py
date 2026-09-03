@@ -246,12 +246,12 @@ ICONS['w42-align-justify'] = _align([(2, 12), (2, 12), (2, 12), (2, 12)])
 # The application icon, on a 64-unit grid
 # ---------------------------------------------------------------------------
 
-# The face of the wordmark, on the banner and the sheet alike: Playfair
-# Display where it is installed -- fetch it from Google Fonts before
-# regenerating, or the rasters fall back down this list -- then the
-# system's own book faces.
-WORDMARK_FONT = ("'Playfair Display', Didot, Georgia, 'Palatino Linotype', "
-                 "Palatino, P052, 'Liberation Serif', serif")
+# The face of the wordmark, on the banner and the sheet alike: Times
+# New Roman where the system has it, and Liberation Serif -- drawn to
+# the same metrics as its stand-in -- where the rasters are made.
+# Times has no weight past bold, so the wordmark strokes its own
+# outline to get the very bold it wants.
+WORDMARK_FONT = ("'Times New Roman', 'Liberation Serif', Tinos, Times, serif")
 
 
 def app_icon_body(with_number=True):
@@ -272,8 +272,9 @@ def app_icon_body(with_number=True):
         # the width so the word fills the sheet whichever face answers.
         body.append(
             '<text x="13" y="43" font-family="%s" font-size="17" '
-            'font-weight="700" fill="%s" textLength="34" '
-            'lengthAdjust="spacingAndGlyphs">W42</text>' % (WORDMARK_FONT, BLUE_4))
+            'font-weight="700" fill="%s" stroke="%s" stroke-width="0.65" '
+            'textLength="34" lengthAdjust="spacingAndGlyphs">W42</text>'
+            % (WORDMARK_FONT, BLUE_4, BLUE_4))
         # Two lines of text below the word, so the sheet reads as a page.
         body.append(
             '<rect x="14" y="49" width="32" height="2.5" rx="1.25" fill="%s"/>'
@@ -284,8 +285,9 @@ def app_icon_body(with_number=True):
         # heaviest weight so it stays legible at sixteen pixels.
         body.append(
             '<text x="30" y="49" font-family="%s" font-size="34" '
-            'font-weight="900" fill="%s" text-anchor="middle">W</text>'
-            % (WORDMARK_FONT, BLUE_4))
+            'font-weight="700" fill="%s" stroke="%s" stroke-width="1.4" '
+            'text-anchor="middle">W</text>'
+            % (WORDMARK_FONT, BLUE_4, BLUE_4))
 
     return "".join(body)
 
@@ -334,6 +336,7 @@ ABOUT_SVG = """<?xml version="1.0" encoding="UTF-8"?>
        width, so the rule drawn under it fits whichever face answers. -->
   <text x="136" y="74" font-family="%(font)s"
         font-size="44" font-weight="700" fill="#1c8cff"
+        stroke="#1c8cff" stroke-width="1.7"
         textLength="182" lengthAdjust="spacingAndGlyphs">Word42</text>
   <rect x="136" y="81" width="182" height="3.5" rx="1.75" fill="#1c8cff"/>
 </svg>
