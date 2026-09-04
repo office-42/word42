@@ -5,8 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Word42 — a classic word processor</title>
 <meta name="description" content="Word42 is a classic word processor, written from scratch in C on GTK 4, Pango and Cairo: inspired by classic Microsoft Word and by AbiWord, on a modern text stack. Free software, GPL-3.0-or-later.">
+<link rel="canonical" href="https://word42.org/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Word42 — a classic word processor">
+<meta property="og:description" content="Word42 is a classic word processor, written from scratch in C on GTK 4, Pango and Cairo: inspired by classic Microsoft Word and by AbiWord, on a modern text stack. Free software, GPL-3.0-or-later.">
+<meta property="og:url" content="https://word42.org/">
+<meta property="og:image" content="https://word42.org/images/screenshot.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1a5fb4">
 <link rel="icon" type="image/svg+xml" href="images/icon.svg">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+<link rel="apple-touch-icon" href="images/icon-180.png">
+<link rel="stylesheet" href="css/bootstrap.min.css">
 <style>
   :root {
     --w42-blue: #1a5fb4;
@@ -37,6 +46,11 @@
     background-color: var(--w42-blue);
     color: #fff;
   }
+  .navbar-brand { font-size: 1.5rem; }
+  .navbar .nav-link { white-space: nowrap; }
+  @media (max-width: 480px) {
+    .brand-name { display: none; }
+  }
   .hero {
     background: linear-gradient(180deg, #ffffff 0%, #f2f1ef 100%);
     border-bottom: 1px solid var(--w42-rule);
@@ -46,6 +60,7 @@
     border: 1px solid var(--w42-rule);
     border-radius: .25rem;
     box-shadow: 0 .5rem 2rem rgba(0,0,0,.12);
+    height: auto;
   }
   h2 { font-weight: 700; }
   footer { border-top: 1px solid var(--w42-rule); }
@@ -53,23 +68,17 @@
 </head>
 <body>
 
-<nav class="navbar navbar-expand-md navbar-light bg-white border-bottom sticky-top">
+<nav class="navbar navbar-expand navbar-light bg-white border-bottom sticky-top">
   <div class="container">
-    <a class="navbar-brand font-serif font-weight-bold text-w42" href="#" style="font-size:1.5rem;">
-      <img src="images/icon.svg" width="34" height="34" alt="" style="vertical-align:middle;">
-      Word42
+    <a class="navbar-brand font-serif font-weight-bold text-w42" href="./">
+      <img src="images/icon.svg" width="34" height="34" alt="Word42" style="vertical-align:middle;">
+      <span class="brand-name">Word42</span>
     </a>
-    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navContent"
-            aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navContent">
-      <ul class="navbar-nav ml-auto">
-        <li class="nav-item"><a class="nav-link" href="#about">What it does</a></li>
-        <li class="nav-item"><a class="nav-link" href="#download">Download</a></li>
-        <li class="nav-item"><a class="nav-link" href="https://github.com/office-42/word42">GitHub</a></li>
-      </ul>
-    </div>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item"><a class="nav-link" href="#about">What it does</a></li>
+      <li class="nav-item"><a class="nav-link" href="#download">Download</a></li>
+      <li class="nav-item"><a class="nav-link" href="https://github.com/office-42/word42">GitHub</a></li>
+    </ul>
   </div>
 </nav>
 
@@ -81,7 +90,6 @@
           <img src="images/logo.svg" width="420" height="128" class="img-fluid"
                alt="The Word42 logo: a sheet of paper marked W42, beside the name in blue underlined serif">
         </h1>
-        <p class="font-serif h5 text-muted">A classic word processor - Version 1.0.0 - word42.org</p>
         <p class="lead">Written from scratch in C on GTK&nbsp;4, Pango and Cairo: a menu bar, two
         toolbars, a ruler, a status bar and a page. Inspired by classic Microsoft Word and
         AbiWord, on a modern text stack that handles Unicode, OpenType and complex scripts
@@ -92,7 +100,7 @@
         </p>
       </div>
       <div class="col-lg-6">
-        <img src="images/screenshot.png" class="img-fluid screenshot"
+        <img src="images/screenshot.png" width="1100" height="900" class="img-fluid screenshot"
              alt="Word42 in Page Layout view: the opening of Genesis set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending">
         <p class="text-muted small text-center mt-2 mb-0"><em>Word42 in Page Layout view.</em></p>
       </div>
@@ -102,12 +110,37 @@
 
 <section id="about" class="py-5">
   <div class="container">
-    <h2 class="mb-3">What it does</h2>
-    <p>A working word processor: typing, formatting, styles and numbered headings, headers and
-    footers, footnotes and endnotes, tables, pictures, lists, columns, find and replace,
-    spelling, hyphenation, mail merge, a split window, a page-layout view and print preview —
-    reading and writing RTF, OpenDocument <code>.odt</code>, Word <code>.docx</code> and
-    <code>.doc</code>, AbiWord <code>.abw</code>, HTML, PDF and plain text.</p>
+    <h2 class="mb-4">What it does</h2>
+    <div class="row">
+      <div class="col-md-4 mb-3">
+        <h3 class="h5 font-serif font-weight-bold">Writing</h3>
+        <ul class="mb-0">
+          <li>Typing and character formatting</li>
+          <li>Styles and numbered headings</li>
+          <li>Find and replace</li>
+          <li>Spelling and hyphenation</li>
+          <li>Mail merge</li>
+        </ul>
+      </div>
+      <div class="col-md-4 mb-3">
+        <h3 class="h5 font-serif font-weight-bold">Layout</h3>
+        <ul class="mb-0">
+          <li>Headers, footers, footnotes and endnotes</li>
+          <li>Tables, pictures, lists and columns</li>
+          <li>Page-layout view and print preview</li>
+          <li>A split window</li>
+        </ul>
+      </div>
+      <div class="col-md-4 mb-3">
+        <h3 class="h5 font-serif font-weight-bold">Files</h3>
+        <ul class="mb-0">
+          <li>RTF and OpenDocument <code>.odt</code></li>
+          <li>Word <code>.docx</code> and <code>.doc</code></li>
+          <li>AbiWord <code>.abw</code></li>
+          <li>HTML, PDF and plain text</li>
+        </ul>
+      </div>
+    </div>
     <p class="mb-0">The <a href="https://github.com/office-42/word42/blob/main/docs/GUIDE.md">user guide</a>
     describes every command in the program; the
     <a href="https://github.com/office-42/word42/blob/main/docs/STATUS.md">status page</a> and
@@ -121,22 +154,23 @@
     <h2 class="mb-4">Get Word42</h2>
     <div class="row">
       <div class="col-md-4 mb-4">
-        <h5 class="font-serif font-weight-bold">Windows</h5>
+        <h3 class="h5 font-serif font-weight-bold">Windows</h3>
         <p><a class="btn btn-w42" href="https://apps.microsoft.com/detail/9NKG7V7CRX06">Get it from the Microsoft&nbsp;Store</a></p>
-        <p>Or take the bundle and installer built on every push — artifacts of the
-        <a href="https://github.com/office-42/word42/actions/workflows/windows.yml">Windows workflow</a>.</p>
+        <p>The installer is also on the
+        <a href="https://github.com/office-42/word42/releases">releases page</a>.</p>
       </div>
       <div class="col-md-4 mb-4">
-        <h5 class="font-serif font-weight-bold">macOS</h5>
+        <h3 class="h5 font-serif font-weight-bold">macOS</h3>
         <p>An unsigned <code>Word42.app</code> from the
-        <a href="https://github.com/office-42/word42/actions/workflows/macos.yml">macOS workflow</a>.
+        <a href="https://github.com/office-42/word42/releases">releases page</a>.
         First launch is a right-click&nbsp;▸&nbsp;Open.</p>
       </div>
       <div class="col-md-4 mb-4">
-        <h5 class="font-serif font-weight-bold">Linux</h5>
+        <h3 class="h5 font-serif font-weight-bold">Linux</h3>
         <p>Build from source with Meson —
         <a href="https://github.com/office-42/word42/blob/main/docs/BUILD.md">docs/BUILD.md</a>
-        has the details; a Flatpak manifest is in <code>build-aux/</code>.</p>
+        has the details; a Flatpak manifest is in
+        <a href="https://github.com/office-42/word42/tree/main/build-aux"><code>build-aux/</code></a>.</p>
       </div>
     </div>
   </div>
@@ -160,7 +194,5 @@
   </div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

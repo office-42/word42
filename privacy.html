@@ -5,8 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Privacy — Word42</title>
 <meta name="description" content="The privacy policy of Word42, a classic word processor, and of word42.org: no data collection, no telemetry, no cookies, no tracking.">
+<link rel="canonical" href="https://word42.org/privacy">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Privacy — Word42">
+<meta property="og:description" content="The privacy policy of Word42, a classic word processor, and of word42.org: no data collection, no telemetry, no cookies, no tracking.">
+<meta property="og:url" content="https://word42.org/privacy">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#1a5fb4">
 <link rel="icon" type="image/svg+xml" href="images/icon.svg">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+<link rel="apple-touch-icon" href="images/icon-180.png">
+<link rel="stylesheet" href="css/bootstrap.min.css">
 <style>
   :root {
     --w42-blue: #1a5fb4;
@@ -19,6 +27,11 @@
     font-family: 'Times New Roman', 'Liberation Serif', Tinos, Times, serif;
   }
   .text-w42 { color: var(--w42-blue) !important; }
+  .navbar-brand { font-size: 1.5rem; }
+  .navbar .nav-link { white-space: nowrap; }
+  @media (max-width: 480px) {
+    .brand-name { display: none; }
+  }
   h1 { font-weight: 700; color: var(--w42-blue); }
   h2 { font-weight: 700; }
   footer { border-top: 1px solid var(--w42-rule); }
@@ -26,30 +39,24 @@
 </head>
 <body>
 
-<nav class="navbar navbar-expand-md navbar-light bg-white border-bottom sticky-top">
+<nav class="navbar navbar-expand navbar-light bg-white border-bottom sticky-top">
   <div class="container">
-    <a class="navbar-brand font-serif font-weight-bold text-w42" href="./" style="font-size:1.5rem;">
-      <img src="images/icon.svg" width="34" height="34" alt="" style="vertical-align:middle;">
-      Word42
+    <a class="navbar-brand font-serif font-weight-bold text-w42" href="./">
+      <img src="images/icon.svg" width="34" height="34" alt="Word42" style="vertical-align:middle;">
+      <span class="brand-name">Word42</span>
     </a>
-    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navContent"
-            aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navContent">
-      <ul class="navbar-nav ml-auto">
-        <li class="nav-item"><a class="nav-link" href="./#about">What it does</a></li>
-        <li class="nav-item"><a class="nav-link" href="./#download">Download</a></li>
-        <li class="nav-item"><a class="nav-link" href="https://github.com/office-42/word42">GitHub</a></li>
-      </ul>
-    </div>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item"><a class="nav-link" href="./#about">What it does</a></li>
+      <li class="nav-item"><a class="nav-link" href="./#download">Download</a></li>
+      <li class="nav-item"><a class="nav-link" href="https://github.com/office-42/word42">GitHub</a></li>
+    </ul>
   </div>
 </nav>
 
 <main class="py-5">
   <div class="container" style="max-width: 46rem;">
     <h1 class="mb-2">Privacy</h1>
-    <p class="text-muted">Last updated: September 3, 2026</p>
+    <p class="text-muted">Last updated: September 4, 2026</p>
 
     <h2 class="mt-5 mb-3">Word42, the application</h2>
     <p>Word42 is a free word processor, licensed under the GPL, that runs entirely on your
@@ -62,15 +69,14 @@
     </ul>
 
     <h2 class="mt-5 mb-3">word42.org, the website</h2>
-    <p>This website is a set of static pages with no cookies, no analytics and no tracking.
-    It is hosted on <a href="https://pages.github.com/">GitHub Pages</a>, and GitHub may
-    record basic technical information about visits (such as IP addresses) in its server
-    logs, as described in the
+    <p>This website is a set of static pages with no cookies, no analytics and no tracking,
+    and it loads nothing from third-party servers — every page, stylesheet and image is
+    served from word42.org itself. It is hosted on
+    <a href="https://pages.github.com/">GitHub Pages</a>, and GitHub may record basic
+    technical information about visits (such as IP addresses) in its server logs, as
+    described in the
     <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
-    Privacy Statement</a>. We do not receive or store any of that information ourselves.
-    The stylesheet and scripts are loaded from the
-    <a href="https://www.jsdelivr.com/">jsDelivr</a> content delivery network, whose
-    servers likewise see the ordinary technical details of those requests.</p>
+    Privacy Statement</a>. We do not receive or store any of that information ourselves.</p>
 
     <h2 class="mt-5 mb-3">Contact</h2>
     <p class="mb-0">Word42 is developed in the open at
@@ -89,7 +95,5 @@
   </div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
