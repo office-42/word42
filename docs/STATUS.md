@@ -119,6 +119,11 @@ Early, but real. Word42 today is a working word processor:
   bullets, with numbering restarted at any item. RTF carries them as
   Word's `\pn` formats, HTML as `<ol type>`/`start`, and a `.doc`'s
   level formats map on to them.
+- **Scanning** — Insert ▸ Picture ▸ From Scanner or Camera runs Windows
+  Image Acquisition's dialog (through its Automation layer, so no WIA
+  headers or import libraries are needed) and puts the page it returns in
+  the text as a PNG picture; on Linux it runs SANE's `scanimage`. Checked
+  against a CanoScan LiDE 400.
 - **Drawing** — Insert ▸ Drawing puts a line, arrow, rectangle, rounded
   rectangle or ellipse in the text, with its line width, colour and fill
   chosen in the box, and text set in the middle of it. A drawing is kept

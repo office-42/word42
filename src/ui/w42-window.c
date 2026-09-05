@@ -26,6 +26,7 @@
 #include "w42-html.h"
 #include "w42-pdf.h"
 #include "w42-print.h"
+#include "w42-scan.h"
 #include "w42-ruler.h"
 #include "w42-rtf.h"
 #include "w42-settings.h"
@@ -1621,6 +1622,41 @@ action_insert_picture (GSimpleAction *action, GVariant *param, gpointer data)
 
   g_object_unref (filters);
   g_object_unref (dialog);
+}
+
+/* Insert > Picture > From Scanner or Camera: the scanner's own dialog,
+ * and what it scanned into the text as a picture. */
+static void
+action_insert_scan (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  const char *format = NULL;
+  GBytes *bytes;
+
+  (void) action; (void) param;
+  if (!w42_scan_available ())
+    {
+      w42_message_show (GTK_WINDOW (self), "No scanner can be reached from here.",
+                        "Word42 scans through Windows Image Acquisition on Windows and "
+                        "through SANE's scanimage on Linux; neither was found.");
+      return;
+    }
+  bytes = w42_scan_acquire (GTK_WINDOW (self), &format, &error);
+  if (bytes != NULL)
+    {
+      int width = 0, height = 0;
+      const char *probed = NULL;
+
+      if (w42_image_probe (bytes, &width, &height, &probed))
+        w42_view_insert_picture (self->view, bytes, probed != NULL ? probed : format, width, height);
+      else
+        w42_message_show (GTK_WINDOW (self), "The scanner sent a picture Word42 cannot read.", NULL);
+      g_bytes_unref (bytes);
+    }
+  else if (error != NULL)
+    show_error (self, "Word42 could not scan.", error);
+  g_clear_error (&error);
 }
 
 /* ---- Export as PDF ---------------------------------------------------- */
@@ -4044,6 +4080,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "print",         action_print,         NULL, NULL, NULL, { 0 } },
   { "export-pdf",    action_export_pdf,    NULL, NULL, NULL, { 0 } },
   { "insert-picture", action_insert_picture, NULL, NULL, NULL, { 0 } },
+  { "insert-scan", action_insert_scan, NULL, NULL, NULL, { 0 } },
   { "print-preview", action_print_preview, NULL, NULL, NULL, { 0 } },
   { "page-setup", action_page_setup, NULL, NULL,    NULL, { 0 } },
   { "table-insert",      action_table_insert,     NULL, NULL, NULL, { 0 } },

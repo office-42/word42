@@ -479,12 +479,21 @@ the table standing. Delete the rows to delete the table.
 
 ## 10. Pictures, drawings and frames
 
-### Insert ▸ Picture
+### Insert ▸ Picture ▸ From File
 
 Puts a picture into the text, where it takes one position exactly as a
 character does: it wraps with the text, sits on the baseline, and deletes
 and undoes as one thing. Any format the system's image library can read —
 PNG, JPEG, GIF, BMP, TIFF, WebP, AVIF, HEIF, SVG.
+
+### Insert ▸ Picture ▸ From Scanner or Camera
+
+Asks the scanner for a page and puts it in the text as a picture, as Word
+XP did. On Windows it is Windows Image Acquisition's own dialog -- the
+one that lists the scanners and cameras, offers colour, greyscale or
+black and white, a preview, and the scan -- so any device Windows can
+scan with, Word42 can. On Linux it is SANE's `scanimage`, which must be
+installed. Word42 waits while the scanner works.
 
 Click a picture and eight handles appear: drag a corner to resize it
 keeping its proportions, a side to stretch it. A dotted outline shows the

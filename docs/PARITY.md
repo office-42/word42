@@ -65,6 +65,7 @@ is listed so the distance to the current product is honest.
 | Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full | full |
 | Page numbers | full | full | full | full |
 | Pictures (inline, resize by handles) | full | full | full | full |
+| Insert ▸ Picture ▸ From Scanner or Camera | yes (WIA on Windows, SANE on Linux) | no | yes | yes |
 | Wrapped pictures (left/right, top and bottom, in front, behind; placed by offset) | yes | yes | yes | yes |
 | Text frames (paragraphs framed at a side, text beside) | yes (Format ▸ Frame; docx, odt, html) | yes | yes | yes |
 | Floating text boxes placed anywhere on the page | no | yes | yes | yes |

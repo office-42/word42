@@ -62,6 +62,7 @@ w42_ui_sources = files(
   'ui/w42-spell-dialog.c',
   'ui/w42-dialogs.c',
   'ui/w42-print.c',
+  'ui/w42-scan.c',
   'ui/w42-preview.c',
   'ui/w42-slideshow.c',
   'ui/w42-window.c',
@@ -69,11 +70,18 @@ w42_ui_sources = files(
   'main.c',
 )
 
+# Scanning on Windows goes through WIA's Automation layer: COM, which is
+# ole32 and oleaut32, and nothing else.
+w42_ui_deps = [w42_core_dep, gtk_dep]
+if host_machine.system() == 'windows'
+  w42_ui_deps += [cc.find_library('ole32'), cc.find_library('oleaut32')]
+endif
+
 executable('word42',
   w42_ui_sources,
   w42_resources,
   w42_icon_resources,
-  dependencies: [w42_core_dep, gtk_dep],
+  dependencies: w42_ui_deps,
   include_directories: w42_inc,
   install: true,
   win_subsystem: 'windows',

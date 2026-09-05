@@ -319,17 +319,26 @@
           <attribute name="label" translatable="yes">A_nnotation...</attribute>
           <attribute name="action">win.annotation</attribute>
         </item>
-        <item>
-          <attribute name="label" translatable="yes">Pi_cture...</attribute>
-          <attribute name="action">win.insert-picture</attribute>
-        </item>
+        <submenu>
+          <attribute name="label" translatable="yes">Pi_cture</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">From _File...</attribute>
+              <attribute name="action">win.insert-picture</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">From _Scanner or Camera...</attribute>
+              <attribute name="action">win.insert-scan</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_AutoShape...</attribute>
+              <attribute name="action">win.drawing</attribute>
+            </item>
+          </section>
+        </submenu>
         <item>
           <attribute name="label" translatable="yes">_File...</attribute>
           <attribute name="action">win.insert-file</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">Dra_wing...</attribute>
-          <attribute name="action">win.drawing</attribute>
         </item>
       </section>
     </submenu>
