@@ -102,7 +102,7 @@ is listed so the distance to the current product is honest.
 | Feature | Word42 | AbiWord | Word 6 | Word (modern) |
 |---|---|---|---|---|
 | Normal and Page Layout views | full | full | full | full |
-| Print, Print Preview, Page Setup | full | full | full | full |
+| Print (range, current page, selection, copies, collate, odd/even, reverse, draft, print to file), Print Preview (multiple pages, magnifier, fit zooms), Page Setup | full (no gutter or mirror margins) | full | full | full |
 | Zoom | presets | free | presets | free |
 | Full Screen (chrome away, Escape back) | full | full | full | full |
 | Outline view / document map | no | no | yes | yes |

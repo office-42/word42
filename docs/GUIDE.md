@@ -766,11 +766,27 @@ raise it.
 
 ## 14. Printing and exporting
 
-**File ▸ Print** (Ctrl+P) prints through the system's print dialog.
+**File ▸ Print** (Ctrl+P) opens Word42's Print box, laid out as Word XP's
+was: the printer the last job went to; a page range -- All, Current page,
+Selection, or Pages typed as `1,3,5-12`; the number of copies and Collate;
+All, Odd or Even pages in the range; and the options that mean something
+here: Reverse print order, Drawing objects (the pictures and shapes set
+beside the text), Background colour (Format ▸ Background, which Word left
+off the paper unless asked), and Draft output, the text alone. **Print**
+sends the job to that printer; **Printer...** opens the system's own
+dialog to choose another, and prints from there; **Print to file...**
+writes the same pages, range and options applied, to a PDF that any
+printer can be given. What the box was left at is what it opens with next
+time, in this session and the next.
 
-**File ▸ Print Preview** (Ctrl+F2) opens Word42's own preview: the pages on
-a grey ground, a zoom, a page counter and a Print button. It is the same
-layout engine that draws the document, so the preview is the print.
+**File ▸ Print Preview** (Ctrl+F2) opens Word42's own preview, with the
+bar Word XP's had: Print, One Page, Multiple Pages (two across, then
+three), Zoom Out and In, a zoom box with the percentages, Page Width, Whole
+Page and Two Pages, Previous and Next, a page counter and Close. Click a
+page and the magnifier takes it to 100% round the point clicked; click
+again and the view is as it was. Page Up and Page Down turn the pages. It
+is the same layout engine that draws the document, so the preview is the
+print.
 
 **File ▸ Export as PDF** writes the document as a PDF, pictures, notes and
 all.

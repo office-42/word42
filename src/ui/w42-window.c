@@ -1820,10 +1820,26 @@ action_print (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
 
+  W42PrintExtras extras;
+  int page = 0, line = 0, column = 0;
+
   w42_view_update_fields (self->view);
 
   (void) action; (void) param;
-  w42_print_document (GTK_WINDOW (self), self->doc, FALSE);
+  /* The selection, for "Selection"; the caret's page, for "Current page". */
+  extras.selection = NULL;
+  if (w42_view_has_selection (self->view))
+    {
+      gsize start = 0, end = 0;
+
+      w42_view_get_selection_bounds (self->view, &start, &end);
+      if (end > start)
+        extras.selection = w42_pt_extract (w42_document_pt (self->doc), start, end - start);
+    }
+  w42_layout_describe_pos (w42_view_get_layout (self->view), w42_view_get_caret (self->view),
+                           &page, &line, &column);
+  extras.current_page = page;
+  w42_print_document (GTK_WINDOW (self), self->doc, FALSE, &extras);
 }
 
 static void
@@ -1834,7 +1850,7 @@ action_print_preview (GSimpleAction *action, GVariant *param, gpointer data)
   w42_view_update_fields (self->view);
 
   (void) action; (void) param;
-  w42_print_document (GTK_WINDOW (self), self->doc, TRUE);
+  w42_print_document (GTK_WINDOW (self), self->doc, TRUE, NULL);
 }
 
 static void

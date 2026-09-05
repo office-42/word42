@@ -258,8 +258,10 @@ Early, but real. Word42 today is a working word processor:
   `\trowd`…`\cell`…`\row`, both ways, column widths and merged cells
   included.
 - **Print Preview** — Word42's own window, not an external viewer: pages on
-  a grey ground, zoom, a page counter, and a Print button. What it shows is
-  what prints, because it is the same layout engine.
+  a grey ground, one or several across, the zoom box with Page Width, Whole
+  Page and Two Pages, a magnifier on click, Previous and Next, a page
+  counter, and a Print button. What it shows is what prints, because it is
+  the same layout engine.
 - **Undo and redo** — unlimited, with a run of typing collapsing into one step
   and compound edits grouping into one, exactly as you would expect.
 - **Two views** — Normal, a continuous galley, and Page Layout, with real
@@ -384,8 +386,13 @@ Early, but real. Word42 today is a working word processor:
   heading set in tracked capitals closed back up; the pictures; and the page
   with its margins. A PDF is a picture of a document rather than the
   document, so that is what there is to recover.
-- **Printing** — File ▸ Print through the system's print dialog on Windows,
-  CUPS on Linux and GTK's own dialog on macOS; where no print backend works,
+- **Printing** — File ▸ Print opens Word42's Print box, Word XP's layout:
+  page range (All, Current page, Selection, Pages as `1,3,5-12`), copies
+  and Collate, All/Odd/Even pages, and Reverse order, Drawing objects,
+  Background colour and Draft output; then the printer last used, the
+  system's dialog (Windows', CUPS on Linux, GTK's on macOS) to choose
+  another, or Print to file as a PDF. The settings are kept between jobs
+  and sessions in `print-settings.ini`. Where no print backend works,
   Word42 offers to write the same pages to a PDF instead.
 - **Page Setup** — paper size, orientation and the four margins.
 - **Paragraph** — alignment, left and right indents, first-line and hanging
