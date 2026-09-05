@@ -118,7 +118,7 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
     VARIANT arg, dummy;
     int fd;
 
-    fd = g_file_open_tmp ("word42-scan-XXXXXX.png", &path, NULL);
+    fd = g_file_open_tmp ("word42-scan-XXXXXX", &path, NULL);
     if (fd >= 0)
       close (fd);
     wpath = path != NULL ? g_utf8_to_utf16 (path, -1, NULL, NULL, NULL) : NULL;
@@ -196,7 +196,7 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
 {
   char *path = NULL;
   int fd;
-  char *argv[6];
+  char *argv[6] = { NULL };
   int status = 0;
   char *err_text = NULL;
   GBytes *bytes = NULL;
@@ -208,15 +208,15 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
                    "scanimage was not found.  Install SANE (sane-utils) to scan.");
       return NULL;
     }
-  fd = g_file_open_tmp ("word42-scan-XXXXXX.png", &path, error);
+  fd = g_file_open_tmp ("word42-scan-XXXXXX", &path, error);
   if (fd < 0)
     return NULL;
   close (fd);
 
-  argv[0] = "scanimage";
-  argv[1] = "--format=png";
-  argv[2] = "--mode=Color";
-  argv[3] = "-o";
+  argv[0] = (char *) "scanimage";
+  argv[1] = (char *) "--format=png";
+  argv[2] = (char *) "--mode=Color";
+  argv[3] = (char *) "-o";
   argv[4] = path;
   argv[5] = NULL;
   if (!g_spawn_sync (NULL, argv, NULL, G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL,
