@@ -328,3 +328,41 @@ w42_builder_object_wrap (W42Builder *b, W42Wrap wrap)
   if (n > 0 && wrap != W42_WRAP_INLINE)
     w42_object_table_set_wrap (table, n - 1, wrap);
 }
+
+void
+w42_builder_object_position (W42Builder *b, int x, int y)
+{
+  W42ObjectTable *table = w42_pt_object_table (b->pt);
+  guint n = w42_object_table_size (table);
+
+  if (n > 0)
+    w42_object_table_set_position (table, n - 1, TRUE,
+                                   CLAMP (x, -31680, 31680), CLAMP (y, -31680, 31680));
+}
+
+void
+w42_builder_shape (W42Builder *b, W42ShapeKind kind, int width, int height,
+                   double line_pt, guint32 line_rgb, gboolean filled, guint32 fill_rgb,
+                   const char *text)
+{
+  W42ObjectIdx idx;
+  int w_px, h_px;
+  GBytes *png;
+
+  width = MAX (width, 15);
+  height = MAX (height, 15);
+  w_px = MAX (width / 15, 2);
+  h_px = MAX (height / 15, 2);
+  png = w42_shape_render (kind, w_px, h_px, line_pt, line_rgb, filled, fill_rgb, text);
+  if (png == NULL)
+    return;
+  cell_break (b);
+  idx = w42_object_table_add (w42_pt_object_table (b->pt), png, g_intern_static_string ("png"),
+                              w_px, h_px, width, height);
+  g_bytes_unref (png);
+  w42_object_table_set_shape (w42_pt_object_table (b->pt), idx, kind, line_pt, line_rgb,
+                              filled, fill_rgb, text);
+  w42_pt_insert_object (b->pt, b->pos, idx, builder_ap (b));
+  b->pos += 1;
+  b->in_para = TRUE;
+}

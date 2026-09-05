@@ -2019,6 +2019,120 @@ w42_view_insert_picture (W42View    *self,
   view_edited (self);
 }
 
+void
+w42_view_insert_shape (W42View *self, W42ShapeKind kind, int width, int height,
+                       double line_pt, guint32 line_rgb,
+                       gboolean filled, guint32 fill_rgb, const char *text)
+{
+  W42PieceTable *pt;
+  W42ObjectIdx idx;
+  W42ApIdx ap;
+  gboolean grouped;
+  int w_px, h_px;
+  GBytes *png;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return;
+  width = MAX (width, 15);
+  height = MAX (height, 15);
+  w_px = MAX (width / 15, 2);
+  h_px = MAX (height / 15, 2);
+
+  /* A PNG of it goes with it, for the formats that cannot say a shape. */
+  png = w42_shape_render (kind, w_px, h_px, line_pt, line_rgb, filled, fill_rgb, text);
+  if (png == NULL)
+    return;
+  idx = w42_object_table_add (w42_pt_object_table (pt), png, g_intern_static_string ("png"),
+                              w_px, h_px, width, height);
+  g_bytes_unref (png);
+  w42_object_table_set_shape (w42_pt_object_table (pt), idx, kind, line_pt, line_rgb,
+                              filled, fill_rgb, text);
+  ap = w42_pt_ap_at (pt, self->caret);
+
+  grouped = w42_view_has_selection (self);
+  if (grouped)
+    w42_pt_begin_group (pt);
+  view_delete_selection (self);
+  w42_pt_insert_object (pt, self->caret, idx, ap);
+  self->caret += 1;
+  self->anchor = self->caret;
+  if (grouped)
+    w42_pt_end_group (pt);
+
+  self->pending_mask = 0;
+  view_edited (self);
+}
+
+const W42Object *
+w42_view_get_object (W42View *self)
+{
+  W42PieceTable *pt;
+  gsize start, end;
+  W42ObjectIdx idx;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), NULL);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_view_has_selection (self))
+    return NULL;
+  start = sel_start (self);
+  end = sel_end (self);
+  if (end != start + 1)
+    return NULL;
+  idx = w42_pt_object_at (pt, start);
+  if (idx == W42_OBJECT_NONE)
+    return NULL;
+  return w42_object_table_get (w42_pt_object_table (pt), idx);
+}
+
+void
+w42_view_set_shape (W42View *self, W42ShapeKind kind, double line_pt, guint32 line_rgb,
+                    gboolean filled, guint32 fill_rgb, const char *text)
+{
+  W42PieceTable *pt;
+  W42ObjectTable *objects;
+  const W42Object *object;
+  W42ObjectIdx old, fresh;
+  gsize pos;
+  W42ApIdx ap;
+  GBytes *png;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  object = w42_view_get_object (self);
+  if (pt == NULL || object == NULL)
+    return;
+  pos = sel_start (self);
+  old = w42_pt_object_at (pt, pos);
+  objects = w42_pt_object_table (pt);
+
+  /* A fresh object, so that undo brings the old one back; its PNG is
+   * drawn again, since the formats that use it show it as it is now. */
+  png = w42_shape_render (kind, MAX (object->width / 15, 2), MAX (object->height / 15, 2),
+                          line_pt, line_rgb, filled, fill_rgb, text);
+  if (png == NULL)
+    return;
+  fresh = w42_object_table_add (objects, png, g_intern_static_string ("png"),
+                                MAX (object->width / 15, 2), MAX (object->height / 15, 2),
+                                object->width, object->height);
+  g_bytes_unref (png);
+  w42_object_table_set_wrap (objects, fresh, object->wrap);
+  w42_object_table_set_position (objects, fresh, object->positioned, object->pos_x, object->pos_y);
+  w42_object_table_set_shape (objects, fresh, kind, line_pt, line_rgb, filled, fill_rgb, text);
+  (void) old;
+
+  ap = w42_pt_ap_at (pt, pos);
+  w42_pt_begin_group (pt);
+  w42_pt_delete (pt, pos, 1);
+  w42_pt_insert_object (pt, pos, fresh, ap);
+  w42_pt_end_group (pt);
+  self->anchor = pos;
+  self->caret = pos + 1;
+  view_edited (self);
+}
+
 static void view_insert_paragraph (W42View *self);
 
 void

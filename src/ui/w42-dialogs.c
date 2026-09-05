@@ -3510,7 +3510,8 @@ w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view)
 typedef struct {
   GtkWidget *window;
   W42View   *view;
-  GtkWidget *kind, *width, *height, *line, *line_colour, *filled, *fill_colour;
+  GtkWidget *kind, *width, *height, *line, *line_colour, *filled, *fill_colour, *text;
+  gboolean   editing;     /* Format > Drawing on the selected shape */
 } DrawingBox;
 
 static const char * const SHAPE_NAMES[] = {
@@ -3523,31 +3524,63 @@ static const guint32 SHAPE_RGB[] = {
   0x000000, 0xffffff, 0x808080, 0xc00000, 0x008000, 0x0000c0, 0xffff00
 };
 
+/* Which entry of the shape colours a colour is, or the nearest. */
+static guint
+shape_colour_index (guint32 rgb)
+{
+  guint best = 0;
+  long best_d = G_MAXLONG;
+
+  for (guint i = 0; i < G_N_ELEMENTS (SHAPE_RGB); i++)
+    {
+      long dr = (long) ((rgb >> 16) & 0xFF) - (long) ((SHAPE_RGB[i] >> 16) & 0xFF);
+      long dg = (long) ((rgb >> 8) & 0xFF) - (long) ((SHAPE_RGB[i] >> 8) & 0xFF);
+      long db = (long) (rgb & 0xFF) - (long) (SHAPE_RGB[i] & 0xFF);
+      long d = dr * dr + dg * dg + db * db;
+
+      if (d < best_d)
+        {
+          best_d = d;
+          best = i;
+        }
+    }
+  return best;
+}
+
 static void
 on_drawing_ok (GtkButton *button, gpointer data)
 {
   DrawingBox *box = data;
-  W42ShapeKind kind = (W42ShapeKind) gtk_drop_down_get_selected (GTK_DROP_DOWN (box->kind));
-  double w_in = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->width))) / 1440.0;
-  double h_in = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->height))) / 1440.0;
+  W42ShapeKind kind = (W42ShapeKind) (gtk_drop_down_get_selected (GTK_DROP_DOWN (box->kind)) + 1);
+  int w = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->width)));
+  int h = twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->height)));
   double line_pt = gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->line));
   guint lc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->line_colour));
   guint fc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->fill_colour));
   gboolean filled = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->filled));
-  int w_px = (int) lround (MAX (w_in, 0.05) * 96.0);
-  int h_px = (int) lround (MAX (h_in, 0.02) * 96.0);
-  GBytes *png;
+  const char *text = gtk_editable_get_text (GTK_EDITABLE (box->text));
 
   (void) button;
 
-  png = w42_shape_render (kind, w_px, h_px, line_pt,
-                          SHAPE_RGB[MIN (lc, G_N_ELEMENTS (SHAPE_RGB) - 1)],
-                          filled, SHAPE_RGB[MIN (fc, G_N_ELEMENTS (SHAPE_RGB) - 1)]);
-  if (png != NULL)
+  if (kind >= W42_SHAPE_KINDS)
+    kind = W42_SHAPE_RECTANGLE;
+  if (box->editing)
     {
-      w42_view_insert_picture (box->view, png, g_intern_static_string ("png"), w_px, h_px);
-      g_bytes_unref (png);
+      w42_view_set_shape (box->view, kind, line_pt,
+                          SHAPE_RGB[MIN (lc, G_N_ELEMENTS (SHAPE_RGB) - 1)],
+                          filled, SHAPE_RGB[MIN (fc, G_N_ELEMENTS (SHAPE_RGB) - 1)], text);
+      {
+        int ow, oh;
+        W42Wrap wrap;
+
+        if (w42_view_get_picture (box->view, &ow, &oh, &wrap) && (ow != w || oh != h))
+          w42_view_set_picture (box->view, MAX (w, 15), MAX (h, 15), wrap);
+      }
     }
+  else
+    w42_view_insert_shape (box->view, kind, MAX (w, 72), MAX (h, 30), line_pt,
+                           SHAPE_RGB[MIN (lc, G_N_ELEMENTS (SHAPE_RGB) - 1)],
+                           filled, SHAPE_RGB[MIN (fc, G_N_ELEMENTS (SHAPE_RGB) - 1)], text);
   gtk_window_destroy (GTK_WINDOW (box->window));
 }
 
@@ -3556,6 +3589,9 @@ w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
 {
   DrawingBox *box;
   GtkWidget *content, *grid;
+  W42Object shown;
+
+  memset (&shown, 0, sizeof shown);
 
   g_return_if_fail (W42_IS_VIEW (view));
 
@@ -3564,29 +3600,55 @@ w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (DrawingBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Drawing", &content, view);
+  /* On a selected shape the dialog shows it as it is, and changes it. */
+  {
+    const W42Object *object = w42_view_get_object (view);
+
+    if (object != NULL && object->shape != W42_SHAPE_PICTURE)
+      {
+        box->editing = TRUE;
+        shown = *object;
+      }
+  }
+  box->window = dialog_shell (parent, box->editing ? "Format Drawing" : "Drawing", &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
   grid = group (content, "Shape");
-  box->kind   = choice_row (grid, 0, 0, "_Shape:", SHAPE_NAMES, 2);
-  box->width  = inches_row (grid, 1, 0, "_Width:", measure_from_twips (2 * 1440));
-  box->height = inches_row (grid, 2, 0, "_Height:", measure_from_twips (1440));
+  box->kind   = choice_row (grid, 0, 0, "_Shape:", SHAPE_NAMES,
+                            box->editing ? (guint) MAX ((int) shown.shape - 1, 0) : 2);
+  box->width  = inches_row (grid, 1, 0, "_Width:", measure_from_twips (box->editing ? shown.width : 2 * 1440));
+  box->height = inches_row (grid, 2, 0, "_Height:", measure_from_twips (box->editing ? shown.height : 1440));
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("_Text:");
+
+    box->text = gtk_entry_new ();
+    gtk_entry_set_placeholder_text (GTK_ENTRY (box->text), "set in the middle of the shape");
+    if (box->editing && shown.text != NULL)
+      gtk_editable_set_text (GTK_EDITABLE (box->text), shown.text);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->text);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 3, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->text, 1, 3, 1, 1);
+  }
 
   grid = group (content, "Line and Fill");
   {
     GtkWidget *label = gtk_label_new_with_mnemonic ("_Line Width (pt):");
 
-    box->line = gtk_spin_button_new_with_range (0.25, 12.0, 0.25);
-    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->line), 1.0);
+    box->line = gtk_spin_button_new_with_range (0.0, 12.0, 0.25);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->line), box->editing ? shown.line_pt : 1.0);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->line);
     gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (grid), box->line, 1, 0, 1, 1);
   }
-  box->line_colour = choice_row (grid, 1, 0, "Line _Color:", SHAPE_COLOURS, 0);
+  box->line_colour = choice_row (grid, 1, 0, "Line _Color:", SHAPE_COLOURS,
+                                 box->editing ? shape_colour_index (shown.line_rgb) : 0);
   box->filled = gtk_check_button_new_with_mnemonic ("_Filled");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->filled), box->editing && shown.filled);
   gtk_grid_attach (GTK_GRID (grid), box->filled, 0, 2, 2, 1);
-  box->fill_colour = choice_row (grid, 3, 0, "Fill Colo_r:", SHAPE_COLOURS, 6);
+  box->fill_colour = choice_row (grid, 3, 0, "Fill Colo_r:", SHAPE_COLOURS,
+                                 box->editing ? shape_colour_index (shown.fill_rgb) : 6);
 
   button_row (content, box->window, G_CALLBACK (on_drawing_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -5325,14 +5387,15 @@ static void
 picture_ok (GtkButton *button, gpointer data)
 {
   PictureBox *box = data;
-  static const W42Wrap wraps[] = { W42_WRAP_INLINE, W42_WRAP_LEFT, W42_WRAP_RIGHT };
+  static const W42Wrap wraps[] = { W42_WRAP_INLINE, W42_WRAP_LEFT, W42_WRAP_RIGHT,
+                                   W42_WRAP_TOP_BOTTOM, W42_WRAP_FRONT, W42_WRAP_BEHIND };
   guint sel = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->wrap));
 
   (void) button;
   w42_view_set_picture (box->view,
                         MAX (spin_twips (box->width), 15),
                         MAX (spin_twips (box->height), 15),
-                        wraps[MIN (sel, 2)]);
+                        wraps[MIN (sel, G_N_ELEMENTS (wraps) - 1)]);
   gtk_window_close (GTK_WINDOW (box->window));
 }
 
@@ -5340,7 +5403,8 @@ void
 w42_picture_dialog_show (GtkWindow *parent, W42View *view)
 {
   static const char *const wraps[] = {
-    "In line with text", "Left, text to the right", "Right, text to the left", NULL
+    "In line with text", "Left, text to the right", "Right, text to the left",
+    "Top and bottom", "In front of text", "Behind text", NULL
   };
   PictureBox *box;
   GtkWidget *content, *grid;
@@ -5367,7 +5431,7 @@ w42_picture_dialog_show (GtkWindow *parent, W42View *view)
   box->height = inches_row (grid, 1, 0, "_Height:", height / 1440.0 * unit);
 
   grid = group (content, "Text wrapping");
-  box->wrap = choice_row (grid, 0, 0, "_Position:", wraps, (guint) wrap);
+  box->wrap = choice_row (grid, 0, 0, "_Position:", wraps, MIN ((guint) wrap, 5));
 
   button_row (content, box->window, G_CALLBACK (picture_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));

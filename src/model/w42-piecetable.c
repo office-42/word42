@@ -1763,10 +1763,7 @@ w42_pt_resize_object (W42PieceTable *pt, gsize pos, int width, int height)
     return;
 
   ap = w42_pt_ap_at (pt, pos);
-  fresh = w42_object_table_add (pt->objects, object->data, object->format,
-                                object->pixel_w, object->pixel_h,
-                                MAX (width, 15), MAX (height, 15));
-  w42_object_table_set_wrap (pt->objects, fresh, object->wrap);
+  fresh = w42_object_table_clone (pt->objects, old, MAX (width, 15), MAX (height, 15));
 
   w42_pt_begin_group (pt);
   w42_pt_delete (pt, pos, 1);
@@ -1793,9 +1790,7 @@ w42_pt_set_object_wrap (W42PieceTable *pt, gsize pos, W42Wrap wrap)
 
   /* A fresh object, so that undo brings the old one back. */
   ap = w42_pt_ap_at (pt, pos);
-  fresh = w42_object_table_add (pt->objects, object->data, object->format,
-                                object->pixel_w, object->pixel_h,
-                                object->width, object->height);
+  fresh = w42_object_table_clone (pt->objects, old, object->width, object->height);
   w42_object_table_set_wrap (pt->objects, fresh, wrap);
 
   w42_pt_begin_group (pt);

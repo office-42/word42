@@ -45,6 +45,13 @@ void w42_builder_object (W42Builder *b, GBytes *data, const char *format,
 void w42_builder_end_paragraph (W42Builder *b);
 /* Sets how the text wraps round the picture w42_builder_object just put in. */
 void w42_builder_object_wrap (W42Builder *b, W42Wrap wrap);
+/* And where it sits: twips from the column's left and its paragraph's top. */
+void w42_builder_object_position (W42Builder *b, int x, int y);
+/* A shape rather than a picture: `width` by `height` twips, with its
+ * outline, its fill and the text in it (or NULL). */
+void w42_builder_shape (W42Builder *b, W42ShapeKind kind, int width, int height,
+                        double line_pt, guint32 line_rgb, gboolean filled, guint32 fill_rgb,
+                        const char *text);
 
 /* A note: the mark goes in at the current position, and text until
  * end_note goes into the note's body. */

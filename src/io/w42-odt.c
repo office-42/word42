@@ -105,6 +105,14 @@ typedef struct {
   gboolean   has_pa, has_ch;
 } OdtStyle;
 
+/* What a graphic style says about a shape: its fill, its outline, and
+ * whether it sits behind the text. */
+typedef struct {
+  gboolean filled, stroked, arrow, behind;
+  guint32  fill, stroke;
+  double   stroke_pt;
+} OdtGraphic;
+
 /* What a table-cell style says beyond its sides and background: the
  * line of each side, and where the text sits. */
 typedef struct {
@@ -183,6 +191,8 @@ typedef struct {
   gsize          index_start;
   GString       *field_text;
   gboolean       frame_pending;
+  gboolean       frame_positioned;
+  int            frame_x, frame_y;
   int            frame_w, frame_h;
   char          *frame_href;
   W42Wrap        frame_wrap;
@@ -192,6 +202,15 @@ typedef struct {
   W42CharFmt     tb_saved_ch;
   gboolean       tb_reopened;      /* it was reopened after the box, empty */
   GHashTable    *graphic_wraps;  /* graphic style name -> W42Wrap + 1 */
+  GHashTable    *graphics;       /* graphic style name -> OdtGraphic */
+  gboolean       shape_open;     /* inside a draw:custom-shape, rect, ellipse or line */
+  W42ShapeKind   shape_kind;
+  int            shape_x, shape_y, shape_w, shape_h;   /* twips */
+  gboolean       shape_positioned;
+  W42Wrap        shape_wrap;
+  const OdtGraphic *shape_style;
+  GString       *shape_text;
+  gboolean       shape_primitive_known;
   char          *cur_graphic;    /* the graphic style being read */
 } Odt;
 
@@ -602,6 +621,29 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
             w = (hpos != NULL && g_str_equal (hpos, "right")) ? W42_WRAP_RIGHT : W42_WRAP_LEFT;
         }
       g_hash_table_insert (o->graphic_wraps, g_strdup (o->cur_graphic), GINT_TO_POINTER ((int) w + 1));
+      {
+        /* And for a shape: its fill and its outline. */
+        OdtGraphic *g = g_new0 (OdtGraphic, 1);
+        const char *fill = attr (an, av, "draw:fill");
+        const char *fill_color = attr (an, av, "draw:fill-color");
+        const char *stroke = attr (an, av, "draw:stroke");
+        const char *stroke_w = attr (an, av, "svg:stroke-width");
+        const char *stroke_c = attr (an, av, "svg:stroke-color");
+        const char *marker = attr (an, av, "draw:marker-end");
+        const char *marker2 = attr (an, av, "draw:marker-start");
+        const char *through = attr (an, av, "style:run-through");
+
+        g->filled = fill != NULL ? !g_str_equal (fill, "none") : fill_color != NULL;
+        g->fill = fill_color != NULL && fill_color[0] == '#' ? (guint32) strtoul (fill_color + 1, NULL, 16) & 0xFFFFFF : 0x4472C4;
+        g->stroked = stroke == NULL || !g_str_equal (stroke, "none");
+        g->stroke_pt = stroke_w != NULL ? length_twips (stroke_w) / 20.0 : 0.75;
+        if (g->stroked && g->stroke_pt <= 0.0)
+          g->stroke_pt = 0.75;
+        g->stroke = stroke_c != NULL && stroke_c[0] == '#' ? (guint32) strtoul (stroke_c + 1, NULL, 16) & 0xFFFFFF : 0;
+        g->arrow = (marker != NULL && *marker != '\0') || (marker2 != NULL && *marker2 != '\0');
+        g->behind = through != NULL && g_str_equal (through, "background");
+        g_hash_table_insert (o->graphics, g_strdup (o->cur_graphic), g);
+      }
     }
   else if (g_str_equal (tag, "drop-cap") && o->cur_style != NULL)
     {
@@ -1038,11 +1080,103 @@ open_pending_cell (Odt *o)
     w42_pt_set_cell_vspan (o->pt, o->b.cell_pos, o->cell_vspan);
 }
 
+/* The kind of shape a draw:enhanced-geometry describes: by its type, or
+ * for the "non-primitive" ones Word writes, by the look of its path. */
+static W42ShapeKind
+enhanced_geometry_kind (const char **an, const char **av)
+{
+  const char *type = attr (an, av, "draw:type");
+  const char *path = attr (an, av, "draw:enhanced-path");
+
+  if (type != NULL)
+    {
+      if (g_str_equal (type, "ellipse")) return W42_SHAPE_ELLIPSE;
+      if (g_str_equal (type, "round-rectangle")) return W42_SHAPE_ROUNDED_RECTANGLE;
+      if (g_str_equal (type, "rectangle")) return W42_SHAPE_RECTANGLE;
+      if (g_str_equal (type, "line")) return W42_SHAPE_LINE;
+    }
+  if (path != NULL)
+    {
+      if (strstr (path, " A ") != NULL || strstr (path, " W ") != NULL || strstr (path, " U ") != NULL)
+        return W42_SHAPE_ELLIPSE;
+      if (g_str_has_prefix (path, "M ?f0 ?f2 L ?f1 ?f3") || strstr (path, "L") == NULL)
+        return W42_SHAPE_LINE;
+      {
+        /* A rectangle's path has four corners; a line's, two. */
+        int points = 0;
+
+        for (const char *c = path; *c != '\0'; c++)
+          if (*c == 'L' || *c == 'M')
+            points++;
+        if (points <= 2 && strstr (path, "Z") == NULL)
+          return W42_SHAPE_LINE;
+      }
+    }
+  return W42_SHAPE_RECTANGLE;
+}
+
 static void
 body_start (Odt *o, const char *tag, const char **an, const char **av)
 {
   if (o->in_annotation)
     return;                           /* its paragraphs are the note's text */
+  if (o->shape_open)
+    {
+      /* Inside a shape: its geometry, and its text as a label. */
+      if (g_str_equal (tag, "enhanced-geometry"))
+        {
+          if (!o->shape_primitive_known)
+            o->shape_kind = enhanced_geometry_kind (an, av);
+        }
+      else if (g_str_equal (tag, "line-break"))
+        g_string_append_c (o->shape_text, '\n');
+      else if (g_str_equal (tag, "s") || g_str_equal (tag, "tab"))
+        g_string_append_c (o->shape_text, ' ');
+      return;
+    }
+  if (g_str_equal (tag, "custom-shape") || g_str_equal (tag, "rect") ||
+      g_str_equal (tag, "ellipse") || g_str_equal (tag, "line"))
+    {
+      const char *anchor = attr (an, av, "text:anchor-type");
+      const char *sname = attr (an, av, "draw:style-name");
+      gpointer w = sname != NULL ? g_hash_table_lookup (o->graphic_wraps, sname) : NULL;
+
+      o->shape_open = TRUE;
+      o->shape_primitive_known = !g_str_equal (tag, "custom-shape");
+      o->shape_kind = g_str_equal (tag, "rect") ? W42_SHAPE_RECTANGLE
+                    : g_str_equal (tag, "ellipse") ? W42_SHAPE_ELLIPSE
+                    : g_str_equal (tag, "line") ? W42_SHAPE_LINE : W42_SHAPE_RECTANGLE;
+      o->shape_style = sname != NULL ? g_hash_table_lookup (o->graphics, sname) : NULL;
+      if (g_str_equal (tag, "line"))
+        {
+          int x1 = length_twips (attr (an, av, "svg:x1")), y1 = length_twips (attr (an, av, "svg:y1"));
+          int x2 = length_twips (attr (an, av, "svg:x2")), y2 = length_twips (attr (an, av, "svg:y2"));
+
+          o->shape_x = MIN (x1, x2);
+          o->shape_y = MIN (y1, y2);
+          o->shape_w = ABS (x2 - x1);
+          o->shape_h = ABS (y2 - y1);
+        }
+      else
+        {
+          o->shape_x = length_twips (attr (an, av, "svg:x"));
+          o->shape_y = length_twips (attr (an, av, "svg:y"));
+          o->shape_w = length_twips (attr (an, av, "svg:width"));
+          o->shape_h = length_twips (attr (an, av, "svg:height"));
+        }
+      o->shape_wrap = W42_WRAP_INLINE;
+      o->shape_positioned = FALSE;
+      if (anchor != NULL && !g_str_equal (anchor, "as-char"))
+        {
+          o->shape_positioned = TRUE;
+          if (w != NULL && (W42Wrap) (GPOINTER_TO_INT (w) - 1) != W42_WRAP_INLINE)
+            o->shape_wrap = (W42Wrap) (GPOINTER_TO_INT (w) - 1);
+          else
+            o->shape_wrap = o->shape_style != NULL && o->shape_style->behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
+        }
+      g_string_truncate (o->shape_text, 0);
+      return;
+    }
   if (g_str_equal (tag, "h") || g_str_equal (tag, "p"))
     {
       const char *sn = attr (an, av, "text:style-name");
@@ -1353,8 +1487,21 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       o->frame_w = length_twips (attr (an, av, "svg:width"));
       o->frame_h = length_twips (attr (an, av, "svg:height"));
       o->frame_wrap = W42_WRAP_INLINE;
+      o->frame_x = length_twips (attr (an, av, "svg:x"));
+      o->frame_y = length_twips (attr (an, av, "svg:y"));
+      o->frame_positioned = anchor != NULL && !g_str_equal (anchor, "as-char") &&
+                            (attr (an, av, "svg:x") != NULL || attr (an, av, "svg:y") != NULL);
       if (anchor != NULL && !g_str_equal (anchor, "as-char") && w != NULL)
         o->frame_wrap = (W42Wrap) (GPOINTER_TO_INT (w) - 1);
+      if (anchor != NULL && !g_str_equal (anchor, "as-char") && o->frame_wrap == W42_WRAP_INLINE)
+        {
+          const OdtGraphic *g = sname != NULL ? g_hash_table_lookup (o->graphics, sname) : NULL;
+
+          /* No wrapping said, or run-through: the text runs on under or
+           * over it. */
+          if (w != NULL || g != NULL)
+            o->frame_wrap = g != NULL && g->behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
+        }
       g_free (o->frame_href);
       o->frame_href = NULL;
     }
@@ -1411,6 +1558,39 @@ body_end (Odt *o, const char *tag)
     {
       if (g_str_equal (tag, "p"))
         g_string_append_c (o->annotation, ' ');
+      return;
+    }
+  if (o->shape_open)
+    {
+      if (g_str_equal (tag, "p"))
+        g_string_append_c (o->shape_text, '\n');
+      else if (g_str_equal (tag, "custom-shape") || g_str_equal (tag, "rect") ||
+               g_str_equal (tag, "ellipse") || g_str_equal (tag, "line"))
+        {
+          const OdtGraphic *g = o->shape_style;
+          W42ShapeKind kind = o->shape_kind;
+
+          o->shape_open = FALSE;
+          while (o->shape_text->len > 0 && o->shape_text->str[o->shape_text->len - 1] == '\n')
+            g_string_truncate (o->shape_text, o->shape_text->len - 1);
+          if (kind == W42_SHAPE_LINE && g != NULL && g->arrow)
+            kind = W42_SHAPE_ARROW;
+          odt_flush (o);
+          open_pending_cell (o);
+          o->b.ch = current_ch (o);
+          w42_builder_shape (&o->b, kind, o->shape_w, o->shape_h,
+                             g == NULL || g->stroked ? (g != NULL ? g->stroke_pt : 0.75) : 0.0,
+                             g != NULL ? g->stroke : 0,
+                             g != NULL ? g->filled : FALSE, g != NULL ? g->fill : 0xFFFFFF,
+                             o->shape_text->len > 0 ? o->shape_text->str : NULL);
+          if (o->shape_wrap != W42_WRAP_INLINE)
+            {
+              w42_builder_object_wrap (&o->b, o->shape_wrap);
+              if (o->shape_positioned)
+                w42_builder_object_position (&o->b, o->shape_x, o->shape_y);
+            }
+          g_string_truncate (o->shape_text, 0);
+        }
       return;
     }
   if (g_str_equal (tag, "text-box") && o->tb_depth > 1)
@@ -1531,6 +1711,8 @@ body_end (Odt *o, const char *tag)
               o->b.ch = current_ch (o);
               w42_builder_object (&o->b, bytes, format, pw, ph, o->frame_w, o->frame_h);
               w42_builder_object_wrap (&o->b, o->frame_wrap);
+              if (o->frame_wrap != W42_WRAP_INLINE && o->frame_positioned)
+                w42_builder_object_position (&o->b, o->frame_x, o->frame_y);
             }
           if (bytes != NULL)
             g_bytes_unref (bytes);
@@ -1636,6 +1818,13 @@ odt_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data, 
       for (gsize i = 0; i < len; i++)
         if (text[i] != '\n' && text[i] != '\r')
           g_string_append_c (o->hf_text, text[i]);
+      return;
+    }
+  if (o->shape_open)
+    {
+      for (gsize i = 0; i < len; i++)
+        if (text[i] != '\n' && text[i] != '\r')
+          g_string_append_c (o->shape_text, text[i]);
       return;
     }
   if (!o->in_body || !o->para_open)
@@ -1793,6 +1982,8 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   o.list_styles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   o.fonts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   o.graphic_wraps = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  o.graphics = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  o.shape_text = g_string_new (NULL);
   o.col_widths = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.row_heights = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.cell_sides = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
@@ -1842,6 +2033,8 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_free (o.frame_href);
   g_free (o.cur_graphic);
   g_hash_table_destroy (o.graphic_wraps);
+  g_hash_table_destroy (o.graphics);
+  g_string_free (o.shape_text, TRUE);
   g_free (o.cur_row_style);
   g_hash_table_destroy (o.row_heights);
   g_free (o.cur_cell_style);
@@ -1879,6 +2072,8 @@ typedef struct {
   GPtrArray *pa_keys;          /* W42ParaFmt copies: P1.. */
   GPtrArray *ch_keys;          /* W42CharFmt copies: T1.. */
   GPtrArray *pictures;         /* GBytes*, Pictures/imageN.<ext> */
+  GString   *shape_styles;     /* the graphic styles the shapes referred to */
+  guint      n_shapes;
   GPtrArray *picture_exts;     /* const char*, static: "png", "jpeg", ... */
   GPtrArray *picture_mimes;    /* const char*, static */
   int        n_tables;
@@ -2141,6 +2336,119 @@ write_odt_text (GString *out, const char *text, gsize len)
 static void write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
                         const W42Block *block, const W42CharFmt *para_ch);
 
+/* The graphic style a wrapped object refers to: where the text goes. */
+static const char *
+graphic_style_name (const W42Object *object)
+{
+  switch (object->wrap)
+    {
+    case W42_WRAP_LEFT:       return "frL";
+    case W42_WRAP_RIGHT:      return "frR";
+    case W42_WRAP_TOP_BOTTOM: return "frTB";
+    case W42_WRAP_BEHIND:     return "frBehind";
+    default:                  return "frFront";
+    }
+}
+
+/* svg:x and svg:y for an object placed at a spot of its own. */
+static void
+write_odt_position (GString *out, const W42Object *object)
+{
+  if (!object->positioned)
+    return;
+  g_string_append (out, " svg:x=\"");
+  twips_out (out, object->pos_x);
+  g_string_append (out, "\" svg:y=\"");
+  twips_out (out, object->pos_y);
+  g_string_append (out, "\"");
+}
+
+/* A shape as OpenDocument says one: a custom shape with its geometry,
+ * or a line, in a graphic style of its own for its fill and outline. */
+static void
+write_odt_shape (OdtWriter *w, const W42Object *object)
+{
+  char buf[G_ASCII_DTOSTR_BUF_SIZE];
+  guint n = ++w->n_shapes;
+  const char *parent = object->wrap == W42_WRAP_INLINE ? "" : graphic_style_name (object);
+
+  /* The style: its fill and outline, over the wrapping style's placing. */
+  g_string_append_printf (w->shape_styles,
+    "<style:style style:name=\"Shape%u\" style:family=\"graphic\"%s%s%s><style:graphic-properties",
+    n, *parent != '\0' ? " style:parent-style-name=\"" : "", parent, *parent != '\0' ? "\"" : "");
+  if (object->wrap != W42_WRAP_INLINE)
+    {
+      const char *wrap = object->wrap == W42_WRAP_LEFT ? "right" : object->wrap == W42_WRAP_RIGHT ? "left"
+                       : object->wrap == W42_WRAP_TOP_BOTTOM ? "none" : "run-through";
+
+      g_string_append_printf (w->shape_styles, " style:wrap=\"%s\" style:horizontal-pos=\"%s\" style:horizontal-rel=\"paragraph\" "
+                              "style:vertical-pos=\"%s\" style:vertical-rel=\"paragraph\"",
+                              wrap, object->positioned ? "from-left" : object->wrap == W42_WRAP_RIGHT ? "right" : "left",
+                              object->positioned ? "from-top" : "top");
+      if (object->wrap == W42_WRAP_BEHIND)
+        g_string_append (w->shape_styles, " style:run-through=\"background\"");
+      else if (object->wrap == W42_WRAP_FRONT)
+        g_string_append (w->shape_styles, " style:run-through=\"foreground\"");
+    }
+  if (object->filled)
+    g_string_append_printf (w->shape_styles, " draw:fill=\"solid\" draw:fill-color=\"#%06x\"", object->fill_rgb);
+  else
+    g_string_append (w->shape_styles, " draw:fill=\"none\"");
+  if (object->line_pt > 0.0)
+    g_string_append_printf (w->shape_styles, " draw:stroke=\"solid\" svg:stroke-width=\"%spt\" svg:stroke-color=\"#%06x\"",
+                            g_ascii_formatd (buf, sizeof buf, "%.2f", object->line_pt), object->line_rgb);
+  else
+    g_string_append (w->shape_styles, " draw:stroke=\"none\"");
+  if (object->shape == W42_SHAPE_ARROW)
+    g_string_append (w->shape_styles, " draw:marker-end=\"Arrow\" draw:marker-end-width=\"0.15in\"");
+  g_string_append (w->shape_styles, " draw:textarea-vertical-align=\"middle\" draw:textarea-horizontal-align=\"center\" draw:auto-grow-height=\"false\" draw:auto-grow-width=\"false\" fo:padding=\"0.05in\"/></style:style>");
+
+  if (object->shape == W42_SHAPE_LINE || object->shape == W42_SHAPE_ARROW)
+    {
+      int x = object->positioned ? object->pos_x : 0, y = object->positioned ? object->pos_y : 0;
+
+      g_string_append_printf (w->body, "<draw:line draw:style-name=\"Shape%u\" text:anchor-type=\"%s\" svg:x1=\"",
+                              n, object->wrap == W42_WRAP_INLINE ? "as-char" : "paragraph");
+      twips_out (w->body, x);
+      g_string_append (w->body, "\" svg:y1=\"");
+      twips_out (w->body, y);
+      g_string_append (w->body, "\" svg:x2=\"");
+      twips_out (w->body, x + object->width);
+      g_string_append (w->body, "\" svg:y2=\"");
+      twips_out (w->body, y + object->height);
+      g_string_append (w->body, "\"/>");
+      return;
+    }
+
+  g_string_append_printf (w->body, "<draw:custom-shape draw:style-name=\"Shape%u\" text:anchor-type=\"%s\"",
+                          n, object->wrap == W42_WRAP_INLINE ? "as-char" : "paragraph");
+  write_odt_position (w->body, object);
+  g_string_append (w->body, " svg:width=\"");
+  twips_out (w->body, object->width);
+  g_string_append (w->body, "\" svg:height=\"");
+  twips_out (w->body, object->height);
+  g_string_append (w->body, "\">");
+  if (object->text != NULL)
+    {
+      char **lines = g_strsplit (object->text, "\n", -1);
+
+      for (int i = 0; lines[i] != NULL; i++)
+        {
+          g_string_append (w->body, "<text:p>");
+          xml_escape (w->body, lines[i], strlen (lines[i]));
+          g_string_append (w->body, "</text:p>");
+        }
+      g_strfreev (lines);
+    }
+  g_string_append_printf (w->body, "<draw:enhanced-geometry svg:viewBox=\"0 0 21600 21600\" draw:type=\"%s\" draw:enhanced-path=\"%s\"/></draw:custom-shape>",
+                          object->shape == W42_SHAPE_ELLIPSE ? "ellipse"
+                          : object->shape == W42_SHAPE_ROUNDED_RECTANGLE ? "round-rectangle" : "rectangle",
+                          object->shape == W42_SHAPE_ELLIPSE ? "U 10800 10800 10800 10800 0 360 Z N"
+                          : object->shape == W42_SHAPE_ROUNDED_RECTANGLE
+                            ? "M 3600 0 L 18000 0 X 21600 3600 L 21600 18000 Y 18000 21600 L 3600 21600 X 0 18000 L 0 3600 Y 3600 0 Z N"
+                            : "M 0 0 L 21600 0 21600 21600 0 21600 Z N");
+}
+
 static void
 write_paragraph (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
                  const W42Block *block, W42StyleSheet *styles)
@@ -2225,10 +2533,12 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
         {
           const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
           const char *ext = "png", *mime = "image/png";
-          GBytes *png = object != NULL
+          GBytes *png = object != NULL && object->shape == W42_SHAPE_PICTURE
                           ? w42_image_for_container (object->data, &ext, &mime) : NULL;
 
-          if (png != NULL)
+          if (object != NULL && object->shape != W42_SHAPE_PICTURE)
+            write_odt_shape (w, object);
+          else if (png != NULL)
             {
               W42CharFmt bare = *ch, base_ch = *para_ch;
               gboolean own;
@@ -2251,8 +2561,12 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
                 g_string_append_printf (w->body, "<draw:frame draw:name=\"Picture %u\" text:anchor-type=\"as-char\" svg:width=\"",
                                         w->pictures->len);
               else
-                g_string_append_printf (w->body, "<draw:frame draw:name=\"Picture %u\" draw:style-name=\"%s\" text:anchor-type=\"paragraph\" svg:width=\"",
-                                        w->pictures->len, object->wrap == W42_WRAP_LEFT ? "frL" : "frR");
+                {
+                  g_string_append_printf (w->body, "<draw:frame draw:name=\"Picture %u\" draw:style-name=\"%s\" text:anchor-type=\"paragraph\"",
+                                          w->pictures->len, graphic_style_name (object));
+                  write_odt_position (w->body, object);
+                  g_string_append (w->body, " svg:width=\"");
+                }
               twips_out (w->body, object->width);
               g_string_append (w->body, "\" svg:height=\"");
               twips_out (w->body, object->height);
@@ -2416,6 +2730,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.pa_keys = g_ptr_array_new_with_free_func (g_free);
   w.ch_keys = g_ptr_array_new_with_free_func (g_free);
   w.pictures = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
+  w.shape_styles = g_string_new (NULL);
   w.cell_styles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   w.picture_exts = g_ptr_array_new ();
   w.picture_mimes = g_ptr_array_new ();
@@ -2763,7 +3078,19 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     "style:vertical-pos=\"top\" style:vertical-rel=\"paragraph\" fo:margin-right=\"0.125in\" fo:margin-bottom=\"0.125in\"/></style:style>"
     "<style:style style:name=\"frR\" style:family=\"graphic\"><style:graphic-properties "
     "style:wrap=\"left\" style:horizontal-pos=\"right\" style:horizontal-rel=\"paragraph\" "
-    "style:vertical-pos=\"top\" style:vertical-rel=\"paragraph\" fo:margin-left=\"0.125in\" fo:margin-bottom=\"0.125in\"/></style:style>");
+    "style:vertical-pos=\"top\" style:vertical-rel=\"paragraph\" fo:margin-left=\"0.125in\" fo:margin-bottom=\"0.125in\"/></style:style>"
+    /* Word XP's other wrapping styles: the text above and below, and
+     * running on over or under the object. */
+    "<style:style style:name=\"frTB\" style:family=\"graphic\"><style:graphic-properties "
+    "style:wrap=\"none\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"paragraph\" "
+    "style:vertical-pos=\"from-top\" style:vertical-rel=\"paragraph\" fo:margin-bottom=\"0.125in\"/></style:style>"
+    "<style:style style:name=\"frFront\" style:family=\"graphic\"><style:graphic-properties "
+    "style:wrap=\"run-through\" style:run-through=\"foreground\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"paragraph\" "
+    "style:vertical-pos=\"from-top\" style:vertical-rel=\"paragraph\"/></style:style>"
+    "<style:style style:name=\"frBehind\" style:family=\"graphic\"><style:graphic-properties "
+    "style:wrap=\"run-through\" style:run-through=\"background\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"paragraph\" "
+    "style:vertical-pos=\"from-top\" style:vertical-rel=\"paragraph\"/></style:style>");
+  g_string_append (content, w.shape_styles->str);
   g_string_append (content, "</office:automatic-styles><office:body><office:text>");
   g_string_append (content, w.body->str);
   g_string_append (content, "</office:text></office:body></office:document-content>");
@@ -2954,6 +3281,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_ptr_array_free (w.pa_keys, TRUE);
   g_ptr_array_free (w.ch_keys, TRUE);
   g_ptr_array_free (w.pictures, TRUE);
+  g_string_free (w.shape_styles, TRUE);
   g_hash_table_destroy (w.cell_styles);
   g_ptr_array_free (w.picture_exts, TRUE);
   g_ptr_array_free (w.picture_mimes, TRUE);

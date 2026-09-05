@@ -111,3 +111,66 @@ w42_object_table_set_wrap (W42ObjectTable *table, W42ObjectIdx idx, W42Wrap wrap
   if (idx < table->objects->len)
     ((W42Object *) g_ptr_array_index (table->objects, idx))->wrap = wrap;
 }
+
+void
+w42_object_table_set_position (W42ObjectTable *table, W42ObjectIdx idx,
+                               gboolean positioned, int x, int y)
+{
+  W42Object *object;
+
+  g_return_if_fail (table != NULL);
+  if (idx >= table->objects->len)
+    return;
+  object = g_ptr_array_index (table->objects, idx);
+  object->positioned = positioned;
+  object->pos_x = positioned ? x : 0;
+  object->pos_y = positioned ? y : 0;
+}
+
+void
+w42_object_table_set_shape (W42ObjectTable *table, W42ObjectIdx idx,
+                            W42ShapeKind kind, double line_pt, guint32 line_rgb,
+                            gboolean filled, guint32 fill_rgb, const char *text)
+{
+  W42Object *object;
+
+  g_return_if_fail (table != NULL);
+  if (idx >= table->objects->len)
+    return;
+  object = g_ptr_array_index (table->objects, idx);
+  object->shape = kind;
+  object->line_pt = MAX (line_pt, 0.0);
+  object->line_rgb = line_rgb & 0xFFFFFF;
+  object->filled = filled;
+  object->fill_rgb = fill_rgb & 0xFFFFFF;
+  object->text = text != NULL && *text != '\0' ? g_intern_string (text) : NULL;
+}
+
+W42ObjectIdx
+w42_object_table_clone (W42ObjectTable *table, W42ObjectIdx idx, int width, int height)
+{
+  const W42Object *object;
+  W42ObjectIdx fresh;
+  W42Object *copy;
+
+  g_return_val_if_fail (table != NULL, W42_OBJECT_NONE);
+  if (idx >= table->objects->len)
+    return W42_OBJECT_NONE;
+  object = g_ptr_array_index (table->objects, idx);
+  fresh = w42_object_table_add (table, object->data, object->format,
+                                object->pixel_w, object->pixel_h, width, height);
+  if (fresh == W42_OBJECT_NONE)
+    return fresh;
+  copy = g_ptr_array_index (table->objects, fresh);
+  copy->wrap = object->wrap;
+  copy->positioned = object->positioned;
+  copy->pos_x = object->pos_x;
+  copy->pos_y = object->pos_y;
+  copy->shape = object->shape;
+  copy->line_pt = object->line_pt;
+  copy->line_rgb = object->line_rgb;
+  copy->filled = object->filled;
+  copy->fill_rgb = object->fill_rgb;
+  copy->text = object->text;
+  return fresh;
+}

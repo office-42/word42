@@ -184,6 +184,39 @@ static guint8 cell_sides (W42ApTable *aps, const W42Block *blk, gboolean table_b
  * Pango breaks lines around it and measures it like any other glyph; when
  * the line is painted Pango calls back here for the shape, on whatever cairo
  * context is being painted to -- the screen, the printer or a PDF. */
+/* Paints object `idx` in the box (x, y, w, h): a shape as lines and
+ * fills, so that it prints sharp, a picture as its decoded surface. */
+static void
+paint_object (W42Layout *self, cairo_t *cr, W42ObjectIdx idx,
+              double x, double y, double w, double h)
+{
+  const W42Object *object = w42_object_table_get (self->objects, idx);
+  cairo_surface_t *surface;
+
+  if (object == NULL || w <= 0.0 || h <= 0.0)
+    return;
+  if (object->shape != W42_SHAPE_PICTURE)
+    {
+      cairo_save (cr);
+      cairo_translate (cr, x, y);
+      w42_shape_draw (cr, object->shape, w, h, object->line_pt, object->line_rgb,
+                      object->filled, object->fill_rgb, object->text, NULL);
+      cairo_restore (cr);
+      return;
+    }
+  surface = w42_object_surface (self->objects, idx);
+  if (surface == NULL)
+    return;
+  cairo_save (cr);
+  cairo_translate (cr, x, y);
+  cairo_scale (cr, w / cairo_image_surface_get_width (surface),
+                   h / cairo_image_surface_get_height (surface));
+  cairo_set_source_surface (cr, surface, 0, 0);
+  cairo_pattern_set_filter (cairo_get_source (cr), CAIRO_FILTER_GOOD);
+  cairo_paint (cr);
+  cairo_restore (cr);
+}
+
 static void
 shape_renderer (cairo_t        *cr,
                 PangoAttrShape *attr,
@@ -193,9 +226,8 @@ shape_renderer (cairo_t        *cr,
   W42Layout *self = data;
   guint tag = GPOINTER_TO_UINT (attr->data);
   W42ObjectIdx idx = (tag & 0x7fffffffu) - 1;
-  cairo_surface_t *surface;
   const W42Object *object;
-  double x, y, w, h, sx, sy;
+  double x, y, w, h;
 
   if (do_path || attr->data == NULL)
     return;                       /* NULL data: a glyph of no size, hidden */
@@ -222,9 +254,6 @@ shape_renderer (cairo_t        *cr,
   object = w42_object_table_get (self->objects, idx);
   if (object == NULL || object->wrap != W42_WRAP_INLINE)
     return;
-  surface = w42_object_surface (self->objects, idx);
-  if (surface == NULL)
-    return;
 
   /* The current point is the glyph origin: the baseline, at the left. */
   cairo_get_current_point (cr, &x, &y);
@@ -232,17 +261,7 @@ shape_renderer (cairo_t        *cr,
   w = (double) attr->logical_rect.width / PANGO_SCALE;
   h = (double) attr->logical_rect.height / PANGO_SCALE;
   y += (double) attr->logical_rect.y / PANGO_SCALE;
-
-  sx = w / cairo_image_surface_get_width (surface);
-  sy = h / cairo_image_surface_get_height (surface);
-
-  cairo_save (cr);
-  cairo_translate (cr, x, y);
-  cairo_scale (cr, sx, sy);
-  cairo_set_source_surface (cr, surface, 0, 0);
-  cairo_pattern_set_filter (cairo_get_source (cr), CAIRO_FILTER_GOOD);
-  cairo_paint (cr);
-  cairo_restore (cr);
+  paint_object (self, cr, idx, x, y, w, h);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -2125,6 +2144,8 @@ w42_layout_build_pt (W42Layout          *self,
       double own_w = 0.0;             /* this paragraph's own picture's share */
       gboolean narrowed = FALSE;
       gboolean left_on = FALSE, right_on = FALSE;   /* obstacles from before, still beside */
+      GArray *more_floats = NULL;     /* the paragraph's other wrapped objects:
+                                       * placed with the first, wrapping nothing */
 
       if (block->note >= 0)
         continue;           /* laid out with the page its reference is on */
@@ -2139,6 +2160,11 @@ w42_layout_build_pt (W42Layout          *self,
                  ((const W42Block *) g_ptr_array_index (self->blocks, last + 1))->table == block->table)
             last++;
 
+          /* A table does not wrap beside a picture: it starts under one
+           * that is still beside the text. */
+          for (int fs = 0; fs < 2; fs++)
+            if (float_page[fs] == current_page && y < float_bottom[fs])
+              y = float_bottom[fs];
           layout_table (self, pt, aps, b, last, text_w, text_h, &y, &current_page);
           b = last;
           list_n = 0;
@@ -2238,24 +2264,59 @@ w42_layout_build_pt (W42Layout          *self,
 
             if (obj == NULL || obj->wrap == W42_WRAP_INLINE)
               continue;
+            if (fobj != NULL)
+              {
+                /* A second wrapped object on the paragraph: it goes where
+                 * it was put, or beside the first, and the text keeps off
+                 * the first alone. */
+                W42FloatBox fb;
+
+                if (more_floats == NULL)
+                  more_floats = g_array_new (FALSE, FALSE, sizeof (W42FloatBox));
+                fb.object = run->object;
+                fb.pos = run->doc_pos;
+                fb.w = MIN (w42_twips_to_px (obj->width), text_w);
+                fb.h = w42_twips_to_px (obj->height);
+                fb.x = fb.y = 0.0;
+                fb.page = -1;
+                g_array_append_val (more_floats, fb);
+                continue;
+              }
             fobj = obj;
             fidx = run->object;
             fpos = run->doc_pos;
             fw = w42_twips_to_px (obj->width);
             fh = w42_twips_to_px (obj->height);
-            /* Room must be left for the text: at most six tenths of the column. */
-            if (fw > text_w * 0.6 && fw > 0.0)
+            /* Room must be left for the text beside it: at most six tenths
+             * of the column.  One set over or under the text, or with the
+             * text above and below, takes what it likes. */
+            if (fw > text_w * 0.6 && fw > 0.0 &&
+                (obj->wrap == W42_WRAP_LEFT || obj->wrap == W42_WRAP_RIGHT) && !obj->positioned)
               {
                 fh *= text_w * 0.6 / fw;
                 fw = text_w * 0.6;
               }
-            break;
+            fw = MIN (fw, text_w);
           }
       if (fobj != NULL)
         {
           float_side = fobj->wrap;
-          own_w = fw + float_gap;
-          narrowed = TRUE;
+          if (fobj->positioned && (fobj->wrap == W42_WRAP_LEFT || fobj->wrap == W42_WRAP_RIGHT))
+            {
+              /* Set at a place of its own: the text keeps off the side
+               * it is nearer to. */
+              double fx = w42_twips_to_px (fobj->pos_x);
+
+              float_side = fx + fw / 2.0 < text_w / 2.0 ? W42_WRAP_LEFT : W42_WRAP_RIGHT;
+              own_w = float_side == W42_WRAP_LEFT ? fx + fw + float_gap : text_w - fx + float_gap;
+              own_w = CLAMP (own_w, fw + float_gap, text_w * 0.9);
+              narrowed = TRUE;
+            }
+          else if (fobj->wrap == W42_WRAP_LEFT || fobj->wrap == W42_WRAP_RIGHT)
+            {
+              own_w = fw + float_gap;
+              narrowed = TRUE;
+            }
         }
       left_on = float_page[0] == current_page && y < float_bottom[0];
       right_on = float_page[1] == current_page && y < float_bottom[1];
@@ -2660,25 +2721,66 @@ w42_layout_build_pt (W42Layout          *self,
 
           if (first_line && fobj != NULL)
             {
-              /* The picture's top is level with its paragraph's first line. */
+              /* The picture's top is level with its paragraph's first
+               * line, at the column's edge; or, positioned, where it was
+               * put, kept on the page. */
               W42FloatBox fb;
 
               fb.page = current_page;
-              fb.x = float_side == W42_WRAP_LEFT ? self->mar_l
-                                                 : self->mar_l + text_w - fw;
-              fb.y = self->mar_t + y;
+              if (fobj->positioned)
+                {
+                  fb.x = self->mar_l + CLAMP (w42_twips_to_px (fobj->pos_x), 0.0, MAX (text_w - fw, 0.0));
+                  fb.y = self->mar_t + (self->galley ? MAX (y + w42_twips_to_px (fobj->pos_y), 0.0)
+                                        : CLAMP (y + w42_twips_to_px (fobj->pos_y), 0.0, MAX (text_h - fh, 0.0)));
+                }
+              else
+                {
+                  fb.x = float_side == W42_WRAP_LEFT ? self->mar_l
+                                                     : self->mar_l + text_w - fw;
+                  fb.y = self->mar_t + y;
+                }
               fb.w = fw;
               fb.h = fh;
               fb.object = fidx;
               fb.pos = fpos;
               g_array_append_val (self->floats, fb);
-              {
-                int fs = float_side == W42_WRAP_LEFT ? 0 : 1;
+              for (guint m = 0; more_floats != NULL && m < more_floats->len; m++)
+                {
+                  W42FloatBox *mb = &g_array_index (more_floats, W42FloatBox, m);
+                  const W42Object *mo = w42_object_table_get (self->objects, mb->object);
 
-                float_page[fs] = current_page;
-                float_bottom[fs] = y + fh + float_gap;
-                float_w[fs] = own_w;
-              }
+                  mb->page = current_page;
+                  if (mo != NULL && mo->positioned)
+                    {
+                      mb->x = self->mar_l + CLAMP (w42_twips_to_px (mo->pos_x), 0.0, MAX (text_w - mb->w, 0.0));
+                      mb->y = self->mar_t + (self->galley ? MAX (y + w42_twips_to_px (mo->pos_y), 0.0)
+                                             : CLAMP (y + w42_twips_to_px (mo->pos_y), 0.0, MAX (text_h - mb->h, 0.0)));
+                    }
+                  else
+                    {
+                      mb->x = (mo != NULL && mo->wrap == W42_WRAP_RIGHT) ? self->mar_l + text_w - mb->w : self->mar_l;
+                      mb->y = self->mar_t + y;
+                    }
+                  g_array_append_val (self->floats, *mb);
+                }
+              if (fobj->wrap == W42_WRAP_LEFT || fobj->wrap == W42_WRAP_RIGHT)
+                {
+                  int fs = float_side == W42_WRAP_LEFT ? 0 : 1;
+                  double bottom = fb.y - self->mar_t + fh + float_gap;
+
+                  if (bottom > y)
+                    {
+                      float_page[fs] = current_page;
+                      float_bottom[fs] = bottom;
+                      float_w[fs] = own_w;
+                    }
+                }
+              else if (fobj->wrap == W42_WRAP_TOP_BOTTOM && !fobj->positioned)
+                {
+                  /* The text starts again under it: this first line and
+                   * all that follow. */
+                  y += fh + float_gap;
+                }
             }
 
           if (first_line && cap != NULL)
@@ -2720,6 +2822,8 @@ w42_layout_build_pt (W42Layout          *self,
           y += advance;
         }
       g_array_free (blines, TRUE);
+      if (more_floats != NULL)
+        g_array_free (more_floats, TRUE);
 
       /* A dropped letter taller than its paragraph: what follows wraps
        * beside the rest of it, as beside a picture. */
@@ -3167,6 +3271,17 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
   if (self->blocks == NULL)
     return;
 
+  /* Pictures and shapes set behind the text. */
+  for (guint i = 0; self->objects != NULL && i < self->floats->len; i++)
+    {
+      const W42FloatBox *f = &g_array_index (self->floats, W42FloatBox, i);
+      const W42Object *object = w42_object_table_get (self->objects, f->object);
+
+      if (f->page != page || object == NULL || object->wrap != W42_WRAP_BEHIND)
+        continue;
+      paint_object (self, cr, f->object, f->x, f->y, f->w, f->h);
+    }
+
   /* Cells with a background of their own, painted before anything else so
    * that a shaded paragraph inside one still shows over it. */
   for (guint i = 0; i < self->cell_rects->len; i++)
@@ -3283,25 +3398,16 @@ w42_layout_draw_furniture (W42Layout *self, cairo_t *cr, int page)
       cairo_restore (cr);
     }
 
-  /* Wrapped pictures, under the text that runs beside them. */
+  /* Wrapped pictures and shapes, over the text; the ones set behind the
+   * text were painted with the backdrop. */
   for (guint i = 0; self->objects != NULL && i < self->floats->len; i++)
     {
       const W42FloatBox *f = &g_array_index (self->floats, W42FloatBox, i);
-      cairo_surface_t *surface;
+      const W42Object *object = w42_object_table_get (self->objects, f->object);
 
-      if (f->page != page)
+      if (f->page != page || object == NULL || object->wrap == W42_WRAP_BEHIND)
         continue;
-      surface = w42_object_surface (self->objects, f->object);
-      if (surface == NULL || f->w <= 0.0 || f->h <= 0.0)
-        continue;
-      cairo_save (cr);
-      cairo_translate (cr, f->x, f->y);
-      cairo_scale (cr, f->w / cairo_image_surface_get_width (surface),
-                       f->h / cairo_image_surface_get_height (surface));
-      cairo_set_source_surface (cr, surface, 0, 0);
-      cairo_pattern_set_filter (cairo_get_source (cr), CAIRO_FILTER_GOOD);
-      cairo_paint (cr);
-      cairo_restore (cr);
+      paint_object (self, cr, f->object, f->x, f->y, f->w, f->h);
     }
 
   /* The short rule between the text and its footnotes. */

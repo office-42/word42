@@ -912,6 +912,21 @@ typedef struct {
   W42Wrap     wrap;          /* the side the text keeps off */
   gint64      cx, cy;
   char       *blip;
+  gboolean    in_pos_h, in_pos_v, in_offset;   /* wp:positionH/V and their posOffset */
+  gboolean    pos_h_set, pos_v_set;            /* an offset was read, from the column
+                                                * or the paragraph rather than the page */
+  gint64      pos_x, pos_y;                    /* EMU */
+  gboolean    behind;                          /* behindDoc="1" */
+  gboolean    in_wsp;        /* wps:wsp: a shape */
+  W42ShapeKind shape;
+  gboolean    in_ln;         /* a:ln: the outline, whose fill is the line's colour */
+  gboolean    in_wsp_style;  /* wps:style: theme references, not the shape's own colours */
+  double      line_pt;
+  guint32     line_rgb;
+  gboolean    has_line, filled;
+  guint32     fill_rgb;
+  gboolean    shape_txbx;    /* the shape's text, gathered rather than laid out */
+  GString    *shape_text;
 
   gboolean    section_pending;    /* the next paragraph starts a section */
   gsize       section_first;      /* the first paragraph of the current section */
@@ -1049,8 +1064,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "Fallback"))
     d->skip_depth = 1;
-  else if (FALSE)
+  else if (d->shape_txbx)
     {
+      /* The text in a shape: its runs are gathered as the shape's label. */
+      if (g_str_equal (tag, "t"))
+        d->in_t = TRUE;
+      else if (g_str_equal (tag, "br") || g_str_equal (tag, "tab"))
+        g_string_append_c (d->shape_text, g_str_equal (tag, "br") ? '\n' : ' ');
     }
   else if (g_str_equal (tag, "p"))
     {
@@ -1573,9 +1593,107 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (d->in_drawing && g_str_equal (tag, "anchor"))
     {
-      /* Anchored: beside the text unless the wrap says top and bottom. */
+      /* Anchored: beside the text unless the wrap says otherwise. */
+      const char *behind = attr (an, av, "behindDoc");
+
       d->anchored = TRUE;
       d->wrap = W42_WRAP_LEFT;
+      d->behind = behind != NULL && (g_str_equal (behind, "1") || g_str_equal (behind, "true"));
+      d->pos_h_set = d->pos_v_set = FALSE;
+      d->pos_x = d->pos_y = 0;
+    }
+  else if (d->in_drawing && (g_str_equal (tag, "positionH") || g_str_equal (tag, "positionV")))
+    {
+      /* Where it sits: an offset from the column and the paragraph is a
+       * place word42 can put it; from the page's edge it is not, and it
+       * goes at the column's side instead. */
+      const char *from = attr (an, av, "relativeFrom");
+      gboolean usable = from == NULL || g_str_equal (from, "column") || g_str_equal (from, "paragraph") ||
+                        g_str_equal (from, "margin") || g_str_equal (from, "character") ||
+                        g_str_equal (from, "line");
+
+      d->in_pos_h = g_str_equal (tag, "positionH") && usable;
+      d->in_pos_v = g_str_equal (tag, "positionV") && usable;
+    }
+  else if (d->in_drawing && g_str_equal (tag, "posOffset") && (d->in_pos_h || d->in_pos_v))
+    d->in_offset = TRUE;
+  else if (d->in_drawing && g_str_equal (tag, "wsp"))
+    {
+      d->in_wsp = TRUE;
+      d->in_wsp_style = FALSE;
+      d->shape = W42_SHAPE_RECTANGLE;
+      d->line_pt = 0.75;
+      d->line_rgb = 0;
+      d->has_line = TRUE;
+      d->filled = FALSE;
+      d->fill_rgb = 0xFFFFFF;
+      d->in_ln = FALSE;
+    }
+  else if (d->in_wsp && g_str_equal (tag, "prstGeom"))
+    {
+      const char *prst = attr (an, av, "prst");
+
+      d->shape = prst == NULL ? W42_SHAPE_RECTANGLE
+               : g_str_equal (prst, "ellipse") ? W42_SHAPE_ELLIPSE
+               : g_str_equal (prst, "roundRect") ? W42_SHAPE_ROUNDED_RECTANGLE
+               : g_str_equal (prst, "line") || g_str_has_prefix (prst, "straightConnector") ? W42_SHAPE_LINE
+               : W42_SHAPE_RECTANGLE;
+    }
+  else if (d->in_wsp && g_str_equal (tag, "style"))
+    d->in_wsp_style = TRUE;
+  else if (d->in_wsp && d->in_wsp_style)
+    ;                             /* theme references: nothing the shape says itself */
+  else if (d->in_wsp && g_str_equal (tag, "ln"))
+    {
+      const char *w = attr (an, av, "w");
+
+      d->in_ln = TRUE;
+      if (w != NULL)
+        d->line_pt = g_ascii_strtoll (w, NULL, 10) / 12700.0;
+    }
+  else if (d->in_wsp && d->in_ln && g_str_equal (tag, "noFill"))
+    d->has_line = FALSE;
+  else if (d->in_wsp && !d->in_ln && g_str_equal (tag, "noFill"))
+    d->filled = FALSE;
+  else if (d->in_wsp && g_str_equal (tag, "solidFill"))
+    {
+      if (!d->in_ln)
+        d->filled = TRUE;
+    }
+  else if (d->in_wsp && g_str_equal (tag, "srgbClr"))
+    {
+      const char *val = attr (an, av, "val");
+      guint32 rgb = val != NULL ? (guint32) strtoul (val, NULL, 16) & 0xFFFFFF : 0;
+
+      if (d->in_ln)
+        d->line_rgb = rgb;
+      else
+        d->fill_rgb = rgb;
+    }
+  else if (d->in_wsp && g_str_equal (tag, "schemeClr"))
+    {
+      /* A theme colour: word42 has no theme, so Word's default accent,
+       * a blue, stands for the fill and its darker shade for the line. */
+      if (d->in_ln)
+        d->line_rgb = 0x2F5597;
+      else
+        d->fill_rgb = 0x4472C4;
+    }
+  else if (d->in_wsp && (g_str_equal (tag, "tailEnd") || g_str_equal (tag, "headEnd")))
+    {
+      const char *type = attr (an, av, "type");
+
+      if (type != NULL && !g_str_equal (type, "none") && d->shape == W42_SHAPE_LINE)
+        d->shape = W42_SHAPE_ARROW;
+    }
+  else if (g_str_equal (tag, "txbxContent") && d->txbx_depth == 0 && d->in_wsp &&
+           (d->filled || d->shape != W42_SHAPE_RECTANGLE))
+    {
+      /* Text in a filled shape, or in one that is not a plain box, is the
+       * shape's label; a plain text box is paragraphs framed beside the
+       * text, below. */
+      d->shape_txbx = TRUE;
+      g_string_truncate (d->shape_text, 0);
     }
   else if (g_str_equal (tag, "txbxContent") && d->txbx_depth == 0)
     {
@@ -1595,8 +1713,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "txbxContent"))
     d->txbx_depth++;
-  else if (d->in_drawing && (g_str_equal (tag, "wrapTopAndBottom") || g_str_equal (tag, "wrapNone")))
-    d->wrap = W42_WRAP_INLINE;
+  else if (d->in_drawing && g_str_equal (tag, "wrapTopAndBottom"))
+    d->wrap = W42_WRAP_TOP_BOTTOM;
+  else if (d->in_drawing && g_str_equal (tag, "wrapNone"))
+    d->wrap = d->behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
   else if (d->in_drawing && g_str_equal (tag, "align"))
     d->in_align = TRUE;
   else if (d->in_drawing && g_str_equal (tag, "extent"))
@@ -1855,11 +1975,34 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       d->skip_depth--;
       return;
     }
+  if (d->shape_txbx)
+    {
+      if (g_str_equal (tag, "t"))
+        d->in_t = FALSE;
+      else if (g_str_equal (tag, "p"))
+        g_string_append_c (d->shape_text, '\n');
+      else if (g_str_equal (tag, "txbxContent"))
+        {
+          d->shape_txbx = FALSE;
+          /* The last paragraph's break is not part of the label. */
+          while (d->shape_text->len > 0 && d->shape_text->str[d->shape_text->len - 1] == '\n')
+            g_string_truncate (d->shape_text, d->shape_text->len - 1);
+        }
+      return;
+    }
   if (g_str_equal (tag, "t") || g_str_equal (tag, "delText"))
     {
       d->in_t = FALSE;
       docx_flush_text (d);
     }
+  else if (d->in_drawing && (g_str_equal (tag, "positionH") || g_str_equal (tag, "positionV")))
+    d->in_pos_h = d->in_pos_v = FALSE;
+  else if (d->in_drawing && g_str_equal (tag, "posOffset"))
+    d->in_offset = FALSE;
+  else if (d->in_wsp && g_str_equal (tag, "ln"))
+    d->in_ln = FALSE;
+  else if (d->in_wsp && g_str_equal (tag, "style"))
+    d->in_wsp_style = FALSE;
   else if (d->reading_notes &&
            (g_str_equal (tag, "footnote") || g_str_equal (tag, "endnote")))
     {
@@ -1983,6 +2126,31 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
     {
       const char *target = d->blip != NULL ? g_hash_table_lookup (d->rels, d->blip) : NULL;
 
+      if (d->in_wsp)
+        {
+          /* A shape: drawn by word42 itself, so nothing to read but its
+           * geometry, its outline, its fill and its text. */
+          d->b.ch = d->run_ch;
+          d->b.ch.link = d->link;
+          d->b.ch.revision = (guint8) d->revision;
+          w42_builder_shape (&d->b, d->shape,
+                             (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
+                             (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
+                             d->has_line ? MAX (d->line_pt, 0.25) : 0.0, d->line_rgb,
+                             d->filled, d->fill_rgb,
+                             d->shape_text->len > 0 ? d->shape_text->str : NULL);
+          if (d->anchored)
+            {
+              w42_builder_object_wrap (&d->b, d->wrap);
+              if (d->pos_h_set || d->pos_v_set)
+                w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
+                                             (int) (d->pos_y / EMU_PER_TWIP));
+            }
+          g_string_truncate (d->shape_text, 0);
+          d->in_wsp = FALSE;
+          d->in_drawing = FALSE;
+          return;
+        }
       if (target != NULL)
         {
           char *part = target[0] == '/' ? g_strdup (target + 1) : g_strconcat ("word/", target, NULL);
@@ -2003,7 +2171,12 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
                                   (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
                                   (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
               if (d->anchored)
-                w42_builder_object_wrap (&d->b, d->wrap);
+                {
+                  w42_builder_object_wrap (&d->b, d->wrap);
+                  if (d->pos_h_set || d->pos_v_set)
+                    w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
+                                                 (int) (d->pos_y / EMU_PER_TWIP));
+                }
             }
           if (bytes != NULL)
             g_bytes_unref (bytes);
@@ -2054,8 +2227,22 @@ docx_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data,
   (void) ctx; (void) error;
   if (d->in_instr)
     g_string_append_len (d->fld_instr, text, len);
+  else if (d->shape_txbx)
+    {
+      if (d->in_t)
+        g_string_append_len (d->shape_text, text, len);
+    }
   else if (d->in_t)
     g_string_append_len (d->text, text, len);
+  else if (d->in_offset)
+    {
+      char *copy = g_strndup (text, len);
+      gint64 v = g_ascii_strtoll (copy, NULL, 10);
+
+      if (d->in_pos_h) { d->pos_x = v; d->pos_h_set = TRUE; }
+      if (d->in_pos_v) { d->pos_y = v; d->pos_v_set = TRUE; }
+      g_free (copy);
+    }
   else if (d->in_align)
     {
       /* wp:align under wp:positionH: which side the picture sits at. */
@@ -2099,6 +2286,7 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   d.comments = outer->comments;
   d.comment_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   d.text = g_string_new (NULL);
+  d.shape_text = g_string_new (NULL);
   d.fld_instr = g_string_new (NULL);
   d.grid = g_array_new (FALSE, FALSE, sizeof (int));
   d.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
@@ -2119,6 +2307,7 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   w42_builder_finish (&d.b);
 
   g_string_free (d.text, TRUE);
+  g_string_free (d.shape_text, TRUE);
   g_string_free (d.fld_instr, TRUE);
   g_array_free (d.grid, TRUE);
   g_hash_table_destroy (d.bookmarks);
@@ -2187,6 +2376,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   read_note_bodies (&d, zip, "word/footnotes.xml", "f", 0);
   read_note_bodies (&d, zip, "word/endnotes.xml", "e", 1);
   d.text = g_string_new (NULL);
+  d.shape_text = g_string_new (NULL);
   d.fld_instr = g_string_new (NULL);
   d.grid = g_array_new (FALSE, FALSE, sizeof (int));
   d.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
@@ -2204,6 +2394,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   w42_pt_clear_undo (pt);
 
   g_string_free (d.text, TRUE);
+  g_string_free (d.shape_text, TRUE);
   g_string_free (d.fld_instr, TRUE);
   g_array_free (d.grid, TRUE);
   g_hash_table_destroy (d.bookmarks);
@@ -2232,7 +2423,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
              "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" " \
              "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" " \
              "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" " \
-             "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\""
+             "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "              "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
 
 static void
 xml_escape (GString *out, const char *text, gsize len)
@@ -2439,16 +2630,26 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
 
   if (object == NULL)
     return;
-  bytes = w42_image_for_container (object->data, &ext, NULL);
-  if (bytes == NULL)
-    return;
+  if (object->shape == W42_SHAPE_PICTURE)
+    {
+      bytes = w42_image_for_container (object->data, &ext, NULL);
+      if (bytes == NULL)
+        return;
+    }
+  else
+    bytes = NULL;
 
   id = ++parts->image_id;
   name = g_strdup_printf ("image%d.%s", id, ext);
   target = g_strconcat ("media/", name, NULL);
-  rid = add_rel (parts, "image", target, FALSE);
-  g_ptr_array_add (parts->media_names, name);
-  g_ptr_array_add (parts->media_data, bytes);
+  if (bytes != NULL)
+    {
+      rid = add_rel (parts, "image", target, FALSE);
+      g_ptr_array_add (parts->media_names, name);
+      g_ptr_array_add (parts->media_data, bytes);
+    }
+  else
+    rid = NULL;
   cx = (gint64) object->width * EMU_PER_TWIP;
   cy = (gint64) object->height * EMU_PER_TWIP;
 
@@ -2463,29 +2664,96 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
       "<wp:docPr id=\"%d\" name=\"Picture %d\"/>",
       cx, cy, id, id);
   else
-    /* Anchored at the paragraph's top, against the column's side, with
-     * the text running down the other side. */
+    {
+      /* Anchored at the paragraph's top, against the column's side, with
+       * the text running down the other side; or where it was put. */
+      const char *wrap = object->wrap == W42_WRAP_TOP_BOTTOM ? "<wp:wrapTopAndBottom/>"
+                       : object->wrap == W42_WRAP_FRONT || object->wrap == W42_WRAP_BEHIND ? "<wp:wrapNone/>"
+                       : "<wp:wrapSquare wrapText=\"bothSides\"/>";
+
+      g_string_append_printf (out,
+        "<w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" "
+        "simplePos=\"0\" relativeHeight=\"%d\" behindDoc=\"%d\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
+        "<wp:simplePos x=\"0\" y=\"0\"/>",
+        251658240 + id, object->wrap == W42_WRAP_BEHIND ? 1 : 0);
+      if (object->positioned)
+        g_string_append_printf (out,
+          "<wp:positionH relativeFrom=\"column\"><wp:posOffset>%" G_GINT64_FORMAT "</wp:posOffset></wp:positionH>"
+          "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>%" G_GINT64_FORMAT "</wp:posOffset></wp:positionV>",
+          (gint64) object->pos_x * EMU_PER_TWIP, (gint64) object->pos_y * EMU_PER_TWIP);
+      else
+        g_string_append_printf (out,
+          "<wp:positionH relativeFrom=\"column\"><wp:align>%s</wp:align></wp:positionH>"
+          "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>",
+          object->wrap == W42_WRAP_RIGHT ? "right" : "left");
+      g_string_append_printf (out,
+        "<wp:extent cx=\"%" G_GINT64_FORMAT "\" cy=\"%" G_GINT64_FORMAT "\"/>"
+        "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>%s"
+        "<wp:docPr id=\"%d\" name=\"Picture %d\"/>",
+        cx, cy, wrap, id, id);
+    }
+
+  if (object->shape != W42_SHAPE_PICTURE)
+    {
+      /* A shape, as Word 2010 and later say one: its geometry, its fill,
+       * its outline and the text in it. */
+      const char *prst = object->shape == W42_SHAPE_ELLIPSE ? "ellipse"
+                       : object->shape == W42_SHAPE_ROUNDED_RECTANGLE ? "roundRect"
+                       : object->shape == W42_SHAPE_LINE || object->shape == W42_SHAPE_ARROW ? "line"
+                       : "rect";
+
+      g_string_append_printf (out,
+        "<wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+        "<wps:wsp><wps:cNvSpPr/><wps:spPr>"
+        "<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"%" G_GINT64_FORMAT "\" cy=\"%" G_GINT64_FORMAT "\"/></a:xfrm>"
+        "<a:prstGeom prst=\"%s\"><a:avLst/></a:prstGeom>",
+        cx, cy, prst);
+      if (object->filled)
+        g_string_append_printf (out, "<a:solidFill><a:srgbClr val=\"%06X\"/></a:solidFill>", object->fill_rgb);
+      else
+        g_string_append (out, "<a:noFill/>");
+      if (object->line_pt > 0.0)
+        {
+          g_string_append_printf (out, "<a:ln w=\"%d\"><a:solidFill><a:srgbClr val=\"%06X\"/></a:solidFill>",
+                                  (int) (object->line_pt * 12700.0 + 0.5), object->line_rgb);
+          if (object->shape == W42_SHAPE_ARROW)
+            g_string_append (out, "<a:tailEnd type=\"triangle\"/>");
+          g_string_append (out, "</a:ln>");
+        }
+      else
+        g_string_append (out, "<a:ln><a:noFill/></a:ln>");
+      g_string_append (out, "</wps:spPr>");
+      if (object->text != NULL)
+        {
+          char **lines = g_strsplit (object->text, "\n", -1);
+
+          g_string_append (out, "<wps:txbx><w:txbxContent>");
+          for (int i = 0; lines[i] != NULL; i++)
+            {
+              g_string_append (out, "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:t xml:space=\"preserve\">");
+              xml_escape (out, lines[i], strlen (lines[i]));
+              g_string_append (out, "</w:t></w:r></w:p>");
+            }
+          g_string_append (out, "</w:txbxContent></wps:txbx>");
+          g_strfreev (lines);
+        }
+      g_string_append_printf (out,
+        "<wps:bodyPr anchor=\"ctr\" wrap=\"square\" rtlCol=\"0\"><a:noAutofit/></wps:bodyPr></wps:wsp>"
+        "</a:graphicData></a:graphic>%s</w:drawing></w:r>",
+        object->wrap == W42_WRAP_INLINE ? "</wp:inline>" : "</wp:anchor>");
+    }
+  else
     g_string_append_printf (out,
-      "<w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" "
-      "simplePos=\"0\" relativeHeight=\"%d\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
-      "<wp:simplePos x=\"0\" y=\"0\"/>"
-      "<wp:positionH relativeFrom=\"column\"><wp:align>%s</wp:align></wp:positionH>"
-      "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>"
-      "<wp:extent cx=\"%" G_GINT64_FORMAT "\" cy=\"%" G_GINT64_FORMAT "\"/>"
-      "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
-      "<wp:wrapSquare wrapText=\"bothSides\"/>"
-      "<wp:docPr id=\"%d\" name=\"Picture %d\"/>",
-      251658240 + id, object->wrap == W42_WRAP_LEFT ? "left" : "right", cx, cy, id, id);
+      "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+      "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"%d\" name=\"%s\"/><pic:cNvPicPr/></pic:nvPicPr>"
+      "<pic:blipFill><a:blip r:embed=\"%s\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
+      "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"%" G_GINT64_FORMAT "\" cy=\"%" G_GINT64_FORMAT "\"/></a:xfrm>"
+      "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"
+      "</a:graphicData></a:graphic>%s</w:drawing></w:r>",
+      id, name, rid, cx, cy, object->wrap == W42_WRAP_INLINE ? "</wp:inline>" : "</wp:anchor>");
 
-  g_string_append_printf (out,
-    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
-    "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"%d\" name=\"%s\"/><pic:cNvPicPr/></pic:nvPicPr>"
-    "<pic:blipFill><a:blip r:embed=\"%s\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
-    "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"%" G_GINT64_FORMAT "\" cy=\"%" G_GINT64_FORMAT "\"/></a:xfrm>"
-    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"
-    "</a:graphicData></a:graphic>%s</w:drawing></w:r>",
-    id, name, rid, cx, cy, object->wrap == W42_WRAP_INLINE ? "</wp:inline>" : "</wp:anchor>");
-
+  if (bytes == NULL)
+    g_free (name);
   g_free (rid);
   g_free (target);
 }

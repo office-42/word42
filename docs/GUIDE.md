@@ -474,14 +474,22 @@ Click a picture and eight handles appear: drag a corner to resize it
 keeping its proportions, a side to stretch it. A dotted outline shows the
 size it will be until you let go.
 
-**Format ▸ Picture** sets the size by number and how the text treats it:
-in the line, or set to one side with the text running round it.
+**Format ▸ Picture** sets the size by number and how the text treats it,
+in Word XP's terms: in line with the text; at the left or right with the
+text running down the other side; top and bottom, with the text stopping
+above it and going on below; in front of the text, which runs on under
+it; or behind the text. A picture read from a file that was put at a
+place of its own keeps that place, measured from its paragraph.
 
 ### Insert ▸ Drawing
 
 A line, arrow, rectangle, rounded rectangle or ellipse, with its line
-width, colour and fill. Word42 draws them as pictures, so they resize with
-the handles and travel through RTF, HTML and PDF like any picture.
+width, colour and fill, and a line of text set in the middle of it.
+Word42 keeps a drawing as what it is and draws it afresh wherever the
+page is painted, so it stays sharp on paper and in a PDF, and it goes
+through Word's formats and OpenDocument as a shape, with its text; HTML
+and AbiWord get a picture of it. Select a drawing and Format ▸ Picture
+opens the same box again to change it.
 
 ### Format ▸ Frame
 

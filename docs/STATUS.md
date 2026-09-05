@@ -121,9 +121,23 @@ Early, but real. Word42 today is a working word processor:
   level formats map on to them.
 - **Drawing** — Insert ▸ Drawing puts a line, arrow, rectangle, rounded
   rectangle or ellipse in the text, with its line width, colour and fill
-  chosen in the box. The classic word processors drew these on a Drawing toolbar; Word42
-  draws them as pictures, so they resize with the handles and go
-  through RTF, HTML and PDF like any picture.
+  chosen in the box, and text set in the middle of it. A drawing is kept
+  as a shape and drawn with Cairo wherever the page is painted, so it
+  prints and exports to PDF as lines rather than pixels, and Format ▸
+  Picture on a selected drawing opens the box again to change it. Word's
+  `wps:wsp` shapes (`.docx`), RTF's `{\shp}` groups with their
+  `shapeType`, fill, line and `\shptxt`, and OpenDocument's
+  `draw:custom-shape`, `draw:rect`, `draw:ellipse` and `draw:line` are
+  read as shapes and written back as shapes; a shape of a kind Word42
+  does not draw comes in as a box with its text. HTML and AbiWord carry
+  a PNG of it.
+- **Text wrapping** — a wrapped picture or shape can sit at the left or
+  right with the text beside it, with the text above and below it only,
+  in front of the text, or behind it, as Word XP's Format ▸ Picture
+  offered; one put at a place of its own -- Word's `posOffset`, RTF's
+  `\shpleft`/`\shptop`, OpenDocument's `svg:x`/`svg:y` -- keeps it,
+  measured from its paragraph, and a paragraph may carry several. A
+  table starts under a picture it would otherwise run into.
 - **Hyphenation** — Tools ▸ Hyphenation ▸ Hyphenate Document puts soft
   hyphens into every word by the language's patterns (libhyphen and
   the hyph_*.dic hyphenation dictionaries; English comes with the Windows

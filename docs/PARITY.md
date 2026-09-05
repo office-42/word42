@@ -64,10 +64,10 @@ is listed so the distance to the current product is honest.
 | Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full | full |
 | Page numbers | full | full | full | full |
 | Pictures (inline, resize by handles) | full | full | full | full |
-| Wrapped pictures (left/right, text line by line beside them) | yes | yes | yes | yes |
+| Wrapped pictures (left/right, top and bottom, in front, behind; placed by offset) | yes | yes | yes | yes |
 | Text frames (paragraphs framed at a side, text beside) | yes (Format ▸ Frame; docx, odt, html) | yes | yes | yes |
 | Floating text boxes placed anywhere on the page | no | yes | yes | yes |
-| Drawing shapes | as pictures | as objects | as objects | as objects |
+| Drawing shapes (line, arrow, rectangle, rounded rectangle, ellipse, with fill, outline and text) | as objects, drawn as vectors | as objects | as objects | as objects |
 | Table of contents (insert, update) | full | full | full | full |
 | Index (mark entries, build, rebuild) | full | no | full | full |
 | Bookmarks, hyperlinks, cross-references | full | full | full | full |

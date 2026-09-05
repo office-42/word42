@@ -395,6 +395,86 @@ write_pict (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
   g_bytes_unref (data);
 }
 
+/* A drawing object as Word writes one: a {\shp} group whose properties
+ * say what it is, how the text goes round it and where it sits, with the
+ * picture of it in a \shprslt for readers that know nothing of shapes.
+ * A wrapped picture is a picture frame (type 75) holding its picture. */
+static void
+write_shape (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
+{
+  const W42Object *object = w42_object_table_get (objects, idx);
+  int left, top;
+  int wr, wrk = 0;
+
+  if (object == NULL)
+    return;
+  left = object->positioned ? object->pos_x : 0;
+  top = object->positioned ? object->pos_y : 0;
+  switch (object->wrap)
+    {
+    case W42_WRAP_TOP_BOTTOM: wr = 1; break;
+    case W42_WRAP_FRONT: case W42_WRAP_BEHIND: wr = 3; break;
+    case W42_WRAP_LEFT: wr = 2; wrk = 2; break;      /* the text to its right */
+    case W42_WRAP_RIGHT: wr = 2; wrk = 1; break;
+    default: wr = 3; break;
+    }
+  g_string_append_printf (out,
+    "{\\shp{\\*\\shpinst\\shpleft%d\\shptop%d\\shpright%d\\shpbottom%d"
+    "\\shpfhdr0\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr%d\\shpwrk%d\\shpfblwtxt%d\\shpz0\n",
+    left, top, left + object->width, top + object->height, wr, wrk,
+    object->wrap == W42_WRAP_BEHIND ? 1 : 0);
+  if (object->shape == W42_SHAPE_PICTURE)
+    {
+      g_string_append (out, "{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn pib}{\\sv ");
+      write_pict (out, objects, idx);
+      g_string_append (out, "}}{\\sp{\\sn fFilled}{\\sv 0}}{\\sp{\\sn fLine}{\\sv 0}}");
+    }
+  else
+    {
+      int type = object->shape == W42_SHAPE_ELLIPSE ? 3
+               : object->shape == W42_SHAPE_ROUNDED_RECTANGLE ? 2
+               : object->shape == W42_SHAPE_LINE || object->shape == W42_SHAPE_ARROW ? 20 : 1;
+      long fill = ((object->fill_rgb & 0xFF) << 16) | (object->fill_rgb & 0xFF00) | ((object->fill_rgb >> 16) & 0xFF);
+      long line = ((object->line_rgb & 0xFF) << 16) | (object->line_rgb & 0xFF00) | ((object->line_rgb >> 16) & 0xFF);
+
+      g_string_append_printf (out,
+        "{\\sp{\\sn shapeType}{\\sv %d}}{\\sp{\\sn fFilled}{\\sv %d}}{\\sp{\\sn fillColor}{\\sv %ld}}"
+        "{\\sp{\\sn fLine}{\\sv %d}}{\\sp{\\sn lineColor}{\\sv %ld}}{\\sp{\\sn lineWidth}{\\sv %d}}",
+        type, object->filled ? 1 : 0, fill, object->line_pt > 0.0 ? 1 : 0, line,
+        (int) (object->line_pt * 12700.0 + 0.5));
+      if (object->shape == W42_SHAPE_ARROW)
+        g_string_append (out, "{\\sp{\\sn lineEndArrowhead}{\\sv 1}}");
+    }
+  if (object->wrap == W42_WRAP_INLINE)
+    g_string_append (out, "{\\sp{\\sn fPseudoInline}{\\sv 1}}");
+  if (object->wrap == W42_WRAP_BEHIND)
+    g_string_append (out, "{\\sp{\\sn fBehindDocument}{\\sv 1}}");
+  if (object->text != NULL)
+    {
+      g_string_append (out, "{\\shptxt \\pard\\qc ");
+      for (const char *c = object->text; *c != '\0'; c++)
+        {
+          if (*c == '\n')
+            g_string_append (out, "\\par ");
+          else if (*c == '\\' || *c == '{' || *c == '}')
+            g_string_append_printf (out, "\\%c", *c);
+          else if ((guchar) *c < 0x80)
+            g_string_append_c (out, *c);
+          else
+            {
+              gunichar u = g_utf8_get_char (c);
+
+              g_string_append_printf (out, "\\u%d?", (int) (u > 0x7FFF ? u - 0x10000 : u));
+              c = g_utf8_next_char (c) - 1;
+            }
+        }
+      g_string_append (out, "\\par}");
+    }
+  g_string_append (out, "}{\\shprslt ");
+  write_pict (out, objects, idx);
+  g_string_append (out, "}}\n");
+}
+
 /* A header or footer: one paragraph in the Normal style, with the fields
  * written as Word writes them -- \chpgn for the page number, and \field
  * groups carrying the instruction and a cached result for the others. */
@@ -856,8 +936,13 @@ w42_rtf_save (W42PieceTable      *pt,
             {
               /* The picture's run has a font and a size like any other, and
                * the line it sits on is as tall as they make it. */
+              const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
+
               write_char_props (out, &fmt->ch, &tables);
-              write_pict (out, w42_pt_object_table (pt), run->object);
+              if (object != NULL && (object->shape != W42_SHAPE_PICTURE || object->wrap != W42_WRAP_INLINE))
+                write_shape (out, w42_pt_object_table (pt), run->object);
+              else
+                write_pict (out, w42_pt_object_table (pt), run->object);
               continue;
             }
 
@@ -1195,11 +1280,36 @@ struct _RtfReader {
   gsize          field_start;    /* where that result began */
   guint          fldrslt_depth;
 
+  /* Collecting a drawing object: a {\shp ...} group, which is a picture
+   * placed on the page, or a shape.  Its properties come as
+   * {\sp{\sn name}{\sv value}} pairs. */
+  gboolean       in_shp;
+  guint          shp_depth;      /* stack depth of the \shp group */
+  int            shp_left, shp_top, shp_right, shp_bottom;   /* twips */
+  int            shp_wr;         /* \shpwr: 1 top and bottom, 2 square, 3 none, 4 tight, 5 through */
+  int            shp_wrk;        /* \shpwrk: 0 both sides, 1 left only, 2 right only */
+  gboolean       shp_behind;     /* \shpfblwtxt1, or fBehindDocument */
+  int            shp_bx;         /* 0 column, 1 margin, 2 page */
+  int            shp_by;         /* 0 paragraph, 1 margin, 2 page */
+  int            shp_type;       /* shapeType: 1 rectangle, 2 rounded, 3 ellipse, 20 line ... */
+  gboolean       shp_filled, shp_lined, shp_arrow, shp_inline;
+  guint32        shp_fill_rgb, shp_line_rgb;
+  double         shp_line_pt;
+  W42ObjectIdx   shp_pib;        /* the picture read inside it, if any */
+  GString       *shp_name;       /* the \sn being read */
+  GString       *shp_value;      /* and its \sv */
+  gboolean       in_sn, in_sv;
+  guint          sv_depth;
+  GString       *shp_text;       /* the \shptxt: the text in the shape */
+  gboolean       in_shptxt;
+  guint          shptxt_depth;
+
   /* Collecting a picture. */
   guint          pict_depth;     /* stack depth of the \pict group */
   const char    *pict_format;    /* "png", "jpeg", or NULL for unknown */
   int            pict_wgoal;     /* twips, from \picwgoal */
   int            pict_hgoal;
+  int            pict_scalex, pict_scaley;   /* percent, applied to the goals */
   GString       *pict_hex;
 };
 
@@ -1435,6 +1545,19 @@ append_char (RtfReader *r, gunichar c)
   if (r->in_fldinst)
     {
       g_string_append_unichar (r->fldinst, c);
+      return;
+    }
+  if (r->in_shp)
+    {
+      /* A drawing object's property names and values, and its text. */
+      if (r->state.skip)
+        return;
+      if (r->in_sn)
+        g_string_append_unichar (r->shp_name, c);
+      else if (r->in_sv)
+        g_string_append_unichar (r->shp_value, c);
+      else if (r->in_shptxt)
+        g_string_append_unichar (r->shp_text, c);
       return;
     }
 
@@ -1688,15 +1811,154 @@ finish_pict (RtfReader *r)
 
   width  = r->pict_wgoal > 0 ? r->pict_wgoal : (int) MIN ((gint64) pw * 15, 31680);
   height = r->pict_hgoal > 0 ? r->pict_hgoal : (int) MIN ((gint64) ph * 15, 31680);
+  /* \picscalex: Word's own scaling of the picture, in percent. */
+  if (r->pict_scalex > 0 && r->pict_scalex != 100)
+    width = (int) CLAMP ((gint64) width * r->pict_scalex / 100, 15, 31680);
+  if (r->pict_scaley > 0 && r->pict_scaley != 100)
+    height = (int) CLAMP ((gint64) height * r->pict_scaley / 100, 15, 31680);
 
   idx = w42_object_table_add (w42_pt_object_table (r->pt), data, format,
                               pw, ph, width, height);
   g_bytes_unref (data);
 
+  /* Inside a \shp group the picture is the shape's, placed when the group
+   * ends with what the group says about it. */
+  if (r->in_shp)
+    {
+      r->shp_pib = idx;
+      return;
+    }
+
   /* A picture goes into the document like text does, so a cell it belongs
    * to has to be open first -- a table whose first cell holds nothing but a
    * picture would otherwise be opened after it, leaving the picture in a
    * paragraph of its own above the table. */
+  table_sync (r);
+  flush_text (r);
+  w42_pt_insert_object (r->pt, r->pos, idx, reader_ap (r));
+  r->pos += 1;
+}
+
+/* Office's colour numbers are 0x00BBGGRR. */
+static guint32
+bgr_to_rgb (long v)
+{
+  return (guint32) (((v & 0xFF) << 16) | (v & 0xFF00) | ((v >> 16) & 0xFF));
+}
+
+/* One {\sp{\sn name}{\sv value}} of a drawing object. */
+static void
+shape_property (RtfReader *r)
+{
+  const char *name = r->shp_name->str;
+  long v = strtol (r->shp_value->str, NULL, 10);
+
+  r->in_sv = FALSE;
+  r->in_sn = FALSE;
+  if (g_str_equal (name, "shapeType"))          r->shp_type = (int) v;
+  else if (g_str_equal (name, "fFilled"))       r->shp_filled = v != 0;
+  else if (g_str_equal (name, "fLine"))         r->shp_lined = v != 0;
+  else if (g_str_equal (name, "fillColor"))     r->shp_fill_rgb = bgr_to_rgb (v);
+  else if (g_str_equal (name, "lineColor"))     r->shp_line_rgb = bgr_to_rgb (v);
+  else if (g_str_equal (name, "lineWidth"))     r->shp_line_pt = v / 12700.0;
+  else if (g_str_equal (name, "lineEndArrowhead") || g_str_equal (name, "lineStartArrowhead"))
+    r->shp_arrow = r->shp_arrow || v != 0;
+  else if (g_str_equal (name, "fBehindDocument")) r->shp_behind = r->shp_behind || v != 0;
+  else if (g_str_equal (name, "fPseudoInline")) r->shp_inline = v != 0;
+  g_string_truncate (r->shp_name, 0);
+  g_string_truncate (r->shp_value, 0);
+}
+
+/* The \shp group has closed: the picture or shape it described goes
+ * into the document where the group was, wrapped and placed as it said. */
+static void
+finish_shape (RtfReader *r)
+{
+  W42ObjectTable *objects = w42_pt_object_table (r->pt);
+  W42ObjectIdx idx = r->shp_pib;
+  int width = MAX (r->shp_right - r->shp_left, 15);
+  int height = MAX (r->shp_bottom - r->shp_top, 15);
+  W42Wrap wrap;
+  int text_w = r->page != NULL && r->page->width > 0
+                 ? r->page->width - r->page->margin_left - r->page->margin_right : 9360;
+  int left = r->shp_left;
+
+  r->in_shp = FALSE;
+  r->in_sn = r->in_sv = r->in_shptxt = FALSE;
+
+  if (idx == W42_OBJECT_NONE)
+    {
+      /* A shape of a kind word42 draws; the rest -- WordArt, callouts,
+       * the hundred other AutoShapes -- come in as boxes with their text,
+       * which is better than nothing where there is text. */
+      W42ShapeKind kind;
+      GBytes *png;
+      const char *text = r->shp_text->len > 0 ? r->shp_text->str : NULL;
+
+      switch (r->shp_type)
+        {
+        case 1: kind = W42_SHAPE_RECTANGLE; break;
+        case 2: kind = W42_SHAPE_ROUNDED_RECTANGLE; break;
+        case 3: kind = W42_SHAPE_ELLIPSE; break;
+        case 20: case 32: case 33: kind = r->shp_arrow ? W42_SHAPE_ARROW : W42_SHAPE_LINE; break;
+        case 202: kind = W42_SHAPE_RECTANGLE; break;      /* a text box */
+        default:
+          if (text == NULL)
+            {
+              g_string_truncate (r->shp_text, 0);
+              return;
+            }
+          kind = W42_SHAPE_RECTANGLE;
+          break;
+        }
+      while (r->shp_text->len > 0 && r->shp_text->str[r->shp_text->len - 1] == '\n')
+        g_string_truncate (r->shp_text, r->shp_text->len - 1);
+      text = r->shp_text->len > 0 ? r->shp_text->str : NULL;
+      png = w42_shape_render (kind, MAX (width / 15, 2), MAX (height / 15, 2),
+                              r->shp_lined ? r->shp_line_pt : 0.0, r->shp_line_rgb,
+                              r->shp_filled, r->shp_fill_rgb, text);
+      if (png == NULL)
+        return;
+      idx = w42_object_table_add (objects, png, g_intern_static_string ("png"),
+                                  MAX (width / 15, 2), MAX (height / 15, 2), width, height);
+      g_bytes_unref (png);
+      w42_object_table_set_shape (objects, idx, kind, r->shp_lined ? r->shp_line_pt : 0.0,
+                                  r->shp_line_rgb, r->shp_filled, r->shp_fill_rgb, text);
+    }
+  else
+    {
+      /* A picture keeps the size the picture said, unless the frame says
+       * otherwise. */
+      const W42Object *o = w42_object_table_get (objects, idx);
+
+      if (o != NULL && r->shp_right > r->shp_left && r->shp_bottom > r->shp_top &&
+          (o->width != width || o->height != height))
+        idx = w42_object_table_clone (objects, idx, width, height);
+    }
+  g_string_truncate (r->shp_text, 0);
+
+  /* How the text goes round it, and where it sits. */
+  if (r->shp_inline)
+    wrap = W42_WRAP_INLINE;
+  else if (r->shp_wr == 1)
+    wrap = W42_WRAP_TOP_BOTTOM;
+  else if (r->shp_wr == 3)
+    wrap = r->shp_behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
+  else if (r->shp_wrk == 1)
+    wrap = W42_WRAP_RIGHT;          /* text on the left only */
+  else if (r->shp_wrk == 2)
+    wrap = W42_WRAP_LEFT;
+  else
+    wrap = (left + width / 2 < text_w / 2) ? W42_WRAP_LEFT : W42_WRAP_RIGHT;
+  w42_object_table_set_wrap (objects, idx, wrap);
+  if (wrap != W42_WRAP_INLINE)
+    {
+      if (r->shp_bx == 2 && r->page != NULL)
+        left -= r->page->margin_left;
+      w42_object_table_set_position (objects, idx, TRUE, left,
+                                     r->shp_by == 0 ? r->shp_top : 0);
+    }
+
   table_sync (r);
   flush_text (r);
   w42_pt_insert_object (r->pt, r->pos, idx, reader_ap (r));
@@ -2184,7 +2446,84 @@ formatting:
       else if (g_str_equal (word, "jpegblip")) r->pict_format = "jpeg";
       else if (g_str_equal (word, "picwgoal") && has_param) r->pict_wgoal = param;
       else if (g_str_equal (word, "pichgoal") && has_param) r->pict_hgoal = param;
+      else if (g_str_equal (word, "picscalex") && has_param) r->pict_scalex = param;
+      else if (g_str_equal (word, "picscaley") && has_param) r->pict_scaley = param;
       return;
+    }
+
+  if (g_str_equal (word, "shp") && !r->in_shp)
+    {
+      /* A drawing object: what the group says is gathered, and the
+       * object made when it closes. */
+      flush_text (r);
+      r->in_shp = TRUE;
+      r->shp_depth = r->stack->len;
+      r->shp_left = r->shp_top = r->shp_right = r->shp_bottom = 0;
+      r->shp_wr = 2;
+      r->shp_wrk = 0;
+      r->shp_behind = FALSE;
+      r->shp_bx = r->shp_by = 0;
+      r->shp_type = 0;
+      r->shp_filled = FALSE;
+      r->shp_lined = TRUE;
+      r->shp_arrow = FALSE;
+      r->shp_inline = FALSE;
+      r->shp_fill_rgb = 0xFFFFFF;
+      r->shp_line_rgb = 0;
+      r->shp_line_pt = 0.75;
+      r->shp_pib = W42_OBJECT_NONE;
+      r->in_sn = r->in_sv = r->in_shptxt = FALSE;
+      g_string_truncate (r->shp_text, 0);
+      return;
+    }
+  if (r->in_shp && r->dest != DEST_PICT)
+    {
+      if (g_str_equal (word, "shpleft") && has_param)   { r->shp_left = param; return; }
+      if (g_str_equal (word, "shptop") && has_param)    { r->shp_top = param; return; }
+      if (g_str_equal (word, "shpright") && has_param)  { r->shp_right = param; return; }
+      if (g_str_equal (word, "shpbottom") && has_param) { r->shp_bottom = param; return; }
+      if (g_str_equal (word, "shpwr") && has_param)     { r->shp_wr = param; return; }
+      if (g_str_equal (word, "shpwrk") && has_param)    { r->shp_wrk = param; return; }
+      if (g_str_equal (word, "shpfblwtxt"))             { r->shp_behind = !has_param || param != 0; return; }
+      if (g_str_equal (word, "shpbxcolumn")) { r->shp_bx = 0; return; }
+      if (g_str_equal (word, "shpbxmargin")) { r->shp_bx = 1; return; }
+      if (g_str_equal (word, "shpbxpage"))   { r->shp_bx = 2; return; }
+      if (g_str_equal (word, "shpbypara"))   { r->shp_by = 0; return; }
+      if (g_str_equal (word, "shpbymargin")) { r->shp_by = 1; return; }
+      if (g_str_equal (word, "shpbypage"))   { r->shp_by = 2; return; }
+      if (g_str_equal (word, "sn"))
+        {
+          r->in_sn = TRUE;
+          g_string_truncate (r->shp_name, 0);
+          return;
+        }
+      if (g_str_equal (word, "sv"))
+        {
+          r->in_sv = TRUE;
+          r->sv_depth = r->stack->len;
+          g_string_truncate (r->shp_value, 0);
+          return;
+        }
+      if (g_str_equal (word, "shptxt"))
+        {
+          r->in_shptxt = TRUE;
+          r->shptxt_depth = r->stack->len;
+          return;
+        }
+      if (r->in_shptxt && (g_str_equal (word, "par") || g_str_equal (word, "line")))
+        {
+          g_string_append_c (r->shp_text, '\n');
+          return;
+        }
+      if (r->in_shptxt || r->in_sn || r->in_sv)
+        {
+          /* Formatting words inside the shape's text: not for the body.
+           * The picture in a pib value is read as any picture is. */
+          if (!g_str_equal (word, "pict"))
+            return;
+        }
+      else if (!g_str_equal (word, "pict"))
+        return;
     }
 
   if (g_str_equal (word, "pict"))
@@ -2194,6 +2533,7 @@ formatting:
       r->pict_depth = r->stack->len;
       r->pict_format = NULL;
       r->pict_wgoal = r->pict_hgoal = 0;
+      r->pict_scalex = r->pict_scaley = 100;
       g_string_truncate (r->pict_hex, 0);
       return;
     }
@@ -2745,6 +3085,7 @@ rtf_known_destination (const char *word)
 {
   static const char *names[] = {
     "fonttbl", "colortbl", "stylesheet", "info", "pict", "shppict",
+    "shpinst", "shptxt",
     "footnote", "field", "fldinst", "fldrslt",
     "header", "headerl", "headerr", "headerf",
     "footer", "footerl", "footerr", "footerf",
@@ -2765,6 +3106,8 @@ is_ignorable_destination (const char *word)
   static const char *names[] = {
     "pntext", "listtext", "listtable", "listoverridetable",
     "object", "nonshppict",   /* the metafile copy of a \shppict, not the picture */
+    "shprslt",                /* what a reader without \shp would show: not this one */
+    "picprop", "wpeqn", "wgrffmtfilter", "background",
     "themedata", "colorschememapping", "latentstyles", "datastore",
     "generator", "xmlnstbl", "rsidtbl", "mmathPr", "upr",
   };
@@ -2846,6 +3189,10 @@ w42_rtf_load (W42PieceTable *pt,
   r.clshdng = g_array_new (FALSE, FALSE, sizeof (int));
   r.clvalign = g_array_new (FALSE, FALSE, sizeof (int));
   r.grid = g_array_new (FALSE, FALSE, sizeof (int));
+  r.shp_name = g_string_new (NULL);
+  r.shp_value = g_string_new (NULL);
+  r.shp_text = g_string_new (NULL);
+  r.shp_pib = W42_OBJECT_NONE;
   r.info_text = g_string_new (NULL);
   r.clsides_pending = 0;
   r.clfills = g_array_new (FALSE, FALSE, sizeof (guint32));
@@ -3009,6 +3356,17 @@ w42_rtf_load (W42PieceTable *pt,
             }
           if (r.dest == DEST_PICT && r.stack->len == r.pict_depth)
             finish_pict (&r);
+          if (r.in_shp)
+            {
+              if (r.in_sv && r.stack->len == r.sv_depth)
+                shape_property (&r);
+              if (r.in_sn && r.stack->len < r.sv_depth + 1)
+                r.in_sn = FALSE;
+              if (r.in_shptxt && r.stack->len < r.shptxt_depth)
+                r.in_shptxt = FALSE;
+              if (r.stack->len == r.shp_depth)
+                finish_shape (&r);
+            }
           if (r.dest == DEST_STYLESHEET && r.stack->len == r.style_depth)
             r.dest = DEST_NONE;
           if (r.dest == DEST_INFO)
@@ -3334,6 +3692,9 @@ w42_rtf_load (W42PieceTable *pt,
   g_array_free (r.clshdng, TRUE);
   g_array_free (r.clvalign, TRUE);
   g_array_free (r.grid, TRUE);
+  g_string_free (r.shp_name, TRUE);
+  g_string_free (r.shp_value, TRUE);
+  g_string_free (r.shp_text, TRUE);
   g_array_free (r.clfills, TRUE);
   g_array_free (r.clfilled, TRUE);
   {

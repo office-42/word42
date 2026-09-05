@@ -2176,6 +2176,17 @@ action_format_picture (GSimpleAction *action, GVariant *param, gpointer data)
   W42Window *self = data;
 
   (void) action; (void) param;
+  /* A selected drawing gets the Drawing dialog, which knows its shape,
+   * outline, fill and text as well as its size. */
+  {
+    const W42Object *object = w42_view_get_object (self->view);
+
+    if (object != NULL && object->shape != W42_SHAPE_PICTURE)
+      {
+        w42_drawing_dialog_show (GTK_WINDOW (self), self->view);
+        return;
+      }
+  }
   w42_picture_dialog_show (GTK_WINDOW (self), self->view);
 }
 
