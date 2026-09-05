@@ -1906,9 +1906,69 @@ action_table_select (GSimpleAction *action, GVariant *param, gpointer data)
   (void) action;
   if (g_str_equal (what, "row"))
     w42_view_table_select_row (self->view);
+  else if (g_str_equal (what, "column"))
+    w42_view_table_select_column (self->view);
+  else if (g_str_equal (what, "cell"))
+    w42_view_table_select_cell (self->view);
   else
     w42_view_table_select_table (self->view);
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+static void
+action_table_insert_row_above (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  (void) action; (void) param;
+  w42_view_table_insert_row_above (W42_WINDOW (data)->view);
+}
+
+static void
+action_table_insert_column_left (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  (void) action; (void) param;
+  w42_view_table_insert_column_left (W42_WINDOW (data)->view);
+}
+
+static void
+action_table_delete_table (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  (void) action; (void) param;
+  w42_view_table_delete_table (W42_WINDOW (data)->view);
+}
+
+static void
+action_table_autofit (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  const char *what = g_variant_get_string (param, NULL);
+
+  (void) action;
+  if (g_str_equal (what, "rows"))
+    w42_view_table_distribute_rows (self->view);
+  else if (g_str_equal (what, "columns"))
+    w42_view_table_distribute_columns (self->view);
+  else
+    w42_view_table_autofit_window (self->view);
+}
+
+static void
+action_table_heading_rows (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  /* The first row repeats on every page the table runs on to, or stops. */
+  w42_view_table_set_header_rows (self->view,
+                                  w42_view_table_get_header_rows (self->view) > 0 ? 0 : 1);
+}
+
+static void
+action_table_formula (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_formula_dialog_show (GTK_WINDOW (self), self->view);
 }
 
 static void
@@ -3854,7 +3914,10 @@ window_sync_state (W42Window *self)
     static const char *table_actions[] = { "table-insert-rows", "table-delete-rows",
                                            "table-insert-cols", "table-delete-cols", "table-split",
                                            "table-merge", "table-properties", "table-autoformat",
-                                           "table-select", "table-split-table", "table-sort" };
+                                           "table-select", "table-split-table", "table-sort",
+                                           "table-insert-rows-above", "table-insert-cols-left",
+                                           "table-delete-table", "table-autofit",
+                                           "table-heading-rows", "table-formula" };
 
     for (guint i = 0; i < G_N_ELEMENTS (table_actions); i++)
       {
@@ -3969,6 +4032,12 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "page-setup", action_page_setup, NULL, NULL,    NULL, { 0 } },
   { "table-insert",      action_table_insert,     NULL, NULL, NULL, { 0 } },
   { "table-insert-rows", action_table_insert_row, NULL, NULL, NULL, { 0 } },
+  { "table-insert-rows-above", action_table_insert_row_above, NULL, NULL, NULL, { 0 } },
+  { "table-insert-cols-left", action_table_insert_column_left, NULL, NULL, NULL, { 0 } },
+  { "table-delete-table", action_table_delete_table, NULL, NULL, NULL, { 0 } },
+  { "table-autofit", action_table_autofit, "s", NULL, NULL, { 0 } },
+  { "table-heading-rows", action_table_heading_rows, NULL, NULL, NULL, { 0 } },
+  { "table-formula", action_table_formula, NULL, NULL, NULL, { 0 } },
   { "table-delete-rows", action_table_delete_row, NULL, NULL, NULL, { 0 } },
   { "table-insert-cols", action_table_insert_column, NULL, NULL, NULL, { 0 } },
   { "table-delete-cols", action_table_delete_column, NULL, NULL, NULL, { 0 } },

@@ -3940,6 +3940,111 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Table > Formula                                                         */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *formula;
+  GtkWidget *function;
+} FormulaBox;
+
+static const char * const FORMULA_FUNCTIONS[] = {
+  "SUM", "AVERAGE", "COUNT", "MAX", "MIN", "PRODUCT", NULL
+};
+
+static void
+on_formula_function (GObject *dropdown, GParamSpec *pspec, gpointer data)
+{
+  FormulaBox *box = data;
+  guint i = gtk_drop_down_get_selected (GTK_DROP_DOWN (dropdown));
+  const char *now = gtk_editable_get_text (GTK_EDITABLE (box->formula));
+  const char *arg = strstr (now, "(");
+  char *text;
+
+  (void) pspec;
+  /* The chosen function takes over, keeping the direction in the brackets. */
+  text = g_strdup_printf ("=%s%s", FORMULA_FUNCTIONS[MIN (i, 5)],
+                          arg != NULL ? arg : "(ABOVE)");
+  gtk_editable_set_text (GTK_EDITABLE (box->formula), text);
+  g_free (text);
+}
+
+static void
+on_formula_ok (GtkButton *button, gpointer data)
+{
+  FormulaBox *box = data;
+  const char *text = gtk_editable_get_text (GTK_EDITABLE (box->formula));
+
+  (void) button;
+  if (!w42_view_table_formula (box->view, text))
+    {
+      w42_message_show (GTK_WINDOW (box->window),
+                        "The formula must be a function of the cells in one direction: "
+                        "=SUM(ABOVE), =AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), "
+                        "=MIN(ABOVE) or =PRODUCT(LEFT).", NULL);
+      return;
+    }
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_formula_dialog_show (GtkWindow *parent, W42View *view)
+{
+  FormulaBox *box;
+  GtkWidget *content, *grid, *label;
+  gboolean numbers_above = FALSE;
+  char *cell = NULL;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  if (w42_view_get_document (view) == NULL || !w42_view_in_table (view))
+    return;
+
+  box = g_new0 (FormulaBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, "Formula", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  /* Word XP guessed: numbers above the cell mean SUM(ABOVE), otherwise
+   * SUM(LEFT). */
+  {
+    int table_row = 0, table_col = 0;
+    W42PieceTable *pt = w42_document_pt (w42_view_get_document (view));
+    int table;
+
+    if (pt != NULL && w42_pt_cell_at (pt, w42_view_get_caret (view), &table, &table_row, &table_col) &&
+        table_row > 0 && w42_view_table_cell_text (view, table_row - 1, table_col, &cell))
+      {
+        numbers_above = cell != NULL && strpbrk (cell, "0123456789") != NULL;
+        g_free (cell);
+      }
+  }
+
+  grid = group (content, "Formula");
+  label = gtk_label_new_with_mnemonic ("_Formula:");
+  box->formula = gtk_entry_new ();
+  gtk_editable_set_text (GTK_EDITABLE (box->formula), numbers_above ? "=SUM(ABOVE)" : "=SUM(LEFT)");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->formula);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->formula, 1, 0, 1, 1);
+  box->function = choice_row (grid, 1, 0, "_Paste function:", FORMULA_FUNCTIONS, 0);
+  g_signal_connect (box->function, "notify::selected", G_CALLBACK (on_formula_function), box);
+
+  label = gtk_label_new ("ABOVE, BELOW, LEFT or RIGHT: the cells in that direction,\n"
+                         "up to the first that holds no number.  The result is a field.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_widget_add_css_class (label, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 2, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_formula_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->formula);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Format > AutoFormat                                                     */
 /* ---------------------------------------------------------------------- */
 

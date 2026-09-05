@@ -548,33 +548,86 @@
 
     <submenu>
       <attribute name="label" translatable="yes">T_able</attribute>
+      <!-- Word XP's Table menu: Insert, Delete and Select as submenus,
+           AutoFit, Heading Rows Repeat and Formula. -->
       <section>
-        <item>
-          <attribute name="label" translatable="yes">_Insert Table...</attribute>
-          <attribute name="action">win.table-insert</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">Insert _Rows</attribute>
-          <attribute name="action">win.table-insert-rows</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">D_elete Rows</attribute>
-          <attribute name="action">win.table-delete-rows</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">Insert _Columns</attribute>
-          <attribute name="action">win.table-insert-cols</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">_Delete Columns</attribute>
-          <attribute name="action">win.table-delete-cols</attribute>
-        </item>
+        <submenu>
+          <attribute name="label" translatable="yes">_Insert</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Table...</attribute>
+              <attribute name="action">win.table-insert</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">Columns to the _Left</attribute>
+              <attribute name="action">win.table-insert-cols-left</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Columns to the _Right</attribute>
+              <attribute name="action">win.table-insert-cols</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Rows _Above</attribute>
+              <attribute name="action">win.table-insert-rows-above</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Rows _Below</attribute>
+              <attribute name="action">win.table-insert-rows</attribute>
+            </item>
+          </section>
+        </submenu>
+        <submenu>
+          <attribute name="label" translatable="yes">_Delete</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Table</attribute>
+              <attribute name="action">win.table-delete-table</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Columns</attribute>
+              <attribute name="action">win.table-delete-cols</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Rows</attribute>
+              <attribute name="action">win.table-delete-rows</attribute>
+            </item>
+          </section>
+        </submenu>
+        <submenu>
+          <attribute name="label" translatable="yes">Se_lect</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Table</attribute>
+              <attribute name="action">win.table-select</attribute>
+              <attribute name="target">table</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Column</attribute>
+              <attribute name="action">win.table-select</attribute>
+              <attribute name="target">column</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Row</attribute>
+              <attribute name="action">win.table-select</attribute>
+              <attribute name="target">row</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">C_ell</attribute>
+              <attribute name="action">win.table-select</attribute>
+              <attribute name="target">cell</attribute>
+            </item>
+          </section>
+        </submenu>
+      </section>
+      <section>
         <item>
           <attribute name="label" translatable="yes">_Merge Cells</attribute>
           <attribute name="action">win.table-merge</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">Sp_lit Cells</attribute>
+          <attribute name="label" translatable="yes">Split C_ells</attribute>
           <attribute name="action">win.table-split</attribute>
         </item>
         <item>
@@ -584,26 +637,32 @@
       </section>
       <section>
         <item>
-          <attribute name="label" translatable="yes">Select Ro_w</attribute>
-          <attribute name="action">win.table-select</attribute>
-          <attribute name="target">row</attribute>
+          <attribute name="label" translatable="yes">Table Auto_Format...</attribute>
+          <attribute name="action">win.table-autoformat</attribute>
         </item>
+        <submenu>
+          <attribute name="label" translatable="yes">_AutoFit</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">AutoFit to _Window</attribute>
+              <attribute name="action">win.table-autofit</attribute>
+              <attribute name="target">window</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Distribute _Rows Evenly</attribute>
+              <attribute name="action">win.table-autofit</attribute>
+              <attribute name="target">rows</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Distribute _Columns Evenly</attribute>
+              <attribute name="action">win.table-autofit</attribute>
+              <attribute name="target">columns</attribute>
+            </item>
+          </section>
+        </submenu>
         <item>
-          <attribute name="label" translatable="yes">Select Ta_ble</attribute>
-          <attribute name="action">win.table-select</attribute>
-          <attribute name="target">table</attribute>
-        </item>
-      </section>
-      <section>
-        <item>
-          <attribute name="label" translatable="yes">Sort _Ascending</attribute>
-          <attribute name="action">win.table-sort</attribute>
-          <attribute name="target">ascending</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">_Sort Descending</attribute>
-          <attribute name="action">win.table-sort</attribute>
-          <attribute name="target">descending</attribute>
+          <attribute name="label" translatable="yes">_Heading Rows Repeat</attribute>
+          <attribute name="action">win.table-heading-rows</attribute>
         </item>
       </section>
       <section>
@@ -612,12 +671,24 @@
           <attribute name="action">win.table-convert</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">Table _Gridlines</attribute>
-          <attribute name="action">win.gridlines</attribute>
+          <attribute name="label" translatable="yes">S_ort Ascending</attribute>
+          <attribute name="action">win.table-sort</attribute>
+          <attribute name="target">ascending</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">Table Auto_Format...</attribute>
-          <attribute name="action">win.table-autoformat</attribute>
+          <attribute name="label" translatable="yes">Sort Desce_nding</attribute>
+          <attribute name="action">win.table-sort</attribute>
+          <attribute name="target">descending</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Form_ula...</attribute>
+          <attribute name="action">win.table-formula</attribute>
+        </item>
+      </section>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">Table _Gridlines</attribute>
+          <attribute name="action">win.gridlines</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">Table _Properties...</attribute>

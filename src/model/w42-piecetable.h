@@ -477,6 +477,10 @@ gsize w42_pt_text_to_table (W42PieceTable *pt, gsize start, gsize end);
 /* Adds an empty row after `row`; deletes a row, or the whole table when it
  * is the last one.  Each is one undo step. */
 void w42_pt_table_insert_row (W42PieceTable *pt, int table, int row);
+/* The same, with the new row or column before `row` or `col` rather
+ * than after: Table > Insert > Rows Above, Columns to the Left. */
+void w42_pt_table_insert_row_before (W42PieceTable *pt, int table, int row);
+void w42_pt_table_insert_column_before (W42PieceTable *pt, int table, int col);
 /* A column after `col`, or the column `col` taken out; every row gets
  * or loses a cell, a merged cell across the place grows or shrinks.
  * One undo step each. */

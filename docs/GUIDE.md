@@ -407,8 +407,10 @@ view.
 
 ## 9. Tables
 
-**Table ▸ Insert Table** puts a grid of any size after the paragraph you
-are in.
+**Table ▸ Insert ▸ Table** puts a grid of any size after the paragraph
+you are in. The Table menu is laid out as Word XP laid it out: Insert,
+Delete and Select as submenus, then the cell commands, AutoFormat and
+AutoFit, and the rest.
 
 ### Moving and typing
 
@@ -423,15 +425,29 @@ header rows.
 
 | Command | What it does |
 | --- | --- |
-| Insert Rows / Delete Rows | Above the caret's row, or removes it. |
-| Insert Columns / Delete Columns | The same across. A cell merged across the place grows or shrinks with it. |
+| Insert ▸ Rows Above / Rows Below | A new row on either side of the caret's. |
+| Insert ▸ Columns to the Left / to the Right | The same across. A cell merged across the place grows with it. |
+| Delete ▸ Rows / Columns / Table | Removes the caret's row or column, or the whole table, in one undo step. |
 | Merge Cells | Joins the selected cells of a row, keeping every cell's paragraphs; select down a column instead and the cells become one cell as tall as those rows. |
 | Split Cells | Undoes a merge, sideways or downwards. What a downward merge hid is still there and comes back. |
 | Split Table | Makes the caret's row the first row of a table of its own. |
 | Table AutoFormat | A list of ready-made looks -- rules, shading, a bold heading -- with a preview; the one chosen goes on the caret's table in a single undo step. |
-| Select Row / Select Table | Selects one or all of it. |
+| Select ▸ Table / Column / Row / Cell | Selects that much of it. A column's selection runs from its first cell to its last. |
+| AutoFit ▸ AutoFit to Window | Widens or narrows the table to the text column, keeping the columns' proportions. |
+| AutoFit ▸ Distribute Rows Evenly | Gives every row the tallest set height. |
+| AutoFit ▸ Distribute Columns Evenly | Gives every column an equal share of the table's width. |
+| Heading Rows Repeat | The first row repeats at the top of every page the table runs on to; again to stop it. |
 
 Drag a cell's right edge to change the column widths.
+
+### Formulas
+
+**Table ▸ Formula** works out `=SUM(ABOVE)`, `=SUM(LEFT)` and their kin
+-- AVERAGE, COUNT, MAX, MIN and PRODUCT, over the cells above, below, to
+the left or to the right, up to the first that holds no number -- and
+puts the result in the caret's cell as a field. The box guesses ABOVE
+when the cell above holds a number, as Word did. Numbers may carry
+thousands separators and currency signs.
 
 ### Sorting
 

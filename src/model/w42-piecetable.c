@@ -3101,7 +3101,8 @@ w42_pt_table_insert_row (W42PieceTable *pt, int table, int row)
     }
 
   n_rows = (int) rows->len;
-  row = CLAMP (row, 0, n_rows - 1);
+  /* Before the first row: row -1, so that the new row is row 0. */
+  row = CLAMP (row, -1, n_rows - 1);
 
   /* The new row goes where the next row starts, or at the ENDTABLE mark. */
   at = (row + 1 < n_rows) ? g_array_index (rows, gsize, row + 1) : end - 1;
@@ -3114,13 +3115,13 @@ w42_pt_table_insert_row (W42PieceTable *pt, int table, int row)
                           w42_ap_table_default (pt->aps));
       at += 2;
     }
-  if ((guint) row + 1 < props->row_heights->len)
+  if ((guint) (row + 1) < props->row_heights->len)
     {
       GArray *snap = g_array_new (FALSE, FALSE, sizeof (int));
       int zero = 0;
 
       table_snapshot (props, snap);
-      g_array_insert_val (snap, 4 + props->n_cols + row + 1, zero);
+      g_array_insert_val (snap, SNAP_WIDTHS + props->n_cols + row + 1, zero);
       g_array_index (snap, int, 3) += 1;
       pt->coalescing = FALSE;
       pt_push (pt, pt_do_set_table (pt, table, snap));
@@ -4048,12 +4049,21 @@ row_cell_covering (W42PieceTable *pt, int table, gsize row_start, gsize row_end,
 }
 
 void
-w42_pt_table_insert_column (W42PieceTable *pt, int table, int col)
+w42_pt_table_insert_row_before (W42PieceTable *pt, int table, int row)
+{
+  w42_pt_table_insert_row (pt, table, row - 1);
+}
+
+/* The work of adding a column: after `col`, or before column 0 when
+ * `col` is -1. */
+static void
+pt_table_add_column (W42PieceTable *pt, int table, int col)
 {
   const W42TableProps *props;
   GArray *rows, *widths;
   gsize start = 0, end = 0;
   int n_rows;
+  gboolean in_front = col < 0;
 
   g_return_if_fail (pt != NULL);
 
@@ -4065,7 +4075,52 @@ w42_pt_table_insert_column (W42PieceTable *pt, int table, int col)
       return;
     }
   n_rows = (int) rows->len;
-  col = CLAMP (col, 0, props->n_cols - 1);
+  col = CLAMP (col, -1, props->n_cols - 1);
+
+  if (in_front)
+    {
+      /* Before everything: the old first cell of each row is replaced by
+       * one that says it is column 1 -- replaced rather than changed,
+       * so that undo puts it back -- and the new cell goes in front of it
+       * as column 0.  Renumbering settles the rest; the width is the old
+       * first column's. */
+      w42_pt_begin_group (pt);
+      for (int r = n_rows - 1; r >= 0; r--)
+        {
+          gsize row_start = g_array_index (rows, gsize, r);
+          gsize offset = 0;
+          W42Piece *piece = pt_find (pt, row_start, &offset);
+          gsize payload;
+          W42ApIdx ap;
+
+          if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+            continue;
+          payload = piece->offset;
+          ap = piece->ap;
+          pt_push (pt, pt_do_delete (pt, row_start, 1));
+          pt_insert_strux_at (pt, row_start, W42_STRUX_CELL,
+                              CELL_PAYLOAD (CELL_ROW (payload), 1, CELL_SPAN (payload)), ap);
+          pt_push (pt, cr_new (CR_INSERT, row_start, 1));
+          w42_pt_insert_cell (pt, row_start, table, r, 0, w42_ap_table_default (pt->aps));
+        }
+      pt_table_renumber (pt, table);
+      widths = g_array_new (FALSE, FALSE, sizeof (int));
+      for (int c = 0; c < props->n_cols; c++)
+        {
+          int w = c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
+
+          if (c == 0)
+            g_array_append_val (widths, w);
+          g_array_append_val (widths, w);
+        }
+      pt->coalescing = FALSE;
+      pt_push (pt, pt_do_set_widths (pt, table, widths));
+      g_array_free (widths, TRUE);
+      w42_pt_end_group (pt);
+      g_array_free (rows, TRUE);
+      pt_coalesce (pt);
+      return;
+    }
 
   w42_pt_begin_group (pt);
   /* Back to front, so the rows before keep their positions. */
@@ -4112,6 +4167,18 @@ w42_pt_table_insert_column (W42PieceTable *pt, int table, int col)
 
   g_array_free (rows, TRUE);
   pt_coalesce (pt);
+}
+
+void
+w42_pt_table_insert_column (W42PieceTable *pt, int table, int col)
+{
+  pt_table_add_column (pt, table, MAX (col, 0));
+}
+
+void
+w42_pt_table_insert_column_before (W42PieceTable *pt, int table, int col)
+{
+  pt_table_add_column (pt, table, col - 1);
 }
 
 void

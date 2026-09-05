@@ -35,6 +35,8 @@ void w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view);
 void w42_drawing_dialog_show       (GtkWindow *parent, W42View *view);
 void w42_list_dialog_show          (GtkWindow *parent, W42View *view);
 void w42_table_properties_dialog_show (GtkWindow *parent, W42View *view);
+/* Table > Formula: =SUM(ABOVE) and its kin, worked out into the cell. */
+void w42_formula_dialog_show (GtkWindow *parent, W42View *view);
 void w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view);
 void w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell);
 void w42_word_count_dialog_show (GtkWindow *parent, W42View *view);

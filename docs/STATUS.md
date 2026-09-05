@@ -338,6 +338,12 @@ Early, but real. Word42 today is a working word processor:
   paragraphs with tabs between the cells and turns tabbed paragraphs back
   into a table; and Table Gridlines, which shows the cells of an unruled
   table faintly on screen without printing them.
+- **Word XP's Table menu** — Insert (Table, Columns to the Left and
+  Right, Rows Above and Below), Delete (Table, Columns, Rows), Select
+  (Table, Column, Row, Cell), AutoFit (to Window, Distribute Rows and
+  Columns Evenly), Heading Rows Repeat, and Formula: `=SUM(ABOVE)`,
+  `=AVERAGE(LEFT)`, COUNT, MAX, MIN and PRODUCT over the cells in one
+  direction, the result put in as a field.
 - **Cell borders and backgrounds** — Table Properties rules any of a cell's
   four sides on its own, over the table's setting, in a line style, weight
   and colour of the cell's own, gives the cell a background colour or a

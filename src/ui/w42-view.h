@@ -82,6 +82,23 @@ void w42_view_select_word (W42View *self);
 void     w42_view_insert_table     (W42View *self, int rows, int cols);
 gboolean w42_view_in_table         (W42View *self);
 void     w42_view_table_insert_row (W42View *self);
+/* Word XP's Table menu: rows above, columns to the left, the whole table
+ * gone, a column or a cell selected. */
+void     w42_view_table_insert_row_above (W42View *self);
+void     w42_view_table_insert_column_left (W42View *self);
+void     w42_view_table_delete_table (W42View *self);
+void     w42_view_table_select_column (W42View *self);
+void     w42_view_table_select_cell (W42View *self);
+/* Table > AutoFit: the columns share the text column equally, the rows
+ * lose their set heights, or the table is made as wide as the column. */
+void     w42_view_table_distribute_columns (W42View *self);
+void     w42_view_table_distribute_rows (W42View *self);
+void     w42_view_table_autofit_window (W42View *self);
+/* Table > Formula: the result of "=SUM(ABOVE)" and its kin, put in the
+ * caret's cell as a field.  FALSE when the formula makes no sense. */
+gboolean w42_view_table_formula (W42View *self, const char *formula);
+/* The text of the caret's table's cells, for the Formula dialog to sum. */
+gboolean w42_view_table_cell_text (W42View *self, int row, int col, char **out);
 void     w42_view_table_delete_row (W42View *self);
 void     w42_view_table_insert_column (W42View *self);
 void     w42_view_table_delete_column (W42View *self);

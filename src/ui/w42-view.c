@@ -2271,6 +2271,364 @@ w42_view_table_insert_row (W42View *self)
   view_edited (self);
 }
 
+/* The text column's width in twips: the page less its margins, shared
+ * between newspaper columns when there are any. */
+static int
+view_text_twips (W42View *self)
+{
+  const W42PageSetup *page = w42_document_page_setup (self->doc);
+  int text_twips = page->width - page->margin_left - page->margin_right;
+
+  if (w42_page_columns (page) > 1)
+    text_twips = (text_twips - (w42_page_columns (page) - 1) * w42_page_column_gap (page))
+                 / w42_page_columns (page);
+  return MAX (text_twips, 1440);
+}
+
+void
+w42_view_table_insert_row_above (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  gsize landing;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  w42_pt_table_insert_row_before (pt, table, row);
+  /* The caret stays in the cell it was in, now a row further down. */
+  landing = w42_pt_cell_start (pt, table, row + 1, col);
+  if (landing != (gsize) -1)
+    self->caret = self->anchor = w42_pt_clamp_pos (pt, landing);
+  view_edited (self);
+}
+
+void
+w42_view_table_insert_column_left (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  gsize landing;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  w42_pt_table_insert_column_before (pt, table, col);
+  landing = w42_pt_cell_start (pt, table, row, col + 1);
+  if (landing != (gsize) -1)
+    self->caret = self->anchor = w42_pt_clamp_pos (pt, landing);
+  view_edited (self);
+}
+
+void
+w42_view_table_delete_table (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  gsize start = 0, end = 0;
+  int guard = 0;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  if (!w42_pt_table_bounds (pt, table, &start, &end))
+    return;
+  /* Row by row from the top; the last row takes the table with it. */
+  w42_pt_begin_group (pt);
+  while (w42_pt_table_bounds (pt, table, &start, &end) && guard++ < 5000)
+    w42_pt_table_delete_row (pt, table, 0);
+  w42_pt_end_group (pt);
+  self->caret = self->anchor = w42_pt_clamp_pos (pt, start);
+  view_edited (self);
+}
+
+void
+w42_view_table_select_column (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  gsize first = (gsize) -1, last_end = 0;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  /* The cells of the column, top to bottom: a range from the first's
+   * start to the last's end.  What lies between belongs to other
+   * columns too, which is as much as a linear selection can say. */
+  for (int r = 0; r < 4096; r++)
+    {
+      gsize s, e;
+
+      if (!w42_pt_cell_range (pt, table, r, col, &s, &e))
+        break;
+      if (first == (gsize) -1)
+        first = s;
+      last_end = e;
+    }
+  if (first == (gsize) -1)
+    return;
+  w42_view_select_range (self, first, last_end > first ? last_end - 1 : last_end);
+}
+
+void
+w42_view_table_select_cell (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  gsize s, e;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  if (!w42_pt_cell_range (pt, table, row, col, &s, &e))
+    return;
+  w42_view_select_range (self, s, e > s ? e - 1 : e);
+}
+
+void
+w42_view_table_distribute_columns (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42TableProps *props;
+  int *widths;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  props = w42_pt_table_props (pt, table);
+  if (props == NULL || props->n_cols <= 0)
+    return;
+  /* An equal share of what the table spans now. */
+  {
+    int total = 0;
+
+    for (int c = 0; c < props->n_cols; c++)
+      total += c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
+    if (total <= 0)
+      total = view_text_twips (self);
+    widths = g_new0 (int, props->n_cols);
+    for (int c = 0; c < props->n_cols; c++)
+      widths[c] = total / props->n_cols;
+  }
+  w42_pt_table_set_widths (pt, table, widths, props->n_cols);
+  g_free (widths);
+  view_edited (self);
+}
+
+void
+w42_view_table_distribute_rows (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42TableProps *props;
+  int tallest = 0;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  props = w42_pt_table_props (pt, table);
+  if (props == NULL)
+    return;
+  /* Every row at least as tall as the tallest set height; the text
+   * decides the rest, as it always does. */
+  for (guint r = 0; r < props->row_heights->len; r++)
+    tallest = MAX (tallest, g_array_index (props->row_heights, int, r));
+  w42_pt_begin_group (pt);
+  for (int r = 0; r < 4096; r++)
+    {
+      gsize s, e;
+
+      if (!w42_pt_row_bounds (pt, table, r, &s, &e))
+        break;
+      w42_pt_table_set_row_height (pt, table, r, tallest);
+    }
+  w42_pt_end_group (pt);
+  view_edited (self);
+}
+
+void
+w42_view_table_autofit_window (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42TableProps *props;
+  int *widths, total = 0, want;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  props = w42_pt_table_props (pt, table);
+  if (props == NULL || props->n_cols <= 0)
+    return;
+  want = view_text_twips (self);
+  for (int c = 0; c < props->n_cols; c++)
+    total += c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
+  widths = g_new0 (int, props->n_cols);
+  for (int c = 0; c < props->n_cols; c++)
+    {
+      int w = c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
+
+      /* Scaled to the column's width, keeping their proportions. */
+      widths[c] = total > 0 ? (int) ((gint64) w * want / total) : want / props->n_cols;
+    }
+  w42_pt_table_set_widths (pt, table, widths, props->n_cols);
+  g_free (widths);
+  view_edited (self);
+}
+
+gboolean
+w42_view_table_cell_text (W42View *self, int row, int col, char **out)
+{
+  W42PieceTable *pt;
+  int table, r, c;
+  gsize s, e;
+
+  g_return_val_if_fail (W42_IS_VIEW (self) && out != NULL, FALSE);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &r, &c))
+    return FALSE;
+  if (!w42_pt_cell_range (pt, table, row, col, &s, &e) || e <= s)
+    return FALSE;
+  *out = w42_pt_get_text (pt, s, e - s);
+  return *out != NULL;
+}
+
+/* The number a cell's text holds, if it holds one: "1,234.50" is one,
+ * "$12" is one, "twelve" is not. */
+static gboolean
+cell_number (const char *text, double *out)
+{
+  GString *digits = g_string_new (NULL);
+  gboolean any = FALSE, ok;
+  char *end = NULL;
+
+  for (const char *c = text; *c != '\0'; c++)
+    {
+      if (g_ascii_isdigit (*c) || *c == '.' || *c == '-')
+        {
+          g_string_append_c (digits, *c);
+          any = any || g_ascii_isdigit (*c);
+        }
+      else if (*c == ',' || *c == ' ' || *c == '$' || (guchar) *c == 0xC2 || (guchar) *c == 0xA0)
+        continue;
+      else if (any)
+        break;
+    }
+  *out = g_ascii_strtod (digits->str, &end);
+  ok = any && end != NULL && *end == '\0';
+  g_string_free (digits, TRUE);
+  return ok;
+}
+
+gboolean
+w42_view_table_formula (W42View *self, const char *formula)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  char *upper, *open, *close;
+  const char *fn, *arg;
+  double acc = 0.0, n = 0.0;
+  gboolean have = FALSE;
+  char result[64];
+  W42CharFmt ch;
+
+  g_return_val_if_fail (W42_IS_VIEW (self) && formula != NULL, FALSE);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return FALSE;
+
+  /* "=SUM(ABOVE)", "=AVERAGE(LEFT)", "=COUNT(BELOW)", "=MAX(RIGHT)",
+   * "=MIN(...)", "=PRODUCT(...)": Word XP's functions over the cells in
+   * one direction, up to the first that holds no number. */
+  upper = g_ascii_strup (formula, -1);
+  g_strstrip (upper);
+  fn = upper[0] == '=' ? upper + 1 : upper;
+  open = strchr (fn, '(');
+  close = open != NULL ? strchr (open, ')') : NULL;
+  if (open == NULL || close == NULL)
+    {
+      g_free (upper);
+      return FALSE;
+    }
+  *open = '\0';
+  *close = '\0';
+  arg = open + 1;
+  while (*arg == ' ')
+    arg++;
+  {
+    int dr = 0, dc = 0;
+
+    if (g_str_has_prefix (arg, "ABOVE"))      dr = -1;
+    else if (g_str_has_prefix (arg, "BELOW")) dr = 1;
+    else if (g_str_has_prefix (arg, "LEFT"))  dc = -1;
+    else if (g_str_has_prefix (arg, "RIGHT")) dc = 1;
+    else
+      {
+        g_free (upper);
+        return FALSE;
+      }
+    if (g_str_equal (fn, "PRODUCT"))
+      acc = 1.0;
+    for (int r = row + dr, c = col + dc; r >= 0 && c >= 0 && r < 4096 && c < 1024; r += dr, c += dc)
+      {
+        char *text = NULL;
+        double v;
+
+        if (!w42_view_table_cell_text (self, r, c, &text))
+          break;
+        if (!cell_number (text, &v))
+          {
+            g_free (text);
+            if (have)
+              break;
+            continue;                /* a heading above the numbers */
+          }
+        g_free (text);
+        if (g_str_equal (fn, "MAX"))          acc = have ? MAX (acc, v) : v;
+        else if (g_str_equal (fn, "MIN"))     acc = have ? MIN (acc, v) : v;
+        else if (g_str_equal (fn, "PRODUCT")) acc *= v;
+        else                                  acc += v;   /* SUM, AVERAGE, COUNT */
+        n += 1.0;
+        have = TRUE;
+      }
+    if (g_str_equal (fn, "AVERAGE") && n > 0.0)
+      acc /= n;
+    else if (g_str_equal (fn, "COUNT"))
+      acc = n;
+  }
+  g_free (upper);
+
+  if (fabs (acc - floor (acc + 0.5)) < 1e-9)
+    g_snprintf (result, sizeof result, "%.0f", acc);
+  else
+    g_snprintf (result, sizeof result, "%.2f", acc);
+
+  /* The result goes in as a field, so Update Fields can work it out
+   * again; its code is the formula as Word spelt it. */
+  w42_view_get_char_fmt (self, &ch);
+  ch.field = g_intern_string (formula[0] == '=' ? formula : g_strconcat ("=", formula, NULL));
+  w42_view_insert_text (self, result);
+  {
+    gsize end = self->caret, start = end - strlen (result);
+    W42CharFmt want;
+
+    memset (&want, 0, sizeof want);
+    want.field = ch.field;
+    w42_pt_apply_char_fmt (pt, start, end - start, W42_CHAR_FIELD, &want);
+  }
+  view_edited (self);
+  return TRUE;
+}
+
 void
 w42_view_table_insert_column (W42View *self)
 {
