@@ -510,9 +510,13 @@ pt_do_set_aps (W42PieceTable *pt, gsize pos, gsize len, GArray *ap_runs)
 static void pt_table_renumber (W42PieceTable *pt, int table);
 
 /* A CR_TABLE record holds the whole of a table's properties as ints:
- * n_cols, borders, header_rows, the number of row heights, then the
- * widths and the row heights.  Applying one sets them all and returns
- * the record that puts back what was there. */
+ * n_cols, borders, header_rows, the number of row heights, the style,
+ * width and colour of each of the six edges, then the widths and the
+ * row heights.  Applying one sets them all and returns the record that
+ * puts back what was there. */
+#define SNAP_EDGES  4
+#define SNAP_WIDTHS (SNAP_EDGES + 3 * W42_N_EDGES)
+
 static void
 table_snapshot (const W42TableProps *props, GArray *out)
 {
@@ -524,6 +528,12 @@ table_snapshot (const W42TableProps *props, GArray *out)
   v = props->borders;     g_array_append_val (out, v);
   v = props->header_rows; g_array_append_val (out, v);
   v = n_rows;             g_array_append_val (out, v);
+  for (int e = 0; e < W42_N_EDGES; e++)
+    {
+      v = props->edge[e].style; g_array_append_val (out, v);
+      v = props->edge[e].width; g_array_append_val (out, v);
+      v = (int) props->edge[e].color; g_array_append_val (out, v);
+    }
   for (int c = 0; c < props->n_cols; c++)
     {
       v = c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
@@ -543,7 +553,7 @@ pt_do_set_table (W42PieceTable *pt, int table, GArray *snap)
   W42CR *inverse;
   int n_cols, n_rows;
 
-  if (table < 0 || (guint) table >= pt->tables->len || snap->len < 4)
+  if (table < 0 || (guint) table >= pt->tables->len || snap->len < SNAP_WIDTHS)
     return NULL;
 
   props = g_ptr_array_index (pt->tables, table);
@@ -555,10 +565,16 @@ pt_do_set_table (W42PieceTable *pt, int table, GArray *snap)
   props->n_cols = n_cols;
   props->borders = g_array_index (snap, int, 1) ? 1 : 0;
   props->header_rows = (guint8) CLAMP (g_array_index (snap, int, 2), 0, 255);
+  for (int e = 0; e < W42_N_EDGES; e++)
+    {
+      props->edge[e].style = (guint8) CLAMP (g_array_index (snap, int, SNAP_EDGES + 3 * e), 0, 255);
+      props->edge[e].width = (guint8) CLAMP (g_array_index (snap, int, SNAP_EDGES + 3 * e + 1), 0, 255);
+      props->edge[e].color = (guint32) g_array_index (snap, int, SNAP_EDGES + 3 * e + 2) & 0xFFFFFF;
+    }
   g_array_set_size (props->widths, 0);
   for (int c = 0; c < n_cols; c++)
     {
-      int w = 4 + c < (int) snap->len ? g_array_index (snap, int, 4 + c) : 0;
+      int w = SNAP_WIDTHS + c < (int) snap->len ? g_array_index (snap, int, SNAP_WIDTHS + c) : 0;
       g_array_append_val (props->widths, w);
     }
   if (props->row_heights == NULL)
@@ -566,7 +582,7 @@ pt_do_set_table (W42PieceTable *pt, int table, GArray *snap)
   g_array_set_size (props->row_heights, 0);
   for (int r = 0; r < n_rows; r++)
     {
-      int h = 4 + n_cols + r < (int) snap->len ? g_array_index (snap, int, 4 + n_cols + r) : 0;
+      int h = SNAP_WIDTHS + n_cols + r < (int) snap->len ? g_array_index (snap, int, SNAP_WIDTHS + n_cols + r) : 0;
       g_array_append_val (props->row_heights, h);
     }
   return inverse;
@@ -595,7 +611,7 @@ pt_do_set_widths (W42PieceTable *pt, int table, GArray *widths)
       int n_rows = g_array_index (snap, int, 3);
 
       g_array_index (snap, int, 0) = n;
-      g_array_remove_range (snap, 4, snap->len - 4);
+      g_array_remove_range (snap, SNAP_WIDTHS, snap->len - SNAP_WIDTHS);
       for (int c = 0; c < n; c++)
         g_array_append_val (snap, g_array_index (widths, int, c));
       for (int r = 0; r < n_rows; r++)
@@ -2065,8 +2081,7 @@ para_fmt_apply_mask (W42ParaFmt *fmt, W42ParaMask mask, const W42ParaFmt *value)
   if (mask & W42_PARA_BORDER)
     {
       fmt->border = value->border;
-      fmt->border_width = value->border_width;
-      fmt->border_color = value->border_color;
+      memcpy (fmt->edge, value->edge, sizeof fmt->edge);
     }
   if (mask & W42_PARA_SHADING)
     {
@@ -3621,6 +3636,55 @@ w42_pt_table_set_borders (W42PieceTable *pt, int table, gboolean borders)
 }
 
 void
+w42_pt_table_set_edge (W42PieceTable *pt, int table, int which, const W42BorderEdge *edge)
+{
+  W42TableProps *props;
+  GArray *snap;
+
+  g_return_if_fail (pt != NULL && edge != NULL);
+  if (table < 0 || (guint) table >= pt->tables->len || which < 0 || which >= W42_N_EDGES)
+    return;
+  props = g_ptr_array_index (pt->tables, table);
+  snap = g_array_new (FALSE, FALSE, sizeof (int));
+  table_snapshot (props, snap);
+  g_array_index (snap, int, SNAP_EDGES + 3 * which)     = edge->style;
+  g_array_index (snap, int, SNAP_EDGES + 3 * which + 1) = edge->width;
+  g_array_index (snap, int, SNAP_EDGES + 3 * which + 2) = (int) (edge->color & 0xFFFFFF);
+  pt->coalescing = FALSE;
+  pt_push (pt, pt_do_set_table (pt, table, snap));
+  g_array_free (snap, TRUE);
+}
+
+void
+w42_pt_table_set_edges (W42PieceTable *pt, int table, const W42BorderEdge *outer,
+                        const W42BorderEdge *inside)
+{
+  W42TableProps *props;
+  GArray *snap;
+
+  g_return_if_fail (pt != NULL);
+  if (table < 0 || (guint) table >= pt->tables->len)
+    return;
+  props = g_ptr_array_index (pt->tables, table);
+  snap = g_array_new (FALSE, FALSE, sizeof (int));
+  table_snapshot (props, snap);
+  for (int e = 0; e < W42_N_EDGES; e++)
+    {
+      const W42BorderEdge *edge = e < W42_EDGE_INSIDE_H ? outer : inside;
+      W42BorderEdge none = { 0, 0, 0 };
+
+      if (edge == NULL)
+        edge = &none;
+      g_array_index (snap, int, SNAP_EDGES + 3 * e)     = edge->style;
+      g_array_index (snap, int, SNAP_EDGES + 3 * e + 1) = edge->width;
+      g_array_index (snap, int, SNAP_EDGES + 3 * e + 2) = (int) (edge->color & 0xFFFFFF);
+    }
+  pt->coalescing = FALSE;
+  pt_push (pt, pt_do_set_table (pt, table, snap));
+  g_array_free (snap, TRUE);
+}
+
+void
 w42_pt_table_set_row_height (W42PieceTable *pt, int table, int row, int twips)
 {
   W42TableProps *props;
@@ -3643,7 +3707,7 @@ w42_pt_table_set_row_height (W42PieceTable *pt, int table, int row, int twips)
           g_array_append_val (snap, zero);
         g_array_index (snap, int, 3) = row + 1;
       }
-    g_array_index (snap, int, 4 + props->n_cols + row) = CLAMP (twips, 0, 31680);
+    g_array_index (snap, int, SNAP_WIDTHS + props->n_cols + row) = CLAMP (twips, 0, 31680);
     pt->coalescing = FALSE;
     pt_push (pt, pt_do_set_table (pt, table, snap));
     g_array_free (snap, TRUE);
@@ -3693,6 +3757,106 @@ w42_pt_cell_set_borders_at (W42PieceTable *pt, gsize cell_pos, int sides)
                     ? (guint8) (W42_BORDER_CELL_SET | (sides & W42_BORDER_BOX))
                     : 0;
   piece->ap = w42_ap_table_intern (pt->aps, &fmt);
+}
+
+void
+w42_pt_cell_set_edges_at (W42PieceTable *pt, gsize cell_pos, const W42BorderEdge *edges)
+{
+  gsize offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+
+  g_return_if_fail (pt != NULL && edges != NULL);
+  piece = pt_find (pt, cell_pos, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  for (int i = 0; i < 4; i++)
+    {
+      fmt.pa.edge[i] = edges[i];
+      fmt.pa.edge[i].color &= 0xFFFFFF;
+    }
+  piece->ap = w42_ap_table_intern (pt->aps, &fmt);
+}
+
+void
+w42_pt_cell_set_shading_at (W42PieceTable *pt, gsize cell_pos, int percent)
+{
+  gsize offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+
+  g_return_if_fail (pt != NULL);
+  piece = pt_find (pt, cell_pos, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.shading = (guint8) CLAMP (percent, 0, 100);
+  piece->ap = w42_ap_table_intern (pt->aps, &fmt);
+}
+
+void
+w42_pt_cell_set_valign_at (W42PieceTable *pt, gsize cell_pos, W42CellVAlign valign)
+{
+  gsize offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+
+  g_return_if_fail (pt != NULL);
+  piece = pt_find (pt, cell_pos, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa.cell_valign = (guint8) valign;
+  piece->ap = w42_ap_table_intern (pt->aps, &fmt);
+}
+
+/* The cell's mark's formatting record, with everything the mark carries:
+ * its sides, their lines, its background and its vertical alignment. */
+const W42ParaFmt *
+w42_pt_cell_get_fmt (W42PieceTable *pt, int table, int row, int col)
+{
+  gsize start, offset = 0;
+  W42Piece *piece;
+
+  g_return_val_if_fail (pt != NULL, NULL);
+  start = w42_pt_cell_start (pt, table, row, col);
+  if (start == (gsize) -1 || start < 2)
+    return NULL;
+  piece = pt_find (pt, start - 2, &offset);
+  if (piece == NULL || !piece_is_strux (piece, W42_STRUX_CELL))
+    return NULL;
+  return &w42_ap_table_get (pt->aps, piece->ap)->pa;
+}
+
+/* Replaces the cell's mark with one carrying `fmt`, so that undo puts
+ * the old one back. */
+void
+w42_pt_cell_set_fmt (W42PieceTable *pt, int table, int row, int col,
+                     const W42ParaFmt *pa)
+{
+  gsize start, offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+  gsize payload;
+
+  g_return_if_fail (pt != NULL && pa != NULL);
+  start = w42_pt_cell_start (pt, table, row, col);
+  if (start == (gsize) -1 || start < 2)
+    return;
+  piece = pt_find (pt, start - 2, &offset);
+  if (piece == NULL || offset != 0 || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  payload = piece->offset;
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.pa = *pa;
+
+  w42_pt_begin_group (pt);
+  pt_push (pt, pt_do_delete (pt, start - 2, 1));
+  pt_insert_strux_at (pt, start - 2, W42_STRUX_CELL, payload, w42_ap_table_intern (pt->aps, &fmt));
+  pt_push (pt, cr_new (CR_INSERT, start - 2, 1));
+  w42_pt_end_group (pt);
+  pt->coalescing = FALSE;
 }
 
 void
@@ -4229,6 +4393,7 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
   int *widths;
   int n_cols, new_table;
   gboolean borders;
+  W42BorderEdge edges[W42_N_EDGES];
 
   g_return_if_fail (pt != NULL);
 
@@ -4244,6 +4409,7 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
   at = g_array_index (rows, gsize, row);
   n_cols = props->n_cols;
   borders = props->borders;
+  memcpy (edges, props->edge, sizeof edges);
   widths = g_new0 (int, MAX (n_cols, 1));
   for (int c = 0; c < n_cols; c++)
     widths[c] = c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
@@ -4255,6 +4421,8 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
   w42_pt_insert_table_end (pt, at, w42_ap_table_default (pt->aps));
   new_table = w42_pt_insert_table_start (pt, at + 2, n_cols, widths);
   w42_pt_table_set_borders (pt, new_table, borders);
+  for (int e = 0; e < W42_N_EDGES; e++)
+    w42_pt_table_set_edge (pt, new_table, e, &edges[e]);
   pt_table_renumber (pt, table);
   pt_table_renumber (pt, new_table);
   w42_pt_end_group (pt);

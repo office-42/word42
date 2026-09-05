@@ -41,7 +41,7 @@ is listed so the distance to the current product is honest.
 | Language per run | full | yes | yes | yes |
 | Alignment, indents, spacing, line spacing (single, 1½, double, At Least, Exactly, multiple) | full | full | full | full |
 | Tabs (left/centre/right/decimal), live ruler, leaders | full | full | full | full |
-| Borders and shading | paragraph, one style | full | full | full |
+| Borders and shading | paragraph and cell: single/double/dashed/dotted, nine weights, sixteen colours per side; no page border | full | full | full |
 | Page background colour | full (screen and preview) | yes | no | yes |
 | Keep with next/together, widows, page break before | full | full | full | full |
 | Right-to-left paragraphs | full | full | (later versions) | full |
@@ -59,7 +59,7 @@ is listed so the distance to the current product is honest.
 |---|---|---|---|---|
 | Tables: insert, rows, columns, column widths (drag), merge and split cells (across and down) | full | full | full | full |
 | A row taller than a page | broken between its lines, header rows repeated | breaks | breaks | breaks |
-| Table properties: borders (table and per cell side), cell shading, row height, header rows repeated | full | full | full | full |
+| Table properties: borders (table outside and inside, per cell side, each with its own line style, weight and colour), cell shading and fill, vertical alignment, row height, header rows repeated | full | full | full | full |
 | Footnotes and endnotes | full | full | full | full |
 | Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full | full |
 | Page numbers | full | full | full | full |

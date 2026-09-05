@@ -182,9 +182,10 @@ Early, but real. Word42 today is a working word processor:
   type its text is set in -- through Word, RTF, OpenDocument and AbiWord
   files. RTF carries them as `{\footnote ...}` with `\chftn`.
 - **Borders and shading** — Format ▸ Borders and Shading puts a line
-  above, below, beside or round a paragraph in three weights and any of
-  Word's sixteen colours, and behind it either a percentage of black or a
-  colour; drawn by every painter, so it prints and exports as it shows,
+  above, below, beside or round a paragraph -- single, double, dashed or
+  dotted, in nine weights from a quarter point to six and any of Word's
+  sixteen colours, each side with a line of its own -- and behind it either
+  a percentage of black or a colour; drawn by every painter, so it prints and exports as it shows,
   inside a table cell as much as outside one, and across the column the
   paragraph was broken to rather than across the page. A rule read from a
   file keeps its colour, and a background read from one keeps its colour
@@ -324,8 +325,18 @@ Early, but real. Word42 today is a working word processor:
   into a table; and Table Gridlines, which shows the cells of an unruled
   table faintly on screen without printing them.
 - **Cell borders and backgrounds** — Table Properties rules any of a cell's
-  four sides on its own, over the table's setting, and gives the cell a
-  background colour; Word, RTF, OpenDocument, AbiWord and HTML carry both. A
+  four sides on its own, over the table's setting, in a line style, weight
+  and colour of the cell's own, gives the cell a background colour or a
+  grey, and sets its text at the top, middle or foot of the row; a table
+  has lines of its own for its outside and for the rules between its cells,
+  which Borders and Shading sets with "Apply to: Table". Word, RTF,
+  OpenDocument, AbiWord and HTML carry all of it both ways: Word's
+  `w:tblBorders` and `w:tcBorders` with their `sz`, `val` and `color`,
+  RTF's `\trbrdr` and `\clbrdr` lines, the `.doc` TC80 and
+  `sprmTTableBorders` records, OpenDocument's `fo:border` values and
+  AbiWord's `top-style`/`top-thickness`/`top-color` triples. A `.doc`
+  table's cells merged across come back merged, and its row heights and
+  repeating header rows come back too. A
   table read from a file is ruled only where the file says: every format
   keeps its rules in the cells, so a layout table -- the two columns of a
   CV, say -- comes back without the grid it never had. Every table property

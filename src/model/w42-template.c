@@ -107,7 +107,7 @@ rule_under (Build *b)
 
   memset (&pa, 0, sizeof pa);
   pa.border = W42_BORDER_BOTTOM;
-  pa.border_width = 8;
+  w42_para_fmt_set_edges (&pa, 8, 0, W42_BORDER_SINGLE);
   last_para_fmt (b, W42_PARA_BORDER, &pa);
 }
 

@@ -16,6 +16,71 @@
 
 static inline guint16 rd16 (const guint8 *p) { return (guint16) (p[0] | (p[1] << 8)); }
 static inline gint16  rd16s (const guint8 *p) { return (gint16) rd16 (p); }
+
+/* Word's brcType as one of the four lines the model draws. */
+static guint8
+brc_style (guint kind)
+{
+  if (kind == 0)
+    return W42_BORDER_NONE;
+  if (kind == 3 || (kind >= 10 && kind <= 21))
+    return W42_BORDER_DOUBLE;
+  if (kind == 6)
+    return W42_BORDER_DOTTED;
+  if (kind == 7 || kind == 8 || kind == 9 || kind == 22 || kind == 23)
+    return W42_BORDER_DASHED;
+  return W42_BORDER_SINGLE;
+}
+
+/* A Word 97 BRC80: width in eighths of a point, the kind of line, then
+ * one of the sixteen palette colours.  TRUE when it is a line.  All
+ * zero is no line of its own -- the table's, if the table has one --
+ * and all 0xFF is no line at all; the edge is left unset for the first
+ * and set to none for the second. */
+static gboolean
+brc80_edge (const guint8 *brc, W42BorderEdge *edge)
+{
+  guint width = brc[0], kind = brc[1], ico = brc[2];
+
+  if (width == 0xFF && kind == 0xFF)
+    {
+      edge->style = W42_BORDER_NONE;
+      edge->width = 0;
+      edge->color = 0;
+      return FALSE;
+    }
+  if (width == 0 || kind == 0)
+    {
+      edge->style = W42_BORDER_SINGLE;
+      edge->width = 0;
+      edge->color = 0;
+      return FALSE;
+    }
+  edge->style = brc_style (kind);
+  edge->width = (guint8) CLAMP ((int) width * 20 / 8, 5, 255);
+  edge->color = ico > 0 && ico < 17 ? w42_highlight_rgb ((int) ico) : 0;
+  return TRUE;
+}
+
+/* The later BRC: four bytes of colour, red first, with 0xFF in the last
+ * for "automatic"; then the width and the kind. */
+static gboolean
+brc_edge (const guint8 *brc, W42BorderEdge *edge)
+{
+  guint width = brc[4], kind = brc[5];
+
+  if (width == 0 || kind == 0)
+    {
+      edge->style = W42_BORDER_NONE;
+      edge->width = 0;
+      edge->color = 0;
+      return FALSE;
+    }
+  edge->style = brc_style (kind);
+  edge->width = (guint8) CLAMP ((int) width * 20 / 8, 5, 255);
+  edge->color = brc[3] != 0xFF ? (((guint32) brc[0] << 16) | ((guint32) brc[1] << 8) | brc[2]) : 0;
+  return TRUE;
+}
 static inline guint32 rd32 (const guint8 *p)
 {
   return (guint32) p[0] | ((guint32) p[1] << 8) | ((guint32) p[2] << 16) |
@@ -316,14 +381,19 @@ typedef struct {
   int      itc_mac;         /* columns, from a row-end TDefTable */
   int      cellx[64];
   guint8   cell_sides[64];  /* each cell's ruled sides, from its TC80 */
+  W42BorderEdge cell_edge[64][4];  /* and their lines */
+  guint16  cell_flags[64];  /* the TC80's flags: merges and alignment */
   guint32  cell_shade[64];  /* each cell's background, 0x00RRGGBB */
   guint8   has_cell_shade[64];
+  W42BorderEdge tbl_edge[W42_N_EDGES];  /* sprmTTableBorders */
+  gboolean has_tbl_edge;
+  int      dya_row_height;  /* sprmTDyaRowHeight; negative is "exactly" */
+  gboolean table_header;    /* sprmTTableHeader */
   guint8   n_tabs;                    /* sprmPChgTabsPapx */
   int      tab_pos[W42_MAX_TABS];
   guint8   tab_kind[W42_MAX_TABS];    /* kind and leader, as the model packs them */
   guint8   border;                    /* sprmPBrcTop and its neighbours */
-  guint8   border_width;
-  guint32  border_color;
+  W42BorderEdge edge[4];
   guint8   shading;                   /* sprmPShd */
   guint8   has_shading_color;
   guint32  shading_color;
@@ -1001,32 +1071,98 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
            * half holds the line's width in eighths of a point.  A width of
            * nothing, or the "no border" line style, means no border. */
           {
-            static const guint8 SIDES[] = { W42_BORDER_TOP, W42_BORDER_LEFT,
-                                            W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
+            static const guint8 EDGES[] = { W42_EDGE_TOP, W42_EDGE_LEFT,
+                                            W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
             const guint8 *brc = olen > 8 ? op + 1 : op;   /* cb, then the BRC */
             guint brc_len = olen > 8 ? olen - 1 : olen;
+            int e = EDGES[sprm - 0xC64E];
 
-            if (brc_len >= 6)
-              {
-                /* A BRC is four bytes of colour, then the width in
-                 * eighths of a point and the kind of line. */
-                guint width = brc[4];
-                guint kind = brc[5];
-
-                if (width > 0 && kind != 0)
-                  {
-                    pa->border |= SIDES[sprm - 0xC64E];
-                    pa->border_width = (guint8) CLAMP ((int) width * 20 / 8, 5, 120);
-                    /* A BRC's first four bytes are a COLORREF, red first,
-                     * with 0xFF in the last for "automatic". */
-                    if (brc_len >= 8 && brc[3] != 0xFF)
-                      pa->border_color = ((guint32) brc[0] << 16) |
-                                         ((guint32) brc[1] << 8) | brc[2];
-                    else
-                      pa->border_color = 0;
-                  }
-              }
+            if (brc_len >= 8 && brc_edge (brc, &pa->edge[e]))
+              pa->border |= (guint8) (1 << e);
+            else if (brc_len >= 8)
+              pa->border &= (guint8) ~(1 << e);
           }
+          break;
+
+        case 0x6424: case 0x6425: case 0x6426: case 0x6427:
+          /* sprmPBrcTop80 and its neighbours: the Word 97 form, a BRC80. */
+          {
+            static const guint8 EDGES[] = { W42_EDGE_TOP, W42_EDGE_LEFT,
+                                            W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
+            int e = EDGES[sprm - 0x6424];
+
+            if (olen >= 4 && brc80_edge (op, &pa->edge[e]))
+              pa->border |= (guint8) (1 << e);
+            else if (olen >= 4)
+              pa->border &= (guint8) ~(1 << e);
+          }
+          break;
+
+        case 0x9407:
+          /* sprmTDyaRowHeight: the row's height, negative for "exactly". */
+          if (olen >= 2)
+            pa->dya_row_height = rd16s (op);
+          break;
+        case 0x3404:
+          /* sprmTTableHeader: the row repeats at the top of every page. */
+          if (olen >= 1)
+            pa->table_header = op[0] != 0;
+          break;
+        case 0xD605:
+          /* sprmTTableBorders80: six BRC80s, top, left, bottom, right,
+           * then between the rows and between the columns. */
+          if (olen >= 25)
+            {
+              static const int EDGES[6] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
+                                            W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+
+              for (int e = 0; e < 6; e++)
+                brc80_edge (op + 1 + 4 * e, &pa->tbl_edge[EDGES[e]]);
+              pa->has_tbl_edge = TRUE;
+            }
+          break;
+        case 0xD613:
+          /* sprmTTableBorders: the same, as the later eight-byte BRC. */
+          if (g_getenv ("W42_DEBUG_TC") != NULL)
+            g_printerr ("TTableBorders olen=%u\n", olen);
+          if (olen >= 49)
+            {
+              static const int EDGES[6] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
+                                            W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+
+              for (int e = 0; e < 6; e++)
+                brc_edge (op + 1 + 8 * e, &pa->tbl_edge[EDGES[e]]);
+              pa->has_tbl_edge = TRUE;
+            }
+          break;
+        case 0xD620: case 0xD62F:
+          /* sprmTSetBrc80 and sprmTSetBrc: one line for the sides named
+           * in grfbrc of the cells itcFirst to itcLim. */
+          if (olen >= 4)
+            {
+              int first = op[1], lim = op[2];
+              guint grf = op[3];
+              W42BorderEdge edge;
+              gboolean on = sprm == 0xD620 ? (olen >= 8 && brc80_edge (op + 4, &edge))
+                                           : (olen >= 12 && brc_edge (op + 4, &edge));
+
+              for (int c = first; c < lim && c < 64; c++)
+                for (int side = 0; side < 4; side++)
+                  {
+                    /* grfbrc: top, left, bottom, right. */
+                    static const int EDGES[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
+
+                    if (!(grf & (1u << side)))
+                      continue;
+                    if (on)
+                      {
+                        pa->cell_sides[c] |= (guint8) (1 << EDGES[side]);
+                        pa->cell_edge[c][EDGES[side]] = edge;
+                      }
+                    else
+                      pa->cell_sides[c] &= (guint8) ~(1 << EDGES[side]);
+                  }
+            }
           break;
 
         case 0xC64D: case 0x442D:
@@ -1070,16 +1206,20 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                 }
               for (int c = 0; c < itc && olen >= edges + 20u * (guint) (c + 1); c++)
                 {
-                  static const guint8 SIDES[] = { W42_BORDER_TOP, W42_BORDER_LEFT,
-                                                  W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
+                  static const int EDGES[] = { W42_EDGE_TOP, W42_EDGE_LEFT,
+                                               W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
                   const guint8 *tc = op + edges + 20 * c;
 
+                  pa->cell_flags[c] = rd16 (tc);
+                  if (g_getenv ("W42_DEBUG_TC") != NULL)
+                    g_printerr ("TC80 c=%d flags=%04x brc: %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x cellx=%d..%d\n", c, pa->cell_flags[c],
+                                tc[4],tc[5],tc[6],tc[7], tc[8],tc[9],tc[10],tc[11], tc[12],tc[13],tc[14],tc[15], tc[16],tc[17],tc[18],tc[19], pa->cellx[c], pa->cellx[c+1]);
                   for (int side = 0; side < 4; side++)
                     {
                       const guint8 *brc = tc + 4 + 4 * side;
 
-                      if (brc[0] > 0 && brc[1] != 0)
-                        pa->cell_sides[c] |= SIDES[side];
+                      if (brc80_edge (brc, &pa->cell_edge[c][EDGES[side]]))
+                        pa->cell_sides[c] |= (guint8) (1 << EDGES[side]);
                     }
                 }
             }
@@ -1174,6 +1314,8 @@ apply_chpx (const guint8 *grpprl, guint len, Char *ch)
         case 0x0855: ch->spec = op[0] != 0; break;
         case 0x6A03: ch->pic_fc = rd32 (op); ch->has_pic = TRUE; break;
         default:
+          if (g_getenv ("W42_DEBUG_TC") != NULL && (sprm & 0x1C00) == 0x1400)
+            g_printerr ("table sprm %04x olen=%u\n", sprm, olen);
           break;
         }
 
@@ -1623,8 +1765,7 @@ fill_para_fmt (Doc *doc, const DocPara *dp, W42ParaFmt *out)
   memcpy (out->tab_pos, pa->tab_pos, sizeof out->tab_pos);
   memcpy (out->tab_kind, pa->tab_kind, sizeof out->tab_kind);
   out->border = pa->border;
-  out->border_width = pa->border_width;
-  out->border_color = pa->border_color;
+  memcpy (out->edge, pa->edge, sizeof out->edge);
   out->shading = pa->shading;
   out->shading_color = pa->shading_color;
   out->has_shading_color = pa->has_shading_color;
@@ -1798,6 +1939,12 @@ typedef struct {
   int            table;
   int            row, col;
   gboolean       in_cell;
+  gboolean       skip_cell;   /* the cell is merged into the one before */
+  gsize          last_cell_pos;
+  int            last_cell_span;
+  int            cell_index;  /* the cell's place in its row's own shape */
+  int            n_cols;      /* the table's grid: every row's edges, together */
+  int            grid[65];
   gboolean       table_before_block;
   GString       *run;
   W42ApIdx       run_ap;
@@ -2010,6 +2157,19 @@ row_shape (GArray *paras, guint index)
   return NULL;
 }
 
+/* The column a row's cell edge falls on in the table's grid: the
+ * nearest, since Word's rows do not always agree to the twip. */
+static int
+grid_column (const Builder *b, int edge)
+{
+  int best = 0;
+
+  for (int c = 0; c <= b->n_cols; c++)
+    if (ABS (b->grid[c] - edge) < ABS (b->grid[best] - edge))
+      best = c;
+  return best;
+}
+
 static void
 open_table (Builder *b, GArray *paras, guint index)
 {
@@ -2017,11 +2177,54 @@ open_table (Builder *b, GArray *paras, guint index)
   int n_cols = 1;
   int widths[64] = { 0 };
 
-  if (shape != NULL)
+  /* Every row has a shape of its own, and a row with fewer, wider cells
+   * is how Word merges across.  The table's grid is every row's edges
+   * together; a cell spans the columns between its two. */
+  {
+    int n_edges = 0;
+
+    for (guint k = index; k < paras->len && n_edges < 65; k++)
+      {
+        const DocPara *q = &g_array_index (paras, DocPara, k);
+
+        if (!q->pa.in_table)
+          break;
+        if (!q->pa.ttp || q->pa.itc_mac <= 0)
+          continue;
+        for (int c = 0; c <= q->pa.itc_mac && c < 65; c++)
+          {
+            int edge = q->pa.cellx[c];
+            int at = 0;
+
+            while (at < n_edges && b->grid[at] < edge - 10)
+              at++;
+            if (at < n_edges && ABS (b->grid[at] - edge) <= 10)
+              continue;
+            if (n_edges >= 65)
+              break;
+            memmove (&b->grid[at + 1], &b->grid[at], (n_edges - at) * sizeof (int));
+            b->grid[at] = edge;
+            n_edges++;
+          }
+      }
+    /* The columns are one fewer than the edges. */
+    b->n_cols = MAX (n_edges - 1, 0);
+  }
+
+  if (b->n_cols > 0)
+    {
+      n_cols = b->n_cols;
+      for (int c = 0; c < n_cols; c++)
+        widths[c] = b->grid[c + 1] - b->grid[c];
+    }
+  else if (shape != NULL)
     {
       n_cols = MIN (shape->itc_mac, 64);
       for (int c = 0; c < n_cols; c++)
         widths[c] = shape->cellx[c + 1] - shape->cellx[c];
+      b->n_cols = n_cols;
+      for (int c = 0; c <= n_cols; c++)
+        b->grid[c] = shape->cellx[c];
     }
 
   b->table_before_block = FALSE;
@@ -2037,16 +2240,102 @@ open_table (Builder *b, GArray *paras, guint index)
   b->table = w42_pt_insert_table_start (b->pt, b->pos, n_cols, widths);
   /* Word keeps every rule in the cells themselves, so the table's own
    * "ruled" flag -- which the model has for a table drawn by hand -- is
-   * off and each cell says what it wants. */
+   * off and each cell says what it wants.  Its own lines, where it has
+   * them, stand in for the cells that name none. */
   w42_pt_table_set_borders (b->pt, b->table, FALSE);
+  if (shape != NULL && shape->has_tbl_edge)
+    for (int e = 0; e < W42_N_EDGES; e++)
+      w42_pt_table_set_edge (b->pt, b->table, e, &shape->tbl_edge[e]);
   b->pos += 1;
   b->row = b->col = 0;
+  b->cell_index = 0;
   b->in_cell = FALSE;
+}
+
+/* Whether the row that paragraph `index` is in is its table's last:
+ * the paragraph after its row-end mark is not in a table. */
+static gboolean
+row_is_last (GArray *paras, guint index)
+{
+  for (guint k = index; k < paras->len; k++)
+    {
+      const DocPara *q = &g_array_index (paras, DocPara, k);
+
+      if (q->pa.ttp)
+        return k + 1 >= paras->len ||
+               !((const DocPara *) &g_array_index (paras, DocPara, k + 1))->pa.in_table;
+      if (!q->pa.in_table)
+        break;
+    }
+  return TRUE;
+}
+
+/* What the row's shape says about the cell just opened at `cell_pos`:
+ * its sides and their lines, its background, where its text sits, and
+ * the merge downwards it starts or carries on. */
+static void
+doc_apply_cell (Builder *b, GArray *paras, guint index, const Para *shape, gsize cell_pos)
+{
+  int col = b->cell_index;
+  guint8 sides = shape->cell_sides[col];
+  W42BorderEdge edges[4];
+  guint flags = shape->cell_flags[col];
+  int valign = (flags >> 7) & 3;
+
+  memcpy (edges, shape->cell_edge[col], sizeof edges);
+
+  /* A side the cell names no line for takes the table's, where the table
+   * has one: its outer line round the outside, its inside one between
+   * the cells. */
+  if (shape->has_tbl_edge)
+    {
+      gboolean first_row = b->row == 0, last_row = row_is_last (paras, index);
+      gboolean first_col = b->col == 0, last_col = b->col + b->last_cell_span >= b->n_cols;
+
+      for (int e = 0; e < 4; e++)
+        {
+          gboolean outer;
+          const W42BorderEdge *te;
+
+          if ((sides & (1 << e)) || edges[e].style == W42_BORDER_NONE || edges[e].width != 0)
+            continue;
+          outer = (e == W42_EDGE_TOP && first_row) || (e == W42_EDGE_BOTTOM && last_row) ||
+                  (e == W42_EDGE_LEFT && first_col) || (e == W42_EDGE_RIGHT && last_col);
+          te = &shape->tbl_edge[outer ? e : (e <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
+          if (te->style != W42_BORDER_NONE && te->width > 0)
+            {
+              sides |= (guint8) (1 << e);
+              edges[e] = *te;
+            }
+        }
+    }
+  for (int e = 0; e < 4; e++)
+    if (edges[e].style == W42_BORDER_NONE)
+      edges[e].style = W42_BORDER_SINGLE;   /* the side is off; its line is moot */
+
+  w42_pt_cell_set_borders_at (b->pt, cell_pos, sides | W42_BORDER_CELL_SET);
+  w42_pt_cell_set_edges_at (b->pt, cell_pos, edges);
+  w42_pt_cell_set_fill_at (b->pt, cell_pos, shape->has_cell_shade[col], shape->cell_shade[col]);
+  if (valign == 1)
+    w42_pt_cell_set_valign_at (b->pt, cell_pos, W42_CELL_VALIGN_CENTER);
+  else if (valign == 2)
+    w42_pt_cell_set_valign_at (b->pt, cell_pos, W42_CELL_VALIGN_BOTTOM);
+  if (flags & 0x0020)
+    w42_pt_set_cell_vspan (b->pt, cell_pos, (flags & 0x0040) ? 2 : W42_CELL_COVERED);
+
+  if (b->col == 0)
+    {
+      if (shape->dya_row_height != 0)
+        w42_pt_table_set_row_height (b->pt, b->table, b->row, ABS (shape->dya_row_height));
+      if (shape->table_header)
+        w42_pt_table_set_header_rows (b->pt, b->table, b->row + 1);
+    }
 }
 
 static void
 close_table (Builder *b, W42ApIdx ap)
 {
+  w42_pt_resolve_vmerges (b->pt, b->table);
   if (b->table_before_block)
     {
       w42_pt_insert_table_end_only (b->pt, b->pos);
@@ -2071,6 +2360,7 @@ build_document (Doc *doc, W42PieceTable *pt)
   b.doc = doc;
   b.pos = w42_pt_first_caret_pos (pt);
   b.table = -1;
+  b.last_cell_pos = (gsize) -1;
   b.run = g_string_new (NULL);
   b.run_ap = w42_ap_table_default (w42_pt_ap_table (pt));
   b.note_ids = g_array_new (FALSE, FALSE, sizeof (int));
@@ -2088,6 +2378,7 @@ build_document (Doc *doc, W42PieceTable *pt)
             {
               b.row++;
               b.col = 0;
+              b.cell_index = 0;
               b.in_cell = FALSE;
             }
           continue;
@@ -2102,18 +2393,58 @@ build_document (Doc *doc, W42PieceTable *pt)
               const Para *shape = row_shape (paras, i);
               gsize cell_pos = b.pos;
 
-              w42_pt_insert_cell (pt, b.pos, b.table, b.row, b.col, ap);
-              b.pos += 2;
-              b.in_cell = TRUE;
-              if (shape != NULL && b.col >= 0 && b.col < 64)
+              /* A cell merged into the one before it: that one grows
+               * over its column, and what it holds -- nothing, in a
+               * file Word wrote -- is left out. */
+              if (shape != NULL && b.cell_index > 0 && b.cell_index < 64 &&
+                  (shape->cell_flags[b.cell_index] & 0x0002) && b.last_cell_pos != (gsize) -1)
                 {
-                  w42_pt_cell_set_borders_at (pt, cell_pos,
-                                              shape->cell_sides[b.col] |
-                                              W42_BORDER_CELL_SET);
-                  w42_pt_cell_set_fill_at (pt, cell_pos,
-                                           shape->has_cell_shade[b.col],
-                                           shape->cell_shade[b.col]);
+                  b.last_cell_span = MIN (b.last_cell_span + 1, 1023);
+                  w42_pt_set_cell_span (pt, b.last_cell_pos, b.last_cell_span);
+                  b.in_cell = TRUE;
+                  b.skip_cell = TRUE;
                 }
+              else if (b.col >= b.n_cols || b.col > 1023)
+                {
+                  /* More cells than the grid has columns: dropped, as
+                   * the other readers drop them. */
+                  b.in_cell = TRUE;
+                  b.skip_cell = TRUE;
+                }
+              else
+                {
+                  int span = 1;
+
+                  if (shape != NULL && b.cell_index < 64 && b.cell_index < shape->itc_mac)
+                    {
+                      int c0 = grid_column (&b, shape->cellx[b.cell_index]);
+                      int c1 = grid_column (&b, shape->cellx[b.cell_index + 1]);
+
+                      b.col = CLAMP (c0, 0, b.n_cols - 1);
+                      span = CLAMP (c1 - c0, 1, b.n_cols - b.col);
+                    }
+                  w42_pt_insert_cell (pt, b.pos, b.table, b.row, b.col, ap);
+                  if (span > 1)
+                    w42_pt_set_cell_span (pt, cell_pos, span);
+                  b.pos += 2;
+                  b.in_cell = TRUE;
+                  b.skip_cell = FALSE;
+                  b.last_cell_pos = cell_pos;
+                  b.last_cell_span = span;
+                  if (shape != NULL && b.cell_index >= 0 && b.cell_index < 64)
+                    doc_apply_cell (&b, paras, i, shape, cell_pos);
+                }
+            }
+
+          if (b.skip_cell)
+            {
+              if (mark == 0x07)
+                {
+                  b.in_cell = FALSE;
+                  b.cell_index++;
+                  b.col += b.last_cell_span;
+                }
+              continue;
             }
 
           emit_text (&b, dp);
@@ -2122,7 +2453,8 @@ build_document (Doc *doc, W42PieceTable *pt)
           if (mark == 0x07)
             {
               b.in_cell = FALSE;
-              b.col++;
+              b.cell_index++;
+              b.col += b.last_cell_span;
             }
           else
             {

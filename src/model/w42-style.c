@@ -239,7 +239,7 @@ style_overlay (W42Style *dst, const W42Style *own, const W42Style *base)
   pa.list_start        = own->pa.list_start;
   pa.list_level        = own->pa.list_level;
   pa.border            = own->pa.border;
-  pa.border_width      = own->pa.border_width;
+  memcpy (pa.edge, own->pa.edge, sizeof pa.edge);
   pa.shading           = own->pa.shading;
   pa.section_break     = own->pa.section_break;
   pa.columns           = own->pa.columns;

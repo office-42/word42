@@ -179,6 +179,84 @@ w42_para_fmt_set_tab (W42ParaFmt *pa, int pos, W42TabKind kind)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Borders                                                                 */
+/* ---------------------------------------------------------------------- */
+
+void
+w42_para_fmt_set_edges (W42ParaFmt *pa, int width, guint32 color, W42BorderStyle style)
+{
+  g_return_if_fail (pa != NULL);
+
+  for (int i = 0; i < 4; i++)
+    {
+      pa->edge[i].width = (guint8) CLAMP (width, 0, 255);
+      pa->edge[i].color = color & 0xFFFFFF;
+      pa->edge[i].style = (guint8) style;
+    }
+}
+
+/* The first side that is on, else the top: the one whose line stands
+ * for the paragraph's when only one can be shown. */
+static const W42BorderEdge *
+lead_edge (const W42ParaFmt *pa)
+{
+  for (int i = 0; i < 4; i++)
+    if (pa->border & (1 << i))
+      return &pa->edge[i];
+  return &pa->edge[W42_EDGE_TOP];
+}
+
+int
+w42_para_fmt_border_width (const W42ParaFmt *pa)
+{
+  int width = 0;
+
+  g_return_val_if_fail (pa != NULL, W42_BORDER_HAIRLINE);
+  for (int i = 0; i < 4; i++)
+    if ((pa->border & (1 << i)) || pa->border == 0)
+      width = MAX (width, W42_EDGE_WIDTH (&pa->edge[i]));
+  return width > 0 ? width : W42_BORDER_HAIRLINE;
+}
+
+guint32
+w42_para_fmt_border_color (const W42ParaFmt *pa)
+{
+  g_return_val_if_fail (pa != NULL, 0);
+  return lead_edge (pa)->color;
+}
+
+W42BorderStyle
+w42_para_fmt_border_style (const W42ParaFmt *pa)
+{
+  g_return_val_if_fail (pa != NULL, W42_BORDER_SINGLE);
+  return (W42BorderStyle) lead_edge (pa)->style;
+}
+
+const char *
+w42_border_style_css (W42BorderStyle style)
+{
+  switch (style)
+    {
+    case W42_BORDER_DOUBLE: return "double";
+    case W42_BORDER_DASHED: return "dashed";
+    case W42_BORDER_DOTTED: return "dotted";
+    case W42_BORDER_NONE:   return "none";
+    default:                return "solid";
+    }
+}
+
+W42BorderStyle
+w42_border_style_from_css (const char *spec)
+{
+  if (spec == NULL)
+    return W42_BORDER_SINGLE;
+  if (strstr (spec, "double") != NULL) return W42_BORDER_DOUBLE;
+  if (strstr (spec, "dashed") != NULL) return W42_BORDER_DASHED;
+  if (strstr (spec, "dotted") != NULL) return W42_BORDER_DOTTED;
+  return W42_BORDER_SINGLE;
+}
+
+/* ---------------------------------------------------------------------- */
 /* Highlight colours                                                       */
 /* ---------------------------------------------------------------------- */
 

@@ -59,7 +59,7 @@ table_intern_colour (RtfTables *tables, guint32 colour)
 }
 
 static void
-collect_tables (GPtrArray *blocks, W42ApTable *aps, RtfTables *tables,
+collect_tables (W42PieceTable *pt, GPtrArray *blocks, W42ApTable *aps, RtfTables *tables,
                 W42StyleSheet *styles)
 {
   for (guint i = 0; i < w42_stylesheet_size (styles); i++)
@@ -80,12 +80,25 @@ collect_tables (GPtrArray *blocks, W42ApTable *aps, RtfTables *tables,
 
       table_intern_font (tables, para->ch.family);
       table_intern_colour (tables, para->ch.color);
-      if (para->pa.border_color != 0)
-        table_intern_colour (tables, para->pa.border_color);
+      for (int e = 0; e < 4; e++)
+        {
+          if (para->pa.edge[e].color != 0)
+            table_intern_colour (tables, para->pa.edge[e].color);
+          if (cell != NULL && cell->pa.edge[e].color != 0)
+            table_intern_colour (tables, cell->pa.edge[e].color);
+        }
       if (para->pa.has_shading_color)
         table_intern_colour (tables, para->pa.shading_color);
       if (cell != NULL && cell->pa.has_shading_color)
         table_intern_colour (tables, cell->pa.shading_color);
+      if (block->table >= 0)
+        {
+          const W42TableProps *props = w42_pt_table_props (pt, block->table);
+
+          for (int e = 0; props != NULL && e < W42_N_EDGES; e++)
+            if (props->edge[e].color != 0)
+              table_intern_colour (tables, props->edge[e].color);
+        }
 
       for (guint r = 0; r < block->runs->len; r++)
         {
@@ -236,6 +249,25 @@ rtf_mirror_align (W42Align align, gboolean rtl)
   return align;
 }
 
+/* A border's line: its style, width and colour, after the word that
+ * names the side.  The colour is an index into the colour table, as
+ * everything coloured in RTF is. */
+static void
+write_border_line (GString *out, RtfTables *tables, const W42BorderEdge *edge)
+{
+  switch (edge->style)
+    {
+    case W42_BORDER_NONE:   g_string_append (out, "\\brdrnone"); return;
+    case W42_BORDER_DOUBLE: g_string_append (out, "\\brdrdb");   break;
+    case W42_BORDER_DASHED: g_string_append (out, "\\brdrdash"); break;
+    case W42_BORDER_DOTTED: g_string_append (out, "\\brdrdot");  break;
+    default:                g_string_append (out, "\\brdrs");    break;
+    }
+  g_string_append_printf (out, "\\brdrw%d", W42_EDGE_WIDTH (edge));
+  if (tables != NULL && edge->color != 0)
+    g_string_append_printf (out, "\\brdrcf%u", table_intern_colour (tables, edge->color) + 1);
+}
+
 static void
 write_para_body (GString *out, const W42ParaFmt *pa, RtfTables *tables)
 {
@@ -260,29 +292,15 @@ write_para_body (GString *out, const W42ParaFmt *pa, RtfTables *tables)
    * hundredths of a percent. */
   if (pa->border != 0)
     {
-      int w = pa->border_width > 0 ? pa->border_width : 15;
-      char cf[24];
+      static const char *words[4] = { "\\brdrt", "\\brdrb", "\\brdrl", "\\brdrr" };
 
-      /* The rule's colour, when it has one: an index into the colour
-       * table, as everything coloured in RTF is. */
-      cf[0] = '\0';
-      if (tables != NULL && pa->border_color != 0)
-        g_snprintf (cf, sizeof cf, "\\brdrcf%u",
-                    table_intern_colour (tables, pa->border_color) + 1);
-
-      if (pa->border == W42_BORDER_BOX)
-        g_string_append_printf (out, "\\box\\brdrs\\brdrw%d%s\\brsp20", w, cf);
-      else
-        {
-          if (pa->border & W42_BORDER_TOP)
-            g_string_append_printf (out, "\\brdrt\\brdrs\\brdrw%d%s\\brsp20", w, cf);
-          if (pa->border & W42_BORDER_BOTTOM)
-            g_string_append_printf (out, "\\brdrb\\brdrs\\brdrw%d%s\\brsp20", w, cf);
-          if (pa->border & W42_BORDER_LEFT)
-            g_string_append_printf (out, "\\brdrl\\brdrs\\brdrw%d%s\\brsp20", w, cf);
-          if (pa->border & W42_BORDER_RIGHT)
-            g_string_append_printf (out, "\\brdrr\\brdrs\\brdrw%d%s\\brsp20", w, cf);
-        }
+      for (int i = 0; i < 4; i++)
+        if (pa->border & (1 << i))
+          {
+            g_string_append (out, words[i]);
+            write_border_line (out, tables, &pa->edge[i]);
+            g_string_append (out, "\\brsp20");
+          }
     }
   if (pa->has_shading_color && tables != NULL)
     g_string_append_printf (out, "\\cbpat%u",
@@ -451,7 +469,7 @@ w42_rtf_save (W42PieceTable      *pt,
 
   tables.fonts = g_ptr_array_new ();
   tables.colours = g_array_new (FALSE, FALSE, sizeof (guint32));
-  collect_tables (blocks, aps, &tables, styles);
+  collect_tables (pt, blocks, aps, &tables, styles);
 
   out = g_string_new (NULL);
   g_string_append (out, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\n");
@@ -630,6 +648,19 @@ w42_rtf_save (W42PieceTable      *pt,
               g_string_append_printf (out, "\\trrh%d", least);
             if (props != NULL && block->row < props->header_rows)
               g_string_append (out, "\\trhdr");
+            /* The table's own lines, for readers that look at the row
+             * rather than the cells. */
+            if (props != NULL && props->borders)
+              {
+                static const char *words[W42_N_EDGES] = { "\\trbrdrt", "\\trbrdrb", "\\trbrdrl",
+                                                          "\\trbrdrr", "\\trbrdrh", "\\trbrdrv" };
+
+                for (int e = 0; e < W42_N_EDGES; e++)
+                  {
+                    g_string_append (out, words[e]);
+                    write_border_line (out, &tables, &props->edge[e]);
+                  }
+              }
           }
           for (int c = 0; c < n_cols; c++)
             {
@@ -640,10 +671,31 @@ w42_rtf_save (W42PieceTable      *pt,
                 /* The owning cell's own sides, or the table's setting. */
                 int sides = (props != NULL && !props->borders) ? 0 : W42_BORDER_BOX;
                 const W42Fmt *fill = NULL;
-                static const char letters[4] = { 't', 'l', 'b', 'r' };
-                static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_LEFT, W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
+                static const char letters[4] = { 't', 'b', 'l', 'r' };
                 int oc = owner[c] <= -2 ? -2 - owner[c] : owner[c] >= 0 ? owner[c] : c;
+                W42BorderEdge edges[4];
+                gboolean first_row = block->row == 0, last_row = TRUE;
 
+                for (guint k = b; k < blocks->len; k++)
+                  {
+                    const W42Block *rb = g_ptr_array_index (blocks, k);
+
+                    if (rb->table != block->table)
+                      break;
+                    if (rb->row > block->row)
+                      {
+                        last_row = FALSE;
+                        break;
+                      }
+                  }
+                for (int k = 0; k < 4; k++)
+                  {
+                    gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                                     (k == W42_EDGE_LEFT && oc == 0) || (k == W42_EDGE_RIGHT && c + 1 >= n_cols);
+
+                    edges[k] = props != NULL ? props->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)]
+                                             : (W42BorderEdge) { 0, 0, 0 };
+                  }
                 for (guint k = b; k < blocks->len; k++)
                   {
                     const W42Block *rb = g_ptr_array_index (blocks, k);
@@ -655,17 +707,33 @@ w42_rtf_save (W42PieceTable      *pt,
                       continue;
                     cpa = &w42_ap_table_get (aps, rb->cell_ap)->pa;
                     if (cpa->border & W42_BORDER_CELL_SET)
-                      sides = cpa->border & W42_BORDER_BOX;
+                      {
+                        sides = cpa->border & W42_BORDER_BOX;
+                        for (int k2 = 0; k2 < 4; k2++)
+                          if (cpa->edge[k2].width != 0 || cpa->edge[k2].style != 0 || cpa->edge[k2].color != 0)
+                            edges[k2] = cpa->edge[k2];
+                      }
                     fill = w42_ap_table_get (aps, rb->cell_ap);
                     break;
                   }
                 for (int k = 0; k < 4; k++)
-                  g_string_append_printf (out, "\\clbrdr%c%s", letters[k],
-                                          (sides & bits[k]) ? "\\brdrs\\brdrw10" : "\\brdrnone");
+                  {
+                    g_string_append_printf (out, "\\clbrdr%c", letters[k]);
+                    if (sides & (1 << k))
+                      write_border_line (out, &tables, &edges[k]);
+                    else
+                      g_string_append (out, "\\brdrnone");
+                  }
                 if (fill != NULL && fill->pa.has_shading_color)
                   g_string_append_printf (out, "\\clcbpat%u",
                                           table_intern_colour (&tables,
                                             fill->pa.shading_color) + 1);
+                else if (fill != NULL && fill->pa.shading > 0)
+                  g_string_append_printf (out, "\\clshdng%d", fill->pa.shading * 100);
+                if (fill != NULL && fill->pa.cell_valign == W42_CELL_VALIGN_CENTER)
+                  g_string_append (out, "\\clvertalc");
+                else if (fill != NULL && fill->pa.cell_valign == W42_CELL_VALIGN_BOTTOM)
+                  g_string_append (out, "\\clvertalb");
               }
               if (owner[c] <= -2)
                 g_string_append (out, "\\clmgf");
@@ -962,12 +1030,58 @@ typedef struct {
   guint8     border_side; /* the side the \\brdrw that follows belongs to */
 } RtfState;
 
+/* The row's rules, from \\trbrdr words, for cells that name none of
+ * their own; and one cell's, as its \\clbrdr words build them up. */
+typedef struct {
+  guint8        sides;         /* which sides were named at all */
+  W42BorderEdge edge[W42_N_EDGES];
+} RtfRowBorders;
+
 /* What a list from the file's list table looks like, level by level. */
 typedef struct {
   guint8 kind[9];        /* W42ListKind per level */
 } ListShape;
 
-typedef struct {
+/* The line style a \\brdr word names, or -1 if it names none: Word's
+ * many styles come in as the nearest of the four the model draws. */
+static int
+rtf_border_style (const char *word)
+{
+  if (g_str_equal (word, "brdrs") || g_str_equal (word, "brdrth") ||
+      g_str_equal (word, "brdrhair") || g_str_equal (word, "brdrsh") ||
+      g_str_equal (word, "brdrwavy") || g_str_equal (word, "brdremboss") ||
+      g_str_equal (word, "brdrengrave") || g_str_equal (word, "brdrinset") ||
+      g_str_equal (word, "brdroutset"))
+    return W42_BORDER_SINGLE;
+  if (g_str_equal (word, "brdrdb") || g_str_equal (word, "brdrtriple") ||
+      g_str_has_prefix (word, "brdrth") || g_str_has_prefix (word, "brdrtnth") ||
+      g_str_equal (word, "brdrwavydb"))
+    return W42_BORDER_DOUBLE;
+  if (g_str_equal (word, "brdrdash") || g_str_equal (word, "brdrdashsm") ||
+      g_str_equal (word, "brdrdashd") || g_str_equal (word, "brdrdashdd") ||
+      g_str_equal (word, "brdrdashdot") || g_str_equal (word, "brdrdashdotdot"))
+    return W42_BORDER_DASHED;
+  if (g_str_equal (word, "brdrdot"))
+    return W42_BORDER_DOTTED;
+  return -1;
+}
+
+/* W42_BORDER_TOP -> W42_EDGE_TOP, and so on. */
+typedef struct _RtfReader RtfReader;
+static gboolean rtf_border_line (const char *word, int param, gboolean has_param,
+                                 RtfReader *r, W42BorderEdge *edge);
+static int      rtf_grid_column (RtfReader *r, int edge);
+
+static int
+rtf_edge_index (int side_bit)
+{
+  for (int i = 0; i < 4; i++)
+    if (side_bit & (1 << i))
+      return i;
+  return 0;
+}
+
+struct _RtfReader {
   W42PieceTable *pt;
   W42PageSetup  *page;
 
@@ -988,6 +1102,22 @@ typedef struct {
   char          *info_keep[5];  /* title, subject, author, keywords, comments */
   int            cell_side;     /* which side that \\clbrdr names */
   int            clsides_pending; /* the next \\cellx's ruled sides */
+  gboolean       clsides_named;   /* a \\clbrdr was read for the cell */
+  W42BorderEdge  cledge_pending[4]; /* their lines */
+  GArray        *cledges;         /* W42BorderEdge, four per \\cellx */
+  RtfRowBorders  trbrdr;          /* the row's own */
+  gboolean       row_border;      /* inside a \\trbrdr: the line words are its */
+  int            row_side;        /* which edge, by W42_EDGE_* */
+  int            clshdng_pending; /* the cell's grey, in percent */
+  GArray        *clshdng;         /* int, per \\cellx */
+  int            clvalign_pending; /* W42CellVAlign */
+  GArray        *clvalign;        /* int, per \\cellx */
+  int            trleft;          /* \\trleft: where the row's first cell starts */
+  int            grid_col, grid_span;  /* the cell being opened, on the grid */
+  GArray        *grid;            /* int, the table's column edges: the first
+                                   * row's, which every row's cells are laid
+                                   * over -- a row with fewer, wider cells is
+                                   * how Word merges across */
   guint32        clfill_pending;  /* and its background, if it has one */
   gboolean       clfilled_pending;
   GArray        *clfills;         /* guint32, one per cell of the row */
@@ -1071,7 +1201,7 @@ typedef struct {
   int            pict_wgoal;     /* twips, from \picwgoal */
   int            pict_hgoal;
   GString       *pict_hex;
-} RtfReader;
+};
 
 enum { DEST_NONE = 0, DEST_FONTTBL, DEST_COLORTBL, DEST_PICT, DEST_STYLESHEET,
        DEST_HEADER, DEST_FOOTER, DEST_INFO };
@@ -1122,12 +1252,17 @@ table_sync (RtfReader *r)
         {
           int n_cols = MAX ((int) r->cellx->len, 1);
           int *widths = g_new0 (int, n_cols);
-          int prev = 0;
+          int prev = r->trleft;
 
+          g_array_set_size (r->grid, 0);
+          g_array_append_val (r->grid, prev);
           for (int c = 0; c < (int) r->cellx->len; c++)
             {
-              widths[c] = g_array_index (r->cellx, int, c) - prev;
-              prev = g_array_index (r->cellx, int, c);
+              int edge = g_array_index (r->cellx, int, c);
+
+              widths[c] = MAX (edge - prev, 0);
+              prev = edge;
+              g_array_append_val (r->grid, edge);
             }
 
           flush_text (r);
@@ -1179,8 +1314,23 @@ table_sync (RtfReader *r)
           return;
         }
 
-      w42_pt_insert_cell (r->pt, r->pos, r->table, r->table_row, r->table_col,
+      {
+        /* The cell's place on the grid: the columns between its two
+         * edges.  A row with fewer, wider cells than the first is Word's
+         * way of merging across. */
+        int left = r->table_col == 0 ? r->trleft
+                 : g_array_index (r->cellx, int, r->table_col - 1);
+        int right = g_array_index (r->cellx, int, r->table_col);
+        int c0 = rtf_grid_column (r, left), c1 = rtf_grid_column (r, right);
+        int n_cols = MAX ((int) r->grid->len - 1, 1);
+
+        r->grid_col = CLAMP (c0, 0, n_cols - 1);
+        r->grid_span = CLAMP (c1 - c0, 1, n_cols - r->grid_col);
+      }
+      w42_pt_insert_cell (r->pt, r->pos, r->table, r->table_row, r->grid_col,
                           reader_ap (r));
+      if (r->grid_span > 1)
+        w42_pt_set_cell_span (r->pt, r->pos, r->grid_span);
       {
         int sides = r->table_col < (int) r->clsides->len
                       ? g_array_index (r->clsides, int, r->table_col)
@@ -1188,7 +1338,16 @@ table_sync (RtfReader *r)
 
         w42_pt_cell_set_borders_at (r->pt, r->pos,
                                     sides | W42_BORDER_CELL_SET);
+        if (4 * (guint) r->table_col + 4 <= r->cledges->len)
+          w42_pt_cell_set_edges_at (r->pt, r->pos,
+                                    &g_array_index (r->cledges, W42BorderEdge, 4 * r->table_col));
       }
+      if (r->table_col < (int) r->clshdng->len &&
+          g_array_index (r->clshdng, int, r->table_col) > 0)
+        w42_pt_cell_set_shading_at (r->pt, r->pos, g_array_index (r->clshdng, int, r->table_col));
+      if (r->table_col < (int) r->clvalign->len &&
+          g_array_index (r->clvalign, int, r->table_col) != W42_CELL_VALIGN_TOP)
+        w42_pt_cell_set_valign_at (r->pt, r->pos, g_array_index (r->clvalign, int, r->table_col));
       if (r->table_col < (int) r->clfilled->len &&
           g_array_index (r->clfilled, int, r->table_col))
         w42_pt_cell_set_fill_at (r->pt, r->pos, TRUE,
@@ -1213,7 +1372,7 @@ table_sync (RtfReader *r)
             w42_pt_table_set_header_rows (r->pt, r->table, r->table_row + 1);
         }
       r->last_cell_pos = r->pos;
-      r->last_cell_span = 1;
+      r->last_cell_span = r->grid_span;
       r->pos += 2;
       r->in_cell = TRUE;
     }
@@ -1363,6 +1522,19 @@ end_paragraph (RtfReader *r)
   r->state.pa.list_start = 0;
 }
 
+/* The grid column an edge falls on: the nearest, since rows do not
+ * always agree to the twip. */
+static int
+rtf_grid_column (RtfReader *r, int edge)
+{
+  int best = 0;
+
+  for (guint c = 0; c < r->grid->len; c++)
+    if (ABS (g_array_index (r->grid, int, c) - edge) < ABS (g_array_index (r->grid, int, best) - edge))
+      best = (int) c;
+  return best;
+}
+
 /* A colour from the file's colour table, or black. */
 static guint32
 colour_at (RtfReader *r, int index)
@@ -1370,6 +1542,39 @@ colour_at (RtfReader *r, int index)
   if (index >= 0 && (guint) index < r->colours->len)
     return g_array_index (r->colours, guint32, index);
   return 0;
+}
+
+/* One word of a border's line -- its style, width or colour -- into
+ * `edge`; FALSE for a word that is none of those. */
+static gboolean
+rtf_border_line (const char *word, int param, gboolean has_param,
+                 RtfReader *r, W42BorderEdge *edge)
+{
+  int style = rtf_border_style (word);
+
+  if (style >= 0)
+    {
+      edge->style = (guint8) style;
+      if (edge->width == 0)
+        edge->width = W42_BORDER_HAIRLINE;
+      if (g_str_equal (word, "brdrth"))
+        edge->width = 30;              /* Word's thick: a point and a half */
+      return TRUE;
+    }
+  if (g_str_equal (word, "brdrw") && has_param)
+    {
+      edge->width = (guint8) CLAMP (param, 1, 255);
+      return TRUE;
+    }
+  if (g_str_equal (word, "brdrcf") && has_param)
+    {
+      edge->color = colour_at (r, param);
+      return TRUE;
+    }
+  if (g_str_equal (word, "brsp") || g_str_equal (word, "brdrart") ||
+      g_str_equal (word, "brdrframe"))
+    return TRUE;
+  return FALSE;
 }
 
 /* Which of Word's sixteen highlight colours a colour is nearest to.  Zero
@@ -1570,13 +1775,64 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       g_array_set_size (r->clsides, 0);
       g_array_set_size (r->clfills, 0);
       g_array_set_size (r->clfilled, 0);
+      g_array_set_size (r->cledges, 0);
+      g_array_set_size (r->clshdng, 0);
+      g_array_set_size (r->clvalign, 0);
       r->clpending = 0;
       r->clvpending = 0;
-      r->clsides_pending = W42_BORDER_BOX;
+      r->clsides_pending = 0;
+      r->clsides_named = FALSE;
+      memset (r->cledge_pending, 0, sizeof r->cledge_pending);
+      memset (&r->trbrdr, 0, sizeof r->trbrdr);
+      r->row_border = FALSE;
+      r->cell_border = FALSE;
+      r->clshdng_pending = 0;
+      r->clvalign_pending = W42_CELL_VALIGN_TOP;
+      r->trleft = 0;
       r->trrh = 0;
       r->trhdr = FALSE;
       return;
     }
+  if (g_str_equal (word, "trleft") && has_param)
+    {
+      r->trleft = param;
+      return;
+    }
+  if (g_str_has_prefix (word, "trbrdr") && strlen (word) == 7)
+    {
+      /* The row's rules: a fallback for cells that name none of their
+       * own, which is how some writers rule a whole table. */
+      r->row_side = word[6] == 't' ? W42_EDGE_TOP : word[6] == 'b' ? W42_EDGE_BOTTOM
+                  : word[6] == 'l' ? W42_EDGE_LEFT : word[6] == 'r' ? W42_EDGE_RIGHT
+                  : word[6] == 'h' ? W42_EDGE_INSIDE_H : word[6] == 'v' ? W42_EDGE_INSIDE_V : -1;
+      r->row_border = r->row_side >= 0;
+      r->cell_border = FALSE;
+      if (r->row_side >= 0 && r->row_side < 4)
+        r->trbrdr.sides |= (guint8) (1 << r->row_side);
+      else if (r->row_side >= 0)
+        r->trbrdr.sides |= 0x10;   /* an inside rule, for the cells within */
+      return;
+    }
+  if (r->row_border && g_str_has_prefix (word, "brdr"))
+    {
+      if (g_str_equal (word, "brdrnone") || g_str_equal (word, "brdrnil"))
+        {
+          if (r->row_side < 4)
+            r->trbrdr.sides &= (guint8) ~(1 << r->row_side);
+          r->row_border = FALSE;
+        }
+      else
+        rtf_border_line (word, param, has_param, r, &r->trbrdr.edge[r->row_side]);
+      return;
+    }
+  if (g_str_equal (word, "clshdng") && has_param)
+    {
+      r->clshdng_pending = CLAMP (param / 100, 0, 100);
+      return;
+    }
+  if (g_str_equal (word, "clvertalt")) { r->clvalign_pending = W42_CELL_VALIGN_TOP; return; }
+  if (g_str_equal (word, "clvertalc")) { r->clvalign_pending = W42_CELL_VALIGN_CENTER; return; }
+  if (g_str_equal (word, "clvertalb")) { r->clvalign_pending = W42_CELL_VALIGN_BOTTOM; return; }
   if (g_str_equal (word, "trrh"))
     {
       /* Negative is "exactly", which is read as "at least". */
@@ -1590,11 +1846,33 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     }
   if (g_str_equal (word, "cellx") && has_param)
     {
+      /* A cell that named no sides of its own has the row's, where the
+       * row named any: its outer lines at the row's ends, its inside
+       * ones between the cells. */
+      if (!r->clsides_named && r->trbrdr.sides != 0)
+        {
+          gboolean first = r->cellx->len == 0;
+
+          r->clsides_pending = (r->trbrdr.sides & (W42_BORDER_TOP | W42_BORDER_BOTTOM))
+                             | ((first ? (r->trbrdr.sides & W42_BORDER_LEFT) : 0)
+                                | ((r->trbrdr.sides & 0x10) ? W42_BORDER_LEFT | W42_BORDER_RIGHT : 0)
+                                | (r->trbrdr.sides & W42_BORDER_RIGHT));
+          r->cledge_pending[W42_EDGE_TOP] = r->trbrdr.edge[W42_EDGE_TOP];
+          r->cledge_pending[W42_EDGE_BOTTOM] = r->trbrdr.edge[W42_EDGE_BOTTOM];
+          r->cledge_pending[W42_EDGE_LEFT] = first ? r->trbrdr.edge[W42_EDGE_LEFT] : r->trbrdr.edge[W42_EDGE_INSIDE_V];
+          r->cledge_pending[W42_EDGE_RIGHT] = r->trbrdr.edge[W42_EDGE_INSIDE_V];
+          if (r->trbrdr.sides & W42_BORDER_RIGHT)
+            r->cledge_pending[W42_EDGE_RIGHT] = r->trbrdr.edge[W42_EDGE_RIGHT];
+        }
       g_array_append_val (r->cellx, param);
       g_array_append_val (r->clflags, r->clpending);
       g_array_append_val (r->clvflags, r->clvpending);
       g_array_append_val (r->clsides, r->clsides_pending);
       g_array_append_val (r->clfills, r->clfill_pending);
+      g_array_append_val (r->clshdng, r->clshdng_pending);
+      g_array_append_val (r->clvalign, r->clvalign_pending);
+      for (int e = 0; e < 4; e++)
+        g_array_append_val (r->cledges, r->cledge_pending[e]);
       {
         int filled = r->clfilled_pending ? 1 : 0;
 
@@ -1605,9 +1883,14 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
         r->no_borders = (r->clsides_pending == 0);
       r->clpending = 0;
       r->clvpending = 0;
-      r->clsides_pending = W42_BORDER_BOX;
+      r->clsides_pending = 0;
+      r->clsides_named = FALSE;
+      memset (r->cledge_pending, 0, sizeof r->cledge_pending);
+      r->cell_border = FALSE;
       r->clfill_pending = 0;
       r->clfilled_pending = FALSE;
+      r->clshdng_pending = 0;
+      r->clvalign_pending = W42_CELL_VALIGN_TOP;
       return;
     }
   if (g_str_equal (word, "intbl"))
@@ -2027,23 +2310,35 @@ formatting:
       r->clfill_pending = colour_at (r, param);
       r->clfilled_pending = TRUE;
     }
-  else if (g_str_equal (word, "brdrcf") && has_param)
-    {
-      /* A rule's colour.  A cell's rules are not coloured in the
-       * model, so only a paragraph's is kept. */
-      if (!r->cell_border)
-        st->pa.border_color = colour_at (r, param);
-    }
   else if (g_str_has_prefix (word, "clbrdr"))
     {
+      /* A cell's side: the line words that follow are its, up to the
+       * next side or the \\cellx.  Naming a side rules it; \\brdrnone
+       * takes it back. */
       r->cell_border = TRUE;
+      r->row_border = FALSE;
+      r->clsides_named = TRUE;
       r->cell_side = word[6] == 't' ? W42_BORDER_TOP : word[6] == 'b' ? W42_BORDER_BOTTOM
                    : word[6] == 'l' ? W42_BORDER_LEFT : word[6] == 'r' ? W42_BORDER_RIGHT : 0;
+      r->clsides_pending |= r->cell_side;
     }
-  else if (g_str_equal (word, "brdrnone") && r->cell_border)
+  else if ((g_str_equal (word, "brdrnone") || g_str_equal (word, "brdrtbl") ||
+            g_str_equal (word, "brdrnil")) && r->cell_border)
     {
+      /* \\brdrtbl is Word's "no line of its own" for a cell in a table
+       * whose rows carry the lines; those are read as a fallback too. */
       r->clsides_pending &= ~r->cell_side;
       r->cell_border = FALSE;
+    }
+  else if (g_str_has_prefix (word, "brdr") && r->cell_border &&
+           rtf_border_line (word, param, has_param, r, &r->cledge_pending[rtf_edge_index (r->cell_side)]))
+    ;
+  else if (g_str_equal (word, "brdrcf") && has_param)
+    {
+      /* A paragraph rule's colour, for the side last named. */
+      for (int i = 0; i < 4; i++)
+        if (st->border_side & (1 << i))
+          st->pa.edge[i].color = colour_at (r, param);
     }
   else if (g_str_has_prefix (word, "brdr") && r->cell_border)
     r->cell_border = FALSE;
@@ -2086,7 +2381,17 @@ formatting:
   else if (g_str_equal (word, "brdrr")) { st->pa.border |= W42_BORDER_RIGHT;  st->border_side = W42_BORDER_RIGHT; }
   else if (g_str_equal (word, "box"))   { st->pa.border  = W42_BORDER_BOX;    st->border_side = W42_BORDER_BOX; }
   else if (g_str_equal (word, "brdrw") && has_param && st->border_side != 0)
-    st->pa.border_width = (guint8) CLAMP (param, 1, 120);
+    {
+      for (int i = 0; i < 4; i++)
+        if (st->border_side & (1 << i))
+          st->pa.edge[i].width = (guint8) CLAMP (param, 1, 120);
+    }
+  else if (st->border_side != 0 && rtf_border_style (word) >= 0)
+    {
+      for (int i = 0; i < 4; i++)
+        if (st->border_side & (1 << i))
+          st->pa.edge[i].style = (guint8) rtf_border_style (word);
+    }
   else if (g_str_equal (word, "brdrnone") || g_str_equal (word, "brdrnil"))
     {
       if (st->border_side != 0)
@@ -2537,8 +2842,12 @@ w42_rtf_load (W42PieceTable *pt,
   r.clflags = g_array_new (FALSE, FALSE, sizeof (int));
   r.clvflags = g_array_new (FALSE, FALSE, sizeof (int));
   r.clsides = g_array_new (FALSE, FALSE, sizeof (int));
+  r.cledges = g_array_new (FALSE, TRUE, sizeof (W42BorderEdge));
+  r.clshdng = g_array_new (FALSE, FALSE, sizeof (int));
+  r.clvalign = g_array_new (FALSE, FALSE, sizeof (int));
+  r.grid = g_array_new (FALSE, FALSE, sizeof (int));
   r.info_text = g_string_new (NULL);
-  r.clsides_pending = W42_BORDER_BOX;
+  r.clsides_pending = 0;
   r.clfills = g_array_new (FALSE, FALSE, sizeof (guint32));
   r.clfilled = g_array_new (FALSE, FALSE, sizeof (int));
   r.last_cell_pos = (gsize) -1;
@@ -3021,6 +3330,10 @@ w42_rtf_load (W42PieceTable *pt,
   g_array_free (r.clflags, TRUE);
   g_array_free (r.clvflags, TRUE);
   g_array_free (r.clsides, TRUE);
+  g_array_free (r.cledges, TRUE);
+  g_array_free (r.clshdng, TRUE);
+  g_array_free (r.clvalign, TRUE);
+  g_array_free (r.grid, TRUE);
   g_array_free (r.clfills, TRUE);
   g_array_free (r.clfilled, TRUE);
   {

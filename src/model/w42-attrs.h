@@ -124,6 +124,44 @@ typedef enum {
                                 * override the table's borders setting */
 } W42BorderSides;
 
+/* The sides again, as indexes: W42_BORDER_TOP is bit 0, so the top edge
+ * is edge[0], and so on down the enum. */
+enum {
+  W42_EDGE_TOP = 0,
+  W42_EDGE_BOTTOM,
+  W42_EDGE_LEFT,
+  W42_EDGE_RIGHT,
+  W42_EDGE_INSIDE_H,   /* a table's rules between its rows ... */
+  W42_EDGE_INSIDE_V,   /* ... and between its columns */
+  W42_N_EDGES
+};
+
+/* How a border's line is drawn.  Word XP's Borders and Shading dialog
+ * offered two dozen; these are the ones every file format can say, and
+ * the rest come in as the nearest of them. */
+typedef enum {
+  W42_BORDER_SINGLE = 0,
+  W42_BORDER_DOUBLE,
+  W42_BORDER_DASHED,
+  W42_BORDER_DOTTED,
+  W42_BORDER_NONE       /* on a table's edge: that side is not ruled, though
+                         * the table is; a cell's sides say so with their
+                         * bits instead */
+} W42BorderStyle;
+
+/* One edge of a border: its line.  A width of 0 is the hairline, Word's
+ * 3/4 point; a colour of 0 is black. */
+typedef struct {
+  guint8  style;    /* W42BorderStyle */
+  guint8  width;    /* twips: 15 is 3/4 pt, 120 is 6 pt */
+  guint32 color;    /* 0x00RRGGBB */
+} W42BorderEdge;
+
+#define W42_BORDER_HAIRLINE 15
+
+/* The edge's width, with the hairline standing in for none. */
+#define W42_EDGE_WIDTH(edge) ((edge)->width > 0 ? (int) (edge)->width : W42_BORDER_HAIRLINE)
+
 typedef struct {
   const char *style;         /* interned, e.g. "Normal", "Heading 1" */
   W42Align    align;
@@ -146,11 +184,11 @@ typedef struct {
   guint8      list_start;    /* restart the numbering here at this; 0 continues */
   guint8      list_level;    /* 0 outermost .. 8; each level counts on its own */
   guint8      border;        /* W42BorderSides */
-  guint8      border_width;  /* twips: 15 is Word's 3/4 pt hairline */
   guint8      shading;       /* percent of black behind the paragraph */
   guint8      has_shading_color;  /* the background is a colour, not a grey */
-  guint32     border_color;  /* 0x00RRGGBB; 0 is Word's black */
+  guint8      cell_valign;   /* on a CELL mark: W42CellVAlign */
   guint32     shading_color; /* 0x00RRGGBB, when has_shading_color */
+  W42BorderEdge edge[4];     /* the line of each side, by W42_EDGE_* */
   guint8      section_break; /* the paragraph starts a new section, on a new page */
   guint8      columns;       /* that section's newspaper columns; 0 or 1 is one */
   int         column_gap;    /* twips between them; 0 means a half inch */
@@ -172,6 +210,26 @@ typedef enum {
   W42_FRAME_LEFT,
   W42_FRAME_RIGHT
 } W42FrameSide;
+
+/* Where a cell's text sits when the row is taller than it. */
+typedef enum {
+  W42_CELL_VALIGN_TOP = 0,
+  W42_CELL_VALIGN_CENTER,
+  W42_CELL_VALIGN_BOTTOM
+} W42CellVAlign;
+
+/* Every side's line at once, which is what the dialogs set. */
+void w42_para_fmt_set_edges (W42ParaFmt *pa, int width, guint32 color,
+                             W42BorderStyle style);
+/* The widest of the sides that are on: what a dialog shows as "the"
+ * width; likewise the first such side's colour and style. */
+int            w42_para_fmt_border_width (const W42ParaFmt *pa);
+/* The style's name as CSS and ODF spell it, "solid", "double", "dashed"
+ * or "dotted"; and the style a line spec naming one of those means. */
+const char    *w42_border_style_css  (W42BorderStyle style);
+W42BorderStyle w42_border_style_from_css (const char *spec);
+guint32        w42_para_fmt_border_color (const W42ParaFmt *pa);
+W42BorderStyle w42_para_fmt_border_style (const W42ParaFmt *pa);
 
 /* The field codes word42 knows, as Word spells them; NULL for anything
  * else.  A field's text is its cached result until updated. */

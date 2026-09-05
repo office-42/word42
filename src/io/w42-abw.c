@@ -40,6 +40,14 @@ each_prop (const char *props, PropFn fn, gpointer data)
   g_strfreev (items);
 }
 
+/* Which edge a "top-style", "bot-thickness" or "left-color" key names. */
+static int
+abw_edge (const char *key)
+{
+  return g_str_has_prefix (key, "top") ? W42_EDGE_TOP : g_str_has_prefix (key, "bot") ? W42_EDGE_BOTTOM
+       : g_str_has_prefix (key, "left") ? W42_EDGE_LEFT : W42_EDGE_RIGHT;
+}
+
 /* "1.5in", "12pt", "0.5cm", "2mm" -> twips. */
 static int
 length_twips (const char *value)
@@ -237,17 +245,25 @@ para_prop (const char *key, const char *value, gpointer data)
   else if (g_str_has_suffix (key, "-style") && (g_str_has_prefix (key, "top") || g_str_has_prefix (key, "bot") ||
                                                  g_str_has_prefix (key, "left") || g_str_has_prefix (key, "right")))
     {
+      /* AbiWord's line styles: 1 solid, 2 dotted, 3 dashed, 4 double. */
       if (!g_str_equal (value, "0") && !g_str_equal (value, "none"))
-        pa->border |= g_str_has_prefix (key, "top") ? W42_BORDER_TOP : g_str_has_prefix (key, "bot") ? W42_BORDER_BOTTOM
-                    : g_str_has_prefix (key, "left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
+        {
+          int e = abw_edge (key);
+
+          pa->border |= (guint8) (1 << e);
+          pa->edge[e].style = g_str_equal (value, "2") ? W42_BORDER_DOTTED
+                            : g_str_equal (value, "3") ? W42_BORDER_DASHED
+                            : g_str_equal (value, "4") ? W42_BORDER_DOUBLE : W42_BORDER_SINGLE;
+        }
     }
-  else if (g_str_has_suffix (key, "-thickness"))
-    pa->border_width = (guint8) CLAMP (length_twips (value), 5, 120);
+  else if (g_str_has_suffix (key, "-thickness") && (g_str_has_prefix (key, "top") || g_str_has_prefix (key, "bot") ||
+                                                    g_str_has_prefix (key, "left") || g_str_has_prefix (key, "right")))
+    pa->edge[abw_edge (key)].width = (guint8) CLAMP (length_twips (value), 5, 120);
   else if (g_str_has_suffix (key, "-color") && (g_str_has_prefix (key, "top") || g_str_has_prefix (key, "bot") ||
                                                 g_str_has_prefix (key, "left") || g_str_has_prefix (key, "right")))
     {
       if (strlen (value) >= 6)
-        pa->border_color = (guint32) strtoul (value + (value[0] == '#'), NULL, 16) & 0xFFFFFF;
+        pa->edge[abw_edge (key)].color = (guint32) strtoul (value + (value[0] == '#'), NULL, 16) & 0xFFFFFF;
     }
   else if (g_str_equal (key, "bgcolor") || g_str_equal (key, "background-color"))
     {
@@ -815,6 +831,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
             {
               w42_pt_cell_set_borders_at (a->pt, a->b.cell_pos,
                                           cell_pa.border | W42_BORDER_CELL_SET);
+              w42_pt_cell_set_edges_at (a->pt, a->b.cell_pos, cell_pa.edge);
               if (cell_pa.has_shading_color)
                 w42_pt_cell_set_fill_at (a->pt, a->b.cell_pos, TRUE,
                                          cell_pa.shading_color);
@@ -1244,11 +1261,14 @@ para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
           {
             char bw[G_ASCII_DTOSTR_BUF_SIZE];
 
-            g_string_append_printf (s, "%s%s-style:1; %s-thickness:%spt; %s-color:%06x", s->len > 0 ? "; " : "",
-                                    sides[i], sides[i],
-                                    g_ascii_formatd (bw, sizeof bw, "%.2f",
-                                                     (pa->border_width > 0 ? pa->border_width : 15) / 20.0),
-                                    sides[i], pa->border_color & 0xFFFFFF);
+            const W42BorderEdge *edge = &pa->edge[i];
+            int style = edge->style == W42_BORDER_DOTTED ? 2 : edge->style == W42_BORDER_DASHED ? 3
+                      : edge->style == W42_BORDER_DOUBLE ? 4 : 1;
+
+            g_string_append_printf (s, "%s%s-style:%d; %s-thickness:%spt; %s-color:%06x", s->len > 0 ? "; " : "",
+                                    sides[i], style, sides[i],
+                                    g_ascii_formatd (bw, sizeof bw, "%.2f", W42_EDGE_WIDTH (edge) / 20.0),
+                                    sides[i], edge->color & 0xFFFFFF);
           }
     }
   if (pa->has_shading_color)
@@ -1614,13 +1634,60 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
 
               /* The cell's own rules and background, in the same words a
                * paragraph's are written in. */
-              if (cpa->border & W42_BORDER_CELL_SET || cpa->has_shading_color)
-                {
-                  W42ParaFmt shown = *cpa;
+              {
+                const W42TableProps *tp = w42_pt_table_props (pt, block->table);
+                W42ParaFmt shown = *cpa;
+                gboolean own = (cpa->border & W42_BORDER_CELL_SET) != 0;
+                gboolean first_row = block->row == 0, last_row = TRUE;
+                int n_cols = tp != NULL ? tp->n_cols : 1;
 
-                  shown.border = cpa->border & W42_BORDER_BOX;
+                for (guint k = b + 1; k < blocks->len; k++)
+                  {
+                    const W42Block *rb = g_ptr_array_index (blocks, k);
+
+                    if (rb->table != block->table)
+                      break;
+                    if (rb->row > block->row)
+                      {
+                        last_row = FALSE;
+                        break;
+                      }
+                  }
+                /* Each side's line: the cell's own, else the table's --
+                 * its outer line round the outside, its inside rule
+                 * between the cells -- so that a reader that looks only
+                 * at the cells sees the table whole. */
+                shown.border = own ? (cpa->border & W42_BORDER_BOX)
+                             : (tp == NULL || tp->borders) ? W42_BORDER_BOX : 0;
+                for (int k = 0; k < 4; k++)
+                  {
+                    gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                                     (k == W42_EDGE_LEFT && block->col == 0) ||
+                                     (k == W42_EDGE_RIGHT && block->col + block->span >= n_cols);
+                    const W42BorderEdge *e = &cpa->edge[k];
+
+                    if (own && (e->width != 0 || e->style != 0 || e->color != 0))
+                      continue;
+                    shown.edge[k] = tp != NULL
+                      ? tp->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)]
+                      : (W42BorderEdge) { 0, 0, 0 };
+                    if (shown.edge[k].style == W42_BORDER_NONE)
+                      {
+                        shown.border &= (guint8) ~(1 << k);
+                        shown.edge[k].style = W42_BORDER_SINGLE;
+                      }
+                  }
+                if (!cpa->has_shading_color && cpa->shading > 0)
+                  {
+                    int grey = 255 - (int) cpa->shading * 255 / 100;
+
+                    shown.has_shading_color = 1;
+                    shown.shading_color = (guint32) ((grey << 16) | (grey << 8) | grey);
+                    shown.shading = 0;
+                  }
+                if (shown.border != 0 || shown.has_shading_color || own)
                   para_props (cell_props, &shown, NULL);
-                }
+              }
               g_string_append_printf (body, "<cell props=\"left-attach:%d; right-attach:%d; top-attach:%d; bot-attach:%d%s%s\">\n",
                                       block->col, block->col + MAX (block->span, 1), block->row, block->row + 1,
                                       cell_props->len > 0 ? "; " : "", cell_props->str);

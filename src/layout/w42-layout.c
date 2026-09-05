@@ -1277,12 +1277,18 @@ typedef struct {
 /* The table's header rows set again at the top of `page`: every cell of
  * rows 0 to n_header - 1, with their borders, as the first rows of a page
  * a table runs on to.  Returns the height they take. */
+static void cell_edges (const W42ParaFmt *cpa, const W42TableProps *props,
+                        gboolean first_row, gboolean last_row,
+                        gboolean first_col, gboolean last_col,
+                        W42BorderEdge out[4]);
+
 static double
-layout_header_rows (W42Layout *self, W42ApTable *aps, guint first, guint last,
+layout_header_rows (W42Layout *self, W42PieceTable *pt, W42ApTable *aps, guint first, guint last,
                     int n_header, const double *col_x, int n_cols, int page,
                     double text_h, gboolean borders)
 {
   const W42Block *head = g_ptr_array_index (self->blocks, first);
+  const W42TableProps *props = w42_pt_table_props (pt, head->table);
   double y = 0.0;
   guint b = first;
 
@@ -1348,6 +1354,12 @@ layout_header_rows (W42Layout *self, W42ApTable *aps, guint first, guint last,
 
             rect.has_fill = cpa->has_shading_color;
             rect.fill = cpa->shading_color;
+            rect.shading = cpa->shading;
+            cell_edges (cpa, props, row == 0, FALSE, col == 0, col + span >= n_cols, rect.edge);
+            for (int e = 0; e < 4; e++)
+              if (rect.edge[e].style == W42_BORDER_NONE)
+                rect.sides &= (guint8) ~(1 << e);
+            rect.borders = rect.sides != 0;
           }
           g_array_append_val (self->cell_rects, rect);
         }
@@ -1384,6 +1396,38 @@ cell_sides (W42ApTable *aps, const W42Block *blk, gboolean table_borders)
   if (cpa->border & W42_BORDER_CELL_SET)
     return cpa->border & W42_BORDER_BOX;
   return table_borders ? W42_BORDER_BOX : 0;
+}
+
+/* The line of each of a cell's four sides: the cell's own where it has
+ * one, else the table's -- its outer line on the table's outside, its
+ * inside rule between cells.  `cpa` may be NULL for a column no cell of
+ * the row owns. */
+static void
+cell_edges (const W42ParaFmt *cpa, const W42TableProps *props,
+            gboolean first_row, gboolean last_row,
+            gboolean first_col, gboolean last_col,
+            W42BorderEdge out[4])
+{
+  static const W42BorderEdge none = { 0, 0, 0 };
+
+  for (int i = 0; i < 4; i++)
+    {
+      const W42BorderEdge *e = &none;
+
+      if (cpa != NULL && (cpa->border & W42_BORDER_CELL_SET) &&
+          (cpa->edge[i].width != 0 || cpa->edge[i].style != 0 || cpa->edge[i].color != 0))
+        e = &cpa->edge[i];
+      else if (props != NULL)
+        {
+          gboolean outer = (i == W42_EDGE_TOP && first_row) || (i == W42_EDGE_BOTTOM && last_row) ||
+                           (i == W42_EDGE_LEFT && first_col) || (i == W42_EDGE_RIGHT && last_col);
+
+          e = outer ? &props->edge[i]
+                    : &props->edge[(i == W42_EDGE_TOP || i == W42_EDGE_BOTTOM)
+                                   ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V];
+        }
+      out[i] = *e;
+    }
 }
 
 /* The lines of `layout` that show any of [from, to), clipped to it. */
@@ -1573,8 +1617,16 @@ layout_table (W42Layout      *self,
       int *spans = g_new0 (int, n_cols);
       guint8 *sides = g_new0 (guint8, n_cols);
       guint8 *has_fill = g_new0 (guint8, n_cols);
+      guint8 *shading = g_new0 (guint8, n_cols);
+      guint8 *valign = g_new0 (guint8, n_cols);
       guint32 *fill = g_new0 (guint32, n_cols);
       int *vspans = g_new0 (int, n_cols);   /* rows each cell covers */
+      W42BorderEdge *edges = g_new0 (W42BorderEdge, 4 * n_cols);
+      double *cell_h = g_new0 (double, n_cols);      /* each cell's text height */
+      guint *cell_line0 = g_new0 (guint, n_cols);    /* and its lines */
+      guint *cell_line1 = g_new0 (guint, n_cols);
+      gboolean first_row = (b == first);
+      gboolean last_row = (row == ((const W42Block *) g_ptr_array_index (self->blocks, last))->row);
 
       /* Which cell owns each column of the row: a merged cell owns the
        * ones it spans, and those get no border of their own. */
@@ -1597,6 +1649,13 @@ layout_table (W42Layout      *self,
 
             has_fill[col0] = cpa->has_shading_color;
             fill[col0] = cpa->shading_color;
+            shading[col0] = cpa->shading;
+            valign[col0] = cpa->cell_valign;
+            cell_edges (cpa, props, first_row, last_row, col0 == 0, col0 + span >= n_cols,
+                        &edges[4 * col0]);
+            for (int e = 0; e < 4; e++)
+              if (edges[4 * col0 + e].style == W42_BORDER_NONE)
+                sides[col0] &= (guint8) ~(1 << e);
           }
           for (int k2 = col0; k2 < col0 + span; k2++)
             owner[k2] = col0;
@@ -1632,10 +1691,13 @@ layout_table (W42Layout      *self,
           {
             int span = CLAMP (blk->span, 1, n_cols - col);
 
+            cell_line0[col] = self->lines->len;
             h = layout_cell (self, aps, c, cell_last,
                              col_x[col] + CELL_PAD, y + CELL_PAD,
                              MAX (col_x[col + span] - col_x[col] - 2 * CELL_PAD, 8.0),
                              page);
+            cell_line1[col] = self->lines->len;
+            cell_h[col] = h;
           }
           if (vspans[col] > 1 && vspans[col] != W42_CELL_COVERED)
             h = h / vspans[col];      /* its height is shared over its rows */
@@ -1648,6 +1710,22 @@ layout_table (W42Layout      *self,
       /* Table Properties can ask for a row at least so tall. */
       if (props != NULL && (guint) row < props->row_heights->len)
         row_h = MAX (row_h, w42_twips_to_px (g_array_index (props->row_heights, int, row)));
+
+      /* A cell whose text sits in the middle or at the foot of a taller
+       * row: its lines move down by the room left over.  A cell merged
+       * downwards is left at the top; its rows are not all placed yet. */
+      for (int col = 0; col < n_cols; col++)
+        {
+          double spare = row_h - 2 * CELL_PAD - cell_h[col];
+          double shift;
+
+          if (owner[col] != col || valign[col] == W42_CELL_VALIGN_TOP ||
+              vspans[col] > 1 || spare <= 0.5)
+            continue;
+          shift = valign[col] == W42_CELL_VALIGN_CENTER ? spare / 2.0 : spare;
+          for (guint i = cell_line0[col]; i < cell_line1[col]; i++)
+            g_array_index (self->lines, W42LineBox, i).y += shift;
+        }
 
       /* Where the row goes.  A row that fits what is left of the page
        * stays where it is; a row that fits a page but not the rest of
@@ -1676,7 +1754,7 @@ layout_table (W42Layout      *self,
                 pg++;
                 top = 0.0;
                 if (props != NULL && props->header_rows > 0 && row >= props->header_rows)
-                  top = layout_header_rows (self, aps, first, last, props->header_rows,
+                  top = layout_header_rows (self, pt, aps, first, last, props->header_rows,
                                             col_x, n_cols, pg, text_h, props->borders);
               }
 
@@ -1717,7 +1795,7 @@ layout_table (W42Layout      *self,
                 pg++;
                 top = 0.0;
                 if (props != NULL && props->header_rows > 0 && row >= props->header_rows)
-                  top = layout_header_rows (self, aps, first, last, props->header_rows,
+                  top = layout_header_rows (self, pt, aps, first, last, props->header_rows,
                                             col_x, n_cols, pg, text_h, props->borders);
               }
           }
@@ -1799,6 +1877,15 @@ layout_table (W42Layout      *self,
               rect.borders = rect.sides != 0;
               rect.has_fill = owner[col] == col ? has_fill[col] : 0;
               rect.fill = owner[col] == col ? fill[col] : 0;
+              rect.shading = owner[col] == col ? shading[col] : 0;
+              if (owner[col] == col)
+                memcpy (rect.edge, &edges[4 * col], sizeof rect.edge);
+              else
+                cell_edges (NULL, props, first_row, last_row, col == 0, col + 1 >= n_cols, rect.edge);
+              for (int e = 0; e < 4; e++)
+                if (rect.edge[e].style == W42_BORDER_NONE)
+                  rect.sides &= (guint8) ~(1 << e);
+              rect.borders = rect.sides != 0;
 
               /* A cell merged downwards is one rectangle over its rows,
                * so it is kept back until they have all been placed. */
@@ -1851,8 +1938,14 @@ layout_table (W42Layout      *self,
       g_free (spans);
       g_free (sides);
       g_free (has_fill);
+      g_free (shading);
+      g_free (valign);
       g_free (fill);
       g_free (vspans);
+      g_free (edges);
+      g_free (cell_h);
+      g_free (cell_line0);
+      g_free (cell_line1);
 
       /* The lines were laid out relative to y=0 at the top margin;
        * layout_cell wrote box.y as a page-relative value from `y` without
@@ -2972,6 +3065,100 @@ w42_layout_cell_rects (W42Layout *self)
   return self->cell_rects;
 }
 
+/* One border line from (x0, y0) to (x1, y1), horizontal or vertical, in
+ * the edge's width, colour and style.  A hairline is one device pixel
+ * set on the pixel grid so that it stays crisp; `snap` puts wider lines
+ * there too, which cell rules want and paragraph rules do not mind. */
+static void
+draw_edge (cairo_t *cr, const W42BorderEdge *edge,
+           double x0, double y0, double x1, double y1, gboolean snap)
+{
+  double w = W42_EDGE_WIDTH (edge) / W42_TWIPS_PER_PX;
+  gboolean horizontal = (y0 == y1);
+  double px = MAX (1.0, floor (w + 0.5));
+
+  if (edge->style == W42_BORDER_NONE)
+    return;
+  if (w < 1.0)
+    w = 1.0;
+  if (snap || px == 1.0)
+    {
+      double off = (fmod (px, 2.0) == 1.0) ? 0.5 : 0.0;
+
+      w = px;
+      if (horizontal)
+        { y0 = y1 = floor (y0) + off; x0 = floor (x0); x1 = floor (x1); }
+      else
+        { x0 = x1 = floor (x0) + off; y0 = floor (y0); y1 = floor (y1); }
+    }
+
+  cairo_save (cr);
+  cairo_set_source_rgb (cr, ((edge->color >> 16) & 0xFF) / 255.0,
+                        ((edge->color >> 8) & 0xFF) / 255.0,
+                        (edge->color & 0xFF) / 255.0);
+  cairo_set_line_cap (cr, CAIRO_LINE_CAP_BUTT);
+  switch (edge->style)
+    {
+    case W42_BORDER_DASHED:
+      {
+        double dashes[2] = { 4.0 * w, 2.0 * w };
+
+        cairo_set_dash (cr, dashes, 2, 0.0);
+      }
+      break;
+    case W42_BORDER_DOTTED:
+      {
+        double dashes[2] = { w, w };
+
+        cairo_set_dash (cr, dashes, 2, 0.0);
+      }
+      break;
+    default:
+      break;
+    }
+  if (edge->style == W42_BORDER_DOUBLE)
+    {
+      /* Two lines of the width, a line's width apart, centred on the
+       * edge: what Word drew for "double". */
+      double gap = MAX (w, 1.0);
+
+      cairo_set_line_width (cr, w);
+      if (horizontal)
+        {
+          cairo_move_to (cr, x0, y0 - gap); cairo_line_to (cr, x1, y1 - gap);
+          cairo_move_to (cr, x0, y0 + gap); cairo_line_to (cr, x1, y1 + gap);
+        }
+      else
+        {
+          cairo_move_to (cr, x0 - gap, y0); cairo_line_to (cr, x1 - gap, y1);
+          cairo_move_to (cr, x0 + gap, y0); cairo_line_to (cr, x1 + gap, y1);
+        }
+      cairo_stroke (cr);
+    }
+  else
+    {
+      cairo_set_line_width (cr, w);
+      cairo_move_to (cr, x0, y0);
+      cairo_line_to (cr, x1, y1);
+      cairo_stroke (cr);
+    }
+  cairo_restore (cr);
+}
+
+/* A cell's side, waiting to be drawn after the lighter ones. */
+typedef struct {
+  double x0, y0, x1, y1;
+  const W42BorderEdge *edge;
+} EdgeLine;
+
+static int
+edge_line_cmp (gconstpointer a, gconstpointer b)
+{
+  const EdgeLine *ea = a, *eb = b;
+
+  return W42_EDGE_WIDTH (ea->edge) - W42_EDGE_WIDTH (eb->edge);
+}
+
 void
 w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
 {
@@ -2986,12 +3173,19 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
     {
       const W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
 
-      if (r->page != page || !r->has_fill)
+      if (r->page != page || (!r->has_fill && r->shading == 0))
         continue;
       cairo_save (cr);
-      cairo_set_source_rgb (cr, ((r->fill >> 16) & 0xFF) / 255.0,
-                            ((r->fill >> 8) & 0xFF) / 255.0,
-                            (r->fill & 0xFF) / 255.0);
+      if (r->has_fill)
+        cairo_set_source_rgb (cr, ((r->fill >> 16) & 0xFF) / 255.0,
+                              ((r->fill >> 8) & 0xFF) / 255.0,
+                              (r->fill & 0xFF) / 255.0);
+      else
+        {
+          double g = 1.0 - CLAMP (r->shading, 0, 100) / 100.0;
+
+          cairo_set_source_rgb (cr, g, g, g);
+        }
       cairo_rectangle (cr, r->x, r->y, r->w, r->h);
       cairo_fill (cr);
       cairo_restore (cr);
@@ -3024,8 +3218,6 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
       if (first->page == page &&
           (pa->shading > 0 || pa->has_shading_color || pa->border != 0))
         {
-          double width = (double) pa->border_width / W42_TWIPS_PER_PX;
-
           /* From the line's own origin and across its own column, so that a
            * paragraph in the second newspaper column, or in a table cell,
            * is shaded and ruled there and not across the page. */
@@ -3056,33 +3248,14 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
             }
           if (pa->border != 0)
             {
-              if (width < 0.75)
-                width = 0.75;
-              cairo_set_source_rgb (cr, ((pa->border_color >> 16) & 0xFF) / 255.0,
-                                    ((pa->border_color >> 8) & 0xFF) / 255.0,
-                                    (pa->border_color & 0xFF) / 255.0);
-              cairo_set_line_width (cr, width);
               if (pa->border & W42_BORDER_TOP)
-                {
-                  cairo_move_to (cr, left, top);
-                  cairo_line_to (cr, right, top);
-                }
+                draw_edge (cr, &pa->edge[W42_EDGE_TOP], left, top, right, top, FALSE);
               if (pa->border & W42_BORDER_BOTTOM)
-                {
-                  cairo_move_to (cr, left, bottom);
-                  cairo_line_to (cr, right, bottom);
-                }
+                draw_edge (cr, &pa->edge[W42_EDGE_BOTTOM], left, bottom, right, bottom, FALSE);
               if (pa->border & W42_BORDER_LEFT)
-                {
-                  cairo_move_to (cr, left, top);
-                  cairo_line_to (cr, left, bottom);
-                }
+                draw_edge (cr, &pa->edge[W42_EDGE_LEFT], left, top, left, bottom, FALSE);
               if (pa->border & W42_BORDER_RIGHT)
-                {
-                  cairo_move_to (cr, right, top);
-                  cairo_line_to (cr, right, bottom);
-                }
-              cairo_stroke (cr);
+                draw_edge (cr, &pa->edge[W42_EDGE_RIGHT], right, top, right, bottom, FALSE);
             }
           cairo_restore (cr);
         }
@@ -3160,47 +3333,53 @@ w42_layout_draw_furniture (W42Layout *self, cairo_t *cr, int page)
         {
           const W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
 
+          double x0, y0, x1, y1;
+
           if (r->page != page || r->sides == W42_BORDER_BOX)
             continue;
-          cairo_rectangle (cr, floor (r->x) + 0.5, floor (r->y) + 0.5,
-                           floor (r->w), floor (r->h));
+          x0 = floor (r->x) + 0.5; y0 = floor (r->y) + 0.5;
+          x1 = x0 + floor (r->w); y1 = y0 + floor (r->h);
+          if (!(r->sides & W42_BORDER_TOP))    { cairo_move_to (cr, x0, y0); cairo_line_to (cr, x1, y0); }
+          if (!(r->sides & W42_BORDER_BOTTOM)) { cairo_move_to (cr, x0, y1); cairo_line_to (cr, x1, y1); }
+          if (!(r->sides & W42_BORDER_LEFT))   { cairo_move_to (cr, x0, y0); cairo_line_to (cr, x0, y1); }
+          if (!(r->sides & W42_BORDER_RIGHT))  { cairo_move_to (cr, x1, y0); cairo_line_to (cr, x1, y1); }
         }
       cairo_stroke (cr);
       cairo_restore (cr);
     }
 
-  /* Cell borders: Word's default grid, a hairline round every cell. */
+  /* Cell borders: each side in its own line, the light ones first so
+   * that where two cells meet and disagree, the heavier rule shows,
+   * which is how Word settled it. */
   if (self->cell_rects->len > 0)
     {
-      cairo_save (cr);
-      cairo_set_line_width (cr, 1.0);
-      cairo_set_source_rgb (cr, 0, 0, 0);
+      GArray *lines = g_array_new (FALSE, FALSE, sizeof (EdgeLine));
+
       for (guint i = 0; i < self->cell_rects->len; i++)
         {
           const W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
-          if (!r->borders)
+          double x0 = r->x, y0 = r->y, x1 = r->x + r->w, y1 = r->y + r->h;
+          EdgeLine el;
+
+          if (!r->borders || r->page != page)
             continue;
-
-          if (r->page != page)
-            continue;
-
-          {
-            double x0 = floor (r->x) + 0.5, y0 = floor (r->y) + 0.5;
-            double x1 = x0 + floor (r->w), y1 = y0 + floor (r->h);
-
-            if (r->sides == W42_BORDER_BOX)
-              cairo_rectangle (cr, x0, y0, floor (r->w), floor (r->h));
-            else
-              {
-                if (r->sides & W42_BORDER_TOP)    { cairo_move_to (cr, x0, y0); cairo_line_to (cr, x1, y0); }
-                if (r->sides & W42_BORDER_BOTTOM) { cairo_move_to (cr, x0, y1); cairo_line_to (cr, x1, y1); }
-                if (r->sides & W42_BORDER_LEFT)   { cairo_move_to (cr, x0, y0); cairo_line_to (cr, x0, y1); }
-                if (r->sides & W42_BORDER_RIGHT)  { cairo_move_to (cr, x1, y0); cairo_line_to (cr, x1, y1); }
-              }
-          }
+          if (r->sides & W42_BORDER_TOP)
+            { el.edge = &r->edge[W42_EDGE_TOP]; el.x0 = x0; el.y0 = y0; el.x1 = x1; el.y1 = y0; g_array_append_val (lines, el); }
+          if (r->sides & W42_BORDER_BOTTOM)
+            { el.edge = &r->edge[W42_EDGE_BOTTOM]; el.x0 = x0; el.y0 = y1; el.x1 = x1; el.y1 = y1; g_array_append_val (lines, el); }
+          if (r->sides & W42_BORDER_LEFT)
+            { el.edge = &r->edge[W42_EDGE_LEFT]; el.x0 = x0; el.y0 = y0; el.x1 = x0; el.y1 = y1; g_array_append_val (lines, el); }
+          if (r->sides & W42_BORDER_RIGHT)
+            { el.edge = &r->edge[W42_EDGE_RIGHT]; el.x0 = x1; el.y0 = y0; el.x1 = x1; el.y1 = y1; g_array_append_val (lines, el); }
         }
-      cairo_stroke (cr);
-      cairo_restore (cr);
+      g_array_sort (lines, edge_line_cmp);
+      for (guint i = 0; i < lines->len; i++)
+        {
+          const EdgeLine *el = &g_array_index (lines, EdgeLine, i);
+
+          draw_edge (cr, el->edge, el->x0, el->y0, el->x1, el->y1, TRUE);
+        }
+      g_array_free (lines, TRUE);
     }
 
   for (guint i = 0; i < self->furniture->len; i++)

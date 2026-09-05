@@ -131,6 +131,71 @@ attr (const char **names, const char **values, const char *want)
   return NULL;
 }
 
+static int attr_int (const char **names, const char **values, const char *want, int fallback);
+
+/* A w:top, w:bottom, w:insideH... border element: its val, sz and
+ * color into `edge`.  TRUE for a line, FALSE for nil or none. */
+static gboolean
+border_element (const char **an, const char **av, W42BorderEdge *edge)
+{
+  const char *val = attr (an, av, "val");
+  const char *colour = attr (an, av, "color");
+  int sz = attr_int (an, av, "sz", 4);
+
+  if (val == NULL || g_str_equal (val, "nil") || g_str_equal (val, "none"))
+    {
+      edge->style = W42_BORDER_NONE;
+      edge->width = 0;
+      edge->color = 0;
+      return FALSE;
+    }
+  edge->style = strstr (val, "ouble") != NULL || g_str_equal (val, "triple") ||
+                g_str_has_prefix (val, "thinThick") || g_str_has_prefix (val, "thickThin")
+                  ? W42_BORDER_DOUBLE
+              : g_str_has_prefix (val, "dash") || g_str_has_prefix (val, "dotDash") ||
+                g_str_has_prefix (val, "dotDotDash") ? W42_BORDER_DASHED
+              : g_str_equal (val, "dotted") ? W42_BORDER_DOTTED : W42_BORDER_SINGLE;
+  edge->width = (guint8) CLAMP (sz * 20 / 8, 5, 255);   /* eighths of a point */
+  edge->color = (colour != NULL && !g_str_equal (colour, "auto"))
+                  ? (guint32) strtoul (colour, NULL, 16) & 0xFFFFFF : 0;
+  return TRUE;
+}
+
+/* The edge a border element's tag names, by W42_EDGE_*; -1 for none. */
+static int
+border_edge_index (const char *tag)
+{
+  if (g_str_equal (tag, "top"))     return W42_EDGE_TOP;
+  if (g_str_equal (tag, "bottom"))  return W42_EDGE_BOTTOM;
+  if (g_str_equal (tag, "left") || g_str_equal (tag, "start")) return W42_EDGE_LEFT;
+  if (g_str_equal (tag, "right") || g_str_equal (tag, "end"))  return W42_EDGE_RIGHT;
+  if (g_str_equal (tag, "insideH")) return W42_EDGE_INSIDE_H;
+  if (g_str_equal (tag, "insideV")) return W42_EDGE_INSIDE_V;
+  return -1;
+}
+
+/* One border element -- w:top, w:insideH... -- for `edge`, or a nil one
+ * when the side is off.  `space` is the gap to the text in points. */
+static void
+write_border_element (GString *out, int which, const W42BorderEdge *edge, gboolean on, int space)
+{
+  static const char *names[W42_N_EDGES] = { "top", "bottom", "left", "right", "insideH", "insideV" };
+  const char *val;
+  int sz;
+
+  if (!on || edge == NULL || edge->style == W42_BORDER_NONE)
+    {
+      g_string_append_printf (out, "<w:%s w:val=\"nil\"/>", names[which]);
+      return;
+    }
+  val = edge->style == W42_BORDER_DOUBLE ? "double"
+      : edge->style == W42_BORDER_DASHED ? "dashed"
+      : edge->style == W42_BORDER_DOTTED ? "dotted" : "single";
+  sz = MAX (W42_EDGE_WIDTH (edge) * 8 / 20, 2);
+  g_string_append_printf (out, "<w:%s w:val=\"%s\" w:sz=\"%d\" w:space=\"%d\" w:color=\"%06X\"/>",
+                          names[which], val, sz, space, edge->color & 0xFFFFFF);
+}
+
 static int
 attr_int (const char **names, const char **values, const char *want, int fallback)
 {
@@ -832,6 +897,11 @@ typedef struct {
   gboolean    cell_has_fill; /* w:tcPr/w:shd: the cell's own background */
   guint32     cell_fill;
   int         cell_sides;    /* -1 for none of its own */
+  W42BorderEdge cell_edge[4];  /* the lines of the sides it names */
+  gboolean    cell_edges_set;
+  int         cell_shading;  /* w:shd val="pctNN": its grey, in percent */
+  int         cell_valign;   /* W42CellVAlign */
+  W42BorderEdge tbl_edge[W42_N_EDGES];  /* w:tblBorders, side by side */
   W42CharFmt  style_ch;      /* the paragraph style's character formatting */
   gboolean    have_style_ch;
   int         txbx_side, txbx_width;
@@ -877,6 +947,24 @@ map_style (Docx *d, const char *id)
   const char *ours = id != NULL ? g_hash_table_lookup (d->styles, id) : NULL;
 
   return ours != NULL ? ours : g_intern_static_string ("Normal");
+}
+
+/* What a cell's w:tcPr said, onto the cell mark just made. */
+static void
+docx_apply_cell_props (Docx *d)
+{
+  if (d->b.cell_pos == (gsize) -1)
+    return;
+  if (d->cell_sides >= 0)
+    w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
+  if (d->cell_edges_set)
+    w42_pt_cell_set_edges_at (d->pt, d->b.cell_pos, d->cell_edge);
+  if (d->cell_has_fill)
+    w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
+  else if (d->cell_shading > 0)
+    w42_pt_cell_set_shading_at (d->pt, d->b.cell_pos, d->cell_shading);
+  if (d->cell_valign != W42_CELL_VALIGN_TOP)
+    w42_pt_cell_set_valign_at (d->pt, d->b.cell_pos, (W42CellVAlign) d->cell_valign);
 }
 
 static void
@@ -970,10 +1058,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         {
           w42_builder_begin_cell (&d->b, d->cell_span);
           d->cell_pending = FALSE;
-          if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
-          if (d->cell_has_fill && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
+          docx_apply_cell_props (d);
           if (d->cell_vmerge != 0 && d->b.cell_pos != (gsize) -1)
             {
               /* The rows a merge covers are counted once the table is
@@ -1196,19 +1281,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (d->in_pbdr && (g_str_equal (tag, "top") || g_str_equal (tag, "bottom") ||
                               g_str_equal (tag, "left") || g_str_equal (tag, "right")))
         {
-          const char *val = attr (an, av, "val");
-          int sz = attr_int (an, av, "sz", 4);
+          int e = border_edge_index (tag);
+          W42BorderEdge edge;
 
-          if (val != NULL && !g_str_equal (val, "nil") && !g_str_equal (val, "none"))
+          if (e >= 0 && e < 4 && border_element (an, av, &edge))
             {
-              const char *colour = attr (an, av, "color");
-
-              pa->border |= g_str_equal (tag, "top") ? W42_BORDER_TOP
-                          : g_str_equal (tag, "bottom") ? W42_BORDER_BOTTOM
-                          : g_str_equal (tag, "left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
-              pa->border_width = (guint8) CLAMP (sz * 20 / 8, 5, 120);   /* eighths of a point */
-              if (colour != NULL && !g_str_equal (colour, "auto"))
-                pa->border_color = (guint32) strtoul (colour, NULL, 16) & 0xFFFFFF;
+              pa->border |= (guint8) (1 << e);
+              pa->edge[e] = edge;
             }
         }
       else if (g_str_equal (tag, "shd"))
@@ -1552,21 +1631,27 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           g_array_set_size (d->grid, 0);
           d->table_started = FALSE;
           d->tbl_borders = FALSE;
+          memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
     }
   else if (g_str_equal (tag, "tblBorders") && d->depth_tbl == 1)
-    d->in_tblborders = TRUE;
-  else if (d->in_tblborders && (g_str_equal (tag, "top") || g_str_equal (tag, "bottom") ||
-                                g_str_equal (tag, "left") || g_str_equal (tag, "right") ||
-                                g_str_equal (tag, "start") || g_str_equal (tag, "end") ||
-                                g_str_equal (tag, "insideH") || g_str_equal (tag, "insideV")))
     {
-      const char *val = attr (an, av, "val");
-
+      /* The sides it does not name are the table style's: the grid's
+       * hairline, or nothing. */
+      d->in_tblborders = TRUE;
+      for (int e = 0; e < W42_N_EDGES; e++)
+        {
+          d->tbl_edge[e].style = d->tbl_borders ? W42_BORDER_SINGLE : W42_BORDER_NONE;
+          d->tbl_edge[e].width = 0;
+          d->tbl_edge[e].color = 0;
+        }
+    }
+  else if (d->in_tblborders && border_edge_index (tag) >= 0)
+    {
       /* A table is ruled only where it says so.  Word's own default, and
        * what a table carrying no w:tblBorders at all means, is no rules;
        * the grid everyone recognises comes from the Table Grid style. */
-      if (val != NULL && !g_str_equal (val, "nil") && !g_str_equal (val, "none"))
+      if (border_element (an, av, &d->tbl_edge[border_edge_index (tag)]))
         d->tbl_borders = TRUE;
     }
   else if (g_str_equal (tag, "tblStyle") && d->depth_tbl == 1)
@@ -1574,7 +1659,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       const char *val = attr (an, av, "val");
 
       if (val != NULL && strstr (val, "Grid") != NULL)
-        d->tbl_borders = TRUE;
+        {
+          d->tbl_borders = TRUE;
+          memset (d->tbl_edge, 0, sizeof d->tbl_edge);
+        }
     }
   else if (g_str_equal (tag, "gridCol") && d->depth_tbl == 1)
     {
@@ -1592,6 +1680,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
                                    n > 0 ? (const int *) d->grid->data : NULL);
           d->table_started = TRUE;
           w42_pt_table_set_borders (d->pt, d->b.table, d->tbl_borders);
+          for (int e = 0; e < W42_N_EDGES; e++)
+            w42_pt_table_set_edge (d->pt, d->b.table, e, &d->tbl_edge[e]);
         }
     }
   else if (g_str_equal (tag, "trHeight") && d->depth_tbl == 1 && d->table_started)
@@ -1618,6 +1708,18 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->cell_vmerge = 0;
       d->cell_fill = 0;
       d->cell_has_fill = FALSE;
+      memset (d->cell_edge, 0, sizeof d->cell_edge);
+      d->cell_edges_set = FALSE;
+      d->cell_shading = 0;
+      d->cell_valign = W42_CELL_VALIGN_TOP;
+    }
+  else if (g_str_equal (tag, "vAlign") && d->depth_tbl == 1 && d->cell_pending)
+    {
+      const char *val = attr (an, av, "val");
+
+      d->cell_valign = val == NULL ? W42_CELL_VALIGN_TOP
+                     : g_str_equal (val, "center") ? W42_CELL_VALIGN_CENTER
+                     : g_str_equal (val, "bottom") ? W42_CELL_VALIGN_BOTTOM : W42_CELL_VALIGN_TOP;
     }
   else if (g_str_equal (tag, "tcBorders") && d->depth_tbl == 1 && d->cell_pending)
     {
@@ -1630,21 +1732,30 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
                                g_str_equal (tag, "left") || g_str_equal (tag, "right") ||
                                g_str_equal (tag, "start") || g_str_equal (tag, "end")))
     {
-      const char *val = attr (an, av, "val");
-      int bit = g_str_equal (tag, "top") ? W42_BORDER_TOP : g_str_equal (tag, "bottom") ? W42_BORDER_BOTTOM
-              : (g_str_equal (tag, "left") || g_str_equal (tag, "start")) ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
+      int e = border_edge_index (tag);
+      W42BorderEdge edge;
 
-      if (val != NULL && (g_str_equal (val, "nil") || g_str_equal (val, "none")))
-        d->cell_sides &= ~bit;
+      if (border_element (an, av, &edge))
+        {
+          d->cell_sides |= 1 << e;
+          d->cell_edge[e] = edge;
+          d->cell_edges_set = TRUE;
+        }
       else
-        d->cell_sides |= bit;
+        d->cell_sides &= ~(1 << e);
     }
   else if (g_str_equal (tag, "shd") && d->depth_tbl == 1 && d->cell_pending &&
            !d->in_ppr && !d->in_rpr)
     {
       const char *fill = attr (an, av, "fill");
+      const char *val = attr (an, av, "val");
 
-      if (fill != NULL && !g_str_equal (fill, "auto"))
+      /* A pattern of black over the fill, "pct25", is a grey when the
+       * fill is white or none; a fill is a colour. */
+      if (val != NULL && g_str_has_prefix (val, "pct") &&
+          (fill == NULL || g_str_equal (fill, "auto") || g_ascii_strcasecmp (fill, "FFFFFF") == 0))
+        d->cell_shading = CLAMP (atoi (val + 3), 0, 100);
+      else if (fill != NULL && !g_str_equal (fill, "auto"))
         {
           d->cell_fill = (guint32) strtoul (fill, NULL, 16) & 0xFFFFFF;
           d->cell_has_fill = TRUE;
@@ -1840,10 +1951,7 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
         {
           w42_builder_begin_cell (&d->b, d->cell_span);
           d->cell_pending = FALSE;
-          if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
-          if (d->cell_has_fill && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
+          docx_apply_cell_props (d);
         }
       if (d->drop_pending > 0)
         {
@@ -1910,10 +2018,7 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
         {
           w42_builder_begin_cell (&d->b, d->cell_span);
           d->cell_pending = FALSE;
-          if (d->cell_sides >= 0 && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_borders_at (d->pt, d->b.cell_pos, d->cell_sides);
-          if (d->cell_has_fill && d->b.cell_pos != (gsize) -1)
-            w42_pt_cell_set_fill_at (d->pt, d->b.cell_pos, TRUE, d->cell_fill);
+          docx_apply_cell_props (d);
         }
       w42_builder_end_cell (&d->b);
     }
@@ -2569,15 +2674,13 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
   if (pa->rtl) g_string_append (out, "<w:bidi/>");
   if (pa->border != 0)
     {
-      int sz = MAX ((pa->border_width > 0 ? pa->border_width : 15) * 8 / 20, 2);
-      static const char *sides[4] = { "top", "left", "bottom", "right" };
-      static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_LEFT, W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
+      /* Word wants them in this order. */
+      static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
 
       g_string_append (out, "<w:pBdr>");
       for (int i = 0; i < 4; i++)
-        if (pa->border & bits[i])
-          g_string_append_printf (out, "<w:%s w:val=\"single\" w:sz=\"%d\" w:space=\"1\" w:color=\"%06X\"/>",
-                                  sides[i], sz, pa->border_color & 0xFFFFFF);
+        if (pa->border & (1 << order[i]))
+          write_border_element (out, order[i], &pa->edge[order[i]], TRUE, 1);
       g_string_append (out, "</w:pBdr>");
     }
   if (pa->has_shading_color)
@@ -3040,16 +3143,15 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
               const W42TableProps *props = w42_pt_table_props (pt, block->table);
 
               {
-                const char *val = props != NULL && !props->borders ? "nil" : "single";
+                static const int order[W42_N_EDGES] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
+                                                        W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+                gboolean ruled = props == NULL || props->borders;
 
-                g_string_append_printf (doc, "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>"
-                  "<w:top w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>"
-                  "<w:left w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>"
-                  "<w:bottom w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>"
-                  "<w:right w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>"
-                  "<w:insideH w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>"
-                  "<w:insideV w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>"
-                  "</w:tblBorders></w:tblPr><w:tblGrid>", val, val, val, val, val, val);
+                g_string_append (doc, "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>");
+                for (int e = 0; e < W42_N_EDGES; e++)
+                  write_border_element (doc, order[e], props != NULL ? &props->edge[order[e]] : NULL,
+                                        ruled, 0);
+                g_string_append (doc, "</w:tblBorders></w:tblPr><w:tblGrid>");
               }
               if (props != NULL)
                 for (int c = 0; c < props->n_cols; c++)
@@ -3117,18 +3219,32 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
 
                 if (cpa->border & W42_BORDER_CELL_SET)
                   {
-                    static const char *names[4] = { "top", "left", "bottom", "right" };
-                    static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_LEFT, W42_BORDER_BOTTOM, W42_BORDER_RIGHT };
+                    static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
 
+                    /* A side that is on but has no line of its own is the
+                     * table's, which is what leaving it out means. */
                     g_string_append (doc, "<w:tcBorders>");
                     for (int k = 0; k < 4; k++)
-                      g_string_append_printf (doc, "<w:%s w:val=\"%s\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>",
-                                              names[k], (cpa->border & bits[k]) ? "single" : "nil");
+                      {
+                        const W42BorderEdge *edge = &cpa->edge[order[k]];
+                        gboolean on = (cpa->border & (1 << order[k])) != 0;
+
+                        if (on && edge->width == 0 && edge->style == 0 && edge->color == 0)
+                          continue;
+                        write_border_element (doc, order[k], edge, on, 0);
+                      }
                     g_string_append (doc, "</w:tcBorders>");
                   }
                 if (cpa->has_shading_color)
                   g_string_append_printf (doc, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"%06X\"/>",
                                           cpa->shading_color & 0xFFFFFF);
+                else if (cpa->shading > 0)
+                  g_string_append_printf (doc, "<w:shd w:val=\"pct%d\" w:color=\"auto\" w:fill=\"auto\"/>",
+                                          (int) cpa->shading);
+                if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
+                  g_string_append (doc, "<w:vAlign w:val=\"center\"/>");
+                else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+                  g_string_append (doc, "<w:vAlign w:val=\"bottom\"/>");
               }
               g_string_append (doc, "</w:tcPr>");
             }

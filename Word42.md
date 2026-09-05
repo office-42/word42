@@ -13,7 +13,7 @@ internals worth doing regardless.
 
 See docs/PARITY.md for the full comparison with AbiWord and Word.
 
-- Table borders per cell side; text boxes placed freely on the page.
+- Text boxes placed freely on the page.
 - Drop caps, text boxes and text frames (pictures do wrap).
 - Styles that follow their base when the base changes (a new style is a
   copy of its base today).

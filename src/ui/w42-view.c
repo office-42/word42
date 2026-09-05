@@ -2246,19 +2246,20 @@ w42_view_cell_set_shading (W42View *self, int percent)
   if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
     return;
 
-  /* The cell runs from its first paragraph to the next cell or the
-   * table's end. */
-  start = w42_pt_cell_start (pt, table, row, col);
-  if (start == (gsize) -1)
+  /* The grey is the cell's own, on its mark, so that it fills the whole
+   * cell and not just the lines of text; the paragraphs' shading, if
+   * any, is left as it is. */
+  (void) start; (void) end; (void) t2; (void) r2; (void) c2;
+  if (w42_pt_cell_get_fmt (pt, table, row, col) == NULL)
     return;
-  end = start;
-  while (end < w42_pt_length (pt) && w42_pt_cell_at (pt, end, &t2, &r2, &c2) &&
-         t2 == table && r2 == row && c2 == col)
-    end++;
-
-  memset (&want, 0, sizeof want);
+  want = *w42_pt_cell_get_fmt (pt, table, row, col);
   want.shading = (guint8) CLAMP (percent, 0, 100);
-  w42_pt_apply_para_fmt (pt, start, end > start ? end - start - 1 : 0, W42_PARA_SHADING, &want);
+  if (want.shading > 0)
+    {
+      want.has_shading_color = 0;
+      want.shading_color = 0;
+    }
+  w42_pt_cell_set_fmt (pt, table, row, col, &want);
   view_edited (self);
 }
 
@@ -5198,6 +5199,70 @@ w42_view_cell_get_fill (W42View *self, guint32 *rgb)
   if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
     return FALSE;
   return w42_pt_cell_get_fill (pt, table, row, col, rgb);
+}
+
+gboolean
+w42_view_cell_get_fmt (W42View *self, W42ParaFmt *out)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42ParaFmt *pa;
+
+  g_return_val_if_fail (W42_IS_VIEW (self) && out != NULL, FALSE);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return FALSE;
+  pa = w42_pt_cell_get_fmt (pt, table, row, col);
+  if (pa == NULL)
+    return FALSE;
+  *out = *pa;
+  return TRUE;
+}
+
+void
+w42_view_cell_set_fmt (W42View *self, const W42ParaFmt *pa)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+
+  g_return_if_fail (W42_IS_VIEW (self) && pa != NULL);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  w42_pt_cell_set_fmt (pt, table, row, col, pa);
+  view_edited (self);
+}
+
+gboolean
+w42_view_table_get_edges (W42View *self, W42BorderEdge *out)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42TableProps *props;
+
+  g_return_val_if_fail (W42_IS_VIEW (self) && out != NULL, FALSE);
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return FALSE;
+  props = w42_pt_table_props (pt, table);
+  if (props == NULL)
+    return FALSE;
+  memcpy (out, props->edge, sizeof props->edge);
+  return TRUE;
+}
+
+void
+w42_view_table_set_edges (W42View *self, const W42BorderEdge *outer, const W42BorderEdge *inside)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  w42_pt_table_set_edges (pt, table, outer, inside);
+  view_edited (self);
 }
 
 void

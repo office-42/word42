@@ -304,9 +304,17 @@ ours.
 
 ### Format ▸ Borders and Shading
 
-A line above, below, to the left or right of a paragraph, or round it, in
-three weights, and a grey shading behind it. Everything that draws the
-document draws them, so they print and export as they appear.
+A line above, below, to the left or right of a paragraph, or round it:
+single, double, dashed or dotted, in any of Word XP's nine weights from a
+quarter point to six, in any of the sixteen colours, and a grey shading or
+a colour behind it. Everything that draws the document draws them, so they
+print and export as they appear.
+
+In a table the dialog can apply to the paragraph, to the cell -- its
+sides, their line, its background -- or to the whole table, where the
+checked sides are the table's outside, "Inside" rules between its cells,
+and the line is drawn round it all. Where two cells disagree about the
+rule between them, the heavier line wins, as in Word.
 
 ### Bullets and numbering
 

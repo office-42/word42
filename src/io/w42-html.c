@@ -122,14 +122,18 @@ write_para_style (GString *out, const W42ParaFmt *pa)
     css_num (css, "line-height", pa->line_spacing / 20.0, "pt");
   if (pa->border != 0)
     {
-      double w = (pa->border_width > 0 ? pa->border_width : 15) / 20.0;
-      char unit[32];
+      static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
 
-      g_snprintf (unit, sizeof unit, "pt solid #%06x", pa->border_color & 0xFFFFFF);
-      if (pa->border & W42_BORDER_TOP)    css_num (css, "border-top", w, unit);
-      if (pa->border & W42_BORDER_BOTTOM) css_num (css, "border-bottom", w, unit);
-      if (pa->border & W42_BORDER_LEFT)   css_num (css, "border-left", w, unit);
-      if (pa->border & W42_BORDER_RIGHT)  css_num (css, "border-right", w, unit);
+      for (int i = 0; i < 4; i++)
+        if (pa->border & (1 << i))
+          {
+            const W42BorderEdge *edge = &pa->edge[i];
+            char unit[32];
+
+            g_snprintf (unit, sizeof unit, "pt %s #%06x",
+                        w42_border_style_css (edge->style), edge->color & 0xFFFFFF);
+            css_num (css, names[i], W42_EDGE_WIDTH (edge) / 20.0, unit);
+          }
       g_string_append (css, "padding:2pt;");
     }
   if (pa->has_shading_color)
@@ -474,30 +478,93 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
             ((const W42Block *) g_ptr_array_index (blocks, b - 1))->col != block->col;
           gboolean cell_end = next == NULL || next->table != block->table ||
             next->row != block->row || next->col != block->col;
+          gboolean cell_covered = w42_ap_table_get (aps, block->cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
 
-          if (cell_start)
+          if (cell_start && cell_covered)
+            {
+              /* A cell a merge from above swallowed: the merging cell's
+               * rowspan stands for it, so it is not written. */
+            }
+          else if (cell_start)
             {
               const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
+              const W42TableProps *tp = w42_pt_table_props (pt, block->table);
               GString *css = g_string_new (NULL);
+              static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
+              int sides = (cpa->border & W42_BORDER_CELL_SET) ? (cpa->border & W42_BORDER_BOX)
+                        : (tp == NULL || tp->borders) ? W42_BORDER_BOX : 0;
+              gboolean first_row = block->row == 0, last_row = TRUE;
+              int n_cols = tp != NULL ? tp->n_cols : 1;
 
-              if (cpa->border & W42_BORDER_CELL_SET)
+              for (guint k = b + 1; k < blocks->len; k++)
                 {
-                  static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
-                  static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
+                  const W42Block *rb = g_ptr_array_index (blocks, k);
 
-                  for (int k = 0; k < 4; k++)
-                    g_string_append_printf (css, "%s:%s;", names[k],
-                                            (cpa->border & bits[k]) ? "1px solid #000" : "none");
+                  if (rb->table != block->table)
+                    break;
+                  if (rb->row > block->row)
+                    {
+                      last_row = FALSE;
+                      break;
+                    }
+                }
+              /* Each side's line: the cell's own, else the table's --
+               * its outer line round the outside, its inside rule
+               * between the cells. */
+              for (int k = 0; k < 4; k++)
+                {
+                  gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                                   (k == W42_EDGE_LEFT && block->col == 0) ||
+                                   (k == W42_EDGE_RIGHT && block->col + block->span >= n_cols);
+                  const W42BorderEdge *e = &cpa->edge[k];
+                  W42BorderEdge edge;
+                  char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+                  if ((cpa->border & W42_BORDER_CELL_SET) && (e->width != 0 || e->style != 0 || e->color != 0))
+                    edge = *e;
+                  else if (tp != NULL)
+                    edge = tp->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
+                  else
+                    edge = (W42BorderEdge) { 0, 0, 0 };
+                  if (!(sides & (1 << k)) || edge.style == W42_BORDER_NONE)
+                    g_string_append_printf (css, "%s:none;", names[k]);
+                  else
+                    g_string_append_printf (css, "%s:%spt %s #%06x;", names[k],
+                                            g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edge) / 20.0),
+                                            w42_border_style_css (edge.style), edge.color & 0xFFFFFF);
                 }
               if (cpa->has_shading_color)
                 g_string_append_printf (css, "background:#%06x;", cpa->shading_color & 0xFFFFFF);
+              else if (cpa->shading > 0)
+                {
+                  int grey = 255 - (int) cpa->shading * 255 / 100;
+
+                  g_string_append_printf (css, "background:rgb(%d,%d,%d);", grey, grey, grey);
+                }
+              if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
+                g_string_append (css, "vertical-align:middle;");
+              else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+                g_string_append (css, "vertical-align:bottom;");
               g_string_append (out, "<td");
               if (block->span > 1)
                 g_string_append_printf (out, " colspan=\"%d\"", block->span);
+              if (cpa->cell_vspan > 1 && cpa->cell_vspan != W42_CELL_COVERED)
+                g_string_append_printf (out, " rowspan=\"%d\"", (int) cpa->cell_vspan);
               if (css->len > 0)
                 g_string_append_printf (out, " style=\"%s\"", css->str);
               g_string_append (out, ">");
               g_string_free (css, TRUE);
+            }
+          if (cell_covered)
+            {
+              prev_pa = pa;
+              if (cell_end && (next == NULL || next->table != block->table))
+                {
+                  g_string_append (out, "</tr>\n</table>\n");
+                  table_open = -1;
+                  row_open = -1;
+                }
+              continue;
             }
           g_string_append (out, "<p");
           if (pa->rtl)

@@ -103,7 +103,9 @@ typedef struct {
   gboolean borders;   /* the table is ruled */
   guint8 sides;       /* W42_BORDER_* bits: which of its sides are drawn */
   guint8 has_fill;    /* the cell has a background colour of its own */
+  guint8 shading;     /* else its grey, in percent of black; 0 is none */
   guint32 fill;       /* 0x00RRGGBB, when it has */
+  W42BorderEdge edge[4];  /* the line of each drawn side, by W42_EDGE_* */
 } W42CellRect;
 
 const GArray *w42_layout_cell_rects (W42Layout *self);  /* of W42CellRect */

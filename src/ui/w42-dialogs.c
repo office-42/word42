@@ -2138,6 +2138,9 @@ typedef struct {
   GtkWidget *sides[4];     /* top, bottom, left, right */
   GtkWidget *width;
   GtkWidget *line_colour;
+  GtkWidget *style;
+  GtkWidget *inside;       /* a table's rules between its cells */
+  GtkWidget *apply_to;     /* NULL outside a table */
   GtkWidget *shading;
   GtkWidget *fill;
 } BordersBox;
@@ -2171,8 +2174,26 @@ palette_index (guint32 rgb)
   return 0;
 }
 
-static const char * const BORDER_WIDTHS[] = { "\302\276 pt", "1\302\275 pt", "2\302\274 pt", NULL };
-static const int BORDER_WIDTH_TWIPS[] = { 15, 30, 45 };
+/* Word XP's line widths, from a quarter point to six. */
+static const char * const BORDER_WIDTHS[] = {
+  "\302\274 pt", "\302\275 pt", "\302\276 pt", "1 pt", "1\302\275 pt", "2\302\274 pt",
+  "3 pt", "4\302\275 pt", "6 pt", NULL
+};
+static const int BORDER_WIDTH_TWIPS[] = { 5, 10, 15, 20, 30, 45, 60, 90, 120 };
+static const char * const BORDER_STYLES[] = { "Single", "Double", "Dashed", "Dotted", NULL };
+static const char * const APPLY_TO[] = { "Paragraph", "Cell", "Table", NULL };
+
+/* The entry of the width list nearest `twips`. */
+static guint
+width_index_for (int twips)
+{
+  guint best = 0;
+
+  for (guint i = 0; i < G_N_ELEMENTS (BORDER_WIDTH_TWIPS); i++)
+    if (ABS (BORDER_WIDTH_TWIPS[i] - twips) < ABS (BORDER_WIDTH_TWIPS[best] - twips))
+      best = i;
+  return best;
+}
 static const char * const SHADINGS[] = {
   "None", "10%", "20%", "30%", "40%", "50%", "75%", "Solid (100%)", NULL
 };
@@ -2192,12 +2213,18 @@ on_borders_ok (GtkButton *button, gpointer data)
 
   (void) button;
 
+  guint st = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->style));
+  guint target = box->apply_to != NULL ? gtk_drop_down_get_selected (GTK_DROP_DOWN (box->apply_to)) : 0;
+  W42BorderEdge line;
+
   memset (&want, 0, sizeof want);
   for (int i = 0; i < 4; i++)
     if (gtk_check_button_get_active (GTK_CHECK_BUTTON (box->sides[i])))
       want.border |= bits[i];
-  want.border_width = (guint8) BORDER_WIDTH_TWIPS[MIN (w, 2)];
-  want.border_color = PALETTE_VALUES[MIN (lc, G_N_ELEMENTS (PALETTE_VALUES) - 1)];
+  line.width = (guint8) BORDER_WIDTH_TWIPS[MIN (w, G_N_ELEMENTS (BORDER_WIDTH_TWIPS) - 1)];
+  line.color = PALETTE_VALUES[MIN (lc, G_N_ELEMENTS (PALETTE_VALUES) - 1)];
+  line.style = (guint8) MIN (st, W42_BORDER_DOTTED);
+  w42_para_fmt_set_edges (&want, line.width, line.color, (W42BorderStyle) line.style);
   /* A colour behind the paragraph is a colour; without one it is a
    * percentage of black, as Word 6 had it. */
   if (bg > 0)
@@ -2208,8 +2235,109 @@ on_borders_ok (GtkButton *button, gpointer data)
   else
     want.shading = (guint8) SHADING_VALUES[MIN (sh, 7)];
 
-  w42_view_apply_para_fmt (box->view, W42_PARA_BORDER | W42_PARA_SHADING, &want);
+  if (target == 1)
+    {
+      /* The cell: its mark takes the sides, their line and the shading. */
+      W42ParaFmt cell;
+
+      if (w42_view_cell_get_fmt (box->view, &cell))
+        {
+          cell.border = (guint8) (W42_BORDER_CELL_SET | want.border);
+          memcpy (cell.edge, want.edge, sizeof cell.edge);
+          cell.has_shading_color = want.has_shading_color;
+          cell.shading_color = want.shading_color;
+          cell.shading = want.shading;
+          w42_view_cell_set_fmt (box->view, &cell);
+        }
+    }
+  else if (target == 2)
+    {
+      /* The table: the checked sides are its outside, the line inside
+       * is the rule between its cells. */
+      W42BorderEdge outer[4], inside;
+      gboolean any = want.border != 0;
+
+      for (int i = 0; i < 4; i++)
+        {
+          outer[i] = line;
+          if (!(want.border & (1 << i)))
+            outer[i].style = W42_BORDER_NONE;
+        }
+      inside = line;
+      if (!gtk_check_button_get_active (GTK_CHECK_BUTTON (box->inside)))
+        inside.style = W42_BORDER_NONE;
+      else
+        any = TRUE;
+      w42_view_table_set_borders (box->view, any);
+      w42_view_table_set_edges (box->view, outer, &inside);
+      {
+        /* The table's own rules, so the cells no longer say otherwise. */
+        W42ParaFmt cell;
+
+        if (w42_view_cell_get_fmt (box->view, &cell))
+          {
+            cell.border = 0;
+            memset (cell.edge, 0, sizeof cell.edge);
+            w42_view_cell_set_fmt (box->view, &cell);
+          }
+      }
+      w42_view_apply_para_fmt (box->view, W42_PARA_SHADING, &want);
+    }
+  else
+    w42_view_apply_para_fmt (box->view, W42_PARA_BORDER | W42_PARA_SHADING, &want);
   gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+/* The table's four sides and its inside rule, as set from the table's
+ * edges when the dialog is asked to apply to the table. */
+static void
+on_borders_apply_to (GObject *dropdown, GParamSpec *pspec, gpointer data)
+{
+  BordersBox *box = data;
+  guint target = gtk_drop_down_get_selected (GTK_DROP_DOWN (dropdown));
+  W42ParaFmt fmt;
+  W42BorderEdge edges[W42_N_EDGES];
+  static const guint8 bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
+  const W42BorderEdge *lead = NULL;
+
+  (void) pspec;
+  if (target == 0)
+    {
+      w42_view_get_para_fmt (box->view, &fmt);
+      for (int i = 0; i < 4; i++)
+        gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]), (fmt.border & bits[i]) != 0);
+      lead = &fmt.edge[0];
+    }
+  else if (target == 1)
+    {
+      int sides = w42_view_cell_get_borders (box->view);
+
+      if (w42_view_cell_get_fmt (box->view, &fmt))
+        {
+          for (int i = 0; i < 4; i++)
+            gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]), (sides & bits[i]) != 0);
+          lead = &fmt.edge[0];
+        }
+    }
+  else if (w42_view_table_get_edges (box->view, edges))
+    {
+      gboolean ruled = w42_view_table_get_borders (box->view);
+
+      for (int i = 0; i < 4; i++)
+        gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]),
+                                     ruled && edges[i].style != W42_BORDER_NONE);
+      gtk_check_button_set_active (GTK_CHECK_BUTTON (box->inside),
+                                   ruled && edges[W42_EDGE_INSIDE_H].style != W42_BORDER_NONE);
+      lead = &edges[0];
+    }
+  gtk_widget_set_sensitive (box->inside, target == 2);
+  if (lead != NULL)
+    {
+      gtk_drop_down_set_selected (GTK_DROP_DOWN (box->width), width_index_for (W42_EDGE_WIDTH (lead)));
+      gtk_drop_down_set_selected (GTK_DROP_DOWN (box->line_colour), palette_index (lead->color));
+      gtk_drop_down_set_selected (GTK_DROP_DOWN (box->style),
+                                  lead->style <= W42_BORDER_DOTTED ? lead->style : 0);
+    }
 }
 
 static void
@@ -2240,7 +2368,7 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (BordersBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Paragraph Borders and Shading", &content, view);
+  box->window = dialog_shell (parent, "Borders and Shading", &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
   w42_view_get_para_fmt (view, &now);
 
@@ -2262,13 +2390,24 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
                                    (now.border & bits[i]) != 0);
       gtk_grid_attach (GTK_GRID (grid), box->sides[i], i % 2, 1 + i / 2, 1, 1);
     }
+  box->inside = gtk_check_button_new_with_mnemonic ("_Inside (between the cells)");
+  gtk_widget_set_sensitive (box->inside, FALSE);
+  gtk_grid_attach (GTK_GRID (grid), box->inside, 0, 3, 2, 1);
 
-  for (guint i = 0; i < G_N_ELEMENTS (BORDER_WIDTH_TWIPS); i++)
-    if (BORDER_WIDTH_TWIPS[i] == now.border_width)
-      width_index = i;
-  box->width = choice_row (grid, 3, 0, "Line _Width:", BORDER_WIDTHS, width_index);
-  box->line_colour = choice_row (grid, 4, 0, "Line _Color:", PALETTE_NAMES,
-                                 palette_index (now.border_color));
+  width_index = width_index_for (w42_para_fmt_border_width (&now));
+  box->style = choice_row (grid, 4, 0, "St_yle:", BORDER_STYLES,
+                           MIN (w42_para_fmt_border_style (&now), W42_BORDER_DOTTED));
+  box->width = choice_row (grid, 5, 0, "Line _Width:", BORDER_WIDTHS, width_index);
+  box->line_colour = choice_row (grid, 6, 0, "Line _Color:", PALETTE_NAMES,
+                                 palette_index (w42_para_fmt_border_color (&now)));
+  if (w42_view_in_table (view))
+    {
+      /* In a table, Word XP's dialog could rule the cell or the whole
+       * table as well as the paragraph. */
+      box->apply_to = choice_row (grid, 7, 0, "_Apply to:", APPLY_TO, 1);
+      g_signal_connect (box->apply_to, "notify::selected", G_CALLBACK (on_borders_apply_to), box);
+      on_borders_apply_to (G_OBJECT (box->apply_to), NULL, box);
+    }
 
   grid = group (content, "Shading");
   for (guint i = 0; i < G_N_ELEMENTS (SHADING_VALUES); i++)
@@ -3574,7 +3713,13 @@ typedef struct {
   GtkWidget *fill;
   GtkWidget *side[4];      /* top, bottom, left, right */
   int        sides_before;
+  GtkWidget *style, *width, *colour;   /* the cell's sides' line */
+  GtkWidget *valign;
+  W42ParaFmt cell_before;
+  gboolean   have_cell;
 } TablePropsBox;
+
+static const char * const VALIGN_NAMES[] = { "Top", "Center", "Bottom", NULL };
 
 /* An inches (or cm) spinner's value in twips. */
 static int
@@ -3619,11 +3764,28 @@ on_table_props_ok (GtkButton *button, gpointer data)
   {
     static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
     int sides = 0;
+    guint st = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->style));
+    guint w = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->width));
+    guint lc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->colour));
+    guint va = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->valign));
+    W42ParaFmt cell;
 
     for (int i = 0; i < 4; i++)
       if (gtk_check_button_get_active (GTK_CHECK_BUTTON (box->side[i])))
         sides |= bits[i];
-    if (sides != box->sides_before)
+    if (box->have_cell && w42_view_cell_get_fmt (box->view, &cell))
+      {
+        W42ParaFmt want = cell;
+
+        want.border = (guint8) (W42_BORDER_CELL_SET | sides);
+        w42_para_fmt_set_edges (&want, BORDER_WIDTH_TWIPS[MIN (w, G_N_ELEMENTS (BORDER_WIDTH_TWIPS) - 1)],
+                                PALETTE_VALUES[MIN (lc, G_N_ELEMENTS (PALETTE_VALUES) - 1)],
+                                (W42BorderStyle) MIN (st, W42_BORDER_DOTTED));
+        want.cell_valign = (guint8) MIN (va, W42_CELL_VALIGN_BOTTOM);
+        if (memcmp (&want, &cell, sizeof want) != 0)
+          w42_view_cell_set_fmt (box->view, &want);
+      }
+    else if (sides != box->sides_before)
       w42_view_cell_set_borders (box->view, sides);
   }
   gtk_window_destroy (GTK_WINDOW (box->window));
@@ -3690,6 +3852,25 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
         gtk_check_button_set_active (GTK_CHECK_BUTTON (box->side[i]), (box->sides_before & bits[i]) != 0);
         gtk_grid_attach (GTK_GRID (grid), box->side[i], 1 + i % 2, 2 + i / 2, 1, 1);
       }
+  }
+  {
+    /* The line the cell's sides are drawn with: the cell's own, or the
+     * table's where the cell has none. */
+    W42BorderEdge edges[W42_N_EDGES];
+    const W42BorderEdge *lead;
+
+    box->have_cell = w42_view_cell_get_fmt (view, &box->cell_before);
+    lead = &box->cell_before.edge[0];
+    if ((box->cell_before.edge[0].width == 0 && box->cell_before.edge[0].style == 0) &&
+        w42_view_table_get_edges (view, edges))
+      lead = &edges[W42_EDGE_TOP];
+    box->style = choice_row (grid, 4, 0, "Line st_yle:", BORDER_STYLES,
+                             lead->style <= W42_BORDER_DOTTED ? lead->style : 0);
+    box->width = choice_row (grid, 5, 0, "Line _width:", BORDER_WIDTHS,
+                             width_index_for (W42_EDGE_WIDTH (lead)));
+    box->colour = choice_row (grid, 6, 0, "Line _color:", PALETTE_NAMES, palette_index (lead->color));
+    box->valign = choice_row (grid, 7, 0, "_Vertical alignment:", VALIGN_NAMES,
+                              MIN (box->cell_before.cell_valign, W42_CELL_VALIGN_BOTTOM));
   }
 
   button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);

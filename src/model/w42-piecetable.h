@@ -64,6 +64,9 @@ typedef struct {
   GArray *row_heights;  /* int twips, the least height of each row; may be
                          * shorter than the table, and 0 means as tall as
                          * the text */
+  W42BorderEdge edge[W42_N_EDGES];  /* the lines of a ruled table's outer
+                         * sides and inside rules, by W42_EDGE_*; all
+                         * zero is the hairline grid */
 } W42TableProps;
 
 typedef struct _W42PieceTable W42PieceTable;
@@ -503,6 +506,24 @@ void w42_pt_cell_set_borders_at (W42PieceTable *pt, gsize cell_pos, int sides);
 /* The cell's own background colour, 0x00RRGGBB; `has` off leaves it clear. */
 void w42_pt_cell_set_fill_at    (W42PieceTable *pt, gsize cell_pos,
                                  gboolean has, guint32 rgb);
+/* The lines of the cell's four sides, by W42_EDGE_*; its grey shading in
+ * percent; where its text sits in a taller row.  For importers. */
+void w42_pt_cell_set_edges_at   (W42PieceTable *pt, gsize cell_pos,
+                                 const W42BorderEdge *edges);
+void w42_pt_cell_set_shading_at (W42PieceTable *pt, gsize cell_pos, int percent);
+void w42_pt_cell_set_valign_at  (W42PieceTable *pt, gsize cell_pos, W42CellVAlign valign);
+/* Everything a cell's mark carries, read and replaced whole.  Setting it
+ * is one undo step. */
+const W42ParaFmt *w42_pt_cell_get_fmt (W42PieceTable *pt, int table, int row, int col);
+void w42_pt_cell_set_fmt (W42PieceTable *pt, int table, int row, int col,
+                          const W42ParaFmt *pa);
+/* The lines of a ruled table's edges: its four outer sides and the two
+ * kinds of inside rule, by W42_EDGE_*.  A cell with sides of its own
+ * uses its own lines instead.  One undo step each. */
+void w42_pt_table_set_edge  (W42PieceTable *pt, int table, int which,
+                             const W42BorderEdge *edge);
+void w42_pt_table_set_edges (W42PieceTable *pt, int table, const W42BorderEdge *outer,
+                             const W42BorderEdge *inside);
 void w42_pt_table_delete_row (W42PieceTable *pt, int table, int row);
 
 /* The position just past the paragraph containing `pos`: the next mark of

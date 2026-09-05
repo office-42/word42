@@ -105,6 +105,13 @@ typedef struct {
   gboolean   has_pa, has_ch;
 } OdtStyle;
 
+/* What a table-cell style says beyond its sides and background: the
+ * line of each side, and where the text sits. */
+typedef struct {
+  W42BorderEdge edge[4];
+  int           valign;    /* W42CellVAlign */
+} OdtCellLines;
+
 typedef struct {
   W42ListKind kind[10];
 } OdtListStyle;
@@ -122,6 +129,8 @@ typedef struct {
   GHashTable    *row_heights;   /* table-row style -> least height in twips */
   GHashTable    *cell_sides;    /* table-cell style -> W42_BORDER_CELL_SET | sides */
   GHashTable    *cell_fills;    /* table-cell style -> 0x1000000 | 0x00RRGGBB */
+  GHashTable    *cell_lines;    /* table-cell style -> OdtCellLines */
+  const OdtCellLines *pending_cell_lines;
   char          *cur_cell_style;
   int            pending_cell_sides;   /* for the cell about to begin; -1 none */
   guint          pending_cell_fill;    /* and its background; 0 none */
@@ -239,12 +248,17 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
                       : g_str_equal (k, "fo:border-left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
 
               const char *hash = strchr (v, '#');
+              W42BorderEdge edge;
 
+              /* "0.75pt solid #14828c": the width, the style, the colour. */
+              edge.width = (guint8) CLAMP (length_twips (v), 5, 120);
+              edge.style = (guint8) w42_border_style_from_css (v);
+              edge.color = (hash != NULL && strlen (hash) >= 7)
+                             ? (guint32) strtoul (hash + 1, NULL, 16) & 0xFFFFFF : 0;
               pa->border |= bit;
-              pa->border_width = (guint8) CLAMP (length_twips (v), 5, 120);
-              /* "0.75pt solid #14828c": the colour is the last of the three. */
-              if (hash != NULL && strlen (hash) >= 7)
-                pa->border_color = (guint32) strtoul (hash + 1, NULL, 16) & 0xFFFFFF;
+              for (int e = 0; e < 4; e++)
+                if (bit & (1 << e))
+                  pa->edge[e] = edge;
             }
         }
       else if (g_str_equal (k, "fo:background-color"))
@@ -401,7 +415,7 @@ resolve_style (Odt *o, const char *name, int depth)
               if (s->pa.page_break_before) pa.page_break_before = 1;
               if (s->pa.keep_next) pa.keep_next = 1;
               if (s->pa.keep_together) pa.keep_together = 1;
-              if (s->pa.border) { pa.border = s->pa.border; pa.border_width = s->pa.border_width; pa.border_color = s->pa.border_color; }
+              if (s->pa.border) { pa.border = s->pa.border; memcpy (pa.edge, s->pa.edge, sizeof pa.edge); }
               if (s->pa.shading) pa.shading = s->pa.shading;
               if (s->pa.has_shading_color)
                 { pa.has_shading_color = 1; pa.shading_color = s->pa.shading_color; pa.shading = 0; }
@@ -629,8 +643,13 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
     }
   else if (g_str_equal (tag, "table-cell-properties") && o->cur_cell_style != NULL)
     {
-      /* fo:border sets all four sides; fo:border-* one each; "none" clears. */
+      /* fo:border sets all four sides; fo:border-* one each; "none" clears.
+       * "1.5pt double #0000ff" is the width, the style and the colour;
+       * a double line's width is the whole of it, and its own lines'
+       * widths come in style:border-line-width-*. */
       int sides = -1;
+      OdtCellLines *lines = g_new0 (OdtCellLines, 1);
+      const char *valign = attr (an, av, "style:vertical-align");
 
       for (int i = 0; an != NULL && an[i] != NULL; i++)
         {
@@ -640,16 +659,54 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
                   : g_str_equal (k, "fo:border-bottom") ? W42_BORDER_BOTTOM
                   : g_str_equal (k, "fo:border-left") ? W42_BORDER_LEFT
                   : g_str_equal (k, "fo:border-right") ? W42_BORDER_RIGHT : 0;
+          W42BorderEdge edge;
 
           if (bit == 0)
             continue;
           if (sides < 0)
             sides = 0;
           if (g_str_equal (v, "none"))
-            sides &= ~bit;
-          else
-            sides |= bit;
+            {
+              sides &= ~bit;
+              continue;
+            }
+          sides |= bit;
+          edge.style = (guint8) w42_border_style_from_css (v);
+          edge.width = (guint8) CLAMP (length_twips (v), 5, 255);
+          if (edge.style == W42_BORDER_DOUBLE)
+            edge.width = (guint8) MAX (edge.width / 3, 5);
+          {
+            const char *hash = strchr (v, '#');
+
+            edge.color = (hash != NULL && strlen (hash) >= 7)
+                           ? (guint32) strtoul (hash + 1, NULL, 16) & 0xFFFFFF : 0;
+          }
+          for (int e = 0; e < 4; e++)
+            if (bit & (1 << e))
+              lines->edge[e] = edge;
         }
+      for (int i = 0; an != NULL && an[i] != NULL; i++)
+        {
+          /* "0.0208in 0.0208in 0.0208in": inner line, gap, outer line. */
+          const char *k = an[i];
+          int e = g_str_equal (k, "style:border-line-width") ? -1
+                : g_str_equal (k, "style:border-line-width-top") ? W42_EDGE_TOP
+                : g_str_equal (k, "style:border-line-width-bottom") ? W42_EDGE_BOTTOM
+                : g_str_equal (k, "style:border-line-width-left") ? W42_EDGE_LEFT
+                : g_str_equal (k, "style:border-line-width-right") ? W42_EDGE_RIGHT : -2;
+          int w;
+
+          if (e == -2)
+            continue;
+          w = CLAMP (length_twips (av[i]), 5, 255);
+          for (int k2 = 0; k2 < 4; k2++)
+            if ((e < 0 || e == k2) && lines->edge[k2].style == W42_BORDER_DOUBLE)
+              lines->edge[k2].width = (guint8) w;
+        }
+      lines->valign = valign == NULL ? W42_CELL_VALIGN_TOP
+                    : g_str_equal (valign, "middle") ? W42_CELL_VALIGN_CENTER
+                    : g_str_equal (valign, "bottom") ? W42_CELL_VALIGN_BOTTOM : W42_CELL_VALIGN_TOP;
+      g_hash_table_insert (o->cell_lines, g_strdup (o->cur_cell_style), lines);
       if (sides >= 0)
         g_hash_table_insert (o->cell_sides, g_strdup (o->cur_cell_style),
                              GINT_TO_POINTER (W42_BORDER_CELL_SET | sides));
@@ -968,6 +1025,12 @@ open_pending_cell (Odt *o)
     return;
   if (o->pending_cell_sides >= 0)
     w42_pt_cell_set_borders_at (o->pt, o->b.cell_pos, o->pending_cell_sides);
+  if (o->pending_cell_lines != NULL)
+    {
+      w42_pt_cell_set_edges_at (o->pt, o->b.cell_pos, o->pending_cell_lines->edge);
+      if (o->pending_cell_lines->valign != W42_CELL_VALIGN_TOP)
+        w42_pt_cell_set_valign_at (o->pt, o->b.cell_pos, (W42CellVAlign) o->pending_cell_lines->valign);
+    }
   if (o->pending_cell_fill != 0)
     w42_pt_cell_set_fill_at (o->pt, o->b.cell_pos, TRUE,
                              o->pending_cell_fill & 0xFFFFFF);
@@ -1272,6 +1335,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
         gpointer v = sn != NULL ? g_hash_table_lookup (o->cell_sides, sn) : NULL;
 
         o->pending_cell_sides = v != NULL ? (GPOINTER_TO_INT (v) & W42_BORDER_BOX) : -1;
+        o->pending_cell_lines = sn != NULL ? g_hash_table_lookup (o->cell_lines, sn) : NULL;
         {
           gpointer f = sn != NULL ? g_hash_table_lookup (o->cell_fills, sn) : NULL;
 
@@ -1733,6 +1797,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   o.row_heights = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.cell_sides = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.cell_fills = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  o.cell_lines = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   o.pending_cell_sides = -1;
   o.hf_text = g_string_new (NULL);
   o.text = g_string_new (NULL);
@@ -1782,6 +1847,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_free (o.cur_cell_style);
   g_hash_table_destroy (o.cell_sides);
   g_hash_table_destroy (o.cell_fills);
+  g_hash_table_destroy (o.cell_lines);
   g_free (o.cur_style_name);
   g_free (o.cur_col_style);
   if (styles != NULL)
@@ -1902,9 +1968,10 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
 
       for (int i = 0; i < 4; i++)
         if (pa->border & bits[i])
-          g_string_append_printf (s, " %s=\"%spt solid #%06x\"", names[i],
-                                  g_ascii_formatd (buf, sizeof buf, "%.2f", (pa->border_width > 0 ? pa->border_width : 15) / 20.0),
-                                  pa->border_color & 0xFFFFFF);
+          g_string_append_printf (s, " %s=\"%spt %s #%06x\"", names[i],
+                                  g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&pa->edge[i]) / 20.0),
+                                  w42_border_style_css (pa->edge[i].style),
+                                  pa->edge[i].color & 0xFFFFFF);
       g_string_append (s, " fo:padding=\"0.02in\"");
     }
   if (pa->has_shading_color)
@@ -2349,7 +2416,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.pa_keys = g_ptr_array_new_with_free_func (g_free);
   w.ch_keys = g_ptr_array_new_with_free_func (g_free);
   w.pictures = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
-  w.cell_styles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  w.cell_styles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   w.picture_exts = g_ptr_array_new ();
   w.picture_mimes = g_ptr_array_new ();
   {
@@ -2475,33 +2542,104 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
             {
               {
                 const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
+                const W42TableProps *props = w42_pt_table_props (pt, block->table);
+                gboolean plain_table = props == NULL ||
+                                       memcmp (props->edge, &(W42BorderEdge[W42_N_EDGES]) { { 0, 0, 0 } },
+                                               sizeof props->edge) == 0;
 
-                if ((cpa->border & W42_BORDER_CELL_SET) || cpa->has_shading_color)
+                if ((cpa->border & W42_BORDER_CELL_SET) || cpa->has_shading_color ||
+                    cpa->shading > 0 || cpa->cell_valign != W42_CELL_VALIGN_TOP || !plain_table)
                   {
-                    /* A style of the cell's own, one per set of sides and
-                     * background. */
+                    /* A style of the cell's own: its sides and their
+                     * lines -- the table's, where the cell has none of its
+                     * own -- its background, and where its text sits.
+                     * One style per distinct look. */
                     static const char *names[4] = { "fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right" };
-                    static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
                     int sides = (cpa->border & W42_BORDER_CELL_SET)
-                                  ? (cpa->border & W42_BORDER_BOX) : -1;
-                    char name[64];
+                                  ? (cpa->border & W42_BORDER_BOX)
+                                  : (props == NULL || props->borders) ? W42_BORDER_BOX : 0;
+                    W42BorderEdge edges[4];
+                    GString *look = g_string_new (NULL);
+                    char *name;
+                    gboolean first_row = block->row == 0, last_row = TRUE;
+                    int n_cols = props != NULL ? props->n_cols : 1;
 
-                    g_snprintf (name, sizeof name, "Table%d.Cell%d_%06x", w.n_tables,
-                                sides, cpa->has_shading_color ? cpa->shading_color & 0xFFFFFF : 0xFFFFFFu & 0);
-                    if (!g_hash_table_contains (w.cell_styles, name))
+                    for (guint k = b + 1; k < blocks->len; k++)
                       {
-                        g_hash_table_add (w.cell_styles, g_strdup (name));
-                        g_string_append_printf (w.auto_styles, "<style:style style:name=\"%s\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\"",
-                                                name);
-                        if (sides >= 0)
-                          for (int k = 0; k < 4; k++)
-                            g_string_append_printf (w.auto_styles, " %s=\"%s\"", names[k], (sides & bits[k]) ? "0.5pt solid #000000" : "none");
-                        if (cpa->has_shading_color)
-                          g_string_append_printf (w.auto_styles, " fo:background-color=\"#%06x\"",
-                                                  cpa->shading_color & 0xFFFFFF);
-                        g_string_append (w.auto_styles, "/></style:style>");
+                        const W42Block *rb = g_ptr_array_index (blocks, k);
+
+                        if (rb->table != block->table)
+                          break;
+                        if (rb->row > block->row)
+                          {
+                            last_row = FALSE;
+                            break;
+                          }
+                      }
+                    for (int k = 0; k < 4; k++)
+                      {
+                        gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                                         (k == W42_EDGE_LEFT && block->col == 0) ||
+                                         (k == W42_EDGE_RIGHT && block->col + block->span >= n_cols);
+                        const W42BorderEdge *e = &cpa->edge[k];
+
+                        if ((cpa->border & W42_BORDER_CELL_SET) && (e->width != 0 || e->style != 0 || e->color != 0))
+                          edges[k] = *e;
+                        else if (props != NULL)
+                          edges[k] = props->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
+                        else
+                          edges[k] = (W42BorderEdge) { 0, 0, 0 };
+                        if (edges[k].style == W42_BORDER_NONE)
+                          sides &= ~(1 << k);
+                      }
+                    for (int k = 0; k < 4; k++)
+                      if (sides & (1 << k))
+                        {
+                          char buf[G_ASCII_DTOSTR_BUF_SIZE];
+                          int width = W42_EDGE_WIDTH (&edges[k]);
+
+                          /* A double line is three widths across, as
+                           * OpenDocument measures it. */
+                          if (edges[k].style == W42_BORDER_DOUBLE)
+                            width *= 3;
+                          g_string_append_printf (look, " %s=\"%spt %s #%06x\"", names[k],
+                                                  g_ascii_formatd (buf, sizeof buf, "%.2f", width / 20.0),
+                                                  w42_border_style_css (edges[k].style),
+                                                  edges[k].color & 0xFFFFFF);
+                          if (edges[k].style == W42_BORDER_DOUBLE)
+                            g_string_append_printf (look, " %s-%s=\"%spt %spt %spt\"",
+                                                    "style:border-line-width", names[k] + 10,
+                                                    g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0),
+                                                    g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0),
+                                                    g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0));
+                        }
+                      else
+                        g_string_append_printf (look, " %s=\"none\"", names[k]);
+                    if (cpa->has_shading_color)
+                      g_string_append_printf (look, " fo:background-color=\"#%06x\"",
+                                              cpa->shading_color & 0xFFFFFF);
+                    else if (cpa->shading > 0)
+                      {
+                        int grey = 255 - (int) cpa->shading * 255 / 100;
+
+                        g_string_append_printf (look, " fo:background-color=\"#%02x%02x%02x\"", grey, grey, grey);
+                      }
+                    if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
+                      g_string_append (look, " style:vertical-align=\"middle\"");
+                    else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+                      g_string_append (look, " style:vertical-align=\"bottom\"");
+
+                    name = g_hash_table_lookup (w.cell_styles, look->str);
+                    if (name == NULL)
+                      {
+                        name = g_strdup_printf ("Table%d.Cell%u", w.n_tables,
+                                                g_hash_table_size (w.cell_styles) + 1);
+                        g_hash_table_insert (w.cell_styles, g_strdup (look->str), name);
+                        g_string_append_printf (w.auto_styles, "<style:style style:name=\"%s\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\"%s/></style:style>",
+                                                name, look->str);
                       }
                     g_string_append_printf (w.body, "<table:table-cell table:style-name=\"%s\" office:value-type=\"string\"", name);
+                    g_string_free (look, TRUE);
                   }
                 else
                   g_string_append_printf (w.body, "<table:table-cell table:style-name=\"Table%d.Cell\" office:value-type=\"string\"", w.n_tables);

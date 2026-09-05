@@ -50,6 +50,8 @@ typedef struct {
   int            table;             /* the table being read, or -1 */
   int            tables_opened;     /* how many the page has had so far */
   int            table_row, table_col, table_cols;
+  int            covered[1024];   /* rows still covered from above, per column */
+  int            cell_span;       /* the open cell's columns */
   int            col_widths[1023];  /* what its <colgroup> said, in twips */
   int            n_col_widths;
   gboolean       in_cell;
@@ -213,26 +215,59 @@ end_paragraph (Html *h)
 
 /* ---- tables ----------------------------------------------------------- */
 
+/* A cell a rowspan from above covers: it holds nothing, and is marked
+ * so that the layout draws the covering cell over it. */
 static void
-open_cell (Html *h)
+open_covered_cell (Html *h)
+{
+  w42_pt_insert_cell (h->pt, h->pos, h->table, h->table_row, h->table_col,
+                      html_ap (h));
+  w42_pt_set_cell_vspan (h->pt, h->pos, W42_CELL_COVERED);
+  h->pos += 2;
+  h->covered[h->table_col]--;
+  h->table_col++;
+}
+
+static void
+open_cell_spanning (Html *h, int colspan, int rowspan)
 {
   if (h->table < 0 || h->in_cell)
     return;
 
   flush_text (h);
+  /* Columns a cell above still covers come first. */
+  while (h->table_col < h->table_cols && h->table_col < 1024 && h->covered[h->table_col] > 0)
+    open_covered_cell (h);
   /* More cells than the row definition has, or rows than the marks can
    * hold: dropped, as the other readers drop them. */
   if (h->table_col >= h->table_cols || h->table_row > 4095)
     {
       h->in_cell = TRUE;
+      h->cell_span = 1;
       return;
     }
+  colspan = CLAMP (colspan, 1, h->table_cols - h->table_col);
   w42_pt_insert_cell (h->pt, h->pos, h->table, h->table_row, h->table_col,
                       html_ap (h));
+  if (colspan > 1)
+    w42_pt_set_cell_span (h->pt, h->pos, colspan);
+  if (rowspan > 1)
+    {
+      w42_pt_set_cell_vspan (h->pt, h->pos, MIN (rowspan, 254));
+      for (int c = h->table_col; c < h->table_col + colspan && c < 1024; c++)
+        h->covered[c] = rowspan - 1;
+    }
+  h->cell_span = colspan;
   h->pos += 2;
   h->in_cell = TRUE;
   h->at_para_start = TRUE;
   h->space_pending = FALSE;
+}
+
+static void
+open_cell (Html *h)
+{
+  open_cell_spanning (h, 1, 1);
 }
 
 static void
@@ -248,7 +283,8 @@ close_cell (Html *h)
   h->in_para = FALSE;
   h->pa_dirty = FALSE;
   h->cell_break_pending = FALSE;
-  h->table_col++;
+  h->table_col += MAX (h->cell_span, 1);
+  h->cell_span = 1;
   {
     W42Fmt def;
     w42_fmt_init_default (&def);
@@ -266,6 +302,11 @@ end_row (Html *h)
   /* Cells the row is short of, so every row has the table's columns. */
   while (h->table_col < h->table_cols)
     {
+      if (h->table_col < 1024 && h->covered[h->table_col] > 0)
+        {
+          open_covered_cell (h);
+          continue;
+        }
       open_cell (h);
       close_cell (h);
     }
@@ -640,25 +681,25 @@ apply_style (Html *h, const char *style, gboolean para)
           /* "border: 1px solid #000000", or one side of it. */
           if (strstr (value, "none") == NULL && strstr (value, "0") != value)
             {
-              if (g_ascii_strcasecmp (key, "border") == 0)
-                h->pa.border |= W42_BORDER_BOX;
-              else if (g_ascii_strcasecmp (key, "border-top") == 0)
-                h->pa.border |= W42_BORDER_TOP;
-              else if (g_ascii_strcasecmp (key, "border-bottom") == 0)
-                h->pa.border |= W42_BORDER_BOTTOM;
-              else if (g_ascii_strcasecmp (key, "border-left") == 0)
-                h->pa.border |= W42_BORDER_LEFT;
-              else if (g_ascii_strcasecmp (key, "border-right") == 0)
-                h->pa.border |= W42_BORDER_RIGHT;
-              {
-                gint64 rgb = css_colour (value);
-                int w = css_twips (value);
+              int bits = g_ascii_strcasecmp (key, "border") == 0 ? W42_BORDER_BOX
+                       : g_ascii_strcasecmp (key, "border-top") == 0 ? W42_BORDER_TOP
+                       : g_ascii_strcasecmp (key, "border-bottom") == 0 ? W42_BORDER_BOTTOM
+                       : g_ascii_strcasecmp (key, "border-left") == 0 ? W42_BORDER_LEFT
+                       : g_ascii_strcasecmp (key, "border-right") == 0 ? W42_BORDER_RIGHT : 0;
+              gint64 rgb = css_colour (value);
+              int w = css_twips (value);
+              W42BorderStyle line = w42_border_style_from_css (value);
 
-                if (rgb >= 0)
-                  h->pa.border_color = (guint32) rgb;
-                if (w > 0)
-                  h->pa.border_width = (guint8) CLAMP (w, 5, 120);
-              }
+              h->pa.border |= (guint8) bits;
+              for (int e = 0; e < 4; e++)
+                if (bits & (1 << e))
+                  {
+                    if (rgb >= 0)
+                      h->pa.edge[e].color = (guint32) rgb;
+                    if (w > 0)
+                      h->pa.edge[e].width = (guint8) CLAMP (w, 5, 120);
+                    h->pa.edge[e].style = (guint8) line;
+                  }
               h->pa_dirty = TRUE;
             }
         }
@@ -1072,8 +1113,12 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
     }
   if (g_str_equal (name, "td") || g_str_equal (name, "th"))
     {
+      char *cs = elem_attr (el, "colspan"), *rs = elem_attr (el, "rowspan");
+
       close_cell (h);
-      open_cell (h);
+      open_cell_spanning (h, cs != NULL ? atoi (cs) : 1, rs != NULL ? atoi (rs) : 1);
+      g_free (cs);
+      g_free (rs);
       if (g_str_equal (name, "th"))
         h->ch[h->depth].bold = 1;
       if ((style = elem_attr (el, "style")) != NULL)
@@ -1090,9 +1135,16 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
               w42_pt_cell_set_borders_at (h->pt, cell_pos,
                                           (h->pa.border & W42_BORDER_BOX) |
                                           W42_BORDER_CELL_SET);
+              w42_pt_cell_set_edges_at (h->pt, cell_pos, h->pa.edge);
               if (h->pa.has_shading_color)
                 w42_pt_cell_set_fill_at (h->pt, cell_pos, TRUE,
                                          h->pa.shading_color);
+              else if (h->pa.shading > 0)
+                w42_pt_cell_set_shading_at (h->pt, cell_pos, h->pa.shading);
+              if (strstr (style, "vertical-align:middle") != NULL || strstr (style, "vertical-align: middle") != NULL)
+                w42_pt_cell_set_valign_at (h->pt, cell_pos, W42_CELL_VALIGN_CENTER);
+              else if (strstr (style, "vertical-align:bottom") != NULL || strstr (style, "vertical-align: bottom") != NULL)
+                w42_pt_cell_set_valign_at (h->pt, cell_pos, W42_CELL_VALIGN_BOTTOM);
             }
           h->pa = saved;
           h->pa_dirty = saved_dirty;

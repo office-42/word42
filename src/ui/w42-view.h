@@ -96,6 +96,15 @@ void     w42_view_cell_set_borders (W42View *self, int sides);
 /* The colour behind the caret's cell. */
 void     w42_view_cell_set_fill    (W42View *self, gboolean has, guint32 rgb);
 gboolean w42_view_cell_get_fill    (W42View *self, guint32 *rgb);
+/* Everything the caret's cell's mark carries -- its sides and their
+ * lines, its background, where its text sits -- read whole and set
+ * whole, as one undo step.  FALSE outside a table. */
+gboolean w42_view_cell_get_fmt     (W42View *self, W42ParaFmt *out);
+void     w42_view_cell_set_fmt     (W42View *self, const W42ParaFmt *pa);
+/* The lines of the caret's table's edges, by W42_EDGE_*. */
+gboolean w42_view_table_get_edges  (W42View *self, W42BorderEdge *out);
+void     w42_view_table_set_edges  (W42View *self, const W42BorderEdge *outer,
+                                    const W42BorderEdge *inside);
 
 /* Merges the cells the selection touches, if they lie in one row. */
 void     w42_view_table_merge_cells (W42View *self);
