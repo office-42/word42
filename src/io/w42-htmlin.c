@@ -25,7 +25,24 @@
 /* The writer: text goes in at `pos` with the formatting on the stack      */
 /* ---------------------------------------------------------------------- */
 
-#define MAX_DEPTH 64
+#define MAX_DEPTH 128
+
+/* What an element's start left for its end to undo. */
+enum {
+  FLAG_CHAR = 1 << 0,     /* a formatting level was pushed */
+  FLAG_PRE  = 1 << 1,     /* whitespace was being kept */
+};
+
+/* One rule of the page's own stylesheet, as far as this reader follows
+ * it: a plain compound selector and its declarations. */
+typedef struct {
+  const char *tag;       /* interned lowercase element name, or NULL for any */
+  const char *cls;       /* interned class, or NULL */
+  const char *id;        /* interned id, or NULL */
+  int         weight;    /* specificity: an id 100, a class 10, an element 1 */
+  guint       order;     /* where it came in the sheet: ties go to the later */
+  char       *decl;      /* the declarations, "a:b;c:d" */
+} CssRule;
 
 typedef struct {
   W42PieceTable *pt;
@@ -64,7 +81,18 @@ typedef struct {
   int            pre_depth;         /* inside <pre>: whitespace kept */
   gboolean       cell_break_pending; /* a paragraph ended in a cell; the
                                       * next text starts a new one */
+  GPtrArray     *rules;             /* the page's <style> rules: CssRule */
+  GHashTable    *rules_by_tag;      /* interned name -> GPtrArray of the
+                                     * rules naming it and nothing else */
+  GHashTable    *rules_by_class;    /* interned class -> GPtrArray */
+  GHashTable    *rules_by_id;       /* interned id -> GPtrArray */
+  W42Align       cell_align;        /* the open cell's, for each paragraph in it */
+  guint          cell_rtl : 1;
+  int            mso_item;          /* Word's HTML: the paragraph is a list
+                                     * item whose marker is text to skip */
 } Html;
+
+static void open_cell (Html *h);
 
 static W42ApIdx
 html_ap (Html *h)
@@ -82,6 +110,12 @@ flush_text (Html *h)
 {
   if (h->pending->len == 0)
     return;
+
+  /* Text between a table's cells -- a <caption>, or a page that puts
+   * words straight into a row -- goes into a cell, since the model has
+   * nowhere else in a table to put it. */
+  if (h->table >= 0 && !h->in_cell)
+    open_cell (h);
 
   /* In a cell, a paragraph that ended waits for more text before its
    * successor is made, so a cell never ends with an empty one. */
@@ -113,14 +147,18 @@ flush_text (Html *h)
   h->in_para = TRUE;
 }
 
-static void
+/* True when a level was pushed; past the stack's depth the element
+ * shares its parent's level, and its end must not pop one. */
+static gboolean
 push_char (Html *h)
 {
   if (h->depth + 1 < MAX_DEPTH)
     {
       h->ch[h->depth + 1] = h->ch[h->depth];
       h->depth++;
+      return TRUE;
     }
+  return FALSE;
 }
 
 static void
@@ -206,10 +244,17 @@ end_paragraph (Html *h)
   h->pa_dirty = FALSE;
   h->at_para_start = TRUE;
   h->space_pending = FALSE;
+  h->mso_item = 0;
   {
     W42Fmt def;
     w42_fmt_init_default (&def);
     h->pa = def.pa;
+    if (h->table >= 0 && h->in_cell)
+      {
+        /* The cell's own alignment, for every paragraph in it. */
+        h->pa.align = h->cell_align;
+        h->pa.rtl = h->cell_rtl;
+      }
   }
 }
 
@@ -283,6 +328,8 @@ close_cell (Html *h)
   h->in_para = FALSE;
   h->pa_dirty = FALSE;
   h->cell_break_pending = FALSE;
+  h->cell_align = W42_ALIGN_LEFT;
+  h->cell_rtl = 0;
   h->table_col += MAX (h->cell_span, 1);
   h->cell_span = 1;
   {
@@ -412,40 +459,16 @@ node_text (lxb_dom_node_t *node)
   return g_strstrip (out);
 }
 
-/* The first element of tag `tag` under `root`, walked without recursion:
- * the tree's depth is the file's to choose, and the C stack is not. */
-static lxb_dom_node_t *
-first_descendant (lxb_dom_node_t *root, lxb_tag_id_t tag)
-{
-  lxb_dom_node_t *n = lxb_dom_node_first_child (root);
-
-  while (n != NULL)
-    {
-      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT && lxb_dom_node_tag_id (n) == tag)
-        return n;
-      if (n->first_child != NULL)
-        {
-          n = n->first_child;
-          continue;
-        }
-      while (n != root && n->next == NULL)
-        n = n->parent;
-      if (n == root)
-        return NULL;
-      n = n->next;
-    }
-  return NULL;
-}
-
 /* ---------------------------------------------------------------------- */
 /* CSS, as far as a word processor's HTML leans on it                      */
 /* ---------------------------------------------------------------------- */
 
 /* A CSS length in twips.  Points, inches, centimetres, millimetres and
- * pixels are what a word processor's HTML uses; anything else is left
- * alone, since guessing at ems without a font would be worse. */
+ * pixels are what a word processor's HTML uses; an em is relative to the
+ * font in force, which the caller says the size of in twips, or 0 when
+ * there is none to measure by.  Anything else is left alone. */
 static int
-css_twips (const char *value)
+css_twips_em (const char *value, int em)
 {
   char *unit = NULL;
   double v = g_ascii_strtod (value, &unit);
@@ -464,6 +487,10 @@ css_twips (const char *value)
   else if (g_str_has_prefix (unit, "pt")) per = 20.0;
   else if (g_str_has_prefix (unit, "px")) per = 15.0;
   else if (g_str_has_prefix (unit, "pc")) per = 240.0;
+  else if (g_str_has_prefix (unit, "Q"))  per = 1440.0 / 25.4 / 4;
+  else if (g_str_has_prefix (unit, "rem")) per = 240.0;   /* the root's 12pt */
+  else if (g_str_has_prefix (unit, "em") && em > 0) per = em;
+  else if (g_str_has_prefix (unit, "ex") && em > 0) per = em / 2.0;
   else                                    return 0;
 
   /* "9e999in" is infinity by the time it is twips, and a cast that does
@@ -476,49 +503,270 @@ css_twips (const char *value)
   return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
-/* The colour a CSS value names, or -1 if it names none. */
+static int
+css_twips (const char *value)
+{
+  return css_twips_em (value, 0);
+}
+
+/* The named colours of CSS Color Level 4, and Word's "windowtext". */
+static const struct { const char *name; guint32 rgb; } CSS_COLOURS[] = {
+  { "aliceblue", 0xF0F8FF }, { "antiquewhite", 0xFAEBD7 }, { "aqua", 0x00FFFF },
+  { "aquamarine", 0x7FFFD4 }, { "azure", 0xF0FFFF }, { "beige", 0xF5F5DC },
+  { "bisque", 0xFFE4C4 }, { "black", 0x000000 }, { "blanchedalmond", 0xFFEBCD },
+  { "blue", 0x0000FF }, { "blueviolet", 0x8A2BE2 }, { "brown", 0xA52A2A },
+  { "burlywood", 0xDEB887 }, { "cadetblue", 0x5F9EA0 }, { "chartreuse", 0x7FFF00 },
+  { "chocolate", 0xD2691E }, { "coral", 0xFF7F50 }, { "cornflowerblue", 0x6495ED },
+  { "cornsilk", 0xFFF8DC }, { "crimson", 0xDC143C }, { "cyan", 0x00FFFF },
+  { "darkblue", 0x00008B }, { "darkcyan", 0x008B8B }, { "darkgoldenrod", 0xB8860B },
+  { "darkgray", 0xA9A9A9 }, { "darkgreen", 0x006400 }, { "darkgrey", 0xA9A9A9 },
+  { "darkkhaki", 0xBDB76B }, { "darkmagenta", 0x8B008B }, { "darkolivegreen", 0x556B2F },
+  { "darkorange", 0xFF8C00 }, { "darkorchid", 0x9932CC }, { "darkred", 0x8B0000 },
+  { "darksalmon", 0xE9967A }, { "darkseagreen", 0x8FBC8F }, { "darkslateblue", 0x483D8B },
+  { "darkslategray", 0x2F4F4F }, { "darkslategrey", 0x2F4F4F }, { "darkturquoise", 0x00CED1 },
+  { "darkviolet", 0x9400D3 }, { "deeppink", 0xFF1493 }, { "deepskyblue", 0x00BFFF },
+  { "dimgray", 0x696969 }, { "dimgrey", 0x696969 }, { "dodgerblue", 0x1E90FF },
+  { "firebrick", 0xB22222 }, { "floralwhite", 0xFFFAF0 }, { "forestgreen", 0x228B22 },
+  { "fuchsia", 0xFF00FF }, { "gainsboro", 0xDCDCDC }, { "ghostwhite", 0xF8F8FF },
+  { "gold", 0xFFD700 }, { "goldenrod", 0xDAA520 }, { "gray", 0x808080 },
+  { "green", 0x008000 }, { "greenyellow", 0xADFF2F }, { "grey", 0x808080 },
+  { "honeydew", 0xF0FFF0 }, { "hotpink", 0xFF69B4 }, { "indianred", 0xCD5C5C },
+  { "indigo", 0x4B0082 }, { "ivory", 0xFFFFF0 }, { "khaki", 0xF0E68C },
+  { "lavender", 0xE6E6FA }, { "lavenderblush", 0xFFF0F5 }, { "lawngreen", 0x7CFC00 },
+  { "lemonchiffon", 0xFFFACD }, { "lightblue", 0xADD8E6 }, { "lightcoral", 0xF08080 },
+  { "lightcyan", 0xE0FFFF }, { "lightgoldenrodyellow", 0xFAFAD2 }, { "lightgray", 0xD3D3D3 },
+  { "lightgreen", 0x90EE90 }, { "lightgrey", 0xD3D3D3 }, { "lightpink", 0xFFB6C1 },
+  { "lightsalmon", 0xFFA07A }, { "lightseagreen", 0x20B2AA }, { "lightskyblue", 0x87CEFA },
+  { "lightslategray", 0x778899 }, { "lightslategrey", 0x778899 }, { "lightsteelblue", 0xB0C4DE },
+  { "lightyellow", 0xFFFFE0 }, { "lime", 0x00FF00 }, { "limegreen", 0x32CD32 },
+  { "linen", 0xFAF0E6 }, { "magenta", 0xFF00FF }, { "maroon", 0x800000 },
+  { "mediumaquamarine", 0x66CDAA }, { "mediumblue", 0x0000CD }, { "mediumorchid", 0xBA55D3 },
+  { "mediumpurple", 0x9370DB }, { "mediumseagreen", 0x3CB371 }, { "mediumslateblue", 0x7B68EE },
+  { "mediumspringgreen", 0x00FA9A }, { "mediumturquoise", 0x48D1CC }, { "mediumvioletred", 0xC71585 },
+  { "midnightblue", 0x191970 }, { "mintcream", 0xF5FFFA }, { "mistyrose", 0xFFE4E1 },
+  { "moccasin", 0xFFE4B5 }, { "navajowhite", 0xFFDEAD }, { "navy", 0x000080 },
+  { "oldlace", 0xFDF5E6 }, { "olive", 0x808000 }, { "olivedrab", 0x6B8E23 },
+  { "orange", 0xFFA500 }, { "orangered", 0xFF4500 }, { "orchid", 0xDA70D6 },
+  { "palegoldenrod", 0xEEE8AA }, { "palegreen", 0x98FB98 }, { "paleturquoise", 0xAFEEEE },
+  { "palevioletred", 0xDB7093 }, { "papayawhip", 0xFFEFD5 }, { "peachpuff", 0xFFDAB9 },
+  { "peru", 0xCD853F }, { "pink", 0xFFC0CB }, { "plum", 0xDDA0DD },
+  { "powderblue", 0xB0E0E6 }, { "purple", 0x800080 }, { "rebeccapurple", 0x663399 },
+  { "red", 0xFF0000 }, { "rosybrown", 0xBC8F8F }, { "royalblue", 0x4169E1 },
+  { "saddlebrown", 0x8B4513 }, { "salmon", 0xFA8072 }, { "sandybrown", 0xF4A460 },
+  { "seagreen", 0x2E8B57 }, { "seashell", 0xFFF5EE }, { "sienna", 0xA0522D },
+  { "silver", 0xC0C0C0 }, { "skyblue", 0x87CEEB }, { "slateblue", 0x6A5ACD },
+  { "slategray", 0x708090 }, { "slategrey", 0x708090 }, { "snow", 0xFFFAFA },
+  { "springgreen", 0x00FF7F }, { "steelblue", 0x4682B4 }, { "tan", 0xD2B48C },
+  { "teal", 0x008080 }, { "thistle", 0xD8BFD8 }, { "tomato", 0xFF6347 },
+  { "turquoise", 0x40E0D0 }, { "violet", 0xEE82EE }, { "wheat", 0xF5DEB3 },
+  { "white", 0xFFFFFF }, { "whitesmoke", 0xF5F5F5 }, { "yellow", 0xFFFF00 },
+  { "yellowgreen", 0x9ACD32 }, { "windowtext", 0x000000 },
+};
+
+/* One channel of rgb(): a number, or a percentage of 255. */
+static int
+css_channel (const char **p)
+{
+  char *end = NULL;
+  double v;
+
+  while (**p == ' ' || **p == ',' || **p == '/')
+    (*p)++;
+  v = g_ascii_strtod (*p, &end);
+  if (end == *p)
+    return -1;
+  if (*end == '%')
+    {
+      v = v * 255.0 / 100.0;
+      end++;
+    }
+  *p = end;
+  return CLAMP ((int) (v + 0.5), 0, 255);
+}
+
+/* The colour a CSS value names, wherever in the value it is -- "1px solid
+ * red" names one -- as 0x00RRGGBB, or -1 if it names none.  "#rgb" and
+ * "#rrggbb", rgb() and rgba(), and the named colours; "transparent" and
+ * "none" are none. */
 static gint64
 css_colour (const char *value)
 {
-  const char *hash = strchr (value, '#');
+  const char *p;
 
-  if (hash == NULL || strlen (hash) < 7)
-    return -1;
-  return (gint64) (strtoul (hash + 1, NULL, 16) & 0xFFFFFF);
+  if ((p = strchr (value, '#')) != NULL)
+    {
+      int n = 0;
+
+      while (n < 9 && g_ascii_isxdigit (p[1 + n]))
+        n++;
+      if (n == 6 || n == 8)
+        {
+          char hex[7];
+
+          memcpy (hex, p + 1, 6);
+          hex[6] = '\0';
+          return (gint64) strtoul (hex, NULL, 16);
+        }
+      if (n == 3 || n == 4)
+        {
+          guint32 r = g_ascii_xdigit_value (p[1]);
+          guint32 g = g_ascii_xdigit_value (p[2]);
+          guint32 b = g_ascii_xdigit_value (p[3]);
+
+          return (gint64) ((r * 0x110000) | (g * 0x1100) | (b * 0x11));
+        }
+    }
+  if ((p = strstr (value, "rgb")) != NULL && (p = strchr (p, '(')) != NULL)
+    {
+      int r, g, b;
+
+      p++;
+      r = css_channel (&p);
+      g = css_channel (&p);
+      b = css_channel (&p);
+      if (r >= 0 && g >= 0 && b >= 0)
+        return (gint64) (((guint32) r << 16) | ((guint32) g << 8) | (guint32) b);
+    }
+
+  /* A name, among whatever else the value says. */
+  for (p = value; *p != '\0'; )
+    {
+      char word[24];
+      guint n = 0;
+
+      while (*p != '\0' && !g_ascii_isalpha (*p))
+        p++;
+      while (g_ascii_isalpha (*p))
+        {
+          if (n < sizeof word - 1)
+            word[n++] = g_ascii_tolower (*p);
+          p++;
+        }
+      word[n] = '\0';
+      if (n == 0)
+        break;
+      for (guint i = 0; i < G_N_ELEMENTS (CSS_COLOURS); i++)
+        if (g_str_equal (word, CSS_COLOURS[i].name))
+          return CSS_COLOURS[i].rgb;
+    }
+  return -1;
 }
 
-/* The grey of a CSS colour, as a shading percentage: a pale background
- * behind a paragraph is what shading means to this model. */
-static int
-css_shading (const char *value)
+/* True when a border value says there is no line: "none", "hidden", or
+ * a width of nought -- "0", "0px" -- and not "0.75pt", which begins
+ * with a nought and is a line. */
+static gboolean
+css_border_none (const char *value)
 {
-  const char *hash = strchr (value, '#');
-  guint32 rgb;
-  int grey;
+  if (strstr (value, "none") != NULL || strstr (value, "hidden") != NULL)
+    return TRUE;
+  for (const char *p = value; *p != '\0'; p++)
+    if ((g_ascii_isdigit (*p) || *p == '.') && (p == value || *(p - 1) == ' '))
+      {
+        char *end = NULL;
+        double v = g_ascii_strtod (p, &end);
 
-  if (hash == NULL || strlen (hash) < 7)
-    return 0;
-  rgb = (guint32) strtoul (hash + 1, NULL, 16);
-  grey = (int) ((((rgb >> 16) & 0xFF) * 30 + ((rgb >> 8) & 0xFF) * 59 + (rgb & 0xFF) * 11) / 100);
-  return CLAMP ((255 - grey) * 100 / 255, 0, 100);
+        return end != p && v == 0.0;
+      }
+  return FALSE;
 }
+
+/* A font size in half-points from a CSS value, against the size in force
+ * -- "larger", "120%" and "1.5em" are relative to it -- or 0 for a value
+ * that says no size. */
+static int
+css_font_size (const char *value, int current)
+{
+  /* The keywords, against a medium of 12pt. */
+  static const struct { const char *name; int hp; } KEYS[] = {
+    { "xx-small", 14 }, { "x-small", 15 }, { "small", 20 }, { "medium", 24 },
+    { "large", 27 }, { "x-large", 36 }, { "xx-large", 48 }, { "xxx-large", 72 },
+  };
+  char *unit = NULL;
+  double v;
+
+  if (current <= 0)
+    current = 24;
+  for (guint i = 0; i < G_N_ELEMENTS (KEYS); i++)
+    if (g_ascii_strcasecmp (value, KEYS[i].name) == 0)
+      return KEYS[i].hp;
+  if (g_ascii_strcasecmp (value, "smaller") == 0)
+    return MAX (current * 5 / 6, 2);
+  if (g_ascii_strcasecmp (value, "larger") == 0)
+    return current * 6 / 5;
+
+  v = g_ascii_strtod (value, &unit);
+  if (unit == value || v <= 0 || isnan (v))
+    return 0;
+  while (*unit == ' ')
+    unit++;
+  if (g_str_has_prefix (unit, "pt"))       v = v * 2;
+  else if (g_str_has_prefix (unit, "px"))  v = v * 1.5;
+  else if (*unit == '%')                   v = current * v / 100.0;
+  else if (g_str_has_prefix (unit, "rem")) v = 24 * v;
+  else if (g_str_has_prefix (unit, "em"))  v = current * v;
+  else if (*unit == '\0' || *unit == ';')  v = v * 1.5;   /* a bare number: pixels */
+  else
+    {
+      int tw = css_twips (value);
+
+      if (tw <= 0)
+        return 0;
+      v = tw / 10.0;
+    }
+  return CLAMP ((int) (v + 0.5), 2, 3276);
+}
+
+/* Word's <font size="3">, and "+1": the seven steps, medium the third. */
+static int
+font_size_attr (const char *value, int current)
+{
+  static const int STEPS[7] = { 15, 20, 24, 27, 36, 48, 72 };
+  int n = (int) CLAMP (g_ascii_strtoll (value, NULL, 10), -100, 100);
+
+  if (*value == '+' || *value == '-')
+    n = 3 + n;
+  if (n < 1 || n > 7)
+    return current;
+  return STEPS[n - 1];
+}
+
+typedef enum {
+  STYLE_SHOWN = 0,
+  STYLE_HIDDEN,        /* display:none: not read */
+  STYLE_MARKER         /* Word's dialect: the number a list paragraph
+                        * carries as text, and Word's tab of spaces */
+} StyleShows;
 
 /* The inline styles a word processor's HTML leans on. */
-static void
+static StyleShows
 apply_style (Html *h, const char *style, gboolean para)
 {
   char **decls = g_strsplit (style, ";", -1);
+  W42CharFmt *ch = &h->ch[h->depth];
+  StyleShows hidden = STYLE_SHOWN;
 
   for (guint i = 0; decls[i] != NULL; i++)
     {
       char *colon = strchr (decls[i], ':');
-      char *key, *value;
+      char *key, *value, *bang;
+      int em;
 
       if (colon == NULL)
         continue;
       *colon = '\0';
       key = g_strstrip (decls[i]);
       value = g_strstrip (colon + 1);
+      /* "!important" weighs one rule against another; by the time a value
+       * is here the weighing is done. */
+      if ((bang = strstr (value, "!important")) != NULL)
+        {
+          *bang = '\0';
+          g_strstrip (value);
+        }
+      if (*key == '\0' || *value == '\0')
+        continue;
+      em = ch->size > 0 ? ch->size * 10 : 240;
 
       if (g_ascii_strcasecmp (key, "font-family") == 0)
         {
@@ -526,126 +774,286 @@ apply_style (Html *h, const char *style, gboolean para)
           char *comma = strchr (name, ',');
           if (comma) *comma = '\0';
           g_strdelimit (name, "'\"", ' ');
-          h->ch[h->depth].family = g_intern_string (g_strstrip (name));
+          g_strstrip (name);
+          if (*name != '\0')
+            ch->family = g_intern_string (name);
           g_free (name);
         }
       else if (g_ascii_strcasecmp (key, "font-size") == 0)
         {
-          double v = g_ascii_strtod (value, NULL);
-          if (strstr (value, "px") != NULL) v = v * 0.75;
-          if (v > 0)
-            h->ch[h->depth].size = CLAMP ((int) (v * 2 + 0.5), 2, 3276);
+          int hp = css_font_size (value, ch->size);
+
+          if (hp > 0)
+            ch->size = hp;
+        }
+      else if (g_ascii_strcasecmp (key, "font") == 0)
+        {
+          /* The shorthand: style, weight and variant in any order, then
+           * the size (with the line height after a slash), then the
+           * family; "font:7.0pt Symbol" is how Word writes a marker. */
+          char **tok = g_strsplit (value, " ", -1);
+          guint k;
+
+          for (k = 0; tok[k] != NULL; k++)
+            {
+              char *t = tok[k];
+              int hp;
+
+              if (*t == '\0')
+                continue;
+              if (g_ascii_isdigit (*t) || *t == '.')
+                {
+                  char *slash = strchr (t, '/');
+
+                  if (slash != NULL)
+                    *slash = '\0';
+                  if ((hp = css_font_size (t, ch->size)) > 0)
+                    ch->size = hp;
+                  k++;
+                  break;
+                }
+              if (g_ascii_strcasecmp (t, "italic") == 0 || g_ascii_strcasecmp (t, "oblique") == 0)
+                ch->italic = 1;
+              else if (g_ascii_strcasecmp (t, "bold") == 0 || g_ascii_strcasecmp (t, "bolder") == 0)
+                ch->bold = 1;
+              else if (g_ascii_strcasecmp (t, "small-caps") == 0)
+                ch->smallcaps = 1;
+              else if (g_ascii_strcasecmp (t, "normal") == 0)
+                ;
+              else
+                break;    /* a keyword size, or the family already */
+            }
+          if (tok[k] != NULL)
+            {
+              char *family = g_strjoinv (" ", tok + k);
+              char *comma = strchr (family, ',');
+
+              if (comma) *comma = '\0';
+              g_strdelimit (family, "'\"", ' ');
+              g_strstrip (family);
+              if (*family != '\0')
+                ch->family = g_intern_string (family);
+              g_free (family);
+            }
+          g_strfreev (tok);
         }
       else if (g_ascii_strcasecmp (key, "letter-spacing") == 0)
-        h->ch[h->depth].spacing = (gint16) CLAMP (css_twips (value), -720, 720);
-      else if (g_ascii_strcasecmp (key, "color") == 0 && value[0] == '#' && strlen (value) == 7)
-        h->ch[h->depth].color = (guint32) strtoul (value + 1, NULL, 16);
+        ch->spacing = (gint16) CLAMP (css_twips_em (value, em), -720, 720);
+      else if (g_ascii_strcasecmp (key, "color") == 0)
+        {
+          gint64 rgb = css_colour (value);
+
+          if (rgb >= 0)
+            ch->color = (guint32) rgb;
+        }
       else if (g_ascii_strcasecmp (key, "font-weight") == 0)
-        h->ch[h->depth].bold = (g_ascii_strcasecmp (value, "bold") == 0 || atoi (value) >= 600);
+        ch->bold = (g_ascii_strcasecmp (value, "bold") == 0 ||
+                    g_ascii_strcasecmp (value, "bolder") == 0 || atoi (value) >= 600);
       else if (g_ascii_strcasecmp (key, "font-style") == 0)
-        h->ch[h->depth].italic = g_ascii_strcasecmp (value, "italic") == 0;
+        ch->italic = (g_ascii_strcasecmp (value, "italic") == 0 ||
+                      g_ascii_strcasecmp (value, "oblique") == 0);
       else if (g_ascii_strcasecmp (key, "text-decoration-style") == 0)
         {
           /* The shape of the line, when the page says one. */
-          if (h->ch[h->depth].underline == W42_UNDERLINE_NONE)
-            h->ch[h->depth].underline = W42_UNDERLINE_SINGLE;
+          if (ch->underline == W42_UNDERLINE_NONE)
+            ch->underline = W42_UNDERLINE_SINGLE;
           if (g_ascii_strcasecmp (value, "double") == 0)
-            h->ch[h->depth].underline = W42_UNDERLINE_DOUBLE;
+            ch->underline = W42_UNDERLINE_DOUBLE;
           else if (g_ascii_strcasecmp (value, "dotted") == 0)
-            h->ch[h->depth].underline = W42_UNDERLINE_DOTTED;
+            ch->underline = W42_UNDERLINE_DOTTED;
           else if (g_ascii_strcasecmp (value, "dashed") == 0)
-            h->ch[h->depth].underline = W42_UNDERLINE_DASHED;
+            ch->underline = W42_UNDERLINE_DASHED;
           else if (g_ascii_strcasecmp (value, "wavy") == 0)
-            h->ch[h->depth].underline = W42_UNDERLINE_WAVE;
+            ch->underline = W42_UNDERLINE_WAVE;
         }
-      else if (g_ascii_strcasecmp (key, "text-decoration") == 0)
+      else if (g_ascii_strcasecmp (key, "text-decoration") == 0 ||
+               g_ascii_strcasecmp (key, "text-decoration-line") == 0)
         {
-          if (strstr (value, "underline") && h->ch[h->depth].underline == W42_UNDERLINE_NONE)
-            h->ch[h->depth].underline = W42_UNDERLINE_SINGLE;
-          if (strstr (value, "double")) h->ch[h->depth].underline = W42_UNDERLINE_DOUBLE;
-          if (strstr (value, "dotted")) h->ch[h->depth].underline = W42_UNDERLINE_DOTTED;
-          if (strstr (value, "dashed")) h->ch[h->depth].underline = W42_UNDERLINE_DASHED;
-          if (strstr (value, "wavy"))   h->ch[h->depth].underline = W42_UNDERLINE_WAVE;
-          if (strstr (value, "line-through")) h->ch[h->depth].strikeout = 1;
-          if (strstr (value, "overline")) h->ch[h->depth].overline = 1;
+          if (g_ascii_strcasecmp (value, "none") == 0)
+            {
+              ch->underline = W42_UNDERLINE_NONE;
+              ch->strikeout = 0;
+              ch->overline = 0;
+            }
+          if (strstr (value, "underline") && ch->underline == W42_UNDERLINE_NONE)
+            ch->underline = W42_UNDERLINE_SINGLE;
+          if (strstr (value, "double")) ch->underline = W42_UNDERLINE_DOUBLE;
+          if (strstr (value, "dotted")) ch->underline = W42_UNDERLINE_DOTTED;
+          if (strstr (value, "dashed")) ch->underline = W42_UNDERLINE_DASHED;
+          if (strstr (value, "wavy"))   ch->underline = W42_UNDERLINE_WAVE;
+          if (strstr (value, "line-through")) ch->strikeout = 1;
+          if (strstr (value, "overline")) ch->overline = 1;
+        }
+      else if (g_ascii_strcasecmp (key, "vertical-align") == 0)
+        {
+          if (para)
+            {
+              /* On a cell: where its text sits. */
+              if (g_ascii_strcasecmp (value, "middle") == 0)
+                h->pa.cell_valign = W42_CELL_VALIGN_CENTER;
+              else if (g_ascii_strcasecmp (value, "bottom") == 0)
+                h->pa.cell_valign = W42_CELL_VALIGN_BOTTOM;
+              else if (g_ascii_strcasecmp (value, "top") == 0)
+                h->pa.cell_valign = W42_CELL_VALIGN_TOP;
+            }
+          else if (g_ascii_strcasecmp (value, "super") == 0)
+            ch->script = 1;
+          else if (g_ascii_strcasecmp (value, "sub") == 0)
+            ch->script = -1;
+          else if (g_ascii_strcasecmp (value, "baseline") == 0)
+            ch->script = 0;
         }
       else if (para && g_ascii_strcasecmp (key, "text-align") == 0)
         {
           if (g_ascii_strcasecmp (value, "center") == 0) h->pa.align = W42_ALIGN_CENTER;
-          else if (g_ascii_strcasecmp (value, "right") == 0) h->pa.align = W42_ALIGN_RIGHT;
+          else if (g_ascii_strcasecmp (value, "right") == 0 ||
+                   g_ascii_strcasecmp (value, "end") == 0) h->pa.align = W42_ALIGN_RIGHT;
           else if (g_ascii_strcasecmp (value, "justify") == 0) h->pa.align = W42_ALIGN_JUSTIFY;
+          else if (g_ascii_strcasecmp (value, "left") == 0 ||
+                   g_ascii_strcasecmp (value, "start") == 0) h->pa.align = W42_ALIGN_LEFT;
           h->pa_dirty = TRUE;
         }
-      else if (g_ascii_strcasecmp (key, "font-variant") == 0)
-        h->ch[h->depth].smallcaps = g_ascii_strcasecmp (value, "small-caps") == 0;
+      else if (para && g_ascii_strcasecmp (key, "direction") == 0)
+        {
+          h->pa.rtl = g_ascii_strcasecmp (value, "rtl") == 0;
+          h->pa_dirty = TRUE;
+        }
+      else if (g_ascii_strcasecmp (key, "font-variant") == 0 ||
+               g_ascii_strcasecmp (key, "font-variant-caps") == 0)
+        ch->smallcaps = strstr (value, "small-caps") != NULL;
       else if (g_ascii_strcasecmp (key, "text-transform") == 0)
-        h->ch[h->depth].allcaps = g_ascii_strcasecmp (value, "uppercase") == 0;
+        ch->allcaps = g_ascii_strcasecmp (value, "uppercase") == 0;
+      else if (g_ascii_strcasecmp (key, "display") == 0)
+        {
+          if (g_ascii_strcasecmp (value, "none") == 0)
+            hidden = STYLE_HIDDEN;
+        }
+      else if (g_ascii_strcasecmp (key, "visibility") == 0)
+        {
+          if (g_ascii_strcasecmp (value, "hidden") == 0)
+            hidden = STYLE_HIDDEN;
+        }
+      else if (g_ascii_strcasecmp (key, "mso-list") == 0)
+        {
+          /* Word's HTML numbers its lists in text: the paragraph says
+           * "mso-list:l0 level1 lfo1", and a span inside it, marked
+           * Ignore, holds the "1." or the bullet a browser shows. */
+          const char *level = strstr (value, "level");
+
+          if (g_ascii_strcasecmp (value, "ignore") == 0)
+            hidden = STYLE_MARKER;
+          else if (para && level != NULL)
+            {
+              h->mso_item = CLAMP (atoi (level + 5), 1, 9);
+              h->pa.list = W42_LIST_BULLET;
+              h->pa.list_level = (guint8) (h->mso_item - 1);
+              h->pa_dirty = TRUE;
+            }
+        }
+      else if (g_ascii_strcasecmp (key, "mso-tab-count") == 0)
+        {
+          /* A tab, written as a span of spaces for the browser's sake. */
+          int n = CLAMP (atoi (value), 1, 32);
+
+          for (int k = 0; k < n; k++)
+            g_string_append_c (h->pending, '\t');
+          h->space_pending = FALSE;
+          h->at_para_start = FALSE;
+          hidden = STYLE_MARKER;     /* the spaces stand for the tab */
+        }
+      else if (g_ascii_strcasecmp (key, "white-space") == 0)
+        {
+          /* Kept whitespace is the element's to the end; the caller
+           * notes it from the count. */
+          if (g_ascii_strncasecmp (value, "pre", 3) == 0)
+            h->pre_depth++;
+        }
       else if (!para && (g_ascii_strcasecmp (key, "background") == 0 ||
                          g_ascii_strcasecmp (key, "background-color") == 0))
         {
-          /* On a run, a background is a highlight. */
-          const char *hash = strchr (value, '#');
+          /* On a run, a background is a highlight: the nearest of
+           * Word's sixteen. */
+          gint64 rgb = css_colour (value);
 
-          if (hash != NULL && strlen (hash) >= 7)
+          if (rgb >= 0 && rgb != 0xFFFFFF)
+            ch->highlight = (guint8) w42_highlight_nearest ((guint32) rgb);
+        }
+      else if (para && g_ascii_strcasecmp (key, "margin") == 0)
+        {
+          /* The shorthand: one value for all four sides, two for the
+           * pairs, three or four naming them round from the top. */
+          char **tok = g_strsplit (value, " ", -1);
+          int m[4] = { 0, 0, 0, 0 };
+          int n = 0;
+
+          for (guint k = 0; tok[k] != NULL && n < 4; k++)
+            if (*tok[k] != '\0')
+              m[n++] = css_twips_em (tok[k], em);
+          g_strfreev (tok);
+          if (n == 1)      { m[1] = m[2] = m[3] = m[0]; }
+          else if (n == 2) { m[2] = m[0]; m[3] = m[1]; }
+          else if (n == 3) { m[3] = m[1]; }
+          if (n >= 1)
             {
-              guint32 rgb = (guint32) strtoul (hash + 1, NULL, 16);
-              int best = 0;
-              long best_away = 0;
-
-              for (int k = 1; k <= 16; k++)
-                {
-                  guint32 c = w42_highlight_rgb (k);
-                  long dr = (long) ((c >> 16) & 0xFF) - (long) ((rgb >> 16) & 0xFF);
-                  long dg = (long) ((c >> 8) & 0xFF) - (long) ((rgb >> 8) & 0xFF);
-                  long db = (long) (c & 0xFF) - (long) (rgb & 0xFF);
-                  long away = dr * dr + dg * dg + db * db;
-
-                  if (best == 0 || away < best_away)
-                    {
-                      best = k;
-                      best_away = away;
-                    }
-                }
-              if (rgb != 0xFFFFFF)
-                h->ch[h->depth].highlight = (guint8) best;
+              h->pa.space_before = m[0];
+              h->pa.indent_right = m[1];
+              h->pa.space_after  = m[2];
+              h->pa.indent_left  = m[3];
+              h->pa_dirty = TRUE;
             }
         }
       else if (para && g_ascii_strcasecmp (key, "margin-left") == 0)
         {
-          h->pa.indent_left = css_twips (value);
+          h->pa.indent_left = css_twips_em (value, em);
           h->pa_dirty = TRUE;
         }
       else if (para && g_ascii_strcasecmp (key, "margin-right") == 0)
         {
-          h->pa.indent_right = css_twips (value);
+          h->pa.indent_right = css_twips_em (value, em);
           h->pa_dirty = TRUE;
         }
       else if (para && g_ascii_strcasecmp (key, "text-indent") == 0)
         {
-          h->pa.indent_first = css_twips (value);
+          h->pa.indent_first = css_twips_em (value, em);
           h->pa_dirty = TRUE;
         }
       else if (para && g_ascii_strcasecmp (key, "margin-top") == 0)
         {
-          h->pa.space_before = css_twips (value);
+          h->pa.space_before = css_twips_em (value, em);
           h->pa_dirty = TRUE;
         }
       else if (para && g_ascii_strcasecmp (key, "margin-bottom") == 0)
         {
-          h->pa.space_after = css_twips (value);
+          h->pa.space_after = css_twips_em (value, em);
           h->pa_dirty = TRUE;
         }
       else if (para && g_ascii_strcasecmp (key, "line-height") == 0)
         {
-          if (strchr (value, '%') != NULL)
+          char *unit = NULL;
+          double v = g_ascii_strtod (value, &unit);
+
+          if (g_ascii_strcasecmp (value, "normal") == 0)
             {
-              int pct = atoi (value);
+              h->pa.line_spacing = 0;
+              h->pa.line_spacing_pct = 0;
+            }
+          else if (strchr (value, '%') != NULL)
+            {
+              int pct = (int) (v + 0.5);
 
               if (pct > 0 && pct != 100)
                 h->pa.line_spacing_pct = pct;
             }
-          else if (css_twips (value) > 0)
-            h->pa.line_spacing = css_twips (value);
+          else if (unit != value && (*unit == '\0' || *unit == ' '))
+            {
+              /* A bare number is a multiple of the type size. */
+              int pct = (int) (v * 100 + 0.5);
+
+              if (pct > 0 && pct != 100)
+                h->pa.line_spacing_pct = pct;
+            }
+          else if (css_twips_em (value, em) > 0)
+            h->pa.line_spacing = css_twips_em (value, em);
           h->pa_dirty = TRUE;
         }
       else if (g_ascii_strcasecmp (key, "--w42-line-height") == 0)
@@ -661,6 +1069,39 @@ apply_style (Html *h, const char *style, gboolean para)
             }
           h->pa_dirty = TRUE;
         }
+      else if (para && g_ascii_strcasecmp (key, "--w42-drop-cap") == 0)
+        {
+          h->pa.drop_cap = (guint8) CLAMP (atoi (value), 0, 10);
+          h->pa_dirty = TRUE;
+        }
+      else if (para && (g_ascii_strcasecmp (key, "page-break-before") == 0 ||
+                        g_ascii_strcasecmp (key, "break-before") == 0))
+        {
+          h->pa.page_break_before = (g_ascii_strcasecmp (value, "always") == 0 ||
+                                     g_ascii_strcasecmp (value, "page") == 0 ||
+                                     g_ascii_strcasecmp (value, "left") == 0 ||
+                                     g_ascii_strcasecmp (value, "right") == 0);
+          h->pa_dirty = TRUE;
+        }
+      else if (para && g_ascii_strcasecmp (key, "float") == 0)
+        {
+          /* A paragraph set at the side of the column: a frame. */
+          if (g_ascii_strcasecmp (value, "left") == 0)
+            h->pa.frame_side = W42_FRAME_LEFT;
+          else if (g_ascii_strcasecmp (value, "right") == 0)
+            h->pa.frame_side = W42_FRAME_RIGHT;
+          else
+            h->pa.frame_side = W42_FRAME_NONE;
+          h->pa_dirty = TRUE;
+        }
+      else if (para && g_ascii_strcasecmp (key, "width") == 0)
+        {
+          /* Only a frame has a width of its own in this model. */
+          int w = css_twips_em (value, em);
+
+          if (w > 0)
+            h->pa.frame_width = w;
+        }
       else if (para && (g_ascii_strcasecmp (key, "background") == 0 ||
                         g_ascii_strcasecmp (key, "background-color") == 0))
         {
@@ -672,22 +1113,64 @@ apply_style (Html *h, const char *style, gboolean para)
               h->pa.has_shading_color = 1;
               h->pa.shading = 0;
             }
+          else if (strstr (value, "transparent") != NULL || g_ascii_strcasecmp (value, "none") == 0)
+            {
+              h->pa.has_shading_color = 0;
+              h->pa.shading = 0;
+            }
+          h->pa_dirty = TRUE;
+        }
+      else if (para && (g_ascii_strcasecmp (key, "border-width") == 0 ||
+                        g_ascii_strcasecmp (key, "border-style") == 0 ||
+                        g_ascii_strcasecmp (key, "border-color") == 0))
+        {
+          /* One property of every side at once.  A style of its own
+           * turns the sides on; "none" turns them off. */
+          if (key[7] == 's' && g_ascii_strcasecmp (value, "none") == 0)
+            h->pa.border &= (guint8) ~W42_BORDER_BOX;
           else
-            h->pa.shading = (guint8) css_shading (value);
+            {
+              if (key[7] == 's' && (h->pa.border & W42_BORDER_BOX) == 0)
+                h->pa.border |= W42_BORDER_BOX;
+              for (int e = 0; e < 4; e++)
+                {
+                  if (key[7] == 'w')
+                    {
+                      int w = css_twips_em (value, em);
+
+                      if (w > 0)
+                        h->pa.edge[e].width = (guint8) CLAMP (w, 5, 120);
+                    }
+                  else if (key[7] == 's')
+                    h->pa.edge[e].style = (guint8) w42_border_style_from_css (value);
+                  else
+                    {
+                      gint64 rgb = css_colour (value);
+
+                      if (rgb >= 0)
+                        h->pa.edge[e].color = (guint32) rgb;
+                    }
+                }
+            }
           h->pa_dirty = TRUE;
         }
       else if (para && g_str_has_prefix (key, "border"))
         {
           /* "border: 1px solid #000000", or one side of it. */
-          if (strstr (value, "none") == NULL && strstr (value, "0") != value)
+          int bits = g_ascii_strcasecmp (key, "border") == 0 ? W42_BORDER_BOX
+                   : g_ascii_strcasecmp (key, "border-top") == 0 ? W42_BORDER_TOP
+                   : g_ascii_strcasecmp (key, "border-bottom") == 0 ? W42_BORDER_BOTTOM
+                   : g_ascii_strcasecmp (key, "border-left") == 0 ? W42_BORDER_LEFT
+                   : g_ascii_strcasecmp (key, "border-right") == 0 ? W42_BORDER_RIGHT : 0;
+
+          if (bits == 0)
+            continue;
+          if (css_border_none (value))
+            h->pa.border &= (guint8) ~bits;
+          else
             {
-              int bits = g_ascii_strcasecmp (key, "border") == 0 ? W42_BORDER_BOX
-                       : g_ascii_strcasecmp (key, "border-top") == 0 ? W42_BORDER_TOP
-                       : g_ascii_strcasecmp (key, "border-bottom") == 0 ? W42_BORDER_BOTTOM
-                       : g_ascii_strcasecmp (key, "border-left") == 0 ? W42_BORDER_LEFT
-                       : g_ascii_strcasecmp (key, "border-right") == 0 ? W42_BORDER_RIGHT : 0;
               gint64 rgb = css_colour (value);
-              int w = css_twips (value);
+              int w = css_twips_em (value, em);
               W42BorderStyle line = w42_border_style_from_css (value);
 
               h->pa.border |= (guint8) bits;
@@ -700,11 +1183,351 @@ apply_style (Html *h, const char *style, gboolean para)
                       h->pa.edge[e].width = (guint8) CLAMP (w, 5, 120);
                     h->pa.edge[e].style = (guint8) line;
                   }
-              h->pa_dirty = TRUE;
             }
+          h->pa_dirty = TRUE;
         }
     }
   g_strfreev (decls);
+  return hidden;
+}
+
+/* ---------------------------------------------------------------------- */
+/* The page's own stylesheet                                               */
+/* ---------------------------------------------------------------------- */
+
+/* A rule's selector, if it is one this reader follows: an element, a
+ * class, an id, or an element with one of those.  Combinators, attribute
+ * selectors and pseudo-classes are more CSS than a document needs, and
+ * their rules are left to the browser. */
+static void
+add_rule (Html *h, const char *sel, gsize sel_len, const char *decl, gsize decl_len)
+{
+  char *s = g_strstrip (g_strndup (sel, sel_len));
+  CssRule *rule;
+  char *dot, *hash;
+
+  if (*s == '\0' || strpbrk (s, " \t\r\n>+~[]:()*") != NULL)
+    {
+      g_free (s);
+      return;
+    }
+  rule = g_new0 (CssRule, 1);
+  dot = strchr (s, '.');
+  hash = strchr (s, '#');
+  if (dot != NULL && strchr (dot + 1, '.') != NULL)
+    {
+      /* Two classes at once: not followed. */
+      g_free (rule);
+      g_free (s);
+      return;
+    }
+  if (dot != NULL)
+    {
+      char *cls_end = hash != NULL && hash > dot ? hash : dot + strlen (dot);
+      char *cls = g_strndup (dot + 1, cls_end - dot - 1);
+
+      rule->cls = g_intern_string (cls);
+      rule->weight += 10;
+      g_free (cls);
+    }
+  if (hash != NULL)
+    {
+      char *id_end = dot != NULL && dot > hash ? dot : hash + strlen (hash);
+      char *id = g_strndup (hash + 1, id_end - hash - 1);
+
+      rule->id = g_intern_string (id);
+      rule->weight += 100;
+      g_free (id);
+    }
+  {
+    char *tag_end = s + strlen (s);
+
+    if (dot != NULL) tag_end = MIN (tag_end, dot);
+    if (hash != NULL) tag_end = MIN (tag_end, hash);
+    if (tag_end > s)
+      {
+        char *tag = g_ascii_strdown (s, tag_end - s);
+
+        rule->tag = g_intern_string (tag);
+        rule->weight += 1;
+        g_free (tag);
+      }
+  }
+  if (rule->weight == 0 || (rule->cls != NULL && *rule->cls == '\0') ||
+      (rule->id != NULL && *rule->id == '\0'))
+    {
+      g_free (rule);
+      g_free (s);
+      return;
+    }
+  /* A sheet past any document's size: the rest are left to the browser,
+   * before matching them costs more than reading the page. */
+  if (h->rules->len >= 8192)
+    {
+      g_free (rule);
+      g_free (s);
+      return;
+    }
+  rule->order = h->rules->len;
+  rule->decl = g_strndup (decl, decl_len);
+  g_ptr_array_add (h->rules, rule);
+  {
+    /* Filed under the most particular thing it names, which an element
+     * must carry to match it. */
+    GHashTable *index = rule->id != NULL ? h->rules_by_id
+                      : rule->cls != NULL ? h->rules_by_class : h->rules_by_tag;
+    const char *key = rule->id != NULL ? rule->id : rule->cls != NULL ? rule->cls : rule->tag;
+    GPtrArray *list = g_hash_table_lookup (index, key);
+
+    if (list == NULL)
+      {
+        list = g_ptr_array_new ();
+        g_hash_table_insert (index, (gpointer) key, list);
+      }
+    g_ptr_array_add (list, rule);
+  }
+  g_free (s);
+}
+
+static void
+rule_list_free (gpointer data)
+{
+  g_ptr_array_free (data, TRUE);
+}
+
+static void
+css_rule_free (gpointer data)
+{
+  CssRule *rule = data;
+
+  g_free (rule->decl);
+  g_free (rule);
+}
+
+/* The text of one <style> element: its rules, in order, minus the
+ * comments and the at-rules -- @page is read from the raw text, @media
+ * and @font-face are the browser's. */
+static void
+parse_stylesheet (Html *h, const char *css, gsize len)
+{
+  GString *clean = g_string_sized_new (len);
+  const char *p, *end;
+
+  /* Comments, and the HTML comment markers old pages wrap a sheet in. */
+  for (gsize i = 0; i < len; )
+    {
+      if (i + 1 < len && css[i] == '/' && css[i + 1] == '*')
+        {
+          const char *close = g_strstr_len (css + i + 2, len - i - 2, "*/");
+
+          i = close != NULL ? (gsize) (close - css) + 2 : len;
+          continue;
+        }
+      if (i + 3 < len && memcmp (css + i, "<!--", 4) == 0)
+        {
+          i += 4;
+          continue;
+        }
+      if (i + 2 < len && memcmp (css + i, "-->", 3) == 0)
+        {
+          i += 3;
+          continue;
+        }
+      g_string_append_c (clean, css[i]);
+      i++;
+    }
+
+  p = clean->str;
+  end = p + clean->len;
+  while (p < end)
+    {
+      const char *brace, *close;
+
+      while (p < end && g_ascii_isspace (*p))
+        p++;
+      if (p >= end)
+        break;
+      if (*p == '@')
+        {
+          /* An at-rule: to its semicolon, or over its block. */
+          const char *semi = memchr (p, ';', end - p);
+          const char *open = memchr (p, '{', end - p);
+
+          if (open == NULL || (semi != NULL && semi < open))
+            {
+              p = semi != NULL ? semi + 1 : end;
+              continue;
+            }
+          {
+            int depth = 0;
+
+            for (p = open; p < end; p++)
+              {
+                if (*p == '{') depth++;
+                else if (*p == '}' && --depth == 0) { p++; break; }
+              }
+          }
+          continue;
+        }
+      brace = memchr (p, '{', end - p);
+      if (brace == NULL)
+        break;
+      close = memchr (brace, '}', end - brace);
+      if (close == NULL)
+        break;
+      {
+        /* Each selector of the list gets the declarations. */
+        const char *sel = p;
+
+        while (sel < brace)
+          {
+            const char *comma = memchr (sel, ',', brace - sel);
+            const char *sel_end = comma != NULL ? comma : brace;
+
+            add_rule (h, sel, sel_end - sel, brace + 1, close - brace - 1);
+            sel = sel_end + 1;
+          }
+      }
+      p = close + 1;
+    }
+  g_string_free (clean, TRUE);
+}
+
+/* Every <style> in the page, in order, wherever it is: a word processor
+ * puts its sheet in the head, and a page written by hand anywhere. */
+static void
+collect_styles (Html *h, lxb_dom_node_t *root)
+{
+  lxb_dom_node_t *n = lxb_dom_node_first_child (root);
+
+  h->rules = g_ptr_array_new_with_free_func (css_rule_free);
+  h->rules_by_tag = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, rule_list_free);
+  h->rules_by_class = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, rule_list_free);
+  h->rules_by_id = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, rule_list_free);
+  while (n != NULL)
+    {
+      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT && lxb_dom_node_tag_id (n) == LXB_TAG_STYLE)
+        {
+          size_t len = 0;
+          lxb_char_t *raw = lxb_dom_node_text_content (n, &len);
+
+          if (raw != NULL)
+            {
+              parse_stylesheet (h, (const char *) raw, len);
+              lxb_dom_document_destroy_text (n->owner_document, raw);
+            }
+        }
+      if (n->first_child != NULL)
+        {
+          n = n->first_child;
+          continue;
+        }
+      while (n != root && n->next == NULL)
+        n = n->parent;
+      if (n == root)
+        break;
+      n = n->next;
+    }
+}
+
+/* The declarations that apply to an element: the sheet's matching rules
+ * by weight and then by order, and its own style attribute last, as the
+ * cascade has it.  Freed by the caller; NULL when there are none. */
+static char *
+elem_style (Html *h, lxb_dom_element_t *el)
+{
+  char *inline_style = elem_attr (el, "style");
+  char *cls, *id, **classes = NULL;
+  const char *id_i = NULL;
+  char name[24];
+  GPtrArray *hits;
+  GString *out;
+
+  if (h->rules == NULL || h->rules->len == 0)
+    return inline_style;
+
+  elem_name (el, name, sizeof name);
+  cls = elem_attr (el, "class");
+  id = elem_attr (el, "id");
+  if (cls != NULL)
+    classes = g_strsplit_set (cls, " \t\r\n", -1);
+  if (id != NULL && *id != '\0')
+    id_i = g_intern_string (id);
+
+  /* The rules that could match: those filed under the element's name,
+   * each of its classes, and its id. */
+  hits = g_ptr_array_new ();
+  for (int pass = 0; pass < 2 + (classes != NULL ? (int) g_strv_length (classes) : 0); pass++)
+    {
+      GPtrArray *list;
+
+      if (pass == 0)
+        list = g_hash_table_lookup (h->rules_by_tag, g_intern_string (name));
+      else if (pass == 1)
+        list = id_i != NULL ? g_hash_table_lookup (h->rules_by_id, id_i) : NULL;
+      else
+        list = *classes[pass - 2] != '\0'
+                 ? g_hash_table_lookup (h->rules_by_class, g_intern_string (classes[pass - 2])) : NULL;
+      for (guint i = 0; list != NULL && i < list->len; i++)
+        {
+          CssRule *rule = g_ptr_array_index (list, i);
+          gboolean ok = TRUE;
+
+          if (rule->tag != NULL && !g_str_equal (rule->tag, name))
+            ok = FALSE;
+          if (ok && rule->id != NULL && rule->id != id_i)
+            ok = FALSE;
+          if (ok && rule->cls != NULL)
+            {
+              ok = FALSE;
+              for (guint k = 0; classes != NULL && classes[k] != NULL; k++)
+                if (g_str_equal (classes[k], rule->cls))
+                  {
+                    ok = TRUE;
+                    break;
+                  }
+            }
+          if (ok)
+            {
+              /* Kept in order of weight, then of the sheet. */
+              guint at = hits->len;
+
+              while (at > 0)
+                {
+                  const CssRule *before = g_ptr_array_index (hits, at - 1);
+
+                  if (before->weight < rule->weight ||
+                      (before->weight == rule->weight && before->order < rule->order))
+                    break;
+                  at--;
+                }
+              g_ptr_array_insert (hits, (gint) at, rule);
+            }
+        }
+    }
+
+  if (hits->len == 0)
+    {
+      g_ptr_array_free (hits, TRUE);
+      g_strfreev (classes);
+      g_free (cls);
+      g_free (id);
+      return inline_style;
+    }
+  out = g_string_new (NULL);
+  for (guint i = 0; i < hits->len; i++)
+    {
+      g_string_append (out, ((CssRule *) g_ptr_array_index (hits, i))->decl);
+      g_string_append_c (out, ';');
+    }
+  if (inline_style != NULL)
+    g_string_append (out, inline_style);
+  g_ptr_array_free (hits, TRUE);
+  g_strfreev (classes);
+  g_free (cls);
+  g_free (id);
+  g_free (inline_style);
+  return g_string_free (out, FALSE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -805,7 +1628,8 @@ note_id_for (const char *href)
  * word processor writing HTML puts its pictures next to the document
  * rather than inside it. */
 static void
-picture (Html *h, const char *src, const char *width, const char *height)
+picture (Html *h, const char *src, const char *width, const char *height,
+         W42Wrap wrap)
 {
   const char *comma;
   guchar *bytes;
@@ -878,20 +1702,20 @@ picture (Html *h, const char *src, const char *width, const char *height)
 
   flush_text (h);
   w42_pt_insert_object (h->pt, h->pos, idx, html_ap (h));
+  if (wrap != W42_WRAP_INLINE)
+    w42_pt_set_object_wrap (h->pt, h->pos, wrap);
   h->pos += 1;
   h->in_para = TRUE;
   h->at_para_start = FALSE;
 }
 
-/* Columns of a table: the cells of its first row. */
+/* The cells of one row, spans counted. */
 static int
-count_columns (lxb_dom_node_t *table)
+count_row_cells (lxb_dom_node_t *tr)
 {
-  lxb_dom_node_t *tr = first_descendant (table, LXB_TAG_TR);
   int cols = 0;
 
-  for (lxb_dom_node_t *n = tr != NULL ? lxb_dom_node_first_child (tr) : NULL;
-       n != NULL; n = n->next)
+  for (lxb_dom_node_t *n = lxb_dom_node_first_child (tr); n != NULL; n = n->next)
     {
       lxb_tag_id_t tag = lxb_dom_node_tag_id (n);
 
@@ -908,6 +1732,66 @@ count_columns (lxb_dom_node_t *table)
   return cols;
 }
 
+/* Columns of a table: as many as its widest row has, a heading row that
+ * spans them all or a first row that is short notwithstanding.  A table
+ * nested in a cell counts for its own rows, not this one's. */
+static int
+count_columns (lxb_dom_node_t *table)
+{
+  lxb_dom_node_t *n = lxb_dom_node_first_child (table);
+  int cols = 0;
+
+  while (n != NULL)
+    {
+      gboolean descend = n->first_child != NULL;
+
+      if (n->type == LXB_DOM_NODE_TYPE_ELEMENT)
+        {
+          lxb_tag_id_t tag = lxb_dom_node_tag_id (n);
+
+          if (tag == LXB_TAG_TR)
+            {
+              cols = MAX (cols, count_row_cells (n));
+              descend = FALSE;
+            }
+          else if (tag == LXB_TAG_TABLE)
+            descend = FALSE;
+        }
+      if (descend)
+        {
+          n = n->first_child;
+          continue;
+        }
+      while (n != table && n->next == NULL)
+        n = n->parent;
+      if (n == table)
+        break;
+      n = n->next;
+    }
+  return cols;
+}
+
+/* A width attribute in twips: pixels when bare, a share of the text's
+ * width when a percentage, or a length with its unit. */
+static int
+attr_width_twips (Html *h, const char *value)
+{
+  if (value == NULL || *value == '\0')
+    return 0;
+  if (strchr (value, '%') != NULL)
+    {
+      int text_width = h->page != NULL && h->page->width > 0
+                         ? h->page->width - h->page->margin_left - h->page->margin_right
+                         : 9360;
+      double pct = g_ascii_strtod (value, NULL);
+
+      return pct > 0 && pct <= 100 ? (int) (text_width * pct / 100.0 + 0.5) : 0;
+    }
+  if (css_twips (value) > 0)
+    return css_twips (value);
+  return atoi (value) > 0 ? CLAMP (atoi (value), 1, 2000) * 15 : 0;
+}
+
 /* ---------------------------------------------------------------------- */
 /* The walk                                                                */
 /* ---------------------------------------------------------------------- */
@@ -920,29 +1804,97 @@ typedef enum {
 static gboolean
 known_inline (const char *name)
 {
-  return g_str_equal (name, "b") || g_str_equal (name, "strong") || g_str_equal (name, "i") ||
-         g_str_equal (name, "em") || g_str_equal (name, "u") || g_str_equal (name, "s") ||
-         g_str_equal (name, "strike") || g_str_equal (name, "del") || g_str_equal (name, "a") ||
-         g_str_equal (name, "sup") || g_str_equal (name, "sub") || g_str_equal (name, "span") ||
-         g_str_equal (name, "font") || g_str_equal (name, "code") || g_str_equal (name, "tt") ||
-         g_str_equal (name, "small") || g_str_equal (name, "big") || g_str_equal (name, "mark");
+  static const char *const NAMES[] = {
+    "b", "strong", "i", "em", "u", "s", "strike", "del", "ins", "a",
+    "sup", "sub", "span", "font", "code", "tt", "kbd", "samp", "var",
+    "cite", "dfn", "q", "abbr", "small", "big", "mark", "label", "bdi",
+    "bdo", "time", "data", "output", NULL };
+
+  for (guint i = 0; NAMES[i] != NULL; i++)
+    if (g_str_equal (name, NAMES[i]))
+      return TRUE;
+  return FALSE;
 }
 
+/* The elements that begin a paragraph of their own: the classic blocks,
+ * and HTML5's sectioning elements, which a page written today puts its
+ * paragraphs inside. */
 static gboolean
 block_element (const char *name)
 {
-  return g_str_equal (name, "p") || g_str_equal (name, "div") ||
-         (name[0] == 'h' && name[1] >= '1' && name[1] <= '6' && name[2] == '\0') ||
-         g_str_equal (name, "li") || g_str_equal (name, "blockquote") ||
-         g_str_equal (name, "pre");
+  static const char *const NAMES[] = {
+    "p", "div", "li", "blockquote", "pre", "center", "address",
+    "dt", "dd", "figcaption", "summary", "caption",
+    "article", "section", "header", "footer", "main", "nav", "aside",
+    "figure", "details", "fieldset", "legend", "form", NULL };
+
+  if (name[0] == 'h' && name[1] >= '1' && name[1] <= '6' && name[2] == '\0')
+    return TRUE;
+  for (guint i = 0; NAMES[i] != NULL; i++)
+    if (g_str_equal (name, NAMES[i]))
+      return TRUE;
+  return FALSE;
+}
+
+/* Word's list markers, read as text: "1." numbers, "a." letters, "iv."
+ * romans; a bullet is anything else. */
+static int
+list_kind_of_marker (const char *text)
+{
+  gsize n = strlen (text);
+
+  if (n == 0)
+    return W42_LIST_BULLET;
+  if (g_ascii_isdigit (text[0]))
+    return W42_LIST_NUMBER;
+  if (n >= 2 && (text[1] == '.' || text[1] == ')'))
+    {
+      if (strchr ("ivx", text[0]) != NULL) return W42_LIST_LOWER_ROMAN;
+      if (strchr ("IVX", text[0]) != NULL) return W42_LIST_UPPER_ROMAN;
+      if (g_ascii_islower (text[0])) return W42_LIST_LOWER_LETTER;
+      if (g_ascii_isupper (text[0])) return W42_LIST_UPPER_LETTER;
+    }
+  if (strspn (text, "ivx") == n - 1 && (text[n - 1] == '.' || text[n - 1] == ')'))
+    return W42_LIST_LOWER_ROMAN;
+  if (strspn (text, "IVX") == n - 1 && (text[n - 1] == '.' || text[n - 1] == ')'))
+    return W42_LIST_UPPER_ROMAN;
+  if (g_str_equal (text, "o"))
+    return W42_LIST_BULLET_CIRCLE;
+  if (g_str_equal (text, "\302\247") || g_str_equal (text, "\342\226\252"))    /* Wingdings' square */
+    return W42_LIST_BULLET_SQUARE;
+  if (g_str_equal (text, "-") || g_str_equal (text, "\342\200\223"))
+    return W42_LIST_BULLET_DASH;
+  return W42_LIST_BULLET;
+}
+
+/* The list kind a list-style-type names, or W42_LIST_NONE for one it
+ * does not. */
+static int
+list_kind_of_css (const char *style)
+{
+  const char *v = strstr (style, "list-style");
+
+  if (v == NULL)
+    return W42_LIST_NONE;
+  if (strstr (v, "lower-alpha") || strstr (v, "lower-latin")) return W42_LIST_LOWER_LETTER;
+  if (strstr (v, "upper-alpha") || strstr (v, "upper-latin")) return W42_LIST_UPPER_LETTER;
+  if (strstr (v, "lower-roman")) return W42_LIST_LOWER_ROMAN;
+  if (strstr (v, "upper-roman")) return W42_LIST_UPPER_ROMAN;
+  if (strstr (v, "decimal")) return W42_LIST_NUMBER;
+  if (strstr (v, "circle")) return W42_LIST_BULLET_CIRCLE;
+  if (strstr (v, "square")) return W42_LIST_BULLET_SQUARE;
+  if (strstr (v, "disc")) return W42_LIST_BULLET;
+  if (strstr (v, "2013") || strstr (v, "'-'") || strstr (v, "\"-\"")) return W42_LIST_BULLET_DASH;
+  return W42_LIST_NONE;
 }
 
 static WalkEnter
-element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushed)
+element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
 {
   char *style;
+  int pre_before = h->pre_depth;
 
-  *pushed = FALSE;
+  *flags = 0;
 
   /* A script or a stylesheet is not text; a title was read before the
    * body was walked. */
@@ -966,19 +1918,45 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
       g_free (id);
     }
 
-  /* Block elements end the paragraph they are in. */
-  if (block_element (name))
+  /* A rule across the page: an empty paragraph with a line under it. */
+  if (g_str_equal (name, "hr"))
     {
       end_paragraph (h);
       if (h->table >= 0)
         open_cell (h);
+      h->pa.border |= W42_BORDER_BOTTOM;
+      h->pa.edge[W42_EDGE_BOTTOM].style = W42_BORDER_SINGLE;
+      h->pa.edge[W42_EDGE_BOTTOM].width = W42_BORDER_HAIRLINE;
+      h->pa_dirty = TRUE;
+      end_paragraph (h);
+      return WALK_SKIP;
+    }
+
+  /* Block elements end the paragraph they are in.  Each gets a formatting
+   * level of its own, so that what its style says of the type stays in
+   * it and the next paragraph starts from its parent's. */
+  if (block_element (name))
+    {
+      W42Fmt def;
+
+      end_paragraph (h);
+      if (h->table >= 0)
+        open_cell (h);
+      if (push_char (h))
+        *flags |= FLAG_CHAR;
+      w42_fmt_init_default (&def);
       if (name[0] == 'h' && name[2] == '\0')
         {
           static const char *heads[] = { "Heading 1", "Heading 2", "Heading 3" };
           int level = name[1] - '0';
           const W42Style *st;
+          char *cls = elem_attr (el, "class");
 
           h->pa.style = g_intern_string (heads[CLAMP (level, 1, 3) - 1]);
+          /* Word42 writes its Title as an <h1 class="title">. */
+          if (cls != NULL && level == 1 && strstr (cls, "title") != NULL)
+            h->pa.style = g_intern_string ("Title");
+          g_free (cls);
           h->pa_dirty = TRUE;
           /* the heading's own character formatting, as applying the
            * style would give it */
@@ -987,7 +1965,10 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
               st = w42_stylesheet_get (w42_pt_stylesheet (h->pt), i);
               if (g_ascii_strcasecmp (st->name, h->pa.style) == 0)
                 {
+                  const char *lang = h->ch[h->depth].lang;
+
                   h->ch[h->depth] = st->ch;
+                  h->ch[h->depth].lang = lang;
                   h->pa = st->pa;
                   h->pa.style = st->name;
                   break;
@@ -996,10 +1977,15 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
         }
       if (g_str_equal (name, "li"))
         {
+          char *value = elem_attr (el, "value");
+
           h->pa.list = h->list_kind != W42_LIST_NONE ? h->list_kind : W42_LIST_BULLET;
           h->pa.list_level = (guint8) CLAMP (h->list_depth - 1, 0, 8);
           h->pa.indent_left = 360 * (h->pa.list_level + 1);
           h->pa.list_start = (guint8) h->list_start;
+          if (value != NULL && atoi (value) > 0)
+            h->pa.list_start = (guint8) CLAMP (atoi (value), 1, 255);
+          g_free (value);
           h->list_start = 0;
           h->pa.indent_left = 360 * MAX (h->list_depth, 1);
           h->pa.indent_first = -360;
@@ -1011,15 +1997,38 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
           h->pa.indent_right = 720;
           h->pa_dirty = TRUE;
         }
+      if (g_str_equal (name, "dd"))
+        {
+          h->pa.indent_left = 720;
+          h->pa_dirty = TRUE;
+        }
+      if (g_str_equal (name, "center"))
+        {
+          h->pa.align = W42_ALIGN_CENTER;
+          h->pa_dirty = TRUE;
+        }
+      if (g_str_equal (name, "address"))
+        h->ch[h->depth].italic = 1;
       if (g_str_equal (name, "pre"))
         {
           h->pre_depth++;
           h->ch[h->depth].family = g_intern_string ("Courier New");
         }
-      if ((style = elem_attr (el, "style")) != NULL)
+      if ((style = elem_style (h, el)) != NULL)
         {
-          apply_style (h, style, TRUE);
+          StyleShows hidden = apply_style (h, style, TRUE);
+
           g_free (style);
+          if (h->pre_depth > pre_before)
+            *flags |= FLAG_PRE;
+          if (hidden != STYLE_SHOWN)
+            {
+              /* Not shown: not read.  The paragraph it would have been
+               * is not begun, and its end has nothing to close. */
+              h->pa = def.pa;
+              h->pa_dirty = FALSE;
+              return WALK_SKIP;
+            }
         }
       if ((style = elem_attr (el, "align")) != NULL)
         {
@@ -1052,7 +2061,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
     {
       char *type = elem_attr (el, "type");
       char *start = elem_attr (el, "start");
-      char *ul_style = elem_attr (el, "style");
+      char *ul_style = elem_style (h, el);
 
       end_paragraph (h);
       h->list_kind = g_str_equal (name, "ul") ? W42_LIST_BULLET : W42_LIST_NUMBER;
@@ -1062,13 +2071,12 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
                      : g_str_equal (type, "i") ? W42_LIST_LOWER_ROMAN
                      : g_str_equal (type, "I") ? W42_LIST_UPPER_ROMAN
                      : W42_LIST_NUMBER;
-      if (g_str_equal (name, "ul") && ul_style != NULL)
-        {
-          if (strstr (ul_style, "circle") != NULL) h->list_kind = W42_LIST_BULLET_CIRCLE;
-          else if (strstr (ul_style, "square") != NULL) h->list_kind = W42_LIST_BULLET_SQUARE;
-          else if (strstr (ul_style, "2013") != NULL || strstr (ul_style, "'-'") != NULL)
-            h->list_kind = W42_LIST_BULLET_DASH;
-        }
+      if (g_str_equal (name, "ul") && type != NULL)
+        h->list_kind = g_ascii_strcasecmp (type, "circle") == 0 ? W42_LIST_BULLET_CIRCLE
+                     : g_ascii_strcasecmp (type, "square") == 0 ? W42_LIST_BULLET_SQUARE
+                     : W42_LIST_BULLET;
+      if (ul_style != NULL && list_kind_of_css (ul_style) != W42_LIST_NONE)
+        h->list_kind = list_kind_of_css (ul_style);
       h->list_start = start != NULL ? CLAMP (atoi (start), 0, 255) : 0;
       g_free (type);
       g_free (start);
@@ -1082,27 +2090,43 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
   if (g_str_equal (name, "table"))
     {
       char *cls = elem_attr (el, "class");
+      char *border = elem_attr (el, "border");
+      char *tstyle = elem_style (h, el);
+      gboolean ruled;
 
       if (h->table < 0)
         open_table (h, count_columns (lxb_dom_interface_node (el)));
-      /* Word42 writes class="ruled" for a table that is; anything else
-       * rules its cells itself, or not at all. */
+      /* Word42 writes class="ruled" for a table that is; the old
+       * border attribute and a border in the style say the same, and
+       * anything else rules its cells itself, or not at all. */
+      ruled = (cls != NULL && strstr (cls, "ruled") != NULL) ||
+              (border != NULL && atoi (border) > 0);
+      if (!ruled && tstyle != NULL)
+        {
+          const char *b = strstr (tstyle, "border:");
+
+          ruled = b != NULL && !css_border_none (b + 7);
+        }
       if (h->table >= 0)
-        w42_pt_table_set_borders (h->pt, h->table,
-                                  cls != NULL && strstr (cls, "ruled") != NULL);
+        w42_pt_table_set_borders (h->pt, h->table, ruled);
       g_free (cls);
+      g_free (border);
+      g_free (tstyle);
       return WALK_DESCEND;
     }
   if (g_str_equal (name, "col") && h->table >= 0)
     {
       /* A <colgroup> gives the columns their widths; one <col> with no
        * width of its own still takes its place among them. */
-      char *cw = elem_attr (el, "style");
+      char *cw = elem_style (h, el);
+      char *wa = elem_attr (el, "width");
       const char *w = cw != NULL ? strstr (cw, "width:") : NULL;
+      int twips = w != NULL ? css_twips (w + 6) : attr_width_twips (h, wa);
 
       if (h->n_col_widths < 1023)
-        h->col_widths[h->n_col_widths++] = w != NULL ? css_twips (w + 6) : 0;
+        h->col_widths[h->n_col_widths++] = twips;
       g_free (cw);
+      g_free (wa);
       return WALK_SKIP;
     }
   if (g_str_equal (name, "tr"))
@@ -1114,6 +2138,9 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
   if (g_str_equal (name, "td") || g_str_equal (name, "th"))
     {
       char *cs = elem_attr (el, "colspan"), *rs = elem_attr (el, "rowspan");
+      char *align = elem_attr (el, "align"), *valign = elem_attr (el, "valign");
+      char *bgcolor = elem_attr (el, "bgcolor"), *width = elem_attr (el, "width");
+      gboolean had_style;
 
       close_cell (h);
       open_cell_spanning (h, cs != NULL ? atoi (cs) : 1, rs != NULL ? atoi (rs) : 1);
@@ -1121,35 +2148,92 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
       g_free (rs);
       if (g_str_equal (name, "th"))
         h->ch[h->depth].bold = 1;
-      if ((style = elem_attr (el, "style")) != NULL)
+      style = elem_style (h, el);
+      had_style = style != NULL;
+      if (style != NULL || align != NULL || valign != NULL || bgcolor != NULL)
         {
           /* A <td>'s style is the cell's, not the paragraph's inside
-           * it: its rules and its background belong to the mark. */
+           * it: its rules and its background belong to the mark; its
+           * alignment is the paragraphs'.  The old attributes say the
+           * same things the style does. */
           W42ParaFmt saved = h->pa;
           gboolean saved_dirty = h->pa_dirty;
           gsize cell_pos = h->pos >= 2 ? h->pos - 2 : 0;
+          gboolean hidden = FALSE;
 
-          apply_style (h, style, TRUE);
+          h->pa.cell_valign = W42_CELL_VALIGN_TOP;
+          if (style != NULL)
+            hidden = apply_style (h, style, TRUE) != STYLE_SHOWN;
+          if (align != NULL)
+            {
+              if (g_ascii_strcasecmp (align, "center") == 0) h->pa.align = W42_ALIGN_CENTER;
+              else if (g_ascii_strcasecmp (align, "right") == 0) h->pa.align = W42_ALIGN_RIGHT;
+              else if (g_ascii_strcasecmp (align, "justify") == 0) h->pa.align = W42_ALIGN_JUSTIFY;
+            }
+          if (valign != NULL)
+            {
+              if (g_ascii_strcasecmp (valign, "middle") == 0) h->pa.cell_valign = W42_CELL_VALIGN_CENTER;
+              else if (g_ascii_strcasecmp (valign, "bottom") == 0) h->pa.cell_valign = W42_CELL_VALIGN_BOTTOM;
+            }
+          if (bgcolor != NULL && css_colour (bgcolor) >= 0)
+            {
+              h->pa.shading_color = (guint32) css_colour (bgcolor);
+              h->pa.has_shading_color = 1;
+            }
           if (h->in_cell)
             {
-              w42_pt_cell_set_borders_at (h->pt, cell_pos,
-                                          (h->pa.border & W42_BORDER_BOX) |
-                                          W42_BORDER_CELL_SET);
-              w42_pt_cell_set_edges_at (h->pt, cell_pos, h->pa.edge);
+              if (had_style)
+                {
+                  w42_pt_cell_set_borders_at (h->pt, cell_pos,
+                                              (h->pa.border & W42_BORDER_BOX) |
+                                              W42_BORDER_CELL_SET);
+                  w42_pt_cell_set_edges_at (h->pt, cell_pos, h->pa.edge);
+                }
               if (h->pa.has_shading_color)
                 w42_pt_cell_set_fill_at (h->pt, cell_pos, TRUE,
                                          h->pa.shading_color);
               else if (h->pa.shading > 0)
                 w42_pt_cell_set_shading_at (h->pt, cell_pos, h->pa.shading);
-              if (strstr (style, "vertical-align:middle") != NULL || strstr (style, "vertical-align: middle") != NULL)
-                w42_pt_cell_set_valign_at (h->pt, cell_pos, W42_CELL_VALIGN_CENTER);
-              else if (strstr (style, "vertical-align:bottom") != NULL || strstr (style, "vertical-align: bottom") != NULL)
-                w42_pt_cell_set_valign_at (h->pt, cell_pos, W42_CELL_VALIGN_BOTTOM);
+              if (h->pa.cell_valign != W42_CELL_VALIGN_TOP)
+                w42_pt_cell_set_valign_at (h->pt, cell_pos, h->pa.cell_valign);
             }
+          if (h->pre_depth > pre_before)
+            *flags |= FLAG_PRE;
+          /* The alignment is every paragraph's in the cell, without
+           * making a paragraph of its own. */
+          h->cell_align = h->pa.align;
+          h->cell_rtl = h->pa.rtl;
+          saved.align = h->pa.align;
+          saved.rtl = h->pa.rtl;
           h->pa = saved;
           h->pa_dirty = saved_dirty;
           g_free (style);
+          if (hidden)
+            {
+              g_free (align); g_free (valign); g_free (bgcolor); g_free (width);
+              return WALK_SKIP;
+            }
         }
+      /* A cell's width, when the columns were not given theirs. */
+      if (width != NULL && h->table >= 0 && h->table_row == 0 && h->n_col_widths == 0)
+        {
+          int twips = attr_width_twips (h, width);
+          int col = h->table_col - MAX (h->cell_span, 1);
+
+          if (twips > 0 && col >= 0 && col < 1023 && h->cell_span == 1)
+            {
+              static int widths[1023];
+              W42TableProps const *tp = w42_pt_table_props (h->pt, h->table);
+
+              memset (widths, 0, sizeof widths);
+              if (tp != NULL && tp->widths != NULL)
+                for (guint k = 0; k < tp->widths->len && k < 1023; k++)
+                  widths[k] = g_array_index (tp->widths, int, k);
+              widths[col] = twips;
+              w42_pt_table_set_widths (h->pt, h->table, widths, MIN (h->table_cols, 1023));
+            }
+        }
+      g_free (align); g_free (valign); g_free (bgcolor); g_free (width);
       return WALK_DESCEND;
     }
 
@@ -1179,7 +2263,9 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
       char *src = elem_attr (el, "src");
       char *w = elem_attr (el, "width");
       char *hh = elem_attr (el, "height");
-      char *st = elem_attr (el, "style");
+      char *st = elem_style (h, el);
+      char *align = elem_attr (el, "align");
+      W42Wrap wrap = W42_WRAP_INLINE;
 
       /* A style says the size to the twip; the attributes only to the
        * screen pixel, so they are the fallback. */
@@ -1187,14 +2273,32 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
         {
           const char *sw = strstr (st, "width:");
           const char *sh = strstr (st, "height:");
+          const char *fl = strstr (st, "float:");
 
-          if (sw != NULL) { g_free (w);  w  = g_strdup (sw + 6); }
-          if (sh != NULL) { g_free (hh); hh = g_strdup (sh + 7); }
+          if (sw != NULL && css_twips (sw + 6) > 0) { g_free (w);  w  = g_strdup (sw + 6); }
+          if (sh != NULL && css_twips (sh + 7) > 0) { g_free (hh); hh = g_strdup (sh + 7); }
+          if (fl != NULL)
+            {
+              /* A picture the text runs beside. */
+              while (fl[6] == ' ') fl++;
+              if (g_ascii_strncasecmp (fl + 6, "left", 4) == 0) wrap = W42_WRAP_LEFT;
+              else if (g_ascii_strncasecmp (fl + 6, "right", 5) == 0) wrap = W42_WRAP_RIGHT;
+            }
+          if (strstr (st, "display:none") != NULL || strstr (st, "display: none") != NULL)
+            {
+              g_free (src); g_free (w); g_free (hh); g_free (st); g_free (align);
+              return WALK_SKIP;
+            }
+        }
+      if (align != NULL && wrap == W42_WRAP_INLINE)
+        {
+          if (g_ascii_strcasecmp (align, "left") == 0) wrap = W42_WRAP_LEFT;
+          else if (g_ascii_strcasecmp (align, "right") == 0) wrap = W42_WRAP_RIGHT;
         }
       if (h->table >= 0)
         open_cell (h);
-      picture (h, src, w, hh);
-      g_free (src); g_free (w); g_free (hh); g_free (st);
+      picture (h, src, w, hh, wrap);
+      g_free (src); g_free (w); g_free (hh); g_free (st); g_free (align);
       return WALK_SKIP;
     }
 
@@ -1206,28 +2310,43 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
     }
 
   flush_text (h);
-  push_char (h);
-  *pushed = TRUE;
+  if (push_char (h))
+    *flags |= FLAG_CHAR;
   if (g_str_equal (name, "b") || g_str_equal (name, "strong"))
     h->ch[h->depth].bold = 1;
-  else if (g_str_equal (name, "i") || g_str_equal (name, "em"))
+  else if (g_str_equal (name, "i") || g_str_equal (name, "em") || g_str_equal (name, "cite") ||
+           g_str_equal (name, "var") || g_str_equal (name, "dfn"))
     h->ch[h->depth].italic = 1;
   else if (g_str_equal (name, "u"))
     h->ch[h->depth].underline = 1;
-  else if (g_str_equal (name, "s") || g_str_equal (name, "strike") || g_str_equal (name, "del"))
+  else if (g_str_equal (name, "s") || g_str_equal (name, "strike"))
     h->ch[h->depth].strikeout = 1;
+  else if (g_str_equal (name, "del"))
+    h->ch[h->depth].revision = 2;      /* a deletion, marked as one */
+  else if (g_str_equal (name, "ins"))
+    h->ch[h->depth].revision = 1;
   else if (g_str_equal (name, "sup"))
     h->ch[h->depth].script = 1;
   else if (g_str_equal (name, "sub"))
     h->ch[h->depth].script = -1;
   else if (g_str_equal (name, "mark"))
     h->ch[h->depth].highlight = 7;
-  else if (g_str_equal (name, "code") || g_str_equal (name, "tt"))
+  else if (g_str_equal (name, "code") || g_str_equal (name, "tt") ||
+           g_str_equal (name, "kbd") || g_str_equal (name, "samp"))
     h->ch[h->depth].family = g_intern_string ("Courier New");
   else if (g_str_equal (name, "small"))
-    h->ch[h->depth].size = MAX (h->ch[h->depth].size - 4, 8);
+    h->ch[h->depth].size = MAX (h->ch[h->depth].size * 5 / 6, 8);
   else if (g_str_equal (name, "big"))
-    h->ch[h->depth].size = h->ch[h->depth].size + 4;
+    h->ch[h->depth].size = h->ch[h->depth].size * 6 / 5;
+  else if (g_str_equal (name, "q"))
+    {
+      /* The quotation marks a browser draws round it. */
+      if (h->space_pending)
+        g_string_append_c (h->pending, ' ');
+      g_string_append (h->pending, "\342\200\234");
+      h->space_pending = FALSE;
+      h->at_para_start = FALSE;
+    }
   else if (g_str_equal (name, "a"))
     {
       char *href = elem_attr (el, "href");
@@ -1243,9 +2362,17 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
            * is left out, since a note numbers itself. */
           gsize body;
 
+          W42Fmt mark;
+
+          /* The note's paragraph is a plain one, whatever the paragraph
+           * its reference stands in looks like. */
+          w42_fmt_init_default (&mark);
+          mark.ch = h->ch[h->depth];
           body = g_str_has_prefix (note_id, "sdendnote") || g_str_has_prefix (note_id, "notee")
-                   ? w42_pt_insert_endnote (h->pt, h->pos, html_ap (h))
-                   : w42_pt_insert_footnote (h->pt, h->pos, html_ap (h));
+                   ? w42_pt_insert_endnote (h->pt, h->pos,
+                                            w42_ap_table_intern (w42_pt_ap_table (h->pt), &mark))
+                   : w42_pt_insert_footnote (h->pt, h->pos,
+                                             w42_ap_table_intern (w42_pt_ap_table (h->pt), &mark));
 
           if (body != (gsize) -1)
             {
@@ -1269,8 +2396,9 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
           g_free (href);
           g_free (anchor);
           /* The anchor's own text is the number the page shows. */
-          pop_char (h);
-          *pushed = FALSE;
+          if (*flags & FLAG_CHAR)
+            pop_char (h);
+          *flags &= (guint8) ~FLAG_CHAR;
           return WALK_SKIP;
         }
       g_free (note_id);
@@ -1298,11 +2426,20 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
     {
       char *face = elem_attr (el, "face");
       char *color = elem_attr (el, "color");
+      char *size = elem_attr (el, "size");
 
-      if (face != NULL && *face != '\0') h->ch[h->depth].family = g_intern_string (face);
-      if (color != NULL && color[0] == '#' && strlen (color) == 7)
-        h->ch[h->depth].color = (guint32) strtoul (color + 1, NULL, 16);
-      g_free (face); g_free (color);
+      if (face != NULL && *face != '\0')
+        {
+          char *comma = strchr (face, ',');
+
+          if (comma) *comma = '\0';
+          h->ch[h->depth].family = g_intern_string (g_strstrip (face));
+        }
+      if (color != NULL && css_colour (color) >= 0)
+        h->ch[h->depth].color = (guint32) css_colour (color);
+      if (size != NULL && *size != '\0')
+        h->ch[h->depth].size = font_size_attr (size, h->ch[h->depth].size);
+      g_free (face); g_free (color); g_free (size);
     }
 
   {
@@ -1316,30 +2453,48 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, gboolean *pushe
     g_free (lang);
   }
 
-  if ((style = elem_attr (el, "style")) != NULL)
+  if ((style = elem_style (h, el)) != NULL)
     {
-      apply_style (h, style, FALSE);
+      StyleShows hidden = apply_style (h, style, FALSE);
+
       g_free (style);
+      if (h->pre_depth > pre_before)
+        *flags |= FLAG_PRE;
+      if (hidden != STYLE_SHOWN)
+        {
+          /* Word's list marker: the number is the paragraph's, in text. */
+          if (hidden == STYLE_MARKER && h->mso_item > 0 && h->pending->len == 0)
+            {
+              char *marker = node_text (lxb_dom_interface_node (el));
+
+              h->pa.list = (guint8) list_kind_of_marker (marker);
+              g_free (marker);
+            }
+          return WALK_SKIP;
+        }
     }
 
   return WALK_DESCEND;
 }
 
 static void
-element_end (Html *h, const char *name, gboolean pushed)
+element_end (Html *h, const char *name, guint8 flags)
 {
+  if ((flags & FLAG_PRE) && h->pre_depth > 0)
+    h->pre_depth--;
   if (block_element (name))
     {
       end_paragraph (h);
       if (g_str_equal (name, "pre") && h->pre_depth > 0)
         h->pre_depth--;
-      if (name[0] == 'h' && name[2] == '\0')
-        {
-          W42Fmt def;
-          w42_fmt_init_default (&def);
-          h->ch[h->depth] = def.ch;
-        }
+      if (flags & FLAG_CHAR)
+        pop_char (h);
       return;
+    }
+  if (g_str_equal (name, "q"))
+    {
+      g_string_append (h->pending, "\342\200\235");
+      h->space_pending = FALSE;
     }
   if (g_str_equal (name, "ul") || g_str_equal (name, "ol"))
     {
@@ -1379,7 +2534,7 @@ element_end (Html *h, const char *name, gboolean pushed)
       h->ch[h->depth].bold = 0;
       return;
     }
-  if (pushed)
+  if (flags & FLAG_CHAR)
     {
       flush_text (h);
       pop_char (h);
@@ -1407,19 +2562,17 @@ walk_body (Html *h, lxb_dom_node_t *root)
       else if (node->type == LXB_DOM_NODE_TYPE_ELEMENT)
         {
           char name[24];
-          gboolean did_push = FALSE;
+          guint8 f = 0;
 
           elem_name (lxb_dom_interface_element (node), name, sizeof name);
-          if (element_start (h, name, lxb_dom_interface_element (node), &did_push) == WALK_DESCEND &&
+          if (element_start (h, name, lxb_dom_interface_element (node), &f) == WALK_DESCEND &&
               node->first_child != NULL)
             {
-              guint8 f = did_push ? 1 : 0;
-
               g_byte_array_append (pushed, &f, 1);
               descend = TRUE;
             }
           else
-            element_end (h, name, did_push);
+            element_end (h, name, f);
         }
 
       if (descend)
@@ -1442,7 +2595,7 @@ walk_body (Html *h, lxb_dom_node_t *root)
                 g_byte_array_set_size (pushed, pushed->len - 1);
               }
             elem_name (lxb_dom_interface_element (node), name, sizeof name);
-            element_end (h, name, f != 0);
+            element_end (h, name, f);
           }
         }
       node = node->next;
@@ -1480,10 +2633,10 @@ read_head (Html *h, lxb_html_document_t *ldoc)
           lxb_dom_node_tag_id (n) == LXB_TAG_META)
         {
           char name[24];
-          gboolean did_push = FALSE;
+          guint8 f = 0;
 
           elem_name (lxb_dom_interface_element (n), name, sizeof name);
-          element_start (h, name, lxb_dom_interface_element (n), &did_push);
+          element_start (h, name, lxb_dom_interface_element (n), &f);
         }
     }
 }
@@ -1608,6 +2761,117 @@ nests_too_deeply (const char *data, gsize len)
   return deep;
 }
 
+/* The encoding a page declares, in its first bytes as the browsers'
+ * prescan reads it: <meta charset="x">, or the charset in a Content-Type
+ * <meta>; NULL when it says nothing.  Lowercased. */
+static char *
+declared_charset (const char *data, gsize len)
+{
+  gsize n = MIN (len, 8192);
+  char *head = g_ascii_strdown (data, (gssize) n);
+  const char *p = head;
+  char *out = NULL;
+
+  while ((p = strstr (p, "charset")) != NULL)
+    {
+      const char *q = p + 7;
+      gsize k = 0;
+
+      while (*q == ' ' || *q == '\t')
+        q++;
+      if (*q != '=')
+        {
+          p = q;
+          continue;
+        }
+      q++;
+      while (*q == ' ' || *q == '\t' || *q == '"' || *q == '\'')
+        q++;
+      while (q[k] != '\0' && (g_ascii_isalnum (q[k]) || q[k] == '-' || q[k] == '_' || q[k] == '.' || q[k] == ':'))
+        k++;
+      if (k > 0)
+        out = g_strndup (q, k);
+      break;
+    }
+  g_free (head);
+  return out;
+}
+
+/* The page's bytes as UTF-8.  A byte order mark says what it is; failing
+ * that the page's own declaration; failing that UTF-8 if it is valid as
+ * that, and otherwise Windows-1252 -- which is what the HTML standard
+ * makes of Latin-1 too, since the pages that say Latin-1 mean it, curly
+ * quotes and all. */
+static char *
+page_as_utf8 (char *contents, gsize *length)
+{
+  gsize len = *length;
+  char *out = NULL;
+  gsize out_len = 0;
+  char *charset;
+
+  if (len >= 2 && ((guchar) contents[0] == 0xFF && (guchar) contents[1] == 0xFE))
+    out = g_convert (contents + 2, len - 2, "UTF-8", "UTF-16LE", NULL, &out_len, NULL);
+  else if (len >= 2 && ((guchar) contents[0] == 0xFE && (guchar) contents[1] == 0xFF))
+    out = g_convert (contents + 2, len - 2, "UTF-8", "UTF-16BE", NULL, &out_len, NULL);
+  if (out != NULL)
+    {
+      g_free (contents);
+      *length = out_len;
+      return out;
+    }
+  if (len >= 3 && (guchar) contents[0] == 0xEF && (guchar) contents[1] == 0xBB && (guchar) contents[2] == 0xBF)
+    {
+      memmove (contents, contents + 3, len - 3);
+      len -= 3;
+      contents[len] = '\0';
+      *length = len;
+      if (g_utf8_validate (contents, len, NULL))
+        return contents;
+    }
+
+  charset = declared_charset (contents, len);
+  if (charset != NULL)
+    {
+      const char *from = charset;
+
+      if (g_str_equal (charset, "utf-8") || g_str_equal (charset, "utf8") ||
+          g_str_equal (charset, "unicode-1-1-utf-8"))
+        from = NULL;
+      else if (g_str_has_prefix (charset, "iso-8859-1") || g_str_has_prefix (charset, "iso8859-1") ||
+               g_str_equal (charset, "latin1") || g_str_equal (charset, "l1") ||
+               g_str_equal (charset, "us-ascii") || g_str_equal (charset, "ascii") ||
+               g_str_equal (charset, "iso-ir-100") || g_str_equal (charset, "cp1252") ||
+               g_str_equal (charset, "x-cp1252") || g_str_equal (charset, "windows-1252"))
+        from = "WINDOWS-1252";
+      else if (g_str_equal (charset, "unicode") || g_str_equal (charset, "utf-16"))
+        from = "UTF-16LE";
+      if (from != NULL)
+        out = g_convert (contents, len, "UTF-8", from, NULL, &out_len, NULL);
+      g_free (charset);
+      if (out != NULL)
+        {
+          g_free (contents);
+          *length = out_len;
+          return out;
+        }
+    }
+  if (g_utf8_validate (contents, len, NULL))
+    return contents;
+
+  out = g_convert (contents, len, "UTF-8", "WINDOWS-1252", NULL, &out_len, NULL);
+  if (out == NULL)
+    out = g_convert (contents, len, "UTF-8", "ISO-8859-1", NULL, &out_len, NULL);
+  g_free (contents);
+  if (out == NULL)
+    {
+      out = g_strdup ("");
+      out_len = 0;
+    }
+  *length = out_len;
+  return out;
+}
+
 gboolean
 w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 {
@@ -1625,14 +2889,7 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
   if (!g_file_load_contents (file, NULL, &contents, &length, NULL, error))
     return FALSE;
 
-  if (!g_utf8_validate (contents, length, NULL))
-    {
-      /* Not UTF-8: Latin-1 is the next best guess for an old page. */
-      char *conv = g_convert (contents, length, "UTF-8", "ISO-8859-1", NULL, &length, NULL);
-      g_free (contents);
-      contents = conv != NULL ? conv : g_strdup ("");
-      length = strlen (contents);
-    }
+  contents = page_as_utf8 (contents, &length);
 
   if (nests_too_deeply (contents, length))
     {
@@ -1739,22 +2996,49 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
     }
 
   read_head (&h, ldoc);
+  collect_styles (&h, lxb_dom_interface_node (ldoc));
   harvest_notes (&h, lxb_dom_interface_node (ldoc));
 
   body = lxb_html_document_body_element (ldoc);
   if (body != NULL)
     {
-      /* What the body says about the colour behind the page. */
-      char *style = elem_attr (lxb_dom_interface_element (body), "style");
-      const char *hash = style != NULL ? strchr (style, '#') : NULL;
+      lxb_dom_node_t *html = lxb_dom_interface_node (body)->parent;
+      char *style = elem_style (&h, lxb_dom_interface_element (body));
+      char *bgcolor = elem_attr (lxb_dom_interface_element (body), "bgcolor");
+      char *lang = html != NULL && html->type == LXB_DOM_NODE_TYPE_ELEMENT
+                     ? elem_attr (lxb_dom_interface_element (html), "lang") : NULL;
 
-      if (page != NULL && style != NULL && hash != NULL && strlen (hash) >= 7 &&
-          strstr (style, "background") != NULL)
+      /* The language of the page, until an element says its own. */
+      if (lang == NULL || *lang == '\0')
         {
-          page->background = (guint32) strtoul (hash + 1, NULL, 16);
+          g_free (lang);
+          lang = elem_attr (lxb_dom_interface_element (body), "lang");
+        }
+      if (lang != NULL && w42_lang_normalise (lang) != NULL)
+        h.ch[0].lang = w42_lang_normalise (lang);
+      g_free (lang);
+
+      /* What the body says about the type of the page, and the colour
+       * behind it. */
+      if (style != NULL)
+        {
+          const char *bg = strstr (style, "background");
+
+          apply_style (&h, style, FALSE);
+          if (page != NULL && bg != NULL && css_colour (bg) >= 0)
+            {
+              page->background = (guint32) css_colour (bg);
+              page->has_background = 1;
+            }
+        }
+      if (page != NULL && bgcolor != NULL && css_colour (bgcolor) >= 0)
+        {
+          page->background = (guint32) css_colour (bgcolor);
           page->has_background = 1;
         }
+      h.pre_depth = 0;
       g_free (style);
+      g_free (bgcolor);
 
       walk_body (&h, lxb_dom_interface_node (body));
     }
@@ -1803,6 +3087,14 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
     g_free (h.meta[i]);
   if (h.notes != NULL)
     g_hash_table_destroy (h.notes);
+  if (h.rules != NULL)
+    g_ptr_array_free (h.rules, TRUE);
+  if (h.rules_by_tag != NULL)
+    g_hash_table_destroy (h.rules_by_tag);
+  if (h.rules_by_class != NULL)
+    g_hash_table_destroy (h.rules_by_class);
+  if (h.rules_by_id != NULL)
+    g_hash_table_destroy (h.rules_by_id);
   g_free (h.base);
   g_free (contents);
   lxb_html_document_destroy (ldoc);

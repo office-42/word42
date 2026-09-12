@@ -240,6 +240,9 @@ void w42_roman_lower (int n, char *out, gsize size);
 
 /* Word's sixteen highlight colours, by the index RTF and .doc use. */
 guint32 w42_highlight_rgb (int index);
+/* And the index of the one nearest a colour; white, which is no
+ * highlight to look at, is 0. */
+int     w42_highlight_nearest (guint32 rgb);
 
 /* Sets a stop at `pos`, replacing one already there; clears one. */
 void w42_para_fmt_set_tab   (W42ParaFmt *pa, int pos, W42TabKind kind);

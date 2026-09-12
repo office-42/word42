@@ -99,7 +99,9 @@ has been changed.
 What survives a round trip depends on the format. RTF, `.docx`, `.odt` and
 `.abw` carry the whole document — styles, tables, pictures, notes, fields,
 headers and footers, revision marks. HTML carries the text and most of its
-formatting. Plain text carries the text.
+formatting, the Summary Info, bookmarks, frames and drop caps included; a
+page from Word or LibreOffice comes in with its stylesheet followed. Plain
+text carries the text.
 
 ### Summary Info
 
@@ -802,10 +804,11 @@ all.
 
 **File ▸ Export as Web Page** writes one self-contained HTML file:
 headings, paragraphs with their alignment and indents, runs with their
-font, size, weight, colour and links, lists, tables, pictures embedded in
-the file itself, footnotes as links to the notes at the end, annotations as
-tooltips, and revision marks as `<ins>` and `<del>`. Nothing is left
-pointing at another file, so the page can be sent as it is.
+font, size, weight, colour, links and bookmarks, lists, tables, pictures
+embedded in the file itself, footnotes as links to the notes at the end,
+annotations as tooltips, revision marks as `<ins>` and `<del>`, and the
+Summary Info as `<meta>` tags. Nothing is left pointing at another file,
+so the page can be sent as it is.
 
 Fields are updated before printing and before either export.
 

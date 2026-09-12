@@ -62,11 +62,19 @@ Early, but real. Word42 today is a working word processor:
   `\colsx`, and a `.doc`'s section columns are read.
 - **Web pages** — File ▸ Export as Web Page writes one self-contained
   HTML file: headings, paragraphs with their alignment and indents, runs
-  with font, size, weight, colour and links, lists, tables, pictures
-  embedded, footnotes as links to the notes at the end. File ▸ Open reads
-  HTML back — a plain reading, with no CSS engine, that brings in what
-  Word42 wrote and most pages that are text: headings, paragraphs, bold,
-  italic, links, lists, tables, embedded pictures.
+  with font, size, weight, colour, links and bookmarks, lists, tables,
+  pictures embedded, footnotes as links to the notes at the end, the
+  Summary Info as `<meta>` tags, and the document's language on `<html>`.
+  File ▸ Open reads HTML back: Lexbor parses the page by the browsers'
+  HTML5 rules, the page's own `<style>` sheet is followed as far as
+  element, class and id selectors go, and the CSS a word processor
+  writes — named and `rgb()` colours, lengths in every unit, `em` and
+  `%` and keyword sizes, the `margin` and `font` shorthands, borders,
+  `line-height`, `display:none` — lands on the paragraph or run. Word's
+  own dialect is read too: its list paragraphs become list items and its
+  tabs become tabs. The page's declared charset is honoured, and a page
+  that says nothing is Windows-1252 when it is not UTF-8, as the HTML
+  standard has it.
 - **Long documents** — a keystroke lays out only what it changed: the
   paragraph typed in is shaped again and the rest of the document is
   reused, so typing in a 173-page document costs about 12 ms a

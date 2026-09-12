@@ -272,6 +272,31 @@ w42_highlight_rgb (int index)
   return (index > 0 && index < 17) ? table[index] : 0xFFFF00;
 }
 
+int
+w42_highlight_nearest (guint32 rgb)
+{
+  int best = 0;
+  long best_away = 0;
+
+  if ((rgb & 0xFFFFFF) == 0xFFFFFF)
+    return 0;
+  for (int i = 1; i <= 16; i++)
+    {
+      guint32 c = w42_highlight_rgb (i);
+      long dr = (long) ((c >> 16) & 0xFF) - (long) ((rgb >> 16) & 0xFF);
+      long dg = (long) ((c >> 8) & 0xFF) - (long) ((rgb >> 8) & 0xFF);
+      long db = (long) (c & 0xFF) - (long) (rgb & 0xFF);
+      long away = dr * dr + dg * dg + db * db;
+
+      if (best == 0 || away < best_away)
+        {
+          best = i;
+          best_away = away;
+        }
+    }
+  return best;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Roman numerals                                                          */
 /* ---------------------------------------------------------------------- */
