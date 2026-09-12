@@ -55,7 +55,8 @@ m_dep          = cc.find_library('m', required: false)
 # is trusted only once its headers actually compile: Lexbor before 3.0
 # installs no pkg-config file at all, and 3.0.0's says no include
 # directory -- a bare -I that swallows whatever flag follows it -- so an
-# unchecked answer can poison every compile in the build.
+# unchecked answer can poison every compile in the build.  3.0.1's file
+# is sound, and is the first way tried.
 lexbor_dep = dependency('lexbor', 'liblexbor', version: '>= 2.0',
                         method: 'pkg-config', required: false)
 lexbor_ok = lexbor_dep.found() and \

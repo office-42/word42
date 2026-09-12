@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         run: |
@@ -33,7 +33,7 @@ jobs:
           brew install hyphen || echo "no hyphen formula; building without hyphenation"
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/ccache
           key: ccache-macos-${{ github.sha }}
@@ -57,7 +57,7 @@ jobs:
 
       - name: Upload binary
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: word42-macos
           path: builddir/src/word42
@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload app
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: word42-macos-app
           path: word42-macos.zip

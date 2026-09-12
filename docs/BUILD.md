@@ -42,16 +42,17 @@ Debian, Ubuntu and Fedora do not package Lexbor yet; it builds from
 source in about a minute:
 
 ```sh
-git clone --depth 1 --branch v2.7.0 https://github.com/lexbor/lexbor.git
+git clone --depth 1 --branch v3.0.1 https://github.com/lexbor/lexbor.git
 cmake -S lexbor -B lexbor/build -DCMAKE_BUILD_TYPE=Release
 cmake --build lexbor/build -j"$(nproc)"
 sudo cmake --install lexbor/build
 sudo ldconfig
 ```
 
-(Lexbor before 3.0 installs no pkg-config file; Word42's Meson looks for
-the library directly when pkg-config comes back empty-handed, so the
-above is all that is needed.)
+(Lexbor 3.0.1 installs a pkg-config file that Meson finds on its own;
+2.x installs none, and 3.0.0's is broken, so Word42's Meson falls back to
+the CMake package and then to the bare library, and the above is all
+that is needed either way.)
 
 ## macOS
 

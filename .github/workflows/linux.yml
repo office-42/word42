@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         run: |
@@ -35,15 +35,15 @@ jobs:
       # release; the cache keeps that to one cmake run per version.
       - name: Restore Lexbor
         id: lexbor-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/lexbor-install
-          key: lexbor-v2.7.0-${{ runner.os }}
+          key: lexbor-v3.0.1-${{ runner.os }}
 
       - name: Build Lexbor
         if: steps.lexbor-cache.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --branch v2.7.0 https://github.com/lexbor/lexbor.git ~/lexbor-src
+          git clone --depth 1 --branch v3.0.1 https://github.com/lexbor/lexbor.git ~/lexbor-src
           cmake -S ~/lexbor-src -B ~/lexbor-src/build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$HOME/lexbor-install"
           cmake --build ~/lexbor-src/build -j"$(nproc)"
@@ -56,7 +56,7 @@ jobs:
           sudo ldconfig
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
           key: ccache-linux-${{ github.sha }}
@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload binary
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: word42-linux
           path: builddir/src/word42
