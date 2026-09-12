@@ -22,7 +22,7 @@ append_escaped (GString *out, const char *text, gsize len)
         case '>':  g_string_append (out, "&gt;"); break;
         case '&':  g_string_append (out, "&amp;"); break;
         case '"':  g_string_append (out, "&quot;"); break;
-        case '\t': g_string_append (out, "&emsp;"); break;
+        case '\t': g_string_append (out, "<span class=\"tab\">\t</span>"); break;
         default:
           if ((guchar) text[i] == 0xE2 && i + 2 < len &&
               (guchar) text[i + 1] == 0x80 && (guchar) text[i + 2] == 0xA8)
@@ -85,10 +85,12 @@ append_family (GString *css, const char *family)
   g_string_append (css, "';");
 }
 
+/* A paragraph's style attribute, with `extra` declarations first when
+ * there are any. */
 static void
-write_para_style (GString *out, const W42ParaFmt *pa)
+write_para_style (GString *out, const W42ParaFmt *pa, const char *extra)
 {
-  GString *css = g_string_new (NULL);
+  GString *css = g_string_new (extra);
 
   switch (pa->align)
     {
@@ -104,9 +106,9 @@ write_para_style (GString *out, const W42ParaFmt *pa)
   if (pa->indent_first && pa->list == W42_LIST_NONE)
     css_num (css, "text-indent", pa->indent_first / 1440.0, "in");
   if (pa->space_before)
-    g_string_append_printf (css, "margin-top:%dpt;", pa->space_before / 20);
+    css_num (css, "margin-top", pa->space_before / 20.0, "pt");
   if (pa->space_after)
-    g_string_append_printf (css, "margin-bottom:%dpt;", pa->space_after / 20);
+    css_num (css, "margin-bottom", pa->space_after / 20.0, "pt");
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     {
       /* A browser's line-height is a multiple of the type size; Word's is a
@@ -144,7 +146,9 @@ write_para_style (GString *out, const W42ParaFmt *pa)
       g_string_append_printf (css, "background:rgb(%d,%d,%d);", g, g, g);
     }
   if (pa->page_break_before)
-    g_string_append (css, "page-break-before:always;");
+    g_string_append (css, "break-before:page;page-break-before:always;");
+  if (pa->drop_cap > 0)
+    g_string_append_printf (css, "--w42-drop-cap:%d;", pa->drop_cap);
 
   if (css->len > 0)
     g_string_append_printf (out, " style=\"%s\"", css->str);
@@ -153,7 +157,8 @@ write_para_style (GString *out, const W42ParaFmt *pa)
 
 static void
 write_run (GString *out, W42PieceTable *pt, const W42Block *block,
-           const W42Run *run, const W42CharFmt *ch, const W42CharFmt *base)
+           const W42Run *run, const W42CharFmt *ch, const W42CharFmt *base,
+           const char **bookmark_open)
 {
   GString *css = g_string_new (NULL);
   gboolean span;
@@ -225,10 +230,6 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
     g_string_append (css, "font-variant:small-caps;");
   if (ch->allcaps)
     g_string_append (css, "text-transform:uppercase;");
-  if (ch->script > 0)
-    g_string_append (css, "vertical-align:super;font-size:smaller;");
-  if (ch->script < 0)
-    g_string_append (css, "vertical-align:sub;font-size:smaller;");
   if (ch->spacing)
     css_num (css, "letter-spacing", ch->spacing / 20.0, "pt");
 
@@ -240,12 +241,26 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
       g_string_append (out, "\">");
     }
   span = css->len > 0 || ch->lang != NULL;
-  if (ch->link != NULL)
+  if (ch->link != NULL || ch->bookmark != NULL)
     {
-      g_string_append (out, "<a href=\"");
-      append_escaped (out, ch->link, strlen (ch->link));
-      g_string_append (out, "\">");
+      /* A bookmark is an anchor with an id, as HTML has it; the id goes
+       * on the first run of the bookmark only, since an id is one place. */
+      g_string_append (out, "<a");
+      if (ch->bookmark != NULL && ch->bookmark != *bookmark_open)
+        {
+          g_string_append (out, " id=\"");
+          append_escaped (out, ch->bookmark, strlen (ch->bookmark));
+          g_string_append_c (out, '"');
+        }
+      if (ch->link != NULL)
+        {
+          g_string_append (out, " href=\"");
+          append_escaped (out, ch->link, strlen (ch->link));
+          g_string_append_c (out, '"');
+        }
+      g_string_append_c (out, '>');
     }
+  *bookmark_open = ch->bookmark;
   if (span)
     {
       /* The language of the run, where HTML puts it. */
@@ -256,6 +271,10 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
         g_string_append_printf (out, " style=\"%s\"", css->str);
       g_string_append_c (out, '>');
     }
+  /* The elements, rather than vertical-align and a smaller size: a
+   * browser sets them the same, and a reader gets the size back. */
+  if (ch->script > 0) g_string_append (out, "<sup>");
+  if (ch->script < 0) g_string_append (out, "<sub>");
   if (ch->bold)      g_string_append (out, "<b>");
   if (ch->italic)    g_string_append (out, "<i>");
   if (ch->underline && ch->link == NULL)
@@ -286,9 +305,11 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
   if (ch->underline && ch->link == NULL) g_string_append (out, "</u>");
   if (ch->italic)    g_string_append (out, "</i>");
   if (ch->bold)      g_string_append (out, "</b>");
+  if (ch->script < 0) g_string_append (out, "</sub>");
+  if (ch->script > 0) g_string_append (out, "</sup>");
   if (span)
     g_string_append (out, "</span>");
-  if (ch->link != NULL)
+  if (ch->link != NULL || ch->bookmark != NULL)
     g_string_append (out, "</a>");
   if (ch->comment != NULL)
     g_string_append (out, "</span>");
@@ -300,6 +321,8 @@ static void
 write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
                   const W42Block *block, const W42CharFmt *base)
 {
+  const char *bookmark_open = NULL;
+
   if (block->runs->len == 0)
     g_string_append (out, "&nbsp;");
 
@@ -308,7 +331,7 @@ write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
       const W42Run *run = &g_array_index (block->runs, W42Run, r);
       const W42Fmt *fmt = w42_ap_table_get (aps, run->ap);
 
-      write_run (out, pt, block, run, &fmt->ch, base);
+      write_run (out, pt, block, run, &fmt->ch, base, &bookmark_open);
     }
 }
 
@@ -345,25 +368,72 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
         }
     }
 
-  title = g_file_get_basename (file);
-  g_string_append (out, "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
-  g_string_append (out, "<meta name=\"generator\" content=\"Word42\">\n<title>");
-  append_escaped (out, title, strlen (title));
-  g_string_append (out, "</title>\n<style>\n.dropcap::first-letter{float:left;font-size:3em;line-height:0.8;margin:0.05em 0.05em 0 0}\n");
+  {
+    /* What the document says about itself goes where a page says it:
+     * its title in <title>, the rest in the <meta> names the reader
+     * knows, so that File > Summary Info survives the trip. */
+    const W42DocInfo *info = w42_pt_get_info (pt);
+    static const char *const META[] = { "subject", "author", "keywords", "description" };
+    const char *values[4];
+    /* The page's language is the document's, when the document says
+     * one; a document that leaves it to the desktop leaves the page to
+     * the browser too, and comes back as it went. */
+    const char *lang = base.ch.lang;
+
+    title = info != NULL && info->title != NULL && *info->title != '\0'
+              ? g_strdup (info->title) : g_file_get_basename (file);
+    values[0] = info != NULL ? info->subject : NULL;
+    values[1] = info != NULL ? info->author : NULL;
+    values[2] = info != NULL ? info->keywords : NULL;
+    values[3] = info != NULL ? info->comments : NULL;
+
+    g_string_append (out, "<!DOCTYPE html>\n<html");
+    if (lang != NULL && !g_str_equal (lang, W42_LANG_NONE))
+      {
+        g_string_append (out, " lang=\"");
+        append_escaped (out, lang, strlen (lang));
+        g_string_append_c (out, '"');
+      }
+    g_string_append (out, ">\n<head>\n<meta charset=\"utf-8\">\n");
+    g_string_append (out, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    g_string_append (out, "<meta name=\"generator\" content=\"Word42\">\n");
+    for (guint i = 0; i < G_N_ELEMENTS (META); i++)
+      if (values[i] != NULL && *values[i] != '\0')
+        {
+          g_string_append_printf (out, "<meta name=\"%s\" content=\"", META[i]);
+          append_escaped (out, values[i], strlen (values[i]));
+          g_string_append (out, "\">\n");
+        }
+    g_string_append (out, "<title>");
+    append_escaped (out, title, strlen (title));
+    g_string_append (out, "</title>\n");
+  }
+  g_string_append (out, "<style>\n.dropcap::first-letter{float:left;font-size:3em;line-height:0.8;margin:0.05em 0.05em 0 0}\n"
+                        ".tab{white-space:pre}\n");
   g_string_append (out, "body { ");
   append_family (out, base.ch.family != NULL ? base.ch.family : "Times New Roman");
-  g_string_append_printf (out,
-    " font-size: %dpt; max-width: %.2fin; margin: 1em auto; padding: 0 1em; }\n",
-    base.ch.size / 2,
-    page != NULL ? (page->width - page->margin_left - page->margin_right) / 1440.0 : 6.5);
-  if (page != NULL && page->width > 0 && page->height > 0)
+  {
+    /* Lengths with the C locale's full stop, whatever the user's: "6,50in"
+     * is not a length to a browser. */
+    char n[8][G_ASCII_DTOSTR_BUF_SIZE];
+
     g_string_append_printf (out,
-      "@page { size: %.4fin %.4fin; margin: %.4fin %.4fin %.4fin %.4fin; }\n",
-      page->width / 1440.0, page->height / 1440.0,
-      page->margin_top / 1440.0, page->margin_right / 1440.0,
-      page->margin_bottom / 1440.0, page->margin_left / 1440.0);
+      " font-size: %spt; max-width: %sin; margin: 1em auto; padding: 0 1em; }\n",
+      g_ascii_formatd (n[0], sizeof n[0], "%.1f", base.ch.size / 2.0),
+      g_ascii_formatd (n[1], sizeof n[1], "%.2f",
+                       page != NULL ? (page->width - page->margin_left - page->margin_right) / 1440.0 : 6.5));
+    if (page != NULL && page->width > 0 && page->height > 0)
+      g_string_append_printf (out,
+        "@page { size: %sin %sin; margin: %sin %sin %sin %sin; }\n",
+        g_ascii_formatd (n[2], sizeof n[2], "%.4f", page->width / 1440.0),
+        g_ascii_formatd (n[3], sizeof n[3], "%.4f", page->height / 1440.0),
+        g_ascii_formatd (n[4], sizeof n[4], "%.4f", page->margin_top / 1440.0),
+        g_ascii_formatd (n[5], sizeof n[5], "%.4f", page->margin_right / 1440.0),
+        g_ascii_formatd (n[6], sizeof n[6], "%.4f", page->margin_bottom / 1440.0),
+        g_ascii_formatd (n[7], sizeof n[7], "%.4f", page->margin_left / 1440.0));
+  }
   g_string_append (out,
-    "p { margin: 0; }\nh1, h2, h3 { margin: 0.5em 0 0.25em; }\n"
+    "p { margin: 0; }\nh1, h2, h3, h4, h5, h6 { margin: 0.5em 0 0.25em; }\n"
     "table { border-collapse: collapse; }\ntd { padding: 2pt 4pt; vertical-align: top; }\n"
     "table.ruled td { border: 1px solid #000; }\n"
     "a { color: #000080; }\n.notes { margin-top: 1em; border-top: 1px solid #000; width: 33%; padding-top: 0.5em; }\n"
@@ -569,7 +639,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
           g_string_append (out, "<p");
           if (pa->rtl)
             g_string_append (out, " dir=\"rtl\"");
-          write_para_style (out, pa);
+          write_para_style (out, pa, NULL);
           g_string_append (out, ">");
           write_block_body (out, pt, aps, block, &base.ch);
           g_string_append (out, "</p>");
@@ -579,7 +649,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       else if (pa->list != W42_LIST_NONE)
         {
           g_string_append (out, "<li");
-          write_para_style (out, pa);
+          write_para_style (out, pa, NULL);
           g_string_append (out, ">");
           write_block_body (out, pt, aps, block, &base.ch);
           g_string_append (out, "</li>\n");
@@ -587,23 +657,33 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       else
         {
           const char *tag = tag_for (styles, pa->style);
+          char frame[128] = "";
 
+          /* A framed paragraph floats at its side of the column, the
+           * text after it running down the other; the gap to the text
+           * is padding, which is no indent when it is read back. */
           if (pa->frame_side != W42_FRAME_NONE)
-            g_string_append_printf (out, "<div style=\"float:%s;width:%.2fin;margin:0 %s\">",
-                                    pa->frame_side == W42_FRAME_LEFT ? "left" : "right",
-                                    (pa->frame_width > 0 ? pa->frame_width : 3120) / 1440.0,
-                                    pa->frame_side == W42_FRAME_LEFT ? "0.125in 0.125in 0" : "0 0.125in 0.125in");
+            {
+              char fw[G_ASCII_DTOSTR_BUF_SIZE];
+
+              g_snprintf (frame, sizeof frame, "float:%s;width:%sin;padding:0 %s;",
+                          pa->frame_side == W42_FRAME_LEFT ? "left" : "right",
+                          g_ascii_formatd (fw, sizeof fw, "%.2f",
+                                           (pa->frame_width > 0 ? pa->frame_width : 3120) / 1440.0),
+                          pa->frame_side == W42_FRAME_LEFT ? "0.125in 0.125in 0" : "0 0.125in 0.125in");
+            }
           g_string_append_printf (out, "<%s", tag);
           if (pa->rtl)
             g_string_append (out, " dir=\"rtl\"");
-          if (pa->drop_cap > 0)
-            g_string_append (out, " class=\"dropcap\"");
-          write_para_style (out, pa);
+          if (pa->drop_cap > 0 || (pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0))
+            g_string_append_printf (out, " class=\"%s%s%s\"",
+                                    pa->drop_cap > 0 ? "dropcap" : "",
+                                    pa->drop_cap > 0 && pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0 ? " " : "",
+                                    pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0 ? "title" : "");
+          write_para_style (out, pa, *frame != '\0' ? frame : NULL);
           g_string_append (out, ">");
           write_block_body (out, pt, aps, block, &base.ch);
           g_string_append_printf (out, "</%s>\n", tag);
-          if (pa->frame_side != W42_FRAME_NONE)
-            g_string_append (out, "</div>\n");
         }
 
       /* The table closes after its last cell. */
