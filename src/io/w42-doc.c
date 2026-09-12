@@ -123,7 +123,7 @@ ole_read_chain (Ole *ole, guint32 start, GByteArray *out, GError **error)
     {
       gsize off = (gsize) (s + 1) * ole->sector;
 
-      if (off + ole->sector > ole->len)
+      if (off >= ole->len)
         { g_free (seen); FAIL (error, "OLE sector %u is past the end of the file", s); }
       if (s >= ole->fat->len)
         { g_free (seen); FAIL (error, "OLE sector %u has no FAT entry", s); }
@@ -131,6 +131,14 @@ ole_read_chain (Ole *ole, guint32 start, GByteArray *out, GError **error)
         { g_free (seen); FAIL (error, "OLE sector chain loops"); }
       seen[s / 8] |= (guint8) (1 << (s % 8));
 
+      if (off + ole->sector > ole->len)
+        {
+          /* The file ends inside its last sector: a mail gateway cut it,
+           * or a writer did not pad.  What is there is the stream's
+           * end, and the text before it is all present. */
+          g_byte_array_append (out, ole->data + off, ole->len - off);
+          break;
+        }
       g_byte_array_append (out, ole->data + off, ole->sector);
       s = g_array_index (ole->fat, guint32, s);
     }
@@ -213,7 +221,17 @@ ole_open (Ole *ole, const guint8 *data, gsize len, GError **error)
       gsize off = (gsize) (s + 1) * ole->sector;
 
       if (off + ole->sector > len)
-        continue;
+        {
+          /* A FAT sector past the end of the file.  Its entries are
+           * unknown, not absent: the table keeps their places, or every
+           * chain through a later sector would read the wrong sectors. */
+          for (guint j = 0; j < per_sector; j++)
+            {
+              guint32 e = OLE_FREE;
+              g_array_append_val (ole->fat, e);
+            }
+          continue;
+        }
       for (guint j = 0; j < per_sector; j++)
         {
           guint32 e = rd32 (data + off + 4 * j);
@@ -412,6 +430,9 @@ typedef struct {
   int      highlight;
   int      dxa_space;
   gboolean spec;
+  int      vanish;       /* hidden text: not shown, so not read */
+  int      rmark_del;    /* a tracked deletion ... */
+  int      rmark_ins;    /* ... and a tracked insertion */
   guint32  pic_fc;       /* sprmCPicLocation: into the Data stream */
   gboolean has_pic;
 } Char;
@@ -504,8 +525,10 @@ read_pieces (Doc *doc, GError **error)
 
       piece.cp_start = rd32 (doc->tb + p + 4 * i);
       piece.cp_end   = rd32 (doc->tb + p + 4 * (i + 1));
+      /* FcCompressed: thirty bits of offset, bit 30 for fCompressed, and
+       * a reserved bit 31 that is not part of the offset either way. */
       piece.compressed = (raw & 0x40000000u) != 0;
-      piece.fc = piece.compressed ? (raw & ~0x40000000u) / 2 : raw;
+      piece.fc = piece.compressed ? (raw & 0x3FFFFFFFu) / 2 : (raw & 0x3FFFFFFFu);
       /* A piece can hold no more characters than the file has bytes
        * after its start. */
       if (piece.fc >= doc->wd_len || piece.cp_end < piece.cp_start)
@@ -793,8 +816,19 @@ property_string (const guint8 *d, gsize len, gsize at, guint codepage)
           g_free (aligned);
           return s;
         }
-      out = g_convert ((const char *) d + at + 8, n, "UTF-8",
-                       codepage == 65001 ? "UTF-8" : "WINDOWS-1252", NULL, NULL, NULL);
+      if (codepage == 65001)
+        out = g_convert ((const char *) d + at + 8, n, "UTF-8", "UTF-8", NULL, NULL, NULL);
+      else
+        {
+          /* The property set says its code page; a Greek or Russian
+           * title is in that, not in Western Windows. */
+          char *from = g_strdup_printf ("CP%u", codepage);
+
+          out = g_convert ((const char *) d + at + 8, n, "UTF-8", from, NULL, NULL, NULL);
+          g_free (from);
+          if (out == NULL)
+            out = g_convert ((const char *) d + at + 8, n, "UTF-8", "WINDOWS-1252", NULL, NULL, NULL);
+        }
       if (out == NULL)
         {
           /* Whatever the bytes were, what leaves here must be UTF-8. */
@@ -1259,8 +1293,10 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
     }
 }
 
+static void resolve_style (Doc *doc, int istd, Para *pa, Char *ch, int depth);
+
 static void
-apply_chpx (const guint8 *grpprl, guint len, Char *ch)
+apply_chpx (Doc *doc, const guint8 *grpprl, guint len, Char *ch, int depth)
 {
   guint p = 0;
 
@@ -1281,19 +1317,37 @@ apply_chpx (const guint8 *grpprl, guint len, Char *ch)
         case 0x0837: apply_toggle (&ch->strike, op[0]); break;
         case 0x083A: apply_toggle (&ch->smallcaps, op[0]); break;
         case 0x083B: apply_toggle (&ch->allcaps, op[0]); break;
-        case 0x2A0C: ch->highlight = op[0]; break;
-        case 0xCA71: case 0x4866:
+        case 0x083C: apply_toggle (&ch->vanish, op[0]); break;
+        case 0x0800: apply_toggle (&ch->rmark_del, op[0]); break;
+        case 0x0801: apply_toggle (&ch->rmark_ins, op[0]); break;
+        case 0x4A30:
+          /* sprmCIstd: the run wears a character style -- Emphasis,
+           * Strong, Hyperlink -- and the sprms after this one are its
+           * differences from it. */
+          resolve_style (doc, rd16 (op), NULL, ch, depth + 1);
+          break;
+        case 0xCA71:
           /* sprmCShd: a run's background as a colour, which is what a
-           * highlight is when it is not one of Word's sixteen names. */
-          if (ch->highlight == 0 && olen >= 2)
+           * highlight is when it is not one of Word's sixteen names.
+           * The operand is its count, then the Shd: the foreground
+           * COLORREF, the background COLORREF -- red, green, blue,
+           * fAuto -- and the pattern.  An automatic background is none. */
+          if (ch->highlight == 0 && olen >= 11 && op[8] != 0xFF)
             {
-              /* The colour is in the second half of the SHD; a shading
-               * that is only a percentage of black comes out grey. */
-              guint32 rgb = olen >= 10
-                ? (guint32) (op[4] | (op[5] << 8) | (op[6] << 16))
-                : 0xFFFF00;
+              guint32 rgb = ((guint32) op[5] << 16) | ((guint32) op[6] << 8) | op[7];
 
               ch->highlight = (guint8) doc_nearest_highlight (rgb);
+            }
+          break;
+        case 0x4866:
+          /* sprmCShd80: the old Shd80, its background one of the sixteen
+           * colours by index in bits 5 to 9, 0 for automatic. */
+          if (ch->highlight == 0 && olen >= 2)
+            {
+              int ico = (rd16 (op) >> 5) & 0x1F;
+
+              if (ico > 0 && ico <= 16)
+                ch->highlight = ico;
             }
           break;
         case 0x8840: ch->dxa_space = rd16s (op); break;
@@ -1365,8 +1419,16 @@ read_styles (Doc *doc)
           g_array_append_val (doc->styles, style);
           continue;
         }
-      if (!in_tb (doc, p, cb) || cb < MAX (cb_base + 2, 4))
+      if (!in_tb (doc, p, cb))
         break;
+      if (cb < MAX (cb_base + 2, 4))
+        {
+          /* Too short to be a style; its place is kept, since every
+           * paragraph names its style by its number. */
+          g_array_append_val (doc->styles, style);
+          p += cb;
+          continue;
+        }
 
       std = doc->tb + p;
       style.sti       = rd16 (std) & 0xFFF;
@@ -1421,7 +1483,7 @@ resolve_style (Doc *doc, int istd, Para *pa, Char *ch, int depth)
   if (pa != NULL && style->papx != NULL)
     apply_papx (style->papx, style->papx_len, pa);
   if (ch != NULL && style->chpx != NULL)
-    apply_chpx (style->chpx, style->chpx_len, ch);
+    apply_chpx (doc, style->chpx, style->chpx_len, ch, depth);
 }
 
 static const char *
@@ -1969,7 +2031,8 @@ emit_text (Builder *b, const DocPara *dp)
   Doc *doc = b->doc;
   Char style_ch;
   guint32 run_end = 0;
-  gboolean in_field_code = FALSE;
+  int field_depth = 0;        /* fields open around this character */
+  int code_depth = 0;         /* the field whose code is being read, or 0 */
   GString *field_code = g_string_new (NULL);
   const char *link = NULL;
   W42ApIdx current = ((W42ApIdx) G_MAXUINT32);
@@ -1995,32 +2058,55 @@ emit_text (Builder *b, const DocPara *dp)
 
         chpx = chpx_at (doc, fc, &len, &run_end);
         if (chpx != NULL)
-          apply_chpx (chpx, len, &ch);
+          apply_chpx (doc, chpx, len, &ch, 0);
       }
 
       /* Fields: the code between 0x13 and 0x14 is not text; the result
-       * between 0x14 and 0x15 is. */
-      if (c == 0x13) { in_field_code = TRUE; g_string_truncate (field_code, 0); continue; }
-      if (c == 0x14)
+       * between 0x14 and 0x15 is.  The three are marks only on a run
+       * flagged special -- elsewhere they are characters -- and a field
+       * inside another's result is a field of its own, while one inside
+       * another's code is part of that code. */
+      if (ch.spec && c == 0x13)
         {
-          /* HYPERLINK "url": the result is the link. */
-          in_field_code = FALSE;
-          link = NULL;
-          if (g_ascii_strncasecmp (g_strstrip (field_code->str), "HYPERLINK", 9) == 0)
+          field_depth++;
+          if (code_depth == 0)
             {
-              const char *q = strchr (field_code->str, '"');
-              const char *e = q != NULL ? strchr (q + 1, '"') : NULL;
-              if (q != NULL && e != NULL && e > q + 1)
+              code_depth = field_depth;
+              g_string_truncate (field_code, 0);
+            }
+          continue;
+        }
+      if (ch.spec && c == 0x14)
+        {
+          if (code_depth == field_depth && field_depth > 0)
+            {
+              /* HYPERLINK "url": the result is the link. */
+              code_depth = 0;
+              link = NULL;
+              if (g_ascii_strncasecmp (g_strstrip (field_code->str), "HYPERLINK", 9) == 0)
                 {
-                  char *url = g_strndup (q + 1, (gsize) (e - q - 1));
-                  link = g_intern_string (url);
-                  g_free (url);
+                  const char *q = strchr (field_code->str, '"');
+                  const char *e = q != NULL ? strchr (q + 1, '"') : NULL;
+                  if (q != NULL && e != NULL && e > q + 1)
+                    {
+                      char *url = g_strndup (q + 1, (gsize) (e - q - 1));
+                      link = g_intern_string (url);
+                      g_free (url);
+                    }
                 }
             }
           continue;
         }
-      if (c == 0x15) { link = NULL; continue; }
-      if (in_field_code)
+      if (ch.spec && c == 0x15)
+        {
+          if (field_depth > 0)
+            field_depth--;
+          if (code_depth > field_depth)
+            code_depth = 0;
+          link = NULL;
+          continue;
+        }
+      if (code_depth > 0)
         {
           if (c >= 0x20)
             g_string_append_unichar (field_code, c);
@@ -2084,10 +2170,16 @@ emit_text (Builder *b, const DocPara *dp)
       if (c == 0x1F) continue;   /* optional hyphen */
       if (c == 0 || (c < 0x20 && c != '\t'))
         continue;
+      if (ch.vanish)
+        continue;               /* hidden text: Word does not show it either */
 
       w42_fmt_init_default (&fmt);
       fill_char_fmt (doc, &ch, &fmt.ch);
       fmt.ch.link = link;
+      if (ch.rmark_del)
+        fmt.ch.revision = 2;    /* a tracked change: kept, and marked */
+      else if (ch.rmark_ins)
+        fmt.ch.revision = 1;
       ap = w42_ap_table_intern (w42_pt_ap_table (b->pt), &fmt);
 
       if (ap != current)
@@ -2629,30 +2721,38 @@ read_headers (Doc *doc, W42PieceTable *pt)
   /* Six separator stories come first, then per section: even header, odd
    * header, even footer, odd footer, first-page header, first-page
    * footer.  The odd ones are what every page gets without settings. */
-  if (n > 8)
-    {
-      guint32 a = rd32 (doc->tb + fc + 4 * 7), b = rd32 (doc->tb + fc + 4 * 8);
+  /* Word puts a document's only header in the first-page story often
+   * enough -- "different first page" with one page -- that it is read
+   * when the odd pages' story is empty. */
+  {
+    static const guint ODD_FIRST[2][2] = { { 7, 10 }, { 9, 11 } };
 
-      if (b > a)
+    for (int which = 0; which < 2; which++)
+      for (int try = 0; try < 2; try++)
         {
-          char *text = story_text (doc, base + a, base + b);
+          guint i = ODD_FIRST[which][try];
+          guint32 a, b;
+          char *text;
+
+          if (n <= i + 1)
+            continue;
+          a = rd32 (doc->tb + fc + 4 * i);
+          b = rd32 (doc->tb + fc + 4 * (i + 1));
+          if (b <= a)
+            continue;
+          text = story_text (doc, base + a, base + b);
           if (*text != '\0')
-            w42_pt_set_header (pt, text, W42_ALIGN_LEFT);
+            {
+              if (which == 0)
+                w42_pt_set_header (pt, text, W42_ALIGN_LEFT);
+              else
+                w42_pt_set_footer (pt, text, W42_ALIGN_LEFT);
+              g_free (text);
+              break;
+            }
           g_free (text);
         }
-    }
-  if (n > 10)
-    {
-      guint32 a = rd32 (doc->tb + fc + 4 * 9), b = rd32 (doc->tb + fc + 4 * 10);
-
-      if (b > a)
-        {
-          char *text = story_text (doc, base + a, base + b);
-          if (*text != '\0')
-            w42_pt_set_footer (pt, text, W42_ALIGN_LEFT);
-          g_free (text);
-        }
-    }
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -2755,7 +2855,11 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
       goto out;
     }
 
-  tb = ole_stream (&ole, (flags & 0x0200) ? "1Table" : "0Table", error);
+  /* fWhichTblStm names the table stream; a file some tool has rewritten
+   * can carry the other one only, and that one is better than nothing. */
+  tb = ole_stream (&ole, (flags & 0x0200) ? "1Table" : "0Table", NULL);
+  if (tb == NULL)
+    tb = ole_stream (&ole, (flags & 0x0200) ? "0Table" : "1Table", error);
   if (tb == NULL)
     goto out;
   doc.tb = tb->data;
