@@ -64,20 +64,66 @@ length_twips (const char *value)
   return (int) (v < 0 ? v - 0.5 : v + 0.5);
 }
 
+/* The text as XML: the markup characters escaped, and nothing that is
+ * not a character in XML at all -- a control, a byte that is not UTF-8,
+ * a non-character -- since one of those makes LibreOffice refuse the
+ * whole document rather than the run. */
 static void
 xml_escape (GString *out, const char *text, gsize len)
 {
-  for (gsize i = 0; i < len; i++)
-    switch (text[i])
-      {
-      case '<': g_string_append (out, "&lt;"); break;
-      case '>': g_string_append (out, "&gt;"); break;
-      case '&': g_string_append (out, "&amp;"); break;
-      case '"': g_string_append (out, "&quot;"); break;
-      default:
-        if ((guchar) text[i] >= 0x20 || text[i] == '\t' || text[i] == '\n')
-          g_string_append_c (out, text[i]);
-      }
+  for (gsize i = 0; i < len; )
+    {
+      gunichar c = g_utf8_get_char_validated (text + i, (gssize) (len - i));
+      gsize n;
+
+      if (c == (gunichar) -1 || c == (gunichar) -2)
+        {
+          g_string_append (out, "\357\277\275");     /* U+FFFD */
+          i++;
+          continue;
+        }
+      n = g_utf8_skip[(guchar) text[i]];
+      switch (c)
+        {
+        case '<': g_string_append (out, "&lt;"); break;
+        case '>': g_string_append (out, "&gt;"); break;
+        case '&': g_string_append (out, "&amp;"); break;
+        case '"': g_string_append (out, "&quot;"); break;
+        default:
+          if (c >= 0x20 || c == '\t' || c == '\n')
+            {
+              if (c == 0xFFFE || c == 0xFFFF)
+                g_string_append (out, "\357\277\275");
+              else
+                g_string_append_len (out, text + i, (gssize) n);
+            }
+        }
+      i += n;
+    }
+}
+
+/* The fo:margin shorthand: one length for every side, two for the
+ * pairs, three or four naming them round from the top. */
+static void
+margin_shorthand (const char *v, int *top, int *right, int *bottom, int *left)
+{
+  char **tok = g_strsplit (v, " ", -1);
+  int m[4] = { 0, 0, 0, 0 };
+  int n = 0;
+
+  for (guint k = 0; tok[k] != NULL && n < 4; k++)
+    if (*tok[k] != '\0')
+      m[n++] = length_twips (tok[k]);
+  g_strfreev (tok);
+  if (n == 0)
+    return;
+  if (n == 1)      { m[1] = m[2] = m[3] = m[0]; }
+  else if (n == 2) { m[2] = m[0]; m[3] = m[1]; }
+  else if (n == 3) { m[3] = m[1]; }
+  *top = m[0];
+  *right = m[1];
+  *bottom = m[2];
+  *left = m[3];
 }
 
 static void
@@ -173,6 +219,7 @@ typedef struct {
   GArray        *table_widths;
   gboolean       table_started;
   gboolean       cell_pending;
+  int            cell_repeat;     /* table:number-columns-repeated on it */
   int            cell_span;
   int            cell_vspan;         /* rows the pending cell spans, or W42_CELL_COVERED */
   int            skip_covered;       /* covered cells the last sideways span accounts for */
@@ -238,6 +285,8 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
         pa->align = g_str_equal (v, "center") ? W42_ALIGN_CENTER
                   : g_str_equal (v, "end") || g_str_equal (v, "right") ? W42_ALIGN_RIGHT
                   : g_str_equal (v, "justify") ? W42_ALIGN_JUSTIFY : W42_ALIGN_LEFT;
+      else if (g_str_equal (k, "fo:margin"))
+        margin_shorthand (v, &pa->space_before, &pa->indent_right, &pa->space_after, &pa->indent_left);
       else if (g_str_equal (k, "fo:margin-left"))   pa->indent_left = length_twips (v);
       else if (g_str_equal (k, "fo:margin-right"))  pa->indent_right = length_twips (v);
       else if (g_str_equal (k, "fo:text-indent"))   pa->indent_first = length_twips (v);
@@ -347,7 +396,15 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
             ch->color = (guint32) strtoul (v + 1, NULL, 16);
         }
       else if (g_str_equal (k, "fo:background-color"))
-        ch->highlight = g_str_equal (v, "transparent") ? 0 : 7;
+        {
+          /* The nearest of Word's sixteen, which is what a highlight is. */
+          if (g_str_equal (v, "transparent"))
+            ch->highlight = 0;
+          else if (v[0] == '#' && strlen (v) >= 7)
+            ch->highlight = (guint8) w42_highlight_nearest ((guint32) strtoul (v + 1, NULL, 16));
+          else
+            ch->highlight = 7;
+        }
       else if (g_str_equal (k, "fo:font-family"))
         {
           char *name = g_strdup (v);
@@ -566,6 +623,10 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
       s->pa = def.pa;
       s->ch = def.ch;
       s->parent = g_strdup (attr (an, av, "style:parent-style-name"));
+      /* A style with no parent inherits from the family's default style,
+       * where LibreOffice puts the document's font, size and language. */
+      if (s->parent == NULL && name[0] != '@')
+        s->parent = g_strdup (g_str_equal (family, "paragraph") ? "@default-paragraph" : "@default-text");
       s->list_style = g_strdup (attr (an, av, "style:list-style-name"));
       {
         const char *display = attr (an, av, "style:display-name");
@@ -822,6 +883,9 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
 
       if (w != NULL) o->page->width = length_twips (w);
       if (h != NULL) o->page->height = length_twips (h);
+      if (attr (an, av, "fo:margin"))
+        margin_shorthand (attr (an, av, "fo:margin"), &o->page->margin_top, &o->page->margin_right,
+                          &o->page->margin_bottom, &o->page->margin_left);
       if (attr (an, av, "fo:margin-top")) o->page->margin_top = length_twips (attr (an, av, "fo:margin-top"));
       if (attr (an, av, "fo:margin-bottom")) o->page->margin_bottom = length_twips (attr (an, av, "fo:margin-bottom"));
       if (attr (an, av, "fo:margin-left")) o->page->margin_left = length_twips (attr (an, av, "fo:margin-left"));
@@ -1183,6 +1247,8 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       OdtStyle *s = resolve_style (o, sn, 0);
       W42Fmt def;
 
+      if (s == NULL)
+        s = resolve_style (o, "@default-paragraph", 0);
       open_pending_cell (o);
       if (o->in_note > 0)
         {
@@ -1456,6 +1522,11 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
         }
       o->cell_pending = TRUE;
       o->cell_span = span != NULL ? CLAMP (atoi (span), 1, 63) : 1;
+      {
+        const char *rep = attr (an, av, "table:number-columns-repeated");
+
+        o->cell_repeat = rep != NULL ? CLAMP (atoi (rep), 1, 63) : 1;
+      }
       /* A covered cell is one the merge above it has swallowed; the cell
        * that owns the merge says how many rows it takes. */
       if (g_str_equal (tag, "covered-table-cell"))
@@ -1679,6 +1750,15 @@ body_end (Odt *o, const char *tag)
       open_pending_cell (o);
       w42_builder_end_cell (&o->b);
       o->para_open = FALSE;
+      /* One element standing for several cells alike: the rest are
+       * empty ones with the same style. */
+      for (int i = 1; i < o->cell_repeat; i++)
+        {
+          o->cell_pending = TRUE;
+          open_pending_cell (o);
+          w42_builder_end_cell (&o->b);
+        }
+      o->cell_repeat = 1;
     }
   else if (g_str_equal (tag, "table-row") && o->in_table == 1)
     w42_builder_end_row (&o->b);
@@ -2043,6 +2123,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_hash_table_destroy (o.cell_lines);
   g_free (o.cur_style_name);
   g_free (o.cur_col_style);
+  g_free (o.index_term);
   if (styles != NULL)
     g_bytes_unref (styles);
   g_bytes_unref (content);
@@ -2137,11 +2218,16 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
     g_string_append_printf (s, " fo:text-align=\"%s\"",
                             pa->align == W42_ALIGN_CENTER ? "center" : pa->align == W42_ALIGN_RIGHT ? "end"
                             : pa->align == W42_ALIGN_JUSTIFY ? "justify" : "start");
-  if (pa->indent_left)  { g_string_append (s, " fo:margin-left=\""); twips_out (s, pa->indent_left); g_string_append_c (s, '"'); }
-  if (pa->indent_right) { g_string_append (s, " fo:margin-right=\""); twips_out (s, pa->indent_right); g_string_append_c (s, '"'); }
-  if (pa->indent_first) { g_string_append (s, " fo:text-indent=\""); twips_out (s, pa->indent_first); g_string_append_c (s, '"'); }
-  if (pa->space_before) { g_string_append (s, " fo:margin-top=\""); twips_out (s, pa->space_before); g_string_append_c (s, '"'); }
-  if (pa->space_after)  { g_string_append (s, " fo:margin-bottom=\""); twips_out (s, pa->space_after); g_string_append_c (s, '"'); }
+  /* A length is written where it differs from the style the paragraph
+   * is based on, nought included: a paragraph indented 0 in a style
+   * indented an inch would otherwise inherit the inch. */
+#define DIFFERS(field) (base == NULL ? pa->field != 0 : pa->field != base->field)
+  if (DIFFERS (indent_left))  { g_string_append (s, " fo:margin-left=\""); twips_out (s, pa->indent_left); g_string_append_c (s, '"'); }
+  if (DIFFERS (indent_right)) { g_string_append (s, " fo:margin-right=\""); twips_out (s, pa->indent_right); g_string_append_c (s, '"'); }
+  if (DIFFERS (indent_first)) { g_string_append (s, " fo:text-indent=\""); twips_out (s, pa->indent_first); g_string_append_c (s, '"'); }
+  if (DIFFERS (space_before)) { g_string_append (s, " fo:margin-top=\""); twips_out (s, pa->space_before); g_string_append_c (s, '"'); }
+  if (DIFFERS (space_after))  { g_string_append (s, " fo:margin-bottom=\""); twips_out (s, pa->space_after); g_string_append_c (s, '"'); }
+#undef DIFFERS
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     g_string_append_printf (s, " fo:line-height=\"%d%%\"", pa->line_spacing_pct);
   else if (pa->line_spacing > 0)
@@ -2257,14 +2343,25 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
       if (ch->underline == W42_UNDERLINE_WORDS)
         g_string_append (s, " style:text-underline-mode=\"skip-white-space\"");
     }
+  /* Without a base, every property is said, the "off" ones included: a
+   * span's style is applied over its paragraph's, which may underline
+   * or colour, and what a style leaves unsaid it inherits. */
+  else if (base == NULL)
+    g_string_append (s, " style:text-underline-style=\"none\"");
   if (ch->strikeout) g_string_append (s, " style:text-line-through-style=\"solid\"");
+  else if (base == NULL) g_string_append (s, " style:text-line-through-style=\"none\"");
   if (ch->overline)  g_string_append (s, " style:text-overline-style=\"solid\"");
-  if (ch->color != 0) g_string_append_printf (s, " fo:color=\"#%06x\"", ch->color);
+  else if (base == NULL) g_string_append (s, " style:text-overline-style=\"none\"");
+  if (ch->color != 0 || base == NULL) g_string_append_printf (s, " fo:color=\"#%06x\"", ch->color);
   if (ch->highlight != 0) g_string_append_printf (s, " fo:background-color=\"#%06x\"", w42_highlight_rgb (ch->highlight));
+  else if (base == NULL) g_string_append (s, " fo:background-color=\"transparent\"");
   if (ch->script > 0) g_string_append (s, " style:text-position=\"super 58%\"");
-  if (ch->script < 0) g_string_append (s, " style:text-position=\"sub 58%\"");
+  else if (ch->script < 0) g_string_append (s, " style:text-position=\"sub 58%\"");
+  else if (base == NULL) g_string_append (s, " style:text-position=\"0% 100%\"");
   if (ch->smallcaps) g_string_append (s, " fo:font-variant=\"small-caps\"");
+  else if (base == NULL) g_string_append (s, " fo:font-variant=\"normal\"");
   if (ch->allcaps)   g_string_append (s, " fo:text-transform=\"uppercase\"");
+  else if (base == NULL) g_string_append (s, " fo:text-transform=\"none\"");
   if (ch->spacing)
     {
       char buf[G_ASCII_DTOSTR_BUF_SIZE];
@@ -2782,7 +2879,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
           const W42ParaFmt *ppa = &w42_ap_table_get (aps, prev->ap)->pa;
 
           if (ppa->list != W42_LIST_NONE && MIN (ppa->list_level, 8) + 1 == want_depth &&
-              g_str_has_suffix (w.body->str, "</text:p>"))
+              (g_str_has_suffix (w.body->str, "</text:p>") || g_str_has_suffix (w.body->str, "</text:h>")))
             g_string_append (w.body, "</text:list-item><text:list-item>");
         }
 
@@ -3030,8 +3127,11 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
 
       g_string_append_printf (content, "<style:style style:name=\"P%u\" style:family=\"paragraph\" style:parent-style-name=\"%s\"",
                               i + 1, style_id_for (pa->style));
-      if (pa->list != W42_LIST_NONE)
-        g_string_append_printf (content, " style:list-style-name=\"L%d\"", (int) pa->list);
+      if (pa->list != W42_LIST_NONE && pa->list < W42_LIST_KINDS)
+        {
+          g_string_append_printf (content, " style:list-style-name=\"L%d\"", (int) pa->list);
+          w.list_style_used[pa->list] = 1;     /* named here, so declared below */
+        }
       g_string_append (content, ">");
       write_para_props_xml (content, pa, style != NULL ? &style->pa : NULL);
       g_string_append (content, "</style:style>");
@@ -3055,6 +3155,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       for (int lv = 1; lv <= 9; lv++)
         {
           char marker[16];
+          char tab[G_ASCII_DTOSTR_BUF_SIZE], left[G_ASCII_DTOSTR_BUF_SIZE];
 
           w42_list_marker ((W42ListKind) k, 1, marker, sizeof marker);
           if (w42_list_is_bullet ((W42ListKind) k))
@@ -3063,10 +3164,12 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
             g_string_append_printf (content, "<text:list-level-style-number text:level=\"%d\" style:num-suffix=\".\" style:num-format=\"%s\">", lv,
                                     k == W42_LIST_LOWER_LETTER ? "a" : k == W42_LIST_UPPER_LETTER ? "A"
                                     : k == W42_LIST_LOWER_ROMAN ? "i" : k == W42_LIST_UPPER_ROMAN ? "I" : "1");
+          /* The C locale's full stop: "0,50in" is no length in ODF. */
           g_string_append_printf (content, "<style:list-level-properties text:list-level-position-and-space-mode=\"label-alignment\">"
-                                  "<style:list-level-label-alignment text:label-followed-by=\"listtab\" text:list-tab-stop-position=\"%.2fin\" fo:text-indent=\"-0.25in\" fo:margin-left=\"%.2fin\"/>"
+                                  "<style:list-level-label-alignment text:label-followed-by=\"listtab\" text:list-tab-stop-position=\"%sin\" fo:text-indent=\"-0.25in\" fo:margin-left=\"%sin\"/>"
                                   "</style:list-level-properties>%s",
-                                  0.25 * lv, 0.25 * lv,
+                                  g_ascii_formatd (tab, sizeof tab, "%.2f", 0.25 * lv),
+                                  g_ascii_formatd (left, sizeof left, "%.2f", 0.25 * lv),
                                   w42_list_is_bullet ((W42ListKind) k) ? "</text:list-level-style-bullet>" : "</text:list-level-style-number>");
         }
       g_string_append (content, "</text:list-style>");
@@ -3227,7 +3330,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_string_append (manifest, "</manifest:manifest>");
 
   zip = w42_zip_writer_new ();
-  w42_zip_writer_add (zip, "mimetype", ODT_MIME, strlen (ODT_MIME));
+  w42_zip_writer_add_stored (zip, "mimetype", ODT_MIME, strlen (ODT_MIME));
   w42_zip_writer_add (zip, "content.xml", content->str, content->len);
   w42_zip_writer_add (zip, "styles.xml", stylesxml->str, stylesxml->len);
   {
