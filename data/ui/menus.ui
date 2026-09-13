@@ -562,6 +562,19 @@
         </item>
       </section>
       <section>
+        <submenu>
+          <attribute name="label" translatable="yes">Mac_ro</attribute>
+          <item>
+            <attribute name="label" translatable="yes">_Macros...</attribute>
+            <attribute name="action">win.macros</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Macro _Editor...</attribute>
+            <attribute name="action">win.macro-editor</attribute>
+          </item>
+        </submenu>
+      </section>
+      <section>
         <item>
           <attribute name="label" translatable="yes">_Options...</attribute>
           <attribute name="action">win.options</attribute>

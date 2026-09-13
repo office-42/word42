@@ -34,9 +34,11 @@
 #include "w42-autotext.h"
 #include "w42-template.h"
 #include "w42-help.h"
+#include "w42-macro.h"
 #include "w42-view.h"
 
 static const char *window_author_name (void);
+static void window_saved (W42Window *self, gboolean succeeded);
 
 /* The zoom steps the Standard bar offers; also what Options can make the
  * default. */
@@ -544,6 +546,26 @@ w42_window_open (W42Window *self, GFile *file)
   window_note_recent (self, file);
   window_update_title (self);
   window_sync_state (self);
+}
+
+void
+w42_window_flash_status (W42Window *self, const char *text)
+{
+  g_return_if_fail (W42_IS_WINDOW (self));
+  window_flash (self, "%s", text != NULL ? text : "");
+}
+
+gboolean
+w42_window_save_to (W42Window *self, GFile *file, GError **error)
+{
+  gboolean ok;
+
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  ok = w42_document_save (self->doc, file, error);
+  window_saved (self, ok);
+  return ok;
 }
 
 /* A recent file opens here if this window is untouched, else in its own. */
@@ -2383,6 +2405,33 @@ action_background (GSimpleAction *action, GVariant *param, gpointer data)
 }
 
 static void
+action_macros (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_macros_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+/* Alt+F11: the editor on the macro last edited, or a first one. */
+static void
+action_macro_editor (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  char *name = w42_settings_get_string ("last-macro", "Macro1");
+
+  (void) action; (void) param;
+  if (!w42_macro_name_ok (name))
+    {
+      g_free (name);
+      name = g_strdup ("Macro1");
+    }
+  w42_settings_set_string ("last-macro", name);
+  w42_macro_editor_show (GTK_WINDOW (self), self->view, name);
+  g_free (name);
+}
+
+static void
 action_autotext (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
@@ -2922,7 +2971,8 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
     "option) any later version.  It comes with ABSOLUTELY NO WARRANTY.\n\n"
     "Word42 is an independent program, not affiliated with or endorsed by "
     "the makers of any other word processor.  The names of file formats "
-    "appear only to say which format is meant.");
+    "appear only to say which format is meant.\n\n"
+    "Macros run on MY-BASIC by Tony Wang, used under the MIT licence.");
   gtk_label_set_wrap (GTK_LABEL (licence), TRUE);
   gtk_label_set_max_width_chars (GTK_LABEL (licence), 52);
   gtk_label_set_xalign (GTK_LABEL (licence), 0.0);
@@ -4160,6 +4210,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "zoom",       action_zoom,       "d",  NULL,    NULL, { 0 } },
   { "zoom-fit",   action_zoom_fit,   "s",  NULL,    NULL, { 0 } },
   { "zoom-dialog", action_zoom_dialog, NULL, NULL,  NULL, { 0 } },
+  { "macros",     action_macros,     NULL, NULL,    NULL, { 0 } },
+  { "macro-editor", action_macro_editor, NULL, NULL, NULL, { 0 } },
   { "view-mode",  action_view_mode,  "s",  "'normal'", NULL, { 0 } },
   { "font",       action_font_dialog, NULL, NULL,   NULL, { 0 } },
   { "font-grow",   action_font_step, NULL, NULL, NULL, { 0 } },

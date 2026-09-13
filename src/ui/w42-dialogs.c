@@ -18,6 +18,8 @@
 #include "w42-merge.h"
 #include "w42-shape.h"
 #include "w42-window.h"
+#include "w42-macro.h"
+#include "w42-vba.h"
 
 #include <math.h>
 #include <string.h>
@@ -5830,4 +5832,563 @@ w42_zoom_dialog_show (GtkWindow *parent, W42View *view)
 
   button_row (content, box->window, G_CALLBACK (zoom_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tools > Macro                                                           */
+/* ---------------------------------------------------------------------- */
+
+/* The editor: the macro's text, the Sub to run, and what running it
+ * said.  Modeless, so the document can be watched as the macro works. */
+typedef struct {
+  W42View   *view;
+  GtkWindow *parent;
+  GtkWidget *window;
+  GtkWidget *text;
+  GtkWidget *output;
+  GtkWidget *subs;
+  char      *name;
+} MacroEditor;
+
+static void
+macro_editor_free (gpointer data)
+{
+  MacroEditor *ed = data;
+
+  g_free (ed->name);
+  g_free (ed);
+}
+
+static char *
+macro_editor_source (MacroEditor *ed)
+{
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (ed->text));
+  GtkTextIter a, b;
+
+  gtk_text_buffer_get_bounds (buffer, &a, &b);
+  return gtk_text_buffer_get_text (buffer, &a, &b, FALSE);
+}
+
+static void
+macro_editor_say (MacroEditor *ed, const char *text)
+{
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (ed->output));
+  GtkTextIter end;
+
+  gtk_text_buffer_get_end_iter (buffer, &end);
+  gtk_text_buffer_insert (buffer, &end, text, -1);
+  if (!g_str_has_suffix (text, "\n"))
+    gtk_text_buffer_insert (buffer, &end, "\n", -1);
+  gtk_text_buffer_get_end_iter (buffer, &end);
+  gtk_text_view_scroll_to_iter (GTK_TEXT_VIEW (ed->output), &end, 0.0, FALSE, 0.0, 0.0);
+}
+
+/* The Subs in the text, offered in the box beside Run. */
+static void
+macro_editor_refresh_subs (MacroEditor *ed)
+{
+  char *source = macro_editor_source (ed);
+  char **subs = w42_vba_list_subs (source, TRUE);
+  GtkStringList *list = gtk_string_list_new ((const char *const *) subs);
+  guint was = gtk_drop_down_get_selected (GTK_DROP_DOWN (ed->subs));
+
+  gtk_drop_down_set_model (GTK_DROP_DOWN (ed->subs), G_LIST_MODEL (list));
+  if (was != GTK_INVALID_LIST_POSITION && was < g_list_model_get_n_items (G_LIST_MODEL (list)))
+    gtk_drop_down_set_selected (GTK_DROP_DOWN (ed->subs), was);
+  g_object_unref (list);
+  g_strfreev (subs);
+  g_free (source);
+}
+
+static gboolean
+macro_editor_save (MacroEditor *ed)
+{
+  char *source = macro_editor_source (ed);
+  GError *error = NULL;
+  gboolean ok = w42_macro_save (ed->name, source, &error);
+
+  if (!ok)
+    {
+      macro_editor_say (ed, error != NULL ? error->message : "The macro could not be saved.");
+      g_clear_error (&error);
+    }
+  g_free (source);
+  macro_editor_refresh_subs (ed);
+  return ok;
+}
+
+static void
+on_macro_editor_save (GtkButton *button, gpointer data)
+{
+  MacroEditor *ed = data;
+
+  (void) button;
+  if (macro_editor_save (ed))
+    macro_editor_say (ed, "Saved.");
+}
+
+static void
+on_macro_editor_run (GtkButton *button, gpointer data)
+{
+  MacroEditor *ed = data;
+  char *source;
+  GString *output = g_string_new (NULL);
+  char *error = NULL;
+  const char *sub = NULL;
+  GObject *item;
+
+  (void) button;
+  if (!macro_editor_save (ed))
+    return;
+  item = gtk_drop_down_get_selected_item (GTK_DROP_DOWN (ed->subs));
+  if (item != NULL)
+    sub = gtk_string_object_get_string (GTK_STRING_OBJECT (item));
+  if (sub == NULL)
+    {
+      macro_editor_say (ed, "There is no Sub to run: write one, Sub Main() ... End Sub.");
+      g_string_free (output, TRUE);
+      return;
+    }
+  source = macro_editor_source (ed);
+  {
+    char *line = g_strdup_printf ("Running %s...", sub);
+
+    macro_editor_say (ed, line);
+    g_free (line);
+  }
+  if (w42_macro_run (ed->parent, ed->view, source, sub, output, &error))
+    {
+      if (output->len > 0)
+        macro_editor_say (ed, output->str);
+      macro_editor_say (ed, "Done.");
+    }
+  else
+    {
+      if (output->len > 0)
+        macro_editor_say (ed, output->str);
+      macro_editor_say (ed, error != NULL ? error : "The macro stopped.");
+    }
+  g_free (error);
+  g_free (source);
+  g_string_free (output, TRUE);
+}
+
+static void
+on_macro_editor_close (GtkButton *button, gpointer data)
+{
+  MacroEditor *ed = data;
+
+  (void) button;
+  macro_editor_save (ed);
+  gtk_window_close (GTK_WINDOW (ed->window));
+}
+
+static gboolean
+on_macro_editor_key (GtkEventControllerKey *controller, guint keyval,
+                     guint keycode, GdkModifierType state, gpointer data)
+{
+  MacroEditor *ed = data;
+
+  (void) controller; (void) keycode;
+  if (keyval == GDK_KEY_F5)
+    {
+      on_macro_editor_run (NULL, ed);
+      return GDK_EVENT_STOP;
+    }
+  if ((state & GDK_CONTROL_MASK) && (keyval == GDK_KEY_s || keyval == GDK_KEY_S))
+    {
+      on_macro_editor_save (NULL, ed);
+      return GDK_EVENT_STOP;
+    }
+  return GDK_EVENT_PROPAGATE;
+}
+
+void
+w42_macro_editor_show (GtkWindow *parent, W42View *view, const char *name)
+{
+  MacroEditor *ed;
+  GtkWidget *content, *scroller, *row, *label, *button, *out_scroller;
+  GtkEventController *key;
+  char *source, *title;
+
+  g_return_if_fail (w42_macro_name_ok (name));
+
+  ed = g_new0 (MacroEditor, 1);
+  ed->view = view;
+  ed->parent = parent;
+  ed->name = g_strdup (name);
+  ed->window = dialog_shell (parent, "Macro Editor", &content, view);
+  g_object_set_data_full (G_OBJECT (ed->window), "w42-box", ed, macro_editor_free);
+  gtk_window_set_modal (GTK_WINDOW (ed->window), FALSE);
+  gtk_window_set_resizable (GTK_WINDOW (ed->window), TRUE);
+  gtk_window_set_default_size (GTK_WINDOW (ed->window), 640, 520);
+  title = g_strdup_printf ("Macro Editor - %s", name);
+  gtk_window_set_title (GTK_WINDOW (ed->window), title);
+  g_free (title);
+
+  /* A macro that does not exist yet starts as an empty Sub of its name. */
+  source = w42_macro_load (name, NULL);
+  if (source == NULL)
+    source = g_strdup_printf ("Sub %s()\n    \nEnd Sub\n", name);
+
+  ed->text = gtk_text_view_new ();
+  gtk_text_view_set_monospace (GTK_TEXT_VIEW (ed->text), TRUE);
+  gtk_text_view_set_left_margin (GTK_TEXT_VIEW (ed->text), 6);
+  gtk_text_view_set_top_margin (GTK_TEXT_VIEW (ed->text), 4);
+  gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (ed->text)), source, -1);
+  g_free (source);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), ed->text);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_widget_set_vexpand (scroller, TRUE);
+  gtk_widget_set_hexpand (scroller, TRUE);
+  gtk_box_append (GTK_BOX (content), scroller);
+
+  row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  label = gtk_label_new_with_mnemonic ("_Sub to run:");
+  ed->subs = gtk_drop_down_new (NULL, NULL);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), ed->subs);
+  gtk_box_append (GTK_BOX (row), label);
+  gtk_box_append (GTK_BOX (row), ed->subs);
+  button = gtk_button_new_with_mnemonic ("_Run (F5)");
+  g_signal_connect (button, "clicked", G_CALLBACK (on_macro_editor_run), ed);
+  gtk_box_append (GTK_BOX (row), button);
+  button = gtk_button_new_with_mnemonic ("_Save");
+  g_signal_connect (button, "clicked", G_CALLBACK (on_macro_editor_save), ed);
+  gtk_box_append (GTK_BOX (row), button);
+  button = gtk_button_new_with_mnemonic ("_Close");
+  gtk_widget_set_halign (button, GTK_ALIGN_END);
+  gtk_widget_set_hexpand (button, TRUE);
+  g_signal_connect (button, "clicked", G_CALLBACK (on_macro_editor_close), ed);
+  gtk_box_append (GTK_BOX (row), button);
+  gtk_box_append (GTK_BOX (content), row);
+
+  ed->output = gtk_text_view_new ();
+  gtk_text_view_set_editable (GTK_TEXT_VIEW (ed->output), FALSE);
+  gtk_text_view_set_monospace (GTK_TEXT_VIEW (ed->output), TRUE);
+  gtk_text_view_set_cursor_visible (GTK_TEXT_VIEW (ed->output), FALSE);
+  gtk_text_view_set_left_margin (GTK_TEXT_VIEW (ed->output), 6);
+  out_scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (out_scroller), ed->output);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (out_scroller), TRUE);
+  gtk_widget_set_size_request (out_scroller, -1, 96);
+  gtk_box_append (GTK_BOX (content), out_scroller);
+
+  key = gtk_event_controller_key_new ();
+  g_signal_connect (key, "key-pressed", G_CALLBACK (on_macro_editor_key), ed);
+  gtk_widget_add_controller (ed->window, key);
+
+  macro_editor_refresh_subs (ed);
+  gtk_window_present (GTK_WINDOW (ed->window));
+  gtk_widget_grab_focus (ed->text);
+}
+
+/* The Macros box: Word 6's Tools > Macro, with Run, Create, Edit and
+ * Delete on a list of the macros in the folder. */
+typedef struct {
+  W42View   *view;
+  GtkWindow *parent;
+  GtkWidget *window;
+  GtkWidget *entry;
+  GtkWidget *list;
+  GtkWidget *run, *create, *edit, *delete;
+} MacrosBox;
+
+/* A row is a file's Sub: "File.Sub".  A file with one Sub of its own
+ * name is listed as the name alone. */
+static void
+macros_fill (MacrosBox *box)
+{
+  char **names = w42_macro_names ();
+  GtkWidget *child;
+
+  while ((child = gtk_widget_get_first_child (box->list)) != NULL)
+    gtk_list_box_remove (GTK_LIST_BOX (box->list), child);
+
+  for (int i = 0; names[i] != NULL; i++)
+    {
+      char *source = w42_macro_load (names[i], NULL);
+      char **subs = w42_vba_list_subs (source != NULL ? source : "", TRUE);
+      int n = 0;
+
+      while (subs[n] != NULL)
+        n++;
+      if (n == 0)
+        {
+          GtkWidget *row = gtk_label_new (names[i]);
+
+          gtk_label_set_xalign (GTK_LABEL (row), 0.0);
+          g_object_set_data_full (G_OBJECT (row), "w42-file", g_strdup (names[i]), g_free);
+          gtk_list_box_append (GTK_LIST_BOX (box->list), row);
+        }
+      for (int k = 0; k < n; k++)
+        {
+          gboolean alone = n == 1 && g_ascii_strcasecmp (subs[k], names[i]) == 0;
+          char *text = alone ? g_strdup (names[i]) : g_strdup_printf ("%s.%s", names[i], subs[k]);
+          GtkWidget *row = gtk_label_new (text);
+
+          gtk_label_set_xalign (GTK_LABEL (row), 0.0);
+          g_object_set_data_full (G_OBJECT (row), "w42-file", g_strdup (names[i]), g_free);
+          g_object_set_data_full (G_OBJECT (row), "w42-sub", g_strdup (subs[k]), g_free);
+          gtk_list_box_append (GTK_LIST_BOX (box->list), row);
+          g_free (text);
+        }
+      g_strfreev (subs);
+      g_free (source);
+    }
+  g_strfreev (names);
+}
+
+/* What the entry names: a file, and the Sub in it, from "File.Sub" or
+ * the selected row. */
+static gboolean
+macros_named (MacrosBox *box, char **file, char **sub)
+{
+  const char *text = gtk_editable_get_text (GTK_EDITABLE (box->entry));
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (box->list));
+  const char *dot;
+
+  *file = NULL;
+  *sub = NULL;
+  if (row != NULL)
+    {
+      GtkWidget *child = gtk_list_box_row_get_child (row);
+      const char *label = gtk_label_get_text (GTK_LABEL (child));
+
+      if (g_str_equal (label, text))
+        {
+          *file = g_strdup (g_object_get_data (G_OBJECT (child), "w42-file"));
+          *sub = g_strdup (g_object_get_data (G_OBJECT (child), "w42-sub"));
+          return TRUE;
+        }
+    }
+  dot = strchr (text, '.');
+  if (dot != NULL)
+    {
+      *file = g_strndup (text, (gsize) (dot - text));
+      *sub = g_strdup (dot + 1);
+    }
+  else
+    *file = g_strdup (text);
+  return w42_macro_name_ok (*file);
+}
+
+static void
+macros_sync (MacrosBox *box)
+{
+  char *file, *sub;
+  gboolean named = macros_named (box, &file, &sub);
+  gboolean exists = FALSE;
+
+  if (named)
+    {
+      char *path = g_build_filename (g_get_user_data_dir (), "word42", "macros", NULL);
+      char *full = g_strdup_printf ("%s/%s.bas", path, file);
+
+      exists = g_file_test (full, G_FILE_TEST_EXISTS);
+      g_free (full);
+      g_free (path);
+    }
+  gtk_widget_set_sensitive (box->run, named && exists);
+  gtk_widget_set_sensitive (box->edit, named && exists);
+  gtk_widget_set_sensitive (box->delete, named && exists);
+  gtk_widget_set_sensitive (box->create, named && !exists);
+  g_free (file);
+  g_free (sub);
+}
+
+static void
+on_macros_row (GtkListBox *list, GtkListBoxRow *row, gpointer data)
+{
+  MacrosBox *box = data;
+
+  (void) list;
+  if (row != NULL)
+    gtk_editable_set_text (GTK_EDITABLE (box->entry),
+                           gtk_label_get_text (GTK_LABEL (gtk_list_box_row_get_child (row))));
+  macros_sync (box);
+}
+
+static void
+on_macros_entry (GtkEditable *entry, gpointer data)
+{
+  (void) entry;
+  macros_sync (data);
+}
+
+static void
+on_macros_run (GtkButton *button, gpointer data)
+{
+  MacrosBox *box = data;
+  char *file, *sub, *source, *error = NULL;
+  W42View *view = box->view;
+  GtkWindow *parent = box->parent;
+
+  (void) button;
+  if (!macros_named (box, &file, &sub))
+    return;
+  source = w42_macro_load (file, NULL);
+  if (source == NULL)
+    {
+      g_free (file);
+      g_free (sub);
+      return;
+    }
+  if (sub == NULL)
+    {
+      char **subs = w42_vba_list_subs (source, TRUE);
+
+      sub = g_strdup (subs[0] != NULL ? subs[0] : "Main");
+      g_strfreev (subs);
+    }
+  /* The box goes first: the macro's own boxes belong to the document. */
+  gtk_window_close (GTK_WINDOW (box->window));
+  if (!w42_macro_run (parent, view, source, sub, NULL, &error))
+    {
+      char *heading = g_strdup_printf ("The macro %s stopped.", file);
+
+      w42_message_show (parent, heading, error);
+      g_free (heading);
+    }
+  else if (W42_IS_WINDOW (parent))
+    {
+      char *line = g_strdup_printf ("Macro %s ran.", file);
+
+      w42_window_flash_status (W42_WINDOW (parent), line);
+      g_free (line);
+    }
+  g_free (error);
+  g_free (source);
+  g_free (file);
+  g_free (sub);
+}
+
+static void
+on_macros_edit (GtkButton *button, gpointer data)
+{
+  MacrosBox *box = data;
+  char *file, *sub;
+  W42View *view = box->view;
+  GtkWindow *parent = box->parent;
+
+  (void) button;
+  if (!macros_named (box, &file, &sub))
+    return;
+  gtk_window_close (GTK_WINDOW (box->window));
+  w42_settings_set_string ("last-macro", file);
+  w42_macro_editor_show (parent, view, file);
+  g_free (file);
+  g_free (sub);
+}
+
+static void
+on_macros_delete_choice (int choice, gpointer data)
+{
+  MacrosBox *box = data;
+  char *file, *sub;
+
+  if (choice != 0 || !macros_named (box, &file, &sub))
+    return;
+  w42_macro_delete (file, NULL);
+  g_free (file);
+  g_free (sub);
+  macros_fill (box);
+  gtk_editable_set_text (GTK_EDITABLE (box->entry), "");
+  macros_sync (box);
+}
+
+static void
+on_macros_delete (GtkButton *button, gpointer data)
+{
+  MacrosBox *box = data;
+  static const char *const labels[] = { "_Delete", "Cancel", NULL };
+  char *file, *sub, *heading;
+
+  (void) button;
+  if (!macros_named (box, &file, &sub))
+    return;
+  heading = g_strdup_printf ("Delete the macro %s?", file);
+  w42_choice_show (GTK_WINDOW (box->window), heading, "Every Sub in it goes with it.",
+                   labels, 1, 1, on_macros_delete_choice, box);
+  g_free (heading);
+  g_free (file);
+  g_free (sub);
+}
+
+static void
+on_macros_close (GtkButton *button, gpointer data)
+{
+  MacrosBox *box = data;
+
+  (void) button;
+  gtk_window_close (GTK_WINDOW (box->window));
+}
+
+void
+w42_macros_dialog_show (GtkWindow *parent, W42View *view)
+{
+  MacrosBox *box = g_new0 (MacrosBox, 1);
+  GtkWidget *content, *grid, *label, *scroller, *buttons, *close;
+
+  box->view = view;
+  box->parent = parent;
+  box->window = dialog_shell (parent, "Macro", &content, view);
+  g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
+
+  grid = gtk_grid_new ();
+  gtk_grid_set_row_spacing (GTK_GRID (grid), 6);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 10);
+
+  label = gtk_label_new_with_mnemonic ("_Macro name:");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  box->entry = gtk_entry_new ();
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->entry);
+  gtk_widget_set_size_request (box->entry, 300, -1);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->entry, 0, 1, 1, 1);
+
+  box->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
+  scroller = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), box->list);
+  gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (scroller), TRUE);
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_widget_set_size_request (scroller, 300, 220);
+  gtk_grid_attach (GTK_GRID (grid), scroller, 0, 2, 1, 1);
+
+  buttons = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+  box->run = gtk_button_new_with_mnemonic ("_Run");
+  box->create = gtk_button_new_with_mnemonic ("_Create");
+  box->edit = gtk_button_new_with_mnemonic ("_Edit");
+  box->delete = gtk_button_new_with_mnemonic ("_Delete");
+  close = gtk_button_new_with_mnemonic ("Close");
+  g_signal_connect (box->run, "clicked", G_CALLBACK (on_macros_run), box);
+  g_signal_connect (box->create, "clicked", G_CALLBACK (on_macros_edit), box);
+  g_signal_connect (box->edit, "clicked", G_CALLBACK (on_macros_edit), box);
+  g_signal_connect (box->delete, "clicked", G_CALLBACK (on_macros_delete), box);
+  g_signal_connect (close, "clicked", G_CALLBACK (on_macros_close), box);
+  gtk_box_append (GTK_BOX (buttons), box->run);
+  gtk_box_append (GTK_BOX (buttons), box->create);
+  gtk_box_append (GTK_BOX (buttons), box->edit);
+  gtk_box_append (GTK_BOX (buttons), box->delete);
+  gtk_box_append (GTK_BOX (buttons), close);
+  gtk_widget_set_valign (buttons, GTK_ALIGN_START);
+  gtk_grid_attach (GTK_GRID (grid), buttons, 1, 1, 1, 2);
+  gtk_box_append (GTK_BOX (content), grid);
+
+  label = gtk_label_new ("Macros are Word42 Basic files in the macros folder of your data directory.\n"
+                         "Type a new name and press Create to write one; Help > Contents describes the language.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_box_append (GTK_BOX (content), label);
+
+  g_signal_connect (box->list, "row-selected", G_CALLBACK (on_macros_row), box);
+  g_signal_connect (box->entry, "changed", G_CALLBACK (on_macros_entry), box);
+  g_signal_connect (box->entry, "activate", G_CALLBACK (on_macros_run), box);
+  gtk_window_set_default_widget (GTK_WINDOW (box->window), box->run);
+
+  macros_fill (box);
+  macros_sync (box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->entry);
 }
