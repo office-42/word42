@@ -703,6 +703,94 @@ survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
 3. **Merge to New Document** writes one copy of the letter per record, each
    on its own page, and opens the result in a new window.
 
+### Tools ▸ Macro
+
+Word 6 had WordBasic and Word has VBA; Word42 has **Word42 Basic**, a
+dialect of Visual Basic for Applications that runs on the MY-BASIC
+interpreter built into the program. A macro is a file of it in the
+`word42/macros` folder of your data directory, holding one Sub or more.
+Nothing runs on its own: there is no AutoOpen, and a document carries no
+macros. A macro runs when you run it, and everything it does to the
+document is one undo step.
+
+**Tools ▸ Macro ▸ Macros...** (Alt+F8) is Word 6's Macro box: the macros
+in the folder, listed as `File.Sub` (a file with one Sub of its own name
+is listed by the name alone), with **Run**, **Create**, **Edit** and
+**Delete**. Type a new name and press Create to start one; it opens in
+the editor as an empty Sub.
+
+**Tools ▸ Macro ▸ Macro Editor...** (Alt+F11) opens the editor on the
+macro last edited, or a first one. The editor is a window of its own
+beside the document: the text at the top, a box choosing which Sub to
+run, **Run** (F5), **Save** (Ctrl+S) and **Close**, and a pane at the
+bottom where `Debug.Print` writes and where an error is reported with
+the line it was on. Run saves first.
+
+#### The language
+
+Written the way VBA is written, and translated for the engine line by
+line:
+
+- `Sub Name()` ... `End Sub`, `Function Name(a, b)` ... `End Function`
+  with the result assigned to the function's name, `Exit Sub`, `Exit
+  Function`; `Private` and `Public` are accepted and mean nothing.
+- `Dim x As String`, `Dim n As Integer, ok As Boolean`, `Dim a(10)`
+  (eleven elements, 0 to 10; the size must be a number), `Const`,
+  `Set`, `Let`.
+- `If ... Then ... ElseIf ... Else ... End If`, and the one-line `If c
+  Then a Else b`; `Select Case` with `Case 1, 2`, `Case 3 To 9`,
+  `Case Is > 9` and `Case Else`.
+- `For i = 1 To 10 Step 2` ... `Next`; `Do While` / `Do Until` ...
+  `Loop`; `Do` ... `Loop While` / `Loop Until`; `While` ... `Wend`;
+  `Exit For`, `Exit Do`.
+- `With Selection.Font` ... `.Bold = True` ... `End With`.
+- `&` joins strings (a number joined becomes its digits), `\` divides
+  to a whole number, `Mod`, `^`, `And`, `Or`, `Not`, `<>`; `' comment`
+  and `Rem`; a line ending in ` _` continues on the next; `:` between
+  statements on one line.
+- Named arguments, `Selection.TypeText Text:="Hello"`, in any order.
+- `True`, `False`, `Nothing`, `vbCr`, `vbCrLf`, `vbTab`, the `vbOK`...
+  and `vbYes`... button values, the `vb` and `wd` colours, and the
+  `wd` constants named below.
+
+Functions: `MsgBox(prompt[, buttons[, title]])` returning `vbOK`,
+`vbYes`, `vbNo` or `vbCancel`; `InputBox(prompt[, title[, default]])`;
+`Len`, `Left`, `Right`, `Mid` (counted from 1), `UCase`, `LCase`,
+`Trim`, `LTrim`, `RTrim`, `InStr`, `Replace`, `Space`, `String`,
+`StrReverse`, `Chr`, `Asc`, `Str`, `Val`, `CStr`, `CInt`, `CDbl`,
+`Int`, `Fix`, `Abs`, `Sqr`, `Round`, `Rnd`, `IsNumeric`, `IIf`, `Hex`,
+`Format`, `Now`, `Date`, `Time`, `Year`, `Month`, `Day`, `Timer`.
+
+Not there: `For Each`, `GoTo` and labels, `On Error` (accepted and
+ignored: an error stops the macro and says where), user types and
+classes, `Optional` defaults, objects held in variables (`Set r =
+Selection` cannot be followed by `r.Text`; write `Selection.Text`).
+
+#### The object model
+
+Word's names, as far as Word42 has the thing behind them. A property
+is read in an expression and set by assignment.
+
+| Object | Members |
+| --- | --- |
+| `Selection` | `TypeText text`, `TypeParagraph`, `TypeBackspace`, `Delete [unit, count]`, `Text` (read and set), `Start`, `End` (read and set, as document positions), `MoveLeft` / `MoveRight` / `MoveUp` / `MoveDown [unit, count, extend]`, `HomeKey` / `EndKey [unit, extend]`, `Collapse [direction]`, `WholeStory`, `Copy`, `Cut`, `Paste`, `InsertBefore text`, `InsertAfter text`, `Style` (a name, or `wdStyleNormal`, `wdStyleHeading1`..`3`, `wdStyleTitle`), `Words.Count`, `Characters.Count`, `Paragraphs.Count` |
+| `Selection.Font` | `Bold`, `Italic`, `Underline` (`wdUnderlineNone`, `Single`, `Words`, `Double`), `StrikeThrough`, `Superscript`, `Subscript`, `AllCaps`, `SmallCaps`, `Size` (points), `Name`, `Color` (Word's `vb`/`wd` colours); a switch set to `wdToggle` turns over |
+| `Selection.ParagraphFormat` | `Alignment` (`wdAlignParagraphLeft`, `Center`, `Right`, `Justify`), `LeftIndent`, `RightIndent`, `FirstLineIndent`, `SpaceBefore`, `SpaceAfter` (points) |
+| `Selection.Find` | `Text`, `Replacement.Text`, `MatchCase`, `MatchWholeWord`, `Forward`, `Wrap`, `ClearFormatting`; `Execute([FindText, MatchCase, MatchWholeWord, , , , Forward, Wrap, , ReplaceWith, Replace])` selects the next match and is True when one was found; `Replace:=wdReplaceOne` or `wdReplaceAll` |
+| `ActiveDocument` | `Name`, `FullName`, `Path`, `Saved`, `Save`, `SaveAs name[, format]` (the extension decides the format; none is Rich Text), `Close [wdDoNotSaveChanges]`, `Content.Text` / `Range.Text` (the whole text, read and set), `Words.Count`, `Characters.Count`, `Paragraphs.Count`, `Pages.Count`, `Tables.Count`, `ComputeStatistics(wdStatisticWords`...`)`, `Undo`, `Redo`, `Select`, `PrintOut` |
+| `Application` | `Name`, `Version`, `StatusBar = text`, `ScreenUpdating`, `DisplayAlerts` (accepted), `ActiveWindow.Caption`, `Quit` |
+| `Documents` | `Count`, `Add`, `Open name` |
+| `Debug` | `Print a, b` to the editor's pane and the status bar |
+
+Units for moving are `wdCharacter`, `wdWord`, `wdLine`, `wdParagraph`
+and `wdStory`; `wdExtend` extends the selection instead of moving the
+caret; `wdCollapseStart` and `wdCollapseEnd` say where Collapse leaves
+it.
+
+A macro that runs longer than a few minutes of statements is stopped,
+so a loop that never ends cannot take the program with it. Three
+macros to start from are in `samples/macros`.
+
 ### Tools ▸ Options
 
 - **Measurement Units** — inches or centimetres, used by every dialog and
@@ -936,6 +1024,8 @@ about the document is sent anywhere.
 | F1 | Help contents |
 | Shift+F10 | The context menu, at the caret |
 | Escape | Leave Full Screen |
+| Alt+F8 | Macros |
+| Alt+F11 | Macro Editor |
 
 ---
 
@@ -945,6 +1035,7 @@ about the document is sent anywhere.
 | --- | --- |
 | Settings — units, default view and zoom, your name, toolbar and ruler switches | The `word42` folder in your configuration directory (`%APPDATA%` on Windows, `~/.config` elsewhere) |
 | Autosave copies | The `word42/autosave` folder in your data directory |
+| Macros | The `word42/macros` folder in your data directory, one `.bas` file each |
 | Recent files | With the settings |
 
 Word42 is free software under the GNU General Public License, version 3 or

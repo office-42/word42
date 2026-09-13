@@ -81,7 +81,7 @@ is listed so the distance to the current product is honest.
 | Envelopes and labels | full (a document of their own) | no | full | full |
 | Templates | built-in ones, and a folder of your own | New from Template | full | full |
 | Equations | no | yes (MathML) | Equation Editor | yes |
-| Macros | no | no (plugins) | WordBasic | VBA |
+| Macros | Word42 Basic: a VBA dialect on the MY-BASIC engine, with Selection, ActiveDocument, Application, Documents, MsgBox and InputBox | no (plugins) | WordBasic | VBA |
 
 ## Files
 
@@ -556,6 +556,23 @@ Fixed after the review:
     landed one position off.
   - Every reader's page geometry is clamped to a page that can be laid
     out, as the Word reader's already was.
+
+**Macros.**  The roadmap said Word42 would never have a macro language;
+it has one now, because a word processor that can be told to do the
+same thing to fifty documents is worth more than one that cannot.
+Word42 Basic is a dialect of VBA -- Sub and End Sub, Dim, If and Select
+Case, Do and For, With, named arguments, `&` -- translated line by line
+into the syntax of MY-BASIC, Tony Wang's MIT-licensed interpreter in one
+C file, which is compiled into the program.  The object model is Word's
+where Word42 has the thing behind it: Selection with its Font,
+ParagraphFormat and Find, ActiveDocument, Application, Documents, and
+MsgBox, InputBox and Debug.Print.  Tools > Macro > Macros (Alt+F8) is
+Word 6's box -- Run, Create, Edit, Delete -- and the Macro Editor
+(Alt+F11) runs a Sub with F5 and reports an error against the line of
+the macro it was on.  A macro is one undo step; nothing runs unless it
+is asked to; a loop that never ends is stopped.  What the dialect has
+not got -- For Each, GoTo, error trapping, objects in variables, user
+classes -- it says so about rather than running something else.
 
 Not done, and worth knowing: a paragraph in an OpenDocument file that
 sets an inherited indent or spacing back to nought gets the style's

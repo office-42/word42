@@ -95,6 +95,13 @@ Early, but real. Word42 today is a working word processor:
 - **Page background** — Format ▸ Background sets the colour behind the
   page, shown on the screen and in Print Preview and carried by Word,
   RTF, OpenDocument and HTML; printing leaves the paper as it is.
+- **Macros** — Tools ▸ Macro runs Word42 Basic, a dialect of VBA on the
+  MY-BASIC interpreter compiled into the program: `Sub`, `Dim`, `If`,
+  `Select Case`, `Do`, `For`, `With`, named arguments, and Word's
+  `Selection`, `ActiveDocument`, `Application`, `Documents`, `MsgBox`
+  and `InputBox`. Macros are `.bas` files in the macros folder, listed
+  and run from Word 6's Macro box (Alt+F8) or edited and run with F5
+  in the Macro Editor (Alt+F11). A macro is one undo step.
 - **Help** — the user guide travels inside the program: Help ▸ Contents
   (F1) opens a window with the guide's sections on the left and the one
   chosen on the right, Search for Help on... narrows the list to the

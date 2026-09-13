@@ -80,10 +80,14 @@ left of a presentation program -- pictures and shapes placed on a slide,
 speaker's notes, transitions, a slide sorter -- is not planned: this is a
 word processor that can give a talk, not a presentation program.
 
-## Not planned
+## Macros
 
-**Macros.**  Word 6 had WordBasic.  Word42 will not have a macro
-language.
+Done, after the roadmap had said never: Tools > Macro runs Word42
+Basic, a dialect of VBA on the MY-BASIC engine, with Word's Selection,
+ActiveDocument, Application and Documents as far as Word42 has the
+things behind them.  What is left of it: For Each over the paragraphs
+and tables, objects held in variables (a Range of one's own), error
+trapping, and recording a macro from what is done at the keyboard.
 
 ## Internals worth doing regardless
 

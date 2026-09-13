@@ -58,3 +58,13 @@ features. `-` marks what is missing, and why.
 
 Everything else — every feature in the list above, in every one of these
 files — is read.
+
+## Macros
+
+`macros/` holds three macros in Word42 Basic, the VBA dialect Tools ▸
+Macro runs: `Letterhead.bas` puts a title, the date and a greeting at
+the top of a document, `WordReport.bas` has two Subs -- one reports the
+document's counts in a message box, the other puts every "teh" right --
+and `Emphasis.bas` toggles bold red on the selection. Copy them into the
+`word42/macros` folder of your data directory (Tools ▸ Macro ▸ Macros
+says where) and they appear in the Macro box.
