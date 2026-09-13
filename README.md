@@ -14,7 +14,9 @@ columns, find and replace, spelling, hyphenation, mail merge, a split
 window, a page-layout view and print preview — reading and writing RTF,
 OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and plain
 text. [docs/STATUS.md](docs/STATUS.md) lists what it does,
-[Word42.md](Word42.md) what it does not do yet, and the
+[Word42.md](Word42.md) what it does not do yet,
+[docs/COMPARISON.md](docs/COMPARISON.md) sets it beside Word, AbiWord
+and LibreOffice Writer on size, speed, files and features, and the
 [user guide](docs/GUIDE.md) describes every command in the program.
 
 ## Getting it

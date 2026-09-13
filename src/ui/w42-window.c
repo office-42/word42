@@ -40,8 +40,13 @@ static const char *window_author_name (void);
 
 /* The zoom steps the Standard bar offers; also what Options can make the
  * default. */
-static const double ZOOM_STEPS[] = { 0.75, 1.0, 1.5, 2.0 };
-static const char  *ZOOM_LABELS[] = { "75%", "100%", "150%", "200%" };
+static const double ZOOM_STEPS[] = { 0.5, 0.75, 1.0, 1.5, 2.0 };
+static const char  *ZOOM_LABELS[] = { "50%", "75%", "100%", "150%", "200%" };
+/* After the steps, the box offers the two fits Word 6's did; and after
+ * those, when the zoom is none of the above, one entry saying what it
+ * is, spliced in and out as the zoom changes. */
+static const char  *ZOOM_FIT_LABELS[] = { "Page Width", "Whole Page" };
+#define ZOOM_N_FIXED (G_N_ELEMENTS (ZOOM_LABELS) + G_N_ELEMENTS (ZOOM_FIT_LABELS))
 
 /* The sizes Word 6's Formatting toolbar offered. */
 static const int FONT_SIZES[] = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 22,
@@ -159,8 +164,8 @@ static void
 window_sync_paste (W42Window *self)
 {
   GdkClipboard *clipboard = gtk_widget_get_clipboard (GTK_WIDGET (self));
-  gboolean has_text = FALSE;
-  static const char *paste_actions[] = { "paste", "paste-text" };
+  gboolean has_text = FALSE, has_picture = FALSE;
+  GAction *a;
 
   if (clipboard != NULL)
     {
@@ -168,15 +173,17 @@ window_sync_paste (W42Window *self)
 
       has_text = formats != NULL &&
                  gdk_content_formats_contain_gtype (formats, G_TYPE_STRING);
+      has_picture = formats != NULL &&
+                    gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE);
     }
 
-  for (guint i = 0; i < G_N_ELEMENTS (paste_actions); i++)
-    {
-      GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), paste_actions[i]);
-
-      if (a != NULL)
-        g_simple_action_set_enabled (G_SIMPLE_ACTION (a), has_text);
-    }
+  /* Paste takes a picture too; Paste Special is text only. */
+  a = g_action_map_lookup_action (G_ACTION_MAP (self), "paste");
+  if (a != NULL)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (a), has_text || has_picture);
+  a = g_action_map_lookup_action (G_ACTION_MAP (self), "paste-text");
+  if (a != NULL)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (a), has_text);
 }
 
 static void
@@ -983,6 +990,19 @@ action_new_window (GSimpleAction *action, GVariant *param, gpointer data)
  * its own, and the commands, the toolbars and the ruler follow the pane
  * being edited.  Split again puts the window back to one pane. */
 
+/* The ruler and the boxes that stay open -- Find, Spelling -- work on the
+ * pane being edited.  The second pane goes when the window is unsplit,
+ * so a box left pointing at it would be pointing at nothing. */
+static void
+window_pane_changed (W42Window *self)
+{
+  w42_ruler_set_view (self->ruler, self->view);
+  if (self->find_dialog != NULL)
+    w42_find_dialog_set_view (W42_FIND_DIALOG (self->find_dialog), self->view);
+  if (self->spell_dialog != NULL)
+    w42_spell_dialog_set_view (W42_SPELL_DIALOG (self->spell_dialog), self->view);
+}
+
 static void
 on_pane_focus_enter (GtkEventControllerFocus *controller, gpointer data)
 {
@@ -992,7 +1012,7 @@ on_pane_focus_enter (GtkEventControllerFocus *controller, gpointer data)
   if (!W42_IS_VIEW (widget) || W42_VIEW (widget) == self->view)
     return;
   self->view = W42_VIEW (widget);
-  w42_ruler_set_view (self->ruler, self->view);
+  window_pane_changed (self);
   window_sync_state (self);
 }
 
@@ -1067,7 +1087,7 @@ window_set_split (W42Window *self, gboolean split)
       if (self->view == self->view2)
         {
           self->view = self->view1;
-          w42_ruler_set_view (self->ruler, self->view);
+          window_pane_changed (self);
         }
       self->view2 = NULL;
       gtk_paned_set_end_child (GTK_PANED (self->paned), NULL);
@@ -1115,14 +1135,8 @@ window_apply_settings (W42Window *self)
                                g_variant_new_string (paged ? "page-layout" : "normal"));
   g_free (view);
 
-  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_STEPS); i++)
-    if ((int) lround (ZOOM_STEPS[i] * 100) == zoom)
-      {
-        self->updating = TRUE;
-        w42_view_set_zoom (self->view, ZOOM_STEPS[i]);
-        gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), i);
-        self->updating = FALSE;
-      }
+  if (zoom >= 25 && zoom <= 500)
+    w42_view_set_zoom (self->view, zoom / 100.0);
 
   {
     struct { const char *key; const char *action; GtkWidget *widget; } bars[] = {
@@ -1344,14 +1358,26 @@ action_zoom (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action;
   w42_view_set_zoom (self->view, zoom);
-  /* The Zoom box on the toolbar shows the same. */
-  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_STEPS); i++)
-    if (ABS (ZOOM_STEPS[i] - zoom) < 0.001)
-      {
-        self->updating = TRUE;
-        gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), i);
-        self->updating = FALSE;
-      }
+}
+
+static void
+action_zoom_fit (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  const char *what = g_variant_get_string (param, NULL);
+
+  (void) action;
+  w42_view_set_zoom (self->view,
+                     w42_view_fit_zoom (self->view, g_str_equal (what, "page")));
+}
+
+static void
+action_zoom_dialog (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_zoom_dialog_show (GTK_WINDOW (self), self->view);
 }
 
 static void
@@ -1872,8 +1898,24 @@ action_print (GSimpleAction *action, GVariant *param, gpointer data)
       if (end > start)
         extras.selection = w42_pt_extract (w42_document_pt (self->doc), start, end - start);
     }
-  w42_layout_describe_pos (w42_view_get_layout (self->view), w42_view_get_caret (self->view),
-                           &page, &line, &column);
+  {
+    /* Normal view's layout is one galley, on which every position is on
+     * page 1; the printed page comes from a paginated layout. */
+    W42Layout *layout = w42_view_get_layout (self->view);
+    W42Layout *paged = NULL;
+
+    if (w42_layout_get_galley (layout))
+      {
+        paged = w42_layout_new ();
+        w42_layout_set_galley (paged, FALSE);
+        w42_layout_build (paged, self->doc);
+        layout = paged;
+      }
+    w42_layout_describe_pos (layout, w42_view_get_caret (self->view),
+                             &page, &line, &column);
+    if (paged != NULL)
+      w42_layout_free (paged);
+  }
   extras.current_page = page;
   w42_print_document (GTK_WINDOW (self), self->doc, FALSE, &extras);
 }
@@ -1999,6 +2041,8 @@ action_table_autofit (GSimpleAction *action, GVariant *param, gpointer data)
     w42_view_table_distribute_rows (self->view);
   else if (g_str_equal (what, "columns"))
     w42_view_table_distribute_columns (self->view);
+  else if (g_str_equal (what, "contents"))
+    w42_view_table_autofit_contents (self->view);
   else
     w42_view_table_autofit_window (self->view);
 }
@@ -3087,11 +3131,52 @@ on_zoom_selected (GtkDropDown *drop, GParamSpec *pspec, gpointer data)
     return;
 
   index = gtk_drop_down_get_selected (drop);
-  if (index == GTK_INVALID_LIST_POSITION || index >= G_N_ELEMENTS (ZOOM_STEPS))
+  if (index == GTK_INVALID_LIST_POSITION || index >= ZOOM_N_FIXED)
     return;
 
-  w42_view_set_zoom (self->view, ZOOM_STEPS[index]);
+  if (index < G_N_ELEMENTS (ZOOM_STEPS))
+    w42_view_set_zoom (self->view, ZOOM_STEPS[index]);
+  else
+    w42_view_set_zoom (self->view,
+                       w42_view_fit_zoom (self->view,
+                                          index - G_N_ELEMENTS (ZOOM_STEPS) == 1));
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+/* The Zoom box shows the zoom the pane being edited has: one of its
+ * steps, or an entry of its own for any other figure. */
+static void
+window_sync_zoom_box (W42Window *self)
+{
+  double zoom;
+  GtkStringList *list;
+  guint n;
+  guint want = GTK_INVALID_LIST_POSITION;
+
+  if (self->zoom_drop == NULL || self->view == NULL)
+    return;
+  zoom = w42_view_get_zoom (self->view);
+  list = GTK_STRING_LIST (gtk_drop_down_get_model (GTK_DROP_DOWN (self->zoom_drop)));
+  n = g_list_model_get_n_items (G_LIST_MODEL (list));
+
+  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_STEPS); i++)
+    if (ABS (ZOOM_STEPS[i] - zoom) < 0.005)
+      want = i;
+
+  if (want == GTK_INVALID_LIST_POSITION)
+    {
+      char label[16];
+      const char *labels[] = { label, NULL };
+
+      g_snprintf (label, sizeof label, "%d%%", (int) lround (zoom * 100));
+      gtk_string_list_splice (list, ZOOM_N_FIXED, n - ZOOM_N_FIXED, labels);
+      want = ZOOM_N_FIXED;
+    }
+  else if (n > ZOOM_N_FIXED)
+    gtk_string_list_splice (list, ZOOM_N_FIXED, n - ZOOM_N_FIXED, NULL);
+
+  if (gtk_drop_down_get_selected (GTK_DROP_DOWN (self->zoom_drop)) != want)
+    gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), want);
 }
 
 static GtkWidget *
@@ -3129,9 +3214,11 @@ build_zoom_drop (W42Window *self)
 
   for (guint i = 0; i < G_N_ELEMENTS (ZOOM_LABELS); i++)
     gtk_string_list_append (steps, ZOOM_LABELS[i]);
+  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_FIT_LABELS); i++)
+    gtk_string_list_append (steps, ZOOM_FIT_LABELS[i]);
 
   self->zoom_drop = gtk_drop_down_new (G_LIST_MODEL (steps), NULL);
-  gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), 1);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), 2);
   gtk_widget_set_size_request (self->zoom_drop, 72, -1);
   gtk_widget_set_tooltip_text (self->zoom_drop, "Zoom Control");
   g_signal_connect (self->zoom_drop, "notify::selected",
@@ -3847,6 +3934,7 @@ window_sync_state (W42Window *self)
   gboolean has_sel;
 
   self->updating = TRUE;
+  window_sync_zoom_box (self);
 
   window_sync_style_list (self);
   {
@@ -4070,6 +4158,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "underline",  action_underline,  NULL, NULL,    NULL, { 0 } },
   { "align",      action_align,      "s",  NULL,    NULL, { 0 } },
   { "zoom",       action_zoom,       "d",  NULL,    NULL, { 0 } },
+  { "zoom-fit",   action_zoom_fit,   "s",  NULL,    NULL, { 0 } },
+  { "zoom-dialog", action_zoom_dialog, NULL, NULL,  NULL, { 0 } },
   { "view-mode",  action_view_mode,  "s",  "'normal'", NULL, { 0 } },
   { "font",       action_font_dialog, NULL, NULL,   NULL, { 0 } },
   { "font-grow",   action_font_step, NULL, NULL, NULL, { 0 } },

@@ -86,6 +86,11 @@ dialog_shell (GtkWindow *parent, const char *title, GtkWidget **content,
   /* Bound to the view's life: a box destroyed after its window's children
    * must not reach into a view that is gone. */
   g_signal_connect_object (window, "destroy", G_CALLBACK (on_dialog_destroy), view, 0);
+  /* And the other way about: a box that stays open works on the pane it
+   * was opened for, and Window > Split can take that pane away. */
+  if (view != NULL)
+    g_signal_connect_object (view, "destroy", G_CALLBACK (gtk_window_destroy), window,
+                             G_CONNECT_SWAPPED);
 
   gtk_window_set_title (GTK_WINDOW (window), title);
   gtk_window_set_transient_for (GTK_WINDOW (window), parent);
@@ -1991,8 +1996,8 @@ typedef struct {
 
 static const char * const UNIT_NAMES[] = { "Inches", "Centimeters", NULL };
 static const char * const VIEW_NAMES[] = { "Normal", "Page Layout", NULL };
-static const char * const ZOOM_NAMES[] = { "75%", "100%", "150%", "200%", NULL };
-static const int ZOOM_VALUES[] = { 75, 100, 150, 200 };
+static const char * const ZOOM_NAMES[] = { "50%", "75%", "100%", "150%", "200%", NULL };
+static const int ZOOM_VALUES[] = { 50, 75, 100, 150, 200 };
 
 static void
 on_options_ok (GtkButton *button, gpointer data)
@@ -5733,4 +5738,96 @@ w42_summary_dialog_show (GtkWindow *parent, W42View *view)
   button_row (content, box->window, G_CALLBACK (summary_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
   gtk_widget_grab_focus (box->field[0]);
+}
+
+/* ---------------------------------------------------------------------- */
+/* View > Zoom                                                             */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42View   *view;
+  GtkWidget *window;
+  GtkWidget *radios[6];    /* 200%, 100%, 75%, Page Width, Whole Page, Percent */
+  GtkWidget *percent;
+} ZoomBox;
+
+static void
+on_zoom_radio (GtkCheckButton *button, gpointer data)
+{
+  ZoomBox *box = data;
+  static const double fixed[] = { 2.0, 1.0, 0.75 };
+
+  if (!gtk_check_button_get_active (button))
+    return;
+  for (guint i = 0; i < 5; i++)
+    if (box->radios[i] == GTK_WIDGET (button))
+      {
+        double zoom = i < 3 ? fixed[i] : w42_view_fit_zoom (box->view, i == 4);
+
+        /* The box says what the choice comes to. */
+        gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->percent), lround (zoom * 100));
+      }
+}
+
+static void
+on_zoom_percent (GtkSpinButton *spin, gpointer data)
+{
+  ZoomBox *box = data;
+
+  (void) spin;
+  /* Typing a figure of one's own is choosing Percent. */
+  if (gtk_widget_has_focus (box->percent) &&
+      !gtk_check_button_get_active (GTK_CHECK_BUTTON (box->radios[5])))
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->radios[5]), TRUE);
+}
+
+static void
+zoom_ok (GtkButton *button, gpointer data)
+{
+  ZoomBox *box = data;
+  double percent = gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->percent));
+
+  (void) button;
+  w42_view_set_zoom (box->view, percent / 100.0);
+  gtk_window_close (GTK_WINDOW (box->window));
+}
+
+void
+w42_zoom_dialog_show (GtkWindow *parent, W42View *view)
+{
+  static const char *const names[] = { "_200%", "_100%", "_75%", "Page _Width", "W_hole Page", "_Percent:" };
+  ZoomBox *box = g_new0 (ZoomBox, 1);
+  GtkWidget *content, *grid;
+  double zoom = w42_view_get_zoom (view);
+  guint chosen = 5;
+
+  box->view = view;
+  box->window = dialog_shell (parent, "Zoom", &content, view);
+  g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
+
+  grid = group (content, "Zoom To");
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    {
+      box->radios[i] = gtk_check_button_new_with_mnemonic (names[i]);
+      if (i > 0)
+        gtk_check_button_set_group (GTK_CHECK_BUTTON (box->radios[i]),
+                                    GTK_CHECK_BUTTON (box->radios[0]));
+      gtk_grid_attach (GTK_GRID (grid), box->radios[i], 0, (int) i, 1, 1);
+    }
+  box->percent = gtk_spin_button_new_with_range (25, 500, 1);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->percent), lround (zoom * 100));
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->percent), TRUE);
+  gtk_grid_attach (GTK_GRID (grid), box->percent, 1, 5, 1, 1);
+
+  if (ABS (zoom - 2.0) < 0.005)  chosen = 0;
+  if (ABS (zoom - 1.0) < 0.005)  chosen = 1;
+  if (ABS (zoom - 0.75) < 0.005) chosen = 2;
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->radios[chosen]), TRUE);
+
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    g_signal_connect (box->radios[i], "toggled", G_CALLBACK (on_zoom_radio), box);
+  g_signal_connect (box->percent, "value-changed", G_CALLBACK (on_zoom_percent), box);
+
+  button_row (content, box->window, G_CALLBACK (zoom_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
 }

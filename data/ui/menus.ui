@@ -223,6 +223,20 @@
             <attribute name="action">win.zoom</attribute>
             <attribute name="target" type="d">2.0</attribute>
           </item>
+          <item>
+            <attribute name="label" translatable="yes">Page _Width</attribute>
+            <attribute name="action">win.zoom-fit</attribute>
+            <attribute name="target">width</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">W_hole Page</attribute>
+            <attribute name="action">win.zoom-fit</attribute>
+            <attribute name="target">page</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Zoom...</attribute>
+            <attribute name="action">win.zoom-dialog</attribute>
+          </item>
         </submenu>
       </section>
     </submenu>
@@ -652,6 +666,11 @@
         <submenu>
           <attribute name="label" translatable="yes">_AutoFit</attribute>
           <section>
+            <item>
+              <attribute name="label" translatable="yes">AutoFit to _Contents</attribute>
+              <attribute name="action">win.table-autofit</attribute>
+              <attribute name="target">contents</attribute>
+            </item>
             <item>
               <attribute name="label" translatable="yes">AutoFit to _Window</attribute>
               <attribute name="action">win.table-autofit</attribute>

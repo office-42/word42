@@ -45,6 +45,9 @@ W42ViewMode w42_view_get_mode (W42View *self);
 
 void   w42_view_set_zoom (W42View *self, double zoom);
 double w42_view_get_zoom (W42View *self);
+/* The zoom that fits the page's width to the window, or the whole page
+ * into it: View > Zoom's Page Width and Whole Page. */
+double w42_view_fit_zoom (W42View *self, gboolean whole_page);
 
 gsize    w42_view_get_caret         (W42View *self);
 /* The selection's two ends in order; both the caret when there is none. */
@@ -94,6 +97,9 @@ void     w42_view_table_select_cell (W42View *self);
 void     w42_view_table_distribute_columns (W42View *self);
 void     w42_view_table_distribute_rows (W42View *self);
 void     w42_view_table_autofit_window (W42View *self);
+/* Table > AutoFit to Contents: each column as wide as its widest cell
+ * wants to be on one line, the table no wider than the text column. */
+void     w42_view_table_autofit_contents (W42View *self);
 /* Table > Formula: the result of "=SUM(ABOVE)" and its kin, put in the
  * caret's cell as a field.  FALSE when the formula makes no sense. */
 gboolean w42_view_table_formula (W42View *self, const char *formula);

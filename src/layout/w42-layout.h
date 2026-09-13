@@ -144,6 +144,13 @@ void  w42_layout_forget_shaping (W42Layout *self);
  * had to shape.  For the checks, and for anyone measuring. */
 void  w42_layout_shaping_counts (W42Layout *self, guint *reused, guint *shaped);
 
+/* Table > AutoFit to Contents: the width each column of `table` wants, in
+ * twips, to set its widest cell on one line -- the widest paragraph in any
+ * of its cells unwrapped, with the cell's padding and indents.  Cells that
+ * span columns are left out.  `out` receives one int per column.  FALSE
+ * when the last pass laid out no such table. */
+gboolean w42_layout_table_content_widths (W42Layout *self, int table, GArray *out);
+
 /* ---- Mapping between document positions and the page ------------------ */
 
 /* Position of a block's text within the document, and back again. */

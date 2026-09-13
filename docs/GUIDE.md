@@ -163,7 +163,7 @@ bookmark by name.
 | Repeat | F4 | Does the last thing again: the last run of typing goes in at the caret, or the last character or paragraph formatting, style, or change of case goes on the selection. Only the last action can be repeated — edit anything else and Repeat greys out. |
 | Cut | Ctrl+X | Removes the selection and puts it on the clipboard. |
 | Copy | Ctrl+C | Puts the selection on the clipboard. |
-| Paste | Ctrl+V | Puts the clipboard in at the caret, with its formatting. |
+| Paste | Ctrl+V | Puts the clipboard in at the caret, with its formatting. A picture on the clipboard — a screenshot, or an image copied from a browser — goes in as a picture. |
 | Paste Special | — | Puts the clipboard in as plain text, taking the formatting of the text round it. |
 | Clear | Del | Removes the selection without touching the clipboard. |
 | AutoText... | — | Keeps the selected text under a name, and puts a kept piece of text in at the caret. |
@@ -435,6 +435,7 @@ header rows.
 | Split Table | Makes the caret's row the first row of a table of its own. |
 | Table AutoFormat | A list of ready-made looks -- rules, shading, a bold heading -- with a preview; the one chosen goes on the caret's table in a single undo step. |
 | Select ▸ Table / Column / Row / Cell | Selects that much of it. A column's selection runs from its first cell to its last. |
+| AutoFit ▸ AutoFit to Contents | Makes each column as wide as its widest cell wants to be on one line; a table that would then be wider than the text column is scaled down to fit it. |
 | AutoFit ▸ AutoFit to Window | Widens or narrows the table to the text column, keeping the columns' proportions. |
 | AutoFit ▸ Distribute Rows Evenly | Gives every row the tallest set height. |
 | AutoFit ▸ Distribute Columns Evenly | Gives every column an equal share of the table's width. |
@@ -728,8 +729,12 @@ their margins, headers, footers, columns and footnotes in place, centred on
 a light grey desk. Both use the same layout engine, so what you see in one
 is what the other will print.
 
-The zoom box on the standard toolbar runs from 25% to 500%; the View menu
-has 75%, 100%, 150% and 200%.
+The zoom box on the standard toolbar offers 50%, 75%, 100%, 150% and
+200%, Page Width and Whole Page, and shows whatever figure is in force.
+View ▸ Zoom has the same, and **View ▸ Zoom...** opens Word 6's box:
+200%, 100%, 75%, Page Width, Whole Page, or any percentage from 25 to
+500 typed in. Page Width fits the sheet between the window's edges;
+Whole Page fits the whole sheet in the window.
 
 ### View ▸ Show Formatting Marks (Ctrl+Shift+8)
 

@@ -54,6 +54,8 @@ void w42_field_dialog_show         (GtkWindow *parent, W42View *view);
 
 /* Tools > Options: units, default view and zoom, spelling as you type. */
 void w42_options_dialog_show       (GtkWindow *parent, W42View *view);
+/* View > Zoom: Word 6's box, with a percentage of one's own. */
+void w42_zoom_dialog_show          (GtkWindow *parent, W42View *view);
 
 void w42_date_time_dialog_show     (GtkWindow *parent, W42View *view);
 void w42_symbol_dialog_show        (GtkWindow *parent, W42View *view);

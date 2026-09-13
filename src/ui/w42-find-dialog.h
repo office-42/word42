@@ -23,6 +23,9 @@ void w42_find_dialog_set_replace_mode (W42FindDialog *self, gboolean replace);
 
 /* Repeats the last search without showing the dialog, for F3. */
 void w42_find_dialog_find_again (W42FindDialog *self);
+
+/* The pane the box searches: the window's, which Window > Split changes. */
+void w42_find_dialog_set_view (W42FindDialog *self, W42View *view);
 /* Puts `text` (NULL keeps what is there) in Find What and focuses it,
  * selected, so typing replaces it. */
 void w42_find_dialog_prime (W42FindDialog *self, const char *text);

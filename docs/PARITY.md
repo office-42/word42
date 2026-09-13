@@ -15,7 +15,7 @@ is listed so the distance to the current product is honest.
 | Typing, selection (mouse, keyboard, word/paragraph clicks) | full | full | full | full |
 | Undo/redo, unlimited, typing coalesced | full (saved-state aware) | full | limited | full |
 | Repeat the last action (F4) | yes (typing, formatting, style, case) | no | yes | yes |
-| Cut/copy/paste | rich (RTF and text) | rich (RTF/HTML/images) | rich | rich |
+| Cut/copy/paste | rich (RTF, HTML and text out; RTF, pictures and text in) | rich (RTF/HTML/images) | rich | rich |
 | Drag-and-drop text | yes (move; Ctrl copies; one undo step) | yes | yes | yes |
 | Find/Replace (case, whole word, wrap, replace all) | full | full + regex | full | full + formats |
 | Go To (page, line, bookmark) | full | full | full | full |
@@ -60,7 +60,7 @@ is listed so the distance to the current product is honest.
 | Tables: insert, rows, columns, column widths (drag), merge and split cells (across and down) | full | full | full | full |
 | A row taller than a page | broken between its lines, header rows repeated | breaks | breaks | breaks |
 | Table properties: borders (table outside and inside, per cell side, each with its own line style, weight and colour), cell shading and fill, vertical alignment, row height, header rows repeated | full | full | full | full |
-| Table menu: Insert/Delete/Select submenus, AutoFit, Heading Rows Repeat, Formula (SUM, AVERAGE, COUNT, MAX, MIN, PRODUCT) | full (AutoFit to Contents not yet) | partial | full | full |
+| Table menu: Insert/Delete/Select submenus, AutoFit (to contents, to window, distribute), Heading Rows Repeat, Formula (SUM, AVERAGE, COUNT, MAX, MIN, PRODUCT) | full | partial | full | full |
 | Footnotes and endnotes | full | full | full | full |
 | Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full | full |
 | Page numbers | full | full | full | full |
@@ -104,7 +104,7 @@ is listed so the distance to the current product is honest.
 |---|---|---|---|---|
 | Normal and Page Layout views | full | full | full | full |
 | Print (range, current page, selection, copies, collate, odd/even, reverse, draft, print to file), Print Preview (multiple pages, magnifier, fit zooms), Page Setup | full (no gutter or mirror margins) | full | full | full |
-| Zoom | presets | free | presets | free |
+| Zoom | free: any percentage, page width, whole page | free | presets and a percentage | free |
 | Full Screen (chrome away, Escape back) | full | full | full | full |
 | Outline view / document map | no | no | yes | yes |
 | Multiple windows on one document | full | yes | full | full |
@@ -118,6 +118,9 @@ is listed so the distance to the current product is honest.
 | Slides: a presentation from the outline, shown full screen | full | no | no | via PowerPoint |
 | Presentation files (.pptx) read and written | outline: titles and lines | no | no | native (PowerPoint) |
 | Packaging | Windows installer, macOS .app, Flatpak manifest | all | — | — |
+
+[COMPARISON.md](COMPARISON.md) sets the same programs, and LibreOffice
+Writer, side by side on size, speed and files.
 
 ## Summary
 
@@ -476,3 +479,86 @@ before any of this; in a 69-page one, 4 ms.  A hundred edits of every
 kind and a hundred undo steps are checked paragraph by paragraph and
 line by line against a layout that has never seen the document, which is
 what says the reuse changes nothing.
+
+## The eleventh round (September 2026)
+
+A review of the whole source, layer by layer, and the fixes it called
+for, with three commands that closed named gaps.
+
+**View > Zoom.**  Word 6's box: 200%, 100%, 75%, Page Width, Whole
+Page, or any percentage from 25 to 500; the Zoom box on the toolbar has
+the two fits too and shows whatever figure is in force, spliced in as
+an entry of its own when it is none of the steps.  The one row of the
+table where Word42 said "presets" against everyone else's "free".
+
+**Table > AutoFit > AutoFit to Contents.**  Each column as wide as its
+widest cell wants to be on one line -- the layout measures every cell's
+paragraphs unwrapped, in their own fonts -- and a table that would then
+be wider than the text column gives way in proportion, as Word's did.
+
+**The clipboard.**  Copy puts the selection out as HTML as well as RTF
+and text, so a browser or a mail program pasting from Word42 keeps the
+formatting; Paste takes a picture off the clipboard -- a screenshot, an
+image copied from a browser -- and puts it in as a PNG at its pixel
+size, and the Paste command lights up for one.
+
+**Opening a long document.**  Interning a formatting record hashed it a
+byte at a time, and a reader interns once a run or oftener: a quarter
+of the time to open a 132-page report went there.  Hashed a word at a
+time, the report opens in 0.47 s from RTF against 0.64 s before.
+
+Fixed after the review:
+
+  - A modeless box -- Find, Spelling, Symbol, Bookmark, Annotations,
+    Mail Merge -- opened for the second pane of a split window kept
+    pointing at that pane after Window > Split took it away.  The boxes
+    follow the pane being edited now, and one built for a pane closes
+    with it.
+  - Up from the first line of a page landed on the first line of the
+    page before, skipping the whole page, and Page Up did the same.
+  - A footnote referenced just before a table that ran on to the next
+    page was set at the foot of the page where the table ended.  The
+    notes owed to a page are set before the table turns it, and the
+    table's rows are fitted round them.
+  - The caret could walk into a cell covered by a vertical merge --
+    paragraphs the layout shows nowhere -- and vanish; Left and Right
+    step over such cells.
+  - Print > Current page printed page 1 from Normal view, whose layout
+    is one galley; the page is found on a paginated layout now.
+  - Tab at the end of a table added a row that the other pane of a
+    split window and an open preview did not hear of.
+  - Table > Delete Row took the wrong slot out of the table's record,
+    so a table with set row heights came back with its rules and widths
+    shifted along by one; and a deleted row's or column's footnotes
+    were left orphaned in the notes section, numbered 0.
+  - Undo of Insert or Delete Column across a merged cell left the cell
+    the wrong number of columns wide, since the change of span was not
+    recorded; Merge Cells lost the first cell's fill and sides; Split
+    Table lost the moved rows' heights.
+  - AutoFormat's printer's quotes replaced the whole paragraph's text
+    with one run, flattening its bold and italic and turning its
+    pictures into the placeholder character and deleting its footnotes.
+    The quotes and dashes are changed one character at a time now, each
+    keeping the formatting of the character it replaces.
+  - Opening a file into a window that had one kept the old document's
+    title-page and even-page headers and its tables' shapes.
+  - RTF: a \'xx byte was always Windows-1252, so Russian, Greek, Turkish
+    and Central European files from Word came in as mojibake; the code
+    page \ansicpg declares is used, with the East Asian pages' two-byte
+    characters gathered.  LibreOffice's font table, whose names carry a
+    {\*\falt} alternative, lost every font name; Word's {\*\cs} and
+    {\*\ts} stylesheet entries came in as paragraph styles; a table in
+    a header or footer opened an empty table in the body; a paragraph
+    marked \intbl before any \cellx crashed the reader; the first shape
+    in a file lost its kind and so was dropped; a shape's text above
+    U+7FFF was written wrongly.
+  - AbiWord: a picture at the start of a second paragraph in a cell
+    landed one position off.
+  - Every reader's page geometry is clamped to a page that can be laid
+    out, as the Word reader's already was.
+
+Not done, and worth knowing: a paragraph in an OpenDocument file that
+sets an inherited indent or spacing back to nought gets the style's
+value instead; Table > Sort drops the footnotes of the rows it moves;
+DOCX and ODT do not carry a list's restart number; hidden text in RTF
+is shown.
