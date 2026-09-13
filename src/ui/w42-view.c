@@ -13,6 +13,7 @@
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
+#include "w42-html.h"
 
 #include <math.h>
 #include <string.h>
@@ -308,6 +309,7 @@ view_widget_to_page (W42View *self,
 
 static int view_insert_toc_entries (W42View *self);
 static GBytes *view_selection_as_rtf (W42View *self);
+static GBytes *view_selection_as_html (W42View *self);
 
 static void
 view_relayout (W42View *self)
@@ -2229,8 +2231,11 @@ view_table_tab (W42View *self, gboolean backwards)
         {
           if (row + 1 >= rows)
             {
+              /* An edit like any other: the other pane of a split window,
+               * and a preview, hear of the new row too. */
               w42_pt_table_insert_row (pt, table, row);
               w42_document_set_modified (self->doc, TRUE);
+              w42_document_touch (self->doc);
             }
           row++;
           col = 0;
@@ -2485,6 +2490,50 @@ w42_view_table_autofit_window (W42View *self)
   view_edited (self);
 }
 
+void
+w42_view_table_autofit_contents (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42TableProps *props;
+  GArray *wants;
+  int *widths, total = 0, room;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  props = w42_pt_table_props (pt, table);
+  if (props == NULL || props->n_cols <= 0)
+    return;
+
+  wants = g_array_new (FALSE, TRUE, sizeof (int));
+  if (!w42_layout_table_content_widths (self->layout, table, wants) ||
+      (int) wants->len < props->n_cols)
+    {
+      g_array_unref (wants);
+      return;
+    }
+
+  /* Each column as wide as its widest cell wants, and the whole table no
+   * wider than the text column: when the words will not all fit on one
+   * line the columns give way in proportion, which is what Word did. */
+  for (int c = 0; c < props->n_cols; c++)
+    total += g_array_index (wants, int, c);
+  room = view_text_twips (self);
+  widths = g_new0 (int, props->n_cols);
+  for (int c = 0; c < props->n_cols; c++)
+    {
+      int w = g_array_index (wants, int, c);
+
+      widths[c] = (total > room && total > 0) ? (int) ((gint64) w * room / total) : w;
+    }
+  w42_pt_table_set_widths (pt, table, widths, props->n_cols);
+  g_free (widths);
+  g_array_unref (wants);
+  view_edited (self);
+}
+
 gboolean
 w42_view_table_cell_text (W42View *self, int row, int col, char **out)
 {
@@ -2615,7 +2664,12 @@ w42_view_table_formula (W42View *self, const char *formula)
   /* The result goes in as a field, so Update Fields can work it out
    * again; its code is the formula as Word spelt it. */
   w42_view_get_char_fmt (self, &ch);
-  ch.field = g_intern_string (formula[0] == '=' ? formula : g_strconcat ("=", formula, NULL));
+  {
+    char *code = formula[0] == '=' ? g_strdup (formula) : g_strconcat ("=", formula, NULL);
+
+    ch.field = g_intern_string (code);
+    g_free (code);
+  }
   w42_view_insert_text (self, result);
   {
     gsize end = self->caret, start = end - strlen (result);
@@ -3409,7 +3463,8 @@ w42_view_copy (W42View *self)
   {
     GdkClipboard *clipboard = gtk_widget_get_clipboard (GTK_WIDGET (self));
     GBytes *rtf = view_selection_as_rtf (self);
-    GdkContentProvider *providers[3];
+    GBytes *html = view_selection_as_html (self);
+    GdkContentProvider *providers[4];
     guint n = 0;
     GValue value = G_VALUE_INIT;
     GdkContentProvider *all;
@@ -3419,6 +3474,8 @@ w42_view_copy (W42View *self)
         providers[n++] = gdk_content_provider_new_for_bytes ("text/rtf", rtf);
         providers[n++] = gdk_content_provider_new_for_bytes ("application/rtf", rtf);
       }
+    if (html != NULL)
+      providers[n++] = gdk_content_provider_new_for_bytes ("text/html", html);
     g_value_init (&value, G_TYPE_STRING);
     g_value_set_string (&value, text);
     providers[n++] = gdk_content_provider_new_for_value (&value);
@@ -3428,6 +3485,8 @@ w42_view_copy (W42View *self)
     g_object_unref (all);
     if (rtf != NULL)
       g_bytes_unref (rtf);
+    if (html != NULL)
+      g_bytes_unref (html);
   }
   g_free (text);
 }
@@ -3470,6 +3529,37 @@ view_selection_as_rtf (W42View *self)
       g_close (fd, NULL);
       file = g_file_new_for_path (path);
       if (w42_rtf_save (frag, w42_document_page_setup (self->doc), file, NULL))
+        bytes = g_file_load_bytes (file, NULL, NULL, NULL);
+      g_object_unref (file);
+      g_unlink (path);
+    }
+  g_free (path);
+  w42_pt_free (frag);
+  return bytes;
+}
+
+/* The same as a web page, for the programs that take HTML from the
+ * clipboard -- browsers, mail -- and not RTF. */
+static GBytes *
+view_selection_as_html (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  W42PieceTable *frag;
+  char *path;
+  int fd;
+  GFile *file;
+  GBytes *bytes = NULL;
+
+  if (pt == NULL || !w42_view_has_selection (self))
+    return NULL;
+  frag = w42_pt_extract (pt, sel_start (self), sel_end (self) - sel_start (self));
+  path = g_build_filename (g_get_tmp_dir (), "word42-clip-XXXXXX.html", NULL);
+  fd = g_mkstemp (path);
+  if (fd >= 0)
+    {
+      g_close (fd, NULL);
+      file = g_file_new_for_path (path);
+      if (w42_html_export (frag, w42_document_page_setup (self->doc), file, NULL))
         bytes = g_file_load_bytes (file, NULL, NULL, NULL);
       g_object_unref (file);
       g_unlink (path);
@@ -3630,6 +3720,30 @@ on_clipboard_text (GObject *source, GAsyncResult *result, gpointer data)
   g_object_unref (self);
 }
 
+/* A picture from the clipboard -- a screenshot, or an image copied out of
+ * a browser -- goes in as a PNG, at its pixel size. */
+static void
+on_clipboard_texture (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42View *self = data;
+  GdkTexture *texture = gdk_clipboard_read_texture_finish (GDK_CLIPBOARD (source), result, NULL);
+
+  if (texture != NULL)
+    {
+      GBytes *png = gdk_texture_save_to_png_bytes (texture);
+
+      if (png != NULL)
+        {
+          w42_view_insert_picture (self, png, g_intern_static_string ("png"),
+                                   gdk_texture_get_width (texture),
+                                   gdk_texture_get_height (texture));
+          g_bytes_unref (png);
+        }
+      g_object_unref (texture);
+    }
+  g_object_unref (self);
+}
+
 void
 w42_view_paste (W42View *self)
 {
@@ -3645,6 +3759,15 @@ w42_view_paste (W42View *self)
       {
         gdk_clipboard_read_async (clipboard, rtf_mimes, G_PRIORITY_DEFAULT, NULL,
                                   on_clipboard_rtf, g_object_ref (self));
+        return;
+      }
+    /* Rich text first, then a picture, then text: what was copied out of
+     * a browser is often all three, and a picture with a caption is a
+     * picture. */
+    if (gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE))
+      {
+        gdk_clipboard_read_texture_async (clipboard, NULL,
+                                          on_clipboard_texture, g_object_ref (self));
         return;
       }
   }
@@ -3714,6 +3837,35 @@ w42_view_select_all (W42View *self)
 /* ---------------------------------------------------------------------- */
 /* Input                                                                   */
 /* ---------------------------------------------------------------------- */
+
+/* The caret can only sit where the layout shows a line.  The paragraphs
+ * of a cell covered by a vertical merge are kept in the document and
+ * shown nowhere, so a caret walking into one would vanish; from `pos`
+ * this goes on in `dir` until a position the layout can place. */
+static gsize
+view_shown_pos (W42View *self, gsize pos, int dir)
+{
+  W42PieceTable *pt = view_pt (self);
+  gsize length = w42_pt_length (pt);
+
+  /* Before the first pass nothing is shown yet, and there is nothing to
+   * step over. */
+  if (w42_layout_lines (self->layout)->len == 0)
+    return pos;
+
+  for (int guard = 0; guard < 100000; guard++)
+    {
+      gsize next;
+
+      if (w42_layout_pos_to_caret (self->layout, pos, NULL, NULL, NULL, NULL))
+        return pos;
+      next = dir > 0 ? w42_pt_next_pos (pt, pos) : w42_pt_prev_pos (pt, pos);
+      if (next == pos || next > length)
+        return pos;
+      pos = next;
+    }
+  return pos;
+}
 
 /* The text of the caret's paragraph up to the caret: what AutoCorrect
  * looks at.  A long paragraph is read from the end, since a correction
@@ -3933,12 +4085,12 @@ on_key_pressed (GtkEventControllerKey *controller,
 
     case GDK_KEY_Left:
     case GDK_KEY_KP_Left:
-      view_set_caret (self, w42_pt_prev_pos (pt, self->caret), extend);
+      view_set_caret (self, view_shown_pos (self, w42_pt_prev_pos (pt, self->caret), -1), extend);
       return GDK_EVENT_STOP;
 
     case GDK_KEY_Right:
     case GDK_KEY_KP_Right:
-      view_set_caret (self, w42_pt_next_pos (pt, self->caret), extend);
+      view_set_caret (self, view_shown_pos (self, w42_pt_next_pos (pt, self->caret), +1), extend);
       return GDK_EVENT_STOP;
 
     case GDK_KEY_Up:
@@ -5439,6 +5591,33 @@ w42_view_set_zoom (W42View *self, double zoom)
   gtk_widget_queue_resize (GTK_WIDGET (self));
   gtk_widget_queue_draw (GTK_WIDGET (self));
   view_state_changed (self);
+}
+
+double
+w42_view_fit_zoom (W42View *self, gboolean whole_page)
+{
+  double page_w, page_h, zoom;
+  double width, height;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 1.0);
+
+  page_w = w42_layout_page_width (self->layout);
+  page_h = w42_layout_page_height (self->layout);
+  width  = gtk_widget_get_width (GTK_WIDGET (self)) - 2 * PAGE_GAP;
+  height = gtk_widget_get_height (GTK_WIDGET (self)) - 2 * PAGE_GAP;
+  if (page_w <= 0.0 || width <= 0.0)
+    return self->zoom;
+
+  /* Word's Page Width was the sheet between the window's edges, and
+   * Whole Page the sheet on the desk, whichever way round is tighter;
+   * the gap the desk keeps round a sheet is kept both ways. */
+  zoom = width / page_w;
+  if (whole_page && page_h > 0.0 && height > 0.0)
+    zoom = MIN (zoom, height / page_h);
+
+  /* Rounded to a whole percent, which is what the box can show. */
+  zoom = floor (zoom * 100.0) / 100.0;
+  return CLAMP (zoom, 0.25, 5.0);
 }
 
 double

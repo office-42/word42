@@ -1200,7 +1200,8 @@ build_block_layout (W42Layout      *self,
 static void build_furniture (W42Layout *self, W42PieceTable *pt);
 static void layout_table (W42Layout *self, W42PieceTable *pt, W42ApTable *aps,
                           guint first, guint last, double text_w, double text_h,
-                          double *y_io, int *page_io);
+                          double *y_io, int *page_io,
+                          GArray *page_notes, double *notes_h);
 
 /* Lays the cell's paragraphs out one under another in a column `width`
  * wide, at x, starting at y on `page`, and returns the height used.  Lines
@@ -1591,7 +1592,9 @@ layout_table (W42Layout      *self,
               double          text_w,
               double          text_h,
               double         *y_io,
-              int            *page_io)
+              int            *page_io,
+              GArray         *page_notes,
+              double         *notes_h)
 {
   const W42Block *head = g_ptr_array_index (self->blocks, first);
   const W42TableProps *props = w42_pt_table_props (pt, head->table);
@@ -1767,9 +1770,15 @@ layout_table (W42Layout      *self,
             double top = y;
             int pg = page;
             double consumed = 0.0;
+            /* The notes already owed to this page take the foot of it;
+             * once the table turns a page they are set and the next
+             * page is whole. */
+            double avail = text_h - *notes_h;
 
-            if (top > 0.0 && top + row_h > text_h && row_h <= text_h)
+            if (top > 0.0 && top + row_h > avail && row_h <= text_h)
               {
+                flush_notes (self, page_notes, notes_h, pg, text_h, &top);
+                avail = text_h;
                 pg++;
                 top = 0.0;
                 if (props != NULL && props->header_rows > 0 && row >= props->header_rows)
@@ -1779,7 +1788,7 @@ layout_table (W42Layout      *self,
 
             while (segs->len < MAX_ROW_PIECES)
               {
-                double room = text_h - top;
+                double room = avail - top;
                 double cut, best;
 
                 if (row_h - consumed <= room || room <= 0.0)
@@ -1811,6 +1820,8 @@ layout_table (W42Layout      *self,
                 g_array_append_val (segs, seg);
                 consumed = best;
 
+                flush_notes (self, page_notes, notes_h, pg, text_h, &top);
+                avail = text_h;
                 pg++;
                 top = 0.0;
                 if (props != NULL && props->header_rows > 0 && row >= props->header_rows)
@@ -2165,7 +2176,8 @@ w42_layout_build_pt (W42Layout          *self,
           for (int fs = 0; fs < 2; fs++)
             if (float_page[fs] == current_page && y < float_bottom[fs])
               y = float_bottom[fs];
-          layout_table (self, pt, aps, b, last, text_w, text_h, &y, &current_page);
+          layout_table (self, pt, aps, b, last, text_w, text_h, &y, &current_page,
+                        page_notes, &notes_h);
           b = last;
           list_n = 0;
           frame_open = FALSE;         /* a frame does not run on past a table */
@@ -4050,9 +4062,13 @@ w42_layout_move_line (W42Layout *self, gsize pos, int dir, double *want_x)
       if (!beyond)
         continue;
 
+      /* On another page, the nearest line is the one nearest the edge
+       * the caret is crossing: the top of the next page going down, the
+       * foot of the one before going up. */
       dy = (box->page == from->page)
              ? fabs (box->y - from->y)
-             : 100000.0 * ABS (box->page - from->page) + box->y;
+             : 100000.0 * ABS (box->page - from->page)
+               + (dir > 0 ? box->y : MAX (self->page_h - (box->y + box->height), 0.0));
       if (x >= box->origin_x && x <= box->x + box->width)
         dx = 0.0;
       else
@@ -4183,4 +4199,84 @@ w42_layout_set_gridlines (W42Layout *self, gboolean show)
 {
   g_return_if_fail (self != NULL);
   self->gridlines = show;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Table > AutoFit > AutoFit to Contents                                    */
+/* ---------------------------------------------------------------------- */
+
+gboolean
+w42_layout_table_content_widths (W42Layout *self, int table, GArray *out)
+{
+  gboolean found = FALSE;
+  int n_cols = 0;
+
+  g_return_val_if_fail (self != NULL && out != NULL, FALSE);
+
+  if (self->aps == NULL)
+    return FALSE;
+
+  /* The table's shape is read off its cells: the widest column index seen
+   * plus one is how many columns it has, so a table the layout has not
+   * seen is FALSE rather than an empty answer. */
+  for (guint b = 0; b < self->blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (self->blocks, b);
+
+      if (block->table != table)
+        continue;
+      found = TRUE;
+      n_cols = MAX (n_cols, block->col + MAX (block->span, 1));
+    }
+  if (!found || n_cols <= 0)
+    return FALSE;
+
+  g_array_set_size (out, 0);
+  for (int c = 0; c < n_cols; c++)
+    {
+      /* An empty column is still a column to type into: a quarter inch. */
+      int least = 360;
+
+      g_array_append_val (out, least);
+    }
+
+  for (guint b = 0; b < self->blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (self->blocks, b);
+      const W42Fmt *fmt;
+      PangoLayout *layout;
+      PangoFontDescription *desc;
+      PangoAttrList *attrs;
+      PangoRectangle logical;
+      int twips;
+
+      /* A merged cell spans columns of its own and would only widen
+       * whichever it was charged to. */
+      if (block->table != table || block->span > 1 || block->col < 0 ||
+          block->col >= n_cols)
+        continue;
+
+      fmt = w42_ap_table_get (self->aps, block->ap);
+      layout = pango_layout_new (fmt->pa.rtl ? self->ctx_rtl : self->ctx);
+      desc = pango_font_description_new ();
+      apply_font_description (desc, &fmt->ch);
+      pango_layout_set_font_description (layout, desc);
+      pango_font_description_free (desc);
+      pango_layout_set_text (layout, block->text->str, (int) block->text->len);
+      attrs = build_attributes (self, block, self->aps);
+      pango_layout_set_attributes (layout, attrs);
+      pango_attr_list_unref (attrs);
+      /* Unwrapped: the width the paragraph wants to be one line. */
+      pango_layout_set_width (layout, -1);
+      pango_layout_get_pixel_extents (layout, NULL, &logical);
+
+      twips = (int) ceil (w42_px_to_twips (logical.width + 2 * CELL_PAD))
+              + fmt->pa.indent_left + fmt->pa.indent_right
+              + MAX (fmt->pa.indent_first, 0);
+      if (twips > g_array_index (out, int, block->col))
+        g_array_index (out, int, block->col) = twips;
+      g_object_unref (layout);
+    }
+
+  return TRUE;
 }

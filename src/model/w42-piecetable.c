@@ -938,6 +938,10 @@ w42_pt_free (W42PieceTable *pt)
   g_ptr_array_free (pt->tables, TRUE);
   g_free (pt->header.text);
   g_free (pt->footer.text);
+  g_free (pt->header_first.text);
+  g_free (pt->header_even.text);
+  g_free (pt->footer_first.text);
+  g_free (pt->footer_even.text);
   g_array_free (pt->change, TRUE);
   g_array_free (pt->initial, TRUE);
   g_free (pt);
@@ -959,6 +963,15 @@ w42_pt_load_text (W42PieceTable *pt, const char *utf8)
   g_array_set_size (pt->change, 0);
   g_clear_pointer (&pt->header.text, g_free);
   g_clear_pointer (&pt->footer.text, g_free);
+  /* A file opened into a window that had one keeps nothing of the old
+   * document: not its title-page furniture, nor its tables' shapes. */
+  g_clear_pointer (&pt->header_first.text, g_free);
+  g_clear_pointer (&pt->header_even.text, g_free);
+  g_clear_pointer (&pt->footer_first.text, g_free);
+  g_clear_pointer (&pt->footer_even.text, g_free);
+  pt->title_page = FALSE;
+  pt->facing_pages = FALSE;
+  g_ptr_array_set_size (pt->tables, 0);
 
   ap = w42_ap_table_default (pt->aps);
   pt_append_strux (pt, W42_STRUX_SECTION, ap);
@@ -1862,6 +1875,8 @@ pt_position_protected (W42PieceTable *pt, gsize pos, gsize range_start, gsize ra
 }
 
 static void pt_delete_range (W42PieceTable *pt, gsize pos, gsize n);
+static GArray *pt_note_ids_in (W42PieceTable *pt, gsize pos, gsize n);
+static void pt_delete_notes (W42PieceTable *pt, GArray *ids);
 
 /* The stretch of the notes section that is note `id`: its NOTE mark
  * through the position before the next NOTE mark or the end. */
@@ -1932,6 +1947,42 @@ w42_pt_delete (W42PieceTable *pt, gsize pos, gsize n)
 
   w42_pt_begin_group (pt);
   pt_delete_range (pt, pos, n);
+  pt_delete_notes (pt, ids);
+  w42_pt_end_group (pt);
+  pt_coalesce (pt);
+}
+
+/* The notes whose reference marks stand in [pos, pos+n): what deleting
+ * the range orphans unless they go too.  NULL when there are none. */
+static GArray *
+pt_note_ids_in (W42PieceTable *pt, gsize pos, gsize n)
+{
+  GArray *ids = NULL;
+  gsize p = 0, end = pos + n;
+
+  for (W42Piece *q = pt->head; q != NULL && p < end; q = q->next)
+    {
+      if (piece_is_strux (q, W42_STRUX_FOOTNOTE) && p >= pos)
+        {
+          int id = NOTE_ID (q->offset);
+
+          if (ids == NULL)
+            ids = g_array_new (FALSE, FALSE, sizeof (int));
+          g_array_append_val (ids, id);
+        }
+      p += q->length;
+    }
+  return ids;
+}
+
+/* Takes the notes' paragraphs out, their marks being gone, and the notes
+ * section with them when it is left empty.  Recorded into the caller's
+ * group; `ids` is consumed and may be NULL. */
+static void
+pt_delete_notes (W42PieceTable *pt, GArray *ids)
+{
+  if (ids == NULL)
+    return;
   for (guint i = 0; i < ids->len; i++)
     {
       gsize start = 0, stop = 0;
@@ -1945,8 +1996,6 @@ w42_pt_delete (W42PieceTable *pt, gsize pos, gsize n)
   /* An empty notes section is no section. */
   if (pt->tail != NULL && piece_is_strux (pt->tail, W42_STRUX_NOTES))
     pt_push (pt, pt_do_delete (pt, pt->length - 1, 1));
-  w42_pt_end_group (pt);
-  pt_coalesce (pt);
   g_array_free (ids, TRUE);
 }
 
@@ -2598,6 +2647,27 @@ w42_pt_cell_span (W42PieceTable *pt, int table, int row, int col)
   return 0;
 }
 
+/* The same change of span as a recorded step, for the column commands:
+ * the mark at `at` is replaced by one with the new span, inside the
+ * caller's group, so that undo puts the old span back with the column. */
+static void
+cell_replace_span (W42PieceTable *pt, gsize at, int span)
+{
+  gsize offset = 0;
+  W42Piece *piece = pt_find (pt, at, &offset);
+  gsize payload;
+  W42ApIdx ap;
+
+  if (piece == NULL || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+  payload = CELL_PAYLOAD (CELL_ROW (piece->offset), CELL_COL (piece->offset), span);
+  ap = piece->ap;
+
+  pt_push (pt, pt_do_delete (pt, at, 1));
+  pt_insert_strux_at (pt, at, W42_STRUX_CELL, payload, ap);
+  pt_push (pt, cr_new (CR_INSERT, at, 1));
+}
+
 void
 w42_pt_set_cell_span (W42PieceTable *pt, gsize cell_pos, int span)
 {
@@ -2652,11 +2722,18 @@ w42_pt_table_merge_cells (W42PieceTable *pt, int table, int row,
         pt_push (pt, pt_do_delete (pt, start - 2, 1));
     }
 
-  /* The first cell's mark is replaced by one that spans the lot. */
-  pt_push (pt, pt_do_delete (pt, first_start - 2, 1));
-  pt_insert_strux_at (pt, first_start - 2, W42_STRUX_CELL,
-                      CELL_PAYLOAD (row, col_from, total),
-                      w42_ap_table_default (pt->aps));
+  /* The first cell's mark is replaced by one that spans the lot, with
+   * the fill, sides and alignment the first cell had. */
+  {
+    gsize offset = 0;
+    W42Piece *mark = pt_find (pt, first_start - 2, &offset);
+    W42ApIdx first_ap = (mark != NULL && piece_is_strux (mark, W42_STRUX_CELL))
+                          ? mark->ap : w42_ap_table_default (pt->aps);
+
+    pt_push (pt, pt_do_delete (pt, first_start - 2, 1));
+    pt_insert_strux_at (pt, first_start - 2, W42_STRUX_CELL,
+                        CELL_PAYLOAD (row, col_from, total), first_ap);
+  }
   pt_push (pt, cr_new (CR_INSERT, first_start - 2, 1));
 
   w42_pt_end_group (pt);
@@ -3180,8 +3257,15 @@ w42_pt_table_delete_row (W42PieceTable *pt, int table, int row)
       }
 
       pt->coalescing = FALSE;
-      record = pt_do_delete (pt, start, whole_end - start);
-      pt_push (pt, record);
+      {
+        GArray *ids = pt_note_ids_in (pt, start, whole_end - start);
+
+        w42_pt_begin_group (pt);
+        record = pt_do_delete (pt, start, whole_end - start);
+        pt_push (pt, record);
+        pt_delete_notes (pt, ids);
+        w42_pt_end_group (pt);
+      }
       pt_coalesce (pt);
       g_array_free (rows, TRUE);
       return;
@@ -3193,8 +3277,14 @@ w42_pt_table_delete_row (W42PieceTable *pt, int table, int row)
 
   w42_pt_begin_group (pt);
   pt->coalescing = FALSE;
-  record = pt_do_delete (pt, from, to - from);
-  pt_push (pt, record);
+  {
+    /* A footnote referenced in the row goes with the row. */
+    GArray *ids = pt_note_ids_in (pt, from, to - from);
+
+    record = pt_do_delete (pt, from, to - from);
+    pt_push (pt, record);
+    pt_delete_notes (pt, ids);
+  }
   {
     W42TableProps *props = g_ptr_array_index (pt->tables, table);
 
@@ -3203,7 +3293,8 @@ w42_pt_table_delete_row (W42PieceTable *pt, int table, int row)
         GArray *snap = g_array_new (FALSE, FALSE, sizeof (int));
 
         table_snapshot (props, snap);
-        g_array_remove_index (snap, 4 + props->n_cols + row);
+        /* The row heights follow the header, the edges and the widths. */
+        g_array_remove_index (snap, SNAP_WIDTHS + props->n_cols + row);
         g_array_index (snap, int, 3) -= 1;
         pt_push (pt, pt_do_set_table (pt, table, snap));
         g_array_free (snap, TRUE);
@@ -4134,7 +4225,7 @@ pt_table_add_column (W42PieceTable *pt, int table, int col)
       if (cell != (gsize) -1 && first + span - 1 > col)
         {
           /* A merged cell reaches past the new column: it grows over it. */
-          w42_pt_set_cell_span (pt, cell, span + 1);
+          cell_replace_span (pt, cell, span + 1);
           continue;
         }
       /* The new cell goes before the cell after `col`, or at the row's end. */
@@ -4222,7 +4313,7 @@ w42_pt_table_delete_column (W42PieceTable *pt, int table, int col)
       if (span > 1)
         {
           /* A merged cell loses one of its columns and keeps its text. */
-          w42_pt_set_cell_span (pt, cell, span - 1);
+          cell_replace_span (pt, cell, span - 1);
           continue;
         }
       {
@@ -4253,7 +4344,12 @@ w42_pt_table_delete_column (W42PieceTable *pt, int table, int col)
               }
           }
         pt->coalescing = FALSE;
-        pt_push (pt, pt_do_delete (pt, cell, next - cell));
+        {
+          GArray *ids = pt_note_ids_in (pt, cell, next - cell);
+
+          pt_push (pt, pt_do_delete (pt, cell, next - cell));
+          pt_delete_notes (pt, ids);
+        }
       }
     }
   pt_table_renumber (pt, table);
@@ -4453,7 +4549,7 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
   gsize start = 0, end = 0, at;
   GArray *rows;
   int *widths;
-  int n_cols, new_table;
+  int n_cols, n_rows, new_table;
   gboolean borders;
   W42BorderEdge edges[W42_N_EDGES];
 
@@ -4469,6 +4565,7 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
     }
 
   at = g_array_index (rows, gsize, row);
+  n_rows = (int) rows->len;
   n_cols = props->n_cols;
   borders = props->borders;
   memcpy (edges, props->edge, sizeof edges);
@@ -4487,6 +4584,14 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
     w42_pt_table_set_edge (pt, new_table, e, &edges[e]);
   pt_table_renumber (pt, table);
   pt_table_renumber (pt, new_table);
+  /* The rows that moved keep the heights they were set to. */
+  for (int r = row; r < n_rows; r++)
+    {
+      int height = w42_pt_table_get_row_height (pt, table, r);
+
+      if (height > 0)
+        w42_pt_table_set_row_height (pt, new_table, r - row, height);
+    }
   w42_pt_end_group (pt);
   pt->coalescing = FALSE;
 

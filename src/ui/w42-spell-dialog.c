@@ -409,6 +409,13 @@ w42_spell_dialog_init (W42SpellDialog *self)
   set_buttons_sensitive (self, FALSE);
 }
 
+void
+w42_spell_dialog_set_view (W42SpellDialog *self, W42View *view)
+{
+  g_return_if_fail (W42_IS_SPELL_DIALOG (self));
+  self->view = view;
+}
+
 GtkWidget *
 w42_spell_dialog_new (GtkWindow *parent, W42View *view, W42Spell *spell)
 {

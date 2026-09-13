@@ -80,68 +80,74 @@ looks_like_a_heading (const char *text, gsize chars)
   return TRUE;
 }
 
-/* The quotes and dashes of a typewriter, as a printer would set them.
- * Returns the text to put in place of `text`, or NULL when nothing in it
- * would change. */
-static char *
-printers_marks (const char *text)
+/* One character of the paragraph to change: which, how many it covers
+ * (a dash covers the two or three hyphens it replaces), and what goes in
+ * its place. */
+typedef struct {
+  gsize    index;    /* in characters from the paragraph's start */
+  gsize    n;
+  gunichar to;
+} MarkEdit;
+
+/* The same rules as printers_marks, as a list of the characters to
+ * change rather than a new text.  The paragraph is then edited a
+ * character at a time, from the back, each taking the formatting of the
+ * character it replaces: replacing the whole text would flatten its runs
+ * and lose the pictures and note marks standing in it. */
+static GArray *
+printers_mark_edits (const char *text)
 {
-  GString *out = g_string_new (NULL);
-  gboolean changed = FALSE;
+  GArray *edits = g_array_new (FALSE, FALSE, sizeof (MarkEdit));
   const char *p = text;
   gunichar before = ' ';
+  gsize index = 0;
 
   while (*p != '\0')
     {
       gunichar c = g_utf8_get_char (p);
       const char *next = g_utf8_next_char (p);
+      MarkEdit edit = { index, 1, 0 };
 
       if (c == '"' || c == '\'')
         {
-          /* An opening mark after a space or a bracket, a closing one
-           * after anything else. */
           gboolean opening = before == ' ' || before == '\t' || before == '(' ||
                              before == '[' || before == '{' || before == 0x2018 ||
                              before == 0x201C || p == text;
 
-          if (c == '"')
-            g_string_append_unichar (out, opening ? 0x201C : 0x201D);
-          else
-            g_string_append_unichar (out, opening ? 0x2018 : 0x2019);
-          changed = TRUE;
+          edit.to = (c == '"') ? (opening ? 0x201C : 0x201D)
+                               : (opening ? 0x2018 : 0x2019);
+          g_array_append_val (edits, edit);
         }
       else if (c == '-' && *next == '-')
         {
-          /* Two hyphens are an en dash, three an em dash. */
           const char *third = g_utf8_next_char (next);
 
           if (*third == '-')
             {
-              g_string_append_unichar (out, 0x2014);
+              edit.n = 3;
+              edit.to = 0x2014;
               next = g_utf8_next_char (third);
             }
           else
             {
-              g_string_append_unichar (out, 0x2013);
+              edit.n = 2;
+              edit.to = 0x2013;
               next = g_utf8_next_char (next);
             }
-          changed = TRUE;
-        }
-      else
-        {
-          g_string_append_unichar (out, c);
+          g_array_append_val (edits, edit);
         }
 
       before = c;
+      index += edit.n;
       p = next;
     }
 
-  if (!changed)
+  if (edits->len == 0)
     {
-      g_string_free (out, TRUE);
+      g_array_free (edits, TRUE);
       return NULL;
     }
-  return g_string_free (out, FALSE);
+  return edits;
 }
 
 int
@@ -188,17 +194,25 @@ w42_pt_autoformat (W42PieceTable *pt, const W42AutoFormat *what)
       /* The quotes and dashes, wherever they are. */
       if (what->quotes)
         {
-          char *fixed = printers_marks (text);
+          GArray *edits = printers_mark_edits (text);
 
-          if (fixed != NULL)
+          if (edits != NULL)
             {
-              W42ApIdx ap = w42_pt_ap_at (pt, start);
+              for (guint e = edits->len; e > 0; e--)
+                {
+                  const MarkEdit *edit = &g_array_index (edits, MarkEdit, e - 1);
+                  gsize at = start + edit->index;
+                  W42ApIdx ap = w42_pt_ap_at (pt, at);
+                  char utf8[8];
+                  int len = g_unichar_to_utf8 (edit->to, utf8);
 
-              w42_pt_delete (pt, start, chars);
-              w42_pt_insert_text (pt, start, fixed, ap);
-              chars = (gsize) g_utf8_strlen (fixed, -1);
+                  utf8[len] = '\0';
+                  w42_pt_delete (pt, at, edit->n);
+                  w42_pt_insert_text (pt, at, utf8, ap);
+                  chars -= edit->n - 1;
+                }
               changed++;
-              g_free (fixed);
+              g_array_free (edits, TRUE);
               /* The text moved; the rest of the tests read the old one,
                * which is the same but for the marks. */
             }

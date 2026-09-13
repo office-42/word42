@@ -357,6 +357,13 @@ w42_find_dialog_init (W42FindDialog *self)
   }
 }
 
+void
+w42_find_dialog_set_view (W42FindDialog *self, W42View *view)
+{
+  g_return_if_fail (W42_IS_FIND_DIALOG (self));
+  self->view = view;
+}
+
 GtkWidget *
 w42_find_dialog_new (GtkWindow *parent, W42View *view)
 {
