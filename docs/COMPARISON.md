@@ -75,7 +75,7 @@ short table.
 | Split window, several windows | yes, yes | yes, yes | no, yes | yes, yes |
 | Print preview, print to file | yes | yes | yes | yes |
 | Autosave and crash recovery | yes | yes | yes | yes |
-| Macros, scripting | none, by design | VBA | plugins | Basic, Python |
+| Macros, scripting | Word42 Basic, a VBA dialect (Selection, ActiveDocument, MsgBox...) | VBA | plugins | Basic, Python |
 | Real-time collaboration | no | yes | no | no |
 | Slide show from the outline | yes | via PowerPoint | no | via Impress |
 

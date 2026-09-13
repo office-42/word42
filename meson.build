@@ -19,6 +19,10 @@ gnome = import('gnome')
 add_project_arguments(
   '-DW42_VERSION="' + meson.project_version() + '"',
   '-DG_LOG_DOMAIN="word42"',
+  # MY-BASIC's numbers are doubles.  Every file that includes its header
+  # has to agree with the library about that, since the value union's
+  # size follows from it.
+  '-DMB_DOUBLE_FLOAT',
   language: 'c',
 )
 

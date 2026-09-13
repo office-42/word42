@@ -10,8 +10,9 @@ Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
 
 A working word processor: typing, formatting, styles and numbered headings,
 headers and footers, footnotes and endnotes, tables, pictures, lists,
-columns, find and replace, spelling, hyphenation, mail merge, a split
-window, a page-layout view and print preview — reading and writing RTF,
+columns, find and replace, spelling, hyphenation, mail merge, macros
+in a dialect of VBA, a split window, a page-layout view and print
+preview — reading and writing RTF,
 OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and plain
 text. [docs/STATUS.md](docs/STATUS.md) lists what it does,
 [Word42.md](Word42.md) what it does not do yet,

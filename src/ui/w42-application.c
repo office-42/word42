@@ -74,6 +74,8 @@ static const struct {
   { "win.replace",    { "<Control>h", NULL } },
   { "win.find-next",  { "F3", NULL } },
   { "win.autotext-expand", { "<Control>F3", NULL } },
+  { "win.macros",     { "<Alt>F8", NULL } },
+  { "win.macro-editor", { "<Alt>F11", NULL } },
   { "app.quit",       { "<Control>q", NULL } },
 };
 
