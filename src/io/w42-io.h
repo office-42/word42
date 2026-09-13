@@ -32,6 +32,10 @@ typedef enum {
 
 W42Format w42_io_guess_format (GFile *file);
 
+/* Clamps a page setup to what can be laid out; every reader's result
+ * goes through it, and a dialog may use it too. */
+void      w42_page_setup_sanitize (W42PageSetup *page);
+
 /* `page` carries the document's geometry: RTF records it, plain text has
  * nowhere to put it.  Either may be NULL. */
 gboolean  w42_io_load (W42PieceTable *pt, W42PageSetup *page,
