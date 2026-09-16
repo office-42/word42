@@ -419,6 +419,7 @@ typedef struct {
 
 typedef struct {
   int      bold, italic, strike;   /* 0 or 1 */
+  int      dstrike, shadow, outline, emboss, imprint;   /* Word 97's effects */
   int      kul;
   int      ico;
   guint32  rgb;                    /* 0 for none; sprmCCv */
@@ -1315,6 +1316,11 @@ apply_chpx (Doc *doc, const guint8 *grpprl, guint len, Char *ch, int depth)
         case 0x0835: apply_toggle (&ch->bold, op[0]); break;
         case 0x0836: apply_toggle (&ch->italic, op[0]); break;
         case 0x0837: apply_toggle (&ch->strike, op[0]); break;
+        case 0x0838: apply_toggle (&ch->outline, op[0]); break;
+        case 0x0839: apply_toggle (&ch->shadow, op[0]); break;
+        case 0x0854: apply_toggle (&ch->imprint, op[0]); break;
+        case 0x0858: apply_toggle (&ch->emboss, op[0]); break;
+        case 0x2A53: ch->dstrike = op[0] != 0; break;   /* sprmCFDStrike: a byte, not a toggle */
         case 0x083A: apply_toggle (&ch->smallcaps, op[0]); break;
         case 0x083B: apply_toggle (&ch->allcaps, op[0]); break;
         case 0x083C: apply_toggle (&ch->vanish, op[0]); break;
@@ -1680,6 +1686,11 @@ fill_char_fmt (Doc *doc, const Char *ch, W42CharFmt *out)
     default: out->underline = W42_UNDERLINE_SINGLE; break;
     }
   out->strikeout = ch->strike ? 1 : 0;
+  out->dstrike   = ch->dstrike ? 1 : 0;
+  out->shadow    = ch->shadow ? 1 : 0;
+  out->outline   = ch->outline ? 1 : 0;
+  out->emboss    = ch->emboss ? 1 : 0;
+  out->engrave   = ch->imprint ? 1 : 0;
   out->script    = ch->iss == 1 ? 1 : ch->iss == 2 ? -1 : 0;
   out->smallcaps = ch->smallcaps ? 1 : 0;
   out->allcaps   = ch->allcaps ? 1 : 0;

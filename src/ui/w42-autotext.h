@@ -23,6 +23,12 @@ char **w42_autotext_names (void);
 /* The text of an entry, or NULL when there is no such entry.  g_free(). */
 char  *w42_autotext_get (const char *name);
 
+/* The text of the first entry whose name begins with `prefix`, ignoring
+ * case, for the AutoComplete tip; `name` gets the entry's name.  NULL
+ * when none does, or when the prefix is shorter than Word 97 asked for
+ * before it offered anything: four characters.  g_free() both. */
+char  *w42_autotext_complete (const char *prefix, char **name);
+
 /* Adds an entry, or replaces the one of that name.  An empty name or
  * empty text does nothing. */
 void   w42_autotext_set (const char *name, const char *text);

@@ -28,9 +28,12 @@
 #include "w42-print.h"
 #include "w42-scan.h"
 #include "w42-ruler.h"
+#include "w42-docmap.h"
 #include "w42-rtf.h"
 #include "w42-settings.h"
 #include "w42-spell-dialog.h"
+#include "w42-thesaurus.h"
+#include "w42-thesaurus-dialog.h"
 #include "w42-autotext.h"
 #include "w42-template.h"
 #include "w42-help.h"
@@ -67,6 +70,7 @@ struct _W42Window {
   GtkWidget   *standard_bar;
   GtkWidget   *format_bar;
   GtkWidget   *ruler;
+  GtkWidget   *doc_map;       /* View > Document Map, at the left of the page */
 
   GtkWidget   *style_drop;
   GtkStringList *style_list;
@@ -90,7 +94,7 @@ struct _W42Window {
   GtkWidget   *menubar;
   GtkWidget   *status_bar;
   /* What View > Full Screen put away, and whether each was showing. */
-  gboolean     full_screen_chrome[4];
+  gboolean     full_screen_chrome[5];
   GtkWidget   *status_page;
   GtkWidget   *status_at;
   GtkWidget   *status_ln;
@@ -120,6 +124,7 @@ struct _W42Window {
   GtkWidget   *find_dialog;   /* modeless; cleared by a weak pointer */
   GtkWidget   *spell_dialog;  /* likewise */
   W42Spell    *spell;         /* NULL when there is no dictionary */
+  W42Thesaurus *thesaurus;    /* made when first asked for; NULL until then */
   GtkWidget   *title_label;   /* word42 draws its own title bar */
 };
 
@@ -1019,6 +1024,8 @@ static void
 window_pane_changed (W42Window *self)
 {
   w42_ruler_set_view (self->ruler, self->view);
+  if (self->doc_map != NULL)
+    w42_docmap_set_view (self->doc_map, self->view);
   if (self->find_dialog != NULL)
     w42_find_dialog_set_view (W42_FIND_DIALOG (self->find_dialog), self->view);
   if (self->spell_dialog != NULL)
@@ -1176,6 +1183,17 @@ window_apply_settings (W42Window *self)
         if (act != NULL)
           g_simple_action_set_state (G_SIMPLE_ACTION (act), g_variant_new_boolean (visible));
       }
+  }
+
+  /* The Document Map starts out away, as Word 97's did, unless it was
+   * showing when the program was last used. */
+  {
+    gboolean visible = w42_settings_get_bool ("show-document-map", FALSE);
+
+    gtk_widget_set_visible (self->doc_map, visible);
+    act = g_action_map_lookup_action (G_ACTION_MAP (self), "document-map");
+    if (act != NULL)
+      g_simple_action_set_state (G_SIMPLE_ACTION (act), g_variant_new_boolean (visible));
   }
 }
 
@@ -1440,6 +1458,21 @@ action_toggle_ruler (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_set_visible (self->ruler, visible);
   g_simple_action_set_state (action, g_variant_new_boolean (visible));
   w42_settings_set_bool ("show-ruler", visible);
+}
+
+/* View > Document Map */
+static void
+action_document_map (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  gboolean visible;
+
+  (void) param;
+
+  visible = !gtk_widget_get_visible (self->doc_map);
+  gtk_widget_set_visible (self->doc_map, visible);
+  g_simple_action_set_state (action, g_variant_new_boolean (visible));
+  w42_settings_set_bool ("show-document-map", visible);
 }
 
 static void
@@ -2645,6 +2678,30 @@ action_insert_symbol (GSimpleAction *action, GVariant *param, gpointer data)
   w42_symbol_dialog_show (GTK_WINDOW (self), self->view);
 }
 
+/* Tools > Language > Thesaurus (Shift+F7).  The thesaurus is read the
+ * first time it is asked for: its index is a few megabytes, which is
+ * not worth every window's start. */
+static void
+action_thesaurus (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+
+  if (self->thesaurus == NULL)
+    self->thesaurus = w42_thesaurus_new ();
+  if (self->thesaurus == NULL)
+    {
+      show_message (self, "No thesaurus was found.",
+                    "The thesaurus needs a MyThes file for your language -- "
+                    "th_en_US_v2.dat and its .idx, the ones LibreOffice uses -- "
+                    "in the mythes folder.");
+      return;
+    }
+  if (!w42_thesaurus_dialog_show (GTK_WINDOW (self), self->view, self->thesaurus))
+    window_flash (self, "Put the caret in a word to look it up in the thesaurus.");
+}
+
 static void
 action_spelling (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -3799,13 +3856,14 @@ action_insert_file (GSimpleAction *action, GVariant *param, gpointer data)
 static void
 window_set_full_screen (W42Window *self, gboolean on)
 {
-  GtkWidget *chrome[4];
+  GtkWidget *chrome[5];
   GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), "full-screen");
 
   chrome[0] = self->menubar;
   chrome[1] = self->standard_bar;
   chrome[2] = self->format_bar;
   chrome[3] = self->ruler;
+  chrome[4] = self->doc_map;
 
   for (guint i = 0; i < G_N_ELEMENTS (chrome); i++)
     {
@@ -4255,6 +4313,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "heading-numbering", action_heading_numbering, NULL, "false", NULL, { 0 } },
   { "list-bullets", action_list, NULL, "false", NULL, { 0 } },
   { "spelling",   action_spelling,   NULL, NULL,   NULL, { 0 } },
+  { "thesaurus",  action_thesaurus,  NULL, NULL,   NULL, { 0 } },
   { "go-to",         action_go_to,         NULL, NULL, NULL, { 0 } },
   { "new-window",    action_new_window,    NULL, NULL, NULL, { 0 } },
   { "split-window",  action_split_window,  NULL, "false", NULL, { 0 } },
@@ -4320,6 +4379,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "word-count", action_word_count, NULL, NULL,    NULL, { 0 } },
   { "about",      action_about,      NULL, NULL,    NULL, { 0 } },
   { "ruler",       action_toggle_ruler,   NULL, "true", NULL, { 0 } },
+  { "document-map", action_document_map,  NULL, "false", NULL, { 0 } },
   { "show-marks",  action_show_marks,     NULL, "false", NULL, { 0 } },
   { "column-break", action_column_break,  NULL, NULL, NULL, { 0 } },
   { "standard-bar", action_toggle_toolbar, NULL, "true", NULL, { 0 } },
@@ -4378,6 +4438,7 @@ w42_window_dispose (GObject *object)
         w42_view_set_spell (self->view, NULL);
       g_clear_pointer (&self->spell, w42_spell_free);
     }
+  g_clear_pointer (&self->thesaurus, w42_thesaurus_free);
 
   if (self->autosave_id != 0)
     {
@@ -4406,7 +4467,7 @@ w42_window_class_init (W42WindowClass *klass)
 static void
 w42_window_init (W42Window *self)
 {
-  GtkWidget *box, *scrolled, *menubar;
+  GtkWidget *box, *right, *scrolled, *menubar;
   GtkBuilder *builder;
   GMenuModel *model;
 
@@ -4516,8 +4577,15 @@ w42_window_init (W42Window *self)
   gtk_box_append (GTK_BOX (box), self->format_bar);
 
   self->ruler = w42_ruler_new (self->view);
+  self->doc_map = w42_docmap_new (self->view);
   window_apply_settings (self);   /* now that the bars it sets exist */
-  gtk_box_append (GTK_BOX (box), self->ruler);
+
+  /* The ruler sits over the page, not over the Document Map, so the two
+   * share a box at the right of the map: the ruler's zero is then the
+   * page's, whatever the map's width. */
+  right = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_hexpand (right, TRUE);
+  gtk_box_append (GTK_BOX (right), self->ruler);
 
   scrolled = gtk_scrolled_window_new ();
   gtk_widget_set_vexpand (scrolled, TRUE);
@@ -4534,7 +4602,23 @@ w42_window_init (W42Window *self)
   gtk_paned_set_start_child (GTK_PANED (self->paned), scrolled);
   gtk_paned_set_resize_start_child (GTK_PANED (self->paned), TRUE);
   gtk_paned_set_shrink_start_child (GTK_PANED (self->paned), FALSE);
-  gtk_box_append (GTK_BOX (box), self->paned);
+  gtk_box_append (GTK_BOX (right), self->paned);
+
+  /* The Document Map at the left, with a bar to drag between it and the
+   * page; hidden, the paned is just the page. */
+  {
+    GtkWidget *hpaned = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
+
+    gtk_widget_set_vexpand (hpaned, TRUE);
+    gtk_paned_set_start_child (GTK_PANED (hpaned), self->doc_map);
+    gtk_paned_set_resize_start_child (GTK_PANED (hpaned), FALSE);
+    gtk_paned_set_shrink_start_child (GTK_PANED (hpaned), FALSE);
+    gtk_paned_set_end_child (GTK_PANED (hpaned), right);
+    gtk_paned_set_resize_end_child (GTK_PANED (hpaned), TRUE);
+    gtk_paned_set_shrink_end_child (GTK_PANED (hpaned), FALSE);
+    gtk_paned_set_position (GTK_PANED (hpaned), 200);
+    gtk_box_append (GTK_BOX (box), hpaned);
+  }
 
   {
     GtkEventController *keys = gtk_event_controller_key_new ();

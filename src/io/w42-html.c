@@ -232,6 +232,17 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
     g_string_append (css, "text-transform:uppercase;");
   if (ch->spacing)
     css_num (css, "letter-spacing", ch->spacing / 20.0, "pt");
+  /* Word 97's effects, as far as CSS can say them: a shadow is one, the
+   * relief is a white letter with a shadow to one side or the other,
+   * and an outline is a stroke round a letter with no fill. */
+  if (ch->emboss || ch->engrave)
+    g_string_append_printf (css, "color:#ffffff;text-shadow:%s #808080;",
+                            ch->emboss ? "1px 1px" : "-1px -1px");
+  else if (ch->shadow)
+    g_string_append (css, "text-shadow:1px 1px #808080;");
+  if (ch->outline)
+    g_string_append_printf (css, "-webkit-text-stroke:0.5px #%06x;-webkit-text-fill-color:transparent;",
+                            ch->color);
 
   if (ch->comment != NULL)
     {
@@ -291,7 +302,10 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
       else
         g_string_append (out, "<u>");
     }
-  if (ch->strikeout) g_string_append (out, "<s>");
+  if (ch->dstrike)
+    g_string_append (out, "<s style=\"text-decoration-style:double\">");
+  else if (ch->strikeout)
+    g_string_append (out, "<s>");
   if (ch->overline)  g_string_append (out, "<span style=\"text-decoration:overline\">");
   if (ch->revision == 1) g_string_append (out, "<ins>");
   if (ch->revision == 2) g_string_append (out, "<del>");
@@ -301,7 +315,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
   if (ch->revision == 2) g_string_append (out, "</del>");
   if (ch->revision == 1) g_string_append (out, "</ins>");
   if (ch->overline)  g_string_append (out, "</span>");
-  if (ch->strikeout) g_string_append (out, "</s>");
+  if (ch->strikeout || ch->dstrike) g_string_append (out, "</s>");
   if (ch->underline && ch->link == NULL) g_string_append (out, "</u>");
   if (ch->italic)    g_string_append (out, "</i>");
   if (ch->bold)      g_string_append (out, "</b>");
@@ -423,14 +437,30 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       g_ascii_formatd (n[1], sizeof n[1], "%.2f",
                        page != NULL ? (page->width - page->margin_left - page->margin_right) / 1440.0 : 6.5));
     if (page != NULL && page->width > 0 && page->height > 0)
-      g_string_append_printf (out,
-        "@page { size: %sin %sin; margin: %sin %sin %sin %sin; }\n",
-        g_ascii_formatd (n[2], sizeof n[2], "%.4f", page->width / 1440.0),
-        g_ascii_formatd (n[3], sizeof n[3], "%.4f", page->height / 1440.0),
-        g_ascii_formatd (n[4], sizeof n[4], "%.4f", page->margin_top / 1440.0),
-        g_ascii_formatd (n[5], sizeof n[5], "%.4f", page->margin_right / 1440.0),
-        g_ascii_formatd (n[6], sizeof n[6], "%.4f", page->margin_bottom / 1440.0),
-        g_ascii_formatd (n[7], sizeof n[7], "%.4f", page->margin_left / 1440.0));
+      {
+        g_string_append_printf (out,
+          "@page { size: %sin %sin; margin: %sin %sin %sin %sin;",
+          g_ascii_formatd (n[2], sizeof n[2], "%.4f", page->width / 1440.0),
+          g_ascii_formatd (n[3], sizeof n[3], "%.4f", page->height / 1440.0),
+          g_ascii_formatd (n[4], sizeof n[4], "%.4f", page->margin_top / 1440.0),
+          g_ascii_formatd (n[5], sizeof n[5], "%.4f", page->margin_right / 1440.0),
+          g_ascii_formatd (n[6], sizeof n[6], "%.4f", page->margin_bottom / 1440.0),
+          g_ascii_formatd (n[7], sizeof n[7], "%.4f", page->margin_left / 1440.0));
+        /* The page border, for a reader that prints pages; a browser
+         * ignores it, having no pages to draw it round. */
+        if (page->has_border)
+          {
+            char wb[G_ASCII_DTOSTR_BUF_SIZE], sb[G_ASCII_DTOSTR_BUF_SIZE];
+
+            g_string_append_printf (out, " border: %spt %s #%06x; border-spacing: %spt;",
+              g_ascii_formatd (wb, sizeof wb, "%.2f",
+                               (page->border_width > 0 ? page->border_width : W42_BORDER_HAIRLINE) / 20.0),
+              w42_border_style_css ((W42BorderStyle) page->border_style),
+              page->border_color & 0xFFFFFF,
+              g_ascii_formatd (sb, sizeof sb, "%.1f", page->border_space / 20.0));
+          }
+        g_string_append (out, " }\n");
+      }
   }
   g_string_append (out,
     "p { margin: 0; }\nh1, h2, h3, h4, h5, h6 { margin: 0.5em 0 0.25em; }\n"

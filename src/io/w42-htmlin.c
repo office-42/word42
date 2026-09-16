@@ -854,10 +854,19 @@ apply_style (Html *h, const char *style, gboolean para)
                       g_ascii_strcasecmp (value, "oblique") == 0);
       else if (g_ascii_strcasecmp (key, "text-decoration-style") == 0)
         {
-          /* The shape of the line, when the page says one. */
-          if (ch->underline == W42_UNDERLINE_NONE)
+          /* The shape of the line, when the page says one.  On a
+           * struck-through element the doubling is the strikethrough's,
+           * as Word42's own pages write it. */
+          if (ch->strikeout && g_ascii_strcasecmp (value, "double") == 0)
+            {
+              ch->dstrike = 1;
+              ch->strikeout = 0;
+            }
+          else if (ch->underline == W42_UNDERLINE_NONE && !ch->strikeout)
             ch->underline = W42_UNDERLINE_SINGLE;
-          if (g_ascii_strcasecmp (value, "double") == 0)
+          if (ch->dstrike)
+            ;
+          else if (g_ascii_strcasecmp (value, "double") == 0)
             ch->underline = W42_UNDERLINE_DOUBLE;
           else if (g_ascii_strcasecmp (value, "dotted") == 0)
             ch->underline = W42_UNDERLINE_DOTTED;
@@ -883,6 +892,29 @@ apply_style (Html *h, const char *style, gboolean para)
           if (strstr (value, "wavy"))   ch->underline = W42_UNDERLINE_WAVE;
           if (strstr (value, "line-through")) ch->strikeout = 1;
           if (strstr (value, "overline")) ch->overline = 1;
+        }
+      else if (g_ascii_strcasecmp (key, "text-shadow") == 0)
+        {
+          if (g_ascii_strcasecmp (value, "none") == 0)
+            ch->shadow = ch->emboss = ch->engrave = 0;
+          else if (ch->color == 0xffffff)
+            {
+              /* A white letter with a grey shadow is our own relief. */
+              if (*value == '-')
+                ch->engrave = 1;
+              else
+                ch->emboss = 1;
+              ch->color = 0;
+            }
+          else
+            ch->shadow = 1;
+        }
+      else if (g_ascii_strcasecmp (key, "-webkit-text-stroke") == 0)
+        ch->outline = g_ascii_strcasecmp (value, "none") != 0 && g_ascii_strtod (value, NULL) > 0.0;
+      else if (g_ascii_strcasecmp (key, "-webkit-text-fill-color") == 0)
+        {
+          /* Transparent fill is the other half of our outline; nothing
+           * to keep. */
         }
       else if (g_ascii_strcasecmp (key, "vertical-align") == 0)
         {
@@ -2946,6 +2978,8 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
               char *rule = g_strndup (brace + 1, close - brace - 1);
               const char *size = strstr (rule, "size:");
               const char *margin = strstr (rule, "margin:");
+              const char *border = strstr (rule, "border:");
+              const char *spacing = strstr (rule, "border-spacing:");
 
               if (size != NULL)
                 {
@@ -2988,6 +3022,28 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
                       page->margin_right = m[1];
                       page->margin_bottom = m[2];
                       page->margin_left = m[3];
+                    }
+                }
+              /* The page border Word42 writes: "0.75pt solid #000000",
+               * with its distance from the edge in border-spacing. */
+              if (border != NULL && !css_border_none (border + 7))
+                {
+                  const char *q = border + 7;
+                  const char *hash = strchr (q, '#');
+
+                  while (*q == ' ') q++;
+                  page->has_border = 1;
+                  page->border_width = (guint8) CLAMP (css_twips (q), 5, 120);
+                  page->border_style = (guint8) w42_border_style_from_css (q);
+                  page->border_color = (hash != NULL && strlen (hash) >= 7)
+                                         ? (guint32) strtoul (hash + 1, NULL, 16) & 0xFFFFFF : 0;
+                  page->border_space = 480;
+                  if (spacing != NULL)
+                    {
+                      const char *sq = spacing + 15;
+
+                      while (*sq == ' ') sq++;
+                      page->border_space = CLAMP (css_twips (sq), 0, 4000);
                     }
                 }
               g_free (rule);

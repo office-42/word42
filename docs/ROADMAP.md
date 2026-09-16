@@ -1,13 +1,22 @@
 # Roadmap
 
-What Word42 does today is in the README; how it measures against AbiWord
-and Word is in docs/PARITY.md.  This is what it does not do yet, in
-roughly the order the work makes sense.
+What Word42 does today is in the README; how it measures against Word 97
+and AbiWord is in docs/PARITY.md.  Word 97 is the target now -- Word42.md
+says why -- and the work is what Word 97 added over Word 6.  This is what
+it does not do yet, in roughly the order the work makes sense.
 
 The menus already name some of these and show them greyed out.  That is
 deliberate: the menu bar is the specification.
 
 ## Next
+
+**Word 97's additions**, in the order they close the most ground:
+positioned text boxes and editable drawing objects; Online Layout view;
+Tools > Track Changes > Compare Documents and revisions coloured by
+author; Outline view; Table of Figures; vertical text in cells; File >
+Versions.  Done in the twelfth round: the Document Map, the page border,
+the Font box's shadow, outline, emboss, engrave and double
+strikethrough, the thesaurus, and AutoComplete tips for AutoText.
 
 **Headers and footers edited in place**, with pictures and several
 paragraphs, different on the first page and on odd and even pages.

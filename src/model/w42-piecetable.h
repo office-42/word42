@@ -92,7 +92,12 @@ typedef enum {
   W42_CHAR_REVISION  = 1 << 15,
   W42_CHAR_OVERLINE  = 1 << 16,
   W42_CHAR_FIELD     = 1 << 17,
-  W42_CHAR_LANG      = 1 << 18
+  W42_CHAR_LANG      = 1 << 18,
+  W42_CHAR_DSTRIKE   = 1 << 19,
+  W42_CHAR_SHADOW    = 1 << 20,
+  W42_CHAR_OUTLINE   = 1 << 21,
+  W42_CHAR_EMBOSS    = 1 << 22,
+  W42_CHAR_ENGRAVE   = 1 << 23
 } W42CharMask;
 
 typedef enum {

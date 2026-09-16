@@ -40,6 +40,14 @@ typedef struct {
   guint       underline : 3;   /* W42Underline: 0 none, 1 single, ... */
   guint       strikeout : 1;
   guint       overline  : 1;   /* AbiWord has it; Word never did */
+  /* Word 97's Font box added these to Word 6's effects.  The shadow and
+   * the relief are drawn as offset copies of the glyphs; outline leaves
+   * them hollow; double strikethrough is two lines where one was. */
+  guint       dstrike   : 1;
+  guint       shadow    : 1;
+  guint       outline   : 1;
+  guint       emboss    : 1;   /* raised out of the page ... */
+  guint       engrave   : 1;   /* ... or pressed into it; never both */
   gint8       script;      /* -1 subscript, 0 normal, +1 superscript */
   guint8      smallcaps;
   guint8      allcaps;

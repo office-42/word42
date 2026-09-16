@@ -120,6 +120,12 @@ if hyphen_dep.found()
                         language: 'c')
 endif
 
+# The thesaurus reads MyThes files -- th_en_US_v2.dat and .idx, the ones
+# LibreOffice uses -- and needs no library; this is where an installed
+# copy is looked for, after the usual system folders.
+add_project_arguments('-DW42_THESAURUS_DIR="@0@"'.format(get_option('prefix') / get_option('datadir') / 'mythes'),
+                      language: 'c')
+
 core_deps = [glib_dep, gobject_dep, gio_dep, cairo_dep, pango_dep,
              pangocairo_dep, pixbuf_dep, lexbor_dep, m_dep]
 if hyphen_dep.found()

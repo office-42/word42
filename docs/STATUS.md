@@ -446,6 +446,20 @@ Early, but real. Word42 today is a working word processor:
   another. Each pane scrolls and keeps a caret of its own, and the
   toolbars, the ruler and the status bar follow the pane being edited;
   Split again is one pane again.
+- **Document Map** — View ▸ Document Map lists the headings in a pane
+  at the left, indented by level, the caret's heading selected; a click
+  goes to the heading, and the list follows the text as it changes.
+- **Word 97's font effects** — double strikethrough, shadow, outline,
+  emboss and engrave in Format ▸ Font Effects, drawn by every painter and
+  carried by RTF, Word and OpenDocument both ways.
+- **Page border** — Format ▸ Borders and Shading puts a line round every
+  page, in a style, width and colour, at a distance from the edge; RTF,
+  Word, OpenDocument and HTML carry it.
+- **Thesaurus** — Tools ▸ Language ▸ Thesaurus (Shift+F7) looks the word
+  at the caret up in a MyThes file, the ones LibreOffice uses: meanings,
+  synonyms, Replace, Look Up and Previous.
+- **AutoComplete** — the first four letters of an AutoText entry's name
+  bring up a tip with the entry over the caret, and Enter puts it in.
 - **Safety** — closing a modified document asks before discarding it.
 
 What it does not do yet is listed in [Word42.md](../Word42.md), with the

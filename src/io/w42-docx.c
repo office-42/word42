@@ -861,6 +861,8 @@ typedef struct {
   GHashTable *rels, *styles, *numbering, *footnotes, *endnotes, *comments;
   GHashTable *comment_start;      /* id -> gsize position */
   gboolean    in_pbdr;
+  gboolean    in_pgborders;   /* the section's page border */
+  gboolean    pgborders_from_text;
 
   GString    *text;
   gboolean    in_t;
@@ -1368,7 +1370,12 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (g_str_equal (tag, "i"))     ch->italic = toggle_on (an, av);
       else if (g_str_equal (tag, "u"))
         ch->underline = underline_from_val (attr (an, av, "val"));
-      else if (g_str_equal (tag, "strike") || g_str_equal (tag, "dstrike")) ch->strikeout = toggle_on (an, av);
+      else if (g_str_equal (tag, "strike")) ch->strikeout = toggle_on (an, av);
+      else if (g_str_equal (tag, "dstrike")) ch->dstrike = toggle_on (an, av);
+      else if (g_str_equal (tag, "shadow"))  ch->shadow = toggle_on (an, av);
+      else if (g_str_equal (tag, "outline")) ch->outline = toggle_on (an, av);
+      else if (g_str_equal (tag, "emboss"))  ch->emboss = toggle_on (an, av);
+      else if (g_str_equal (tag, "imprint")) ch->engrave = toggle_on (an, av);
       else if (g_str_equal (tag, "lang"))
         {
           const char *known = w42_lang_normalise (attr (an, av, "val"));
@@ -1920,6 +1927,31 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->page->margin_left = CLAMP (attr_int (an, av, "left", d->page->margin_left), 0, 31680);
           d->page->margin_right = CLAMP (attr_int (an, av, "right", d->page->margin_right), 0, 31680);
         }
+      else if (g_str_equal (tag, "pgBorders"))
+        {
+          d->in_pgborders = TRUE;
+          d->pgborders_from_text = g_strcmp0 (attr (an, av, "offsetFrom"), "page") != 0;
+        }
+      else if (d->in_pgborders && border_edge_index (tag) >= 0 && border_edge_index (tag) < 4)
+        {
+          /* One line serves the four sides in the model, so the last
+           * side with a line is the one kept; Word's space is in points,
+           * from the text unless the element says the page's edge. */
+          W42BorderEdge edge;
+
+          if (border_element (an, av, &edge))
+            {
+              int space = attr_int (an, av, "space", 24) * 20;
+
+              d->page->has_border = 1;
+              d->page->border_style = edge.style;
+              d->page->border_width = edge.width;
+              d->page->border_color = edge.color;
+              d->page->border_space = d->pgborders_from_text
+                                        ? MAX (d->page->margin_top - space - W42_EDGE_WIDTH (&edge), 0)
+                                        : space;
+            }
+        }
       else if (g_str_equal (tag, "cols"))
         docx_apply_section_columns (d, attr_int (an, av, "num", 1), attr_int (an, av, "space", 720));
       else if (g_str_equal (tag, "titlePg"))
@@ -2215,6 +2247,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
         }
       d->depth_tbl--;
     }
+  else if (g_str_equal (tag, "pgBorders"))
+    d->in_pgborders = FALSE;
   else if (g_str_equal (tag, "sectPr"))
     d->in_sectpr_body = FALSE;
 }
@@ -2551,6 +2585,11 @@ write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->allcaps)   g_string_append (rpr, "<w:caps/>");
   if (ch->smallcaps) g_string_append (rpr, "<w:smallCaps/>");
   if (ch->strikeout) g_string_append (rpr, "<w:strike/>");
+  if (ch->dstrike)   g_string_append (rpr, "<w:dstrike/>");
+  if (ch->outline)   g_string_append (rpr, "<w:outline/>");
+  if (ch->shadow)    g_string_append (rpr, "<w:shadow/>");
+  if (ch->emboss)    g_string_append (rpr, "<w:emboss/>");
+  if (ch->engrave)   g_string_append (rpr, "<w:imprint/>");
   if (ch->color != 0)
     g_string_append_printf (rpr, "<w:color w:val=\"%06X\"/>", ch->color);
   if (ch->spacing != 0)
@@ -2911,6 +2950,20 @@ write_sectpr (GString *out, const W42PageSetup *page, int cols, int gap,
   g_string_append_printf (out, "<w:pgSz w:w=\"%d\" w:h=\"%d\"/>", page->width, page->height);
   g_string_append_printf (out, "<w:pgMar w:top=\"%d\" w:right=\"%d\" w:bottom=\"%d\" w:left=\"%d\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>",
                           page->margin_top, page->margin_right, page->margin_bottom, page->margin_left);
+  if (page->has_border)
+    {
+      /* Word's order of the sides, measured from the edge of the paper. */
+      static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
+      W42BorderEdge edge;
+
+      edge.style = page->border_style;
+      edge.width = page->border_width;
+      edge.color = page->border_color;
+      g_string_append (out, "<w:pgBorders w:offsetFrom=\"page\">");
+      for (int i = 0; i < 4; i++)
+        write_border_element (out, order[i], &edge, TRUE, CLAMP (page->border_space / 20, 0, 31));
+      g_string_append (out, "</w:pgBorders>");
+    }
   if (cols > 1)
     g_string_append_printf (out, "<w:cols w:num=\"%d\" w:space=\"%d\"/>", cols, gap);
   if (parts != NULL && parts->title_page)

@@ -7,7 +7,7 @@ numbers were measured on this tree (version 1.0.1-dev, September 2026,
 a Linux build with every optional dependency) and say so; the other
 columns are the programs' public figures and typical experience, and
 are marked approximate where they are.  [PARITY.md](PARITY.md) has the
-feature-by-feature account against AbiWord and Word 6; this is the
+feature-by-feature account against Word 97 and AbiWord; this is the
 short table.
 
 ## Size and speed
@@ -63,7 +63,7 @@ short table.
 | Per-section page size and orientation | no | yes | yes | yes |
 | Find and replace | text, case, whole word | with formats and wildcards | with regular expressions | with regular expressions |
 | Spelling as you type | yes (Enchant) | yes | yes | yes |
-| Grammar, thesaurus | no, no | yes, yes | no, no | extension, yes |
+| Grammar, thesaurus | no, yes (MyThes) | yes, yes | no, no | extension, yes |
 | Hyphenation | yes | yes | stub | yes |
 | AutoCorrect, AutoFormat, AutoText | yes | yes | partial | yes |
 | Revision marks, comments | yes, one author | full | yes | full |
@@ -89,6 +89,5 @@ AbiWord lacks (an index, hyphenation, mail merge from CSV, envelopes,
 a split window, AutoFormat).  What it lacks against all three is the
 same short list: text boxes placed on the page, headers and footers
 richer than one line, per-section page orientation, nested tables,
-equations, grammar and a thesaurus, translations and a screen reader's
-view of the page.  [Word42.md](../Word42.md) is the order they will be
-taken in.
+equations, grammar, translations and a screen reader's view of the
+page.  [Word42.md](../Word42.md) is the order they will be taken in.

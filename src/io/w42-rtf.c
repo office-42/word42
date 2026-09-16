@@ -183,7 +183,12 @@ write_char_props (GString *out, const W42CharFmt *ch, RtfTables *tables)
     default:                   g_string_append (out, "\\ul");       break;
     }
   if (ch->strikeout) g_string_append (out, "\\strike");
+  if (ch->dstrike)   g_string_append (out, "\\striked1");
   if (ch->overline)  g_string_append (out, "\\ol");
+  if (ch->shadow)    g_string_append (out, "\\shad");
+  if (ch->outline)   g_string_append (out, "\\outl");
+  if (ch->emboss)    g_string_append (out, "\\embo");
+  if (ch->engrave)   g_string_append (out, "\\impr");
   if (ch->script > 0) g_string_append (out, "\\super");
   if (ch->script < 0) g_string_append (out, "\\sub");
   if (ch->smallcaps) g_string_append (out, "\\scaps");
@@ -549,6 +554,8 @@ w42_rtf_save (W42PieceTable      *pt,
   tables.fonts = g_ptr_array_new ();
   tables.colours = g_array_new (FALSE, FALSE, sizeof (guint32));
   collect_tables (pt, blocks, aps, &tables, styles);
+  if (page != NULL && page->has_border && page->border_color != 0)
+    table_intern_colour (&tables, page->border_color);
 
   out = g_string_new (NULL);
   g_string_append (out, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\n");
@@ -628,6 +635,26 @@ w42_rtf_save (W42PieceTable      *pt,
       "\\paperw%d\\paperh%d\\margl%d\\margr%d\\margt%d\\margb%d\n",
       page->width, page->height, page->margin_left, page->margin_right,
       page->margin_top, page->margin_bottom);
+  if (page != NULL && page->has_border)
+    {
+      /* Word 97's page border: a side word, then the line, for each of
+       * the four sides; \pgbrdropt32 says the distance is measured from
+       * the edge of the paper rather than from the text. */
+      static const char *const sides[4] = { "\\pgbrdrt", "\\pgbrdrl", "\\pgbrdrb", "\\pgbrdrr" };
+      W42BorderEdge edge;
+
+      edge.style = page->border_style;
+      edge.width = page->border_width;
+      edge.color = page->border_color;
+      g_string_append (out, "\\pgbrdropt32");
+      for (int i = 0; i < 4; i++)
+        {
+          g_string_append (out, sides[i]);
+          write_border_line (out, &tables, &edge);
+          g_string_append_printf (out, "\\brsp%d", page->border_space);
+        }
+      g_string_append_c (out, '\n');
+    }
   if (page != NULL && page->has_background)
     {
       /* The colour behind the page.  RTF says it with a shape that
@@ -1180,6 +1207,7 @@ struct _RtfReader {
   gboolean       have_pending;
   gboolean       sect_pending;  /* a \\sect was read; the next paragraph starts it */
   gboolean       cell_border;   /* inside a \\clbrdr: the next \\brdr word is its style */
+  gboolean       page_border;   /* after a \\pgbrdr side word: the line words are the page's */
   guint          info_depth;    /* the group depth of an \\info group */
   const char    *info_field;    /* the field being read there, or NULL */
   GString       *info_text;
@@ -1993,6 +2021,45 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       return;
     }
 
+  /* Word 97's page border: \pgbrdrt and its three siblings name a side
+   * of the page and the line words after each are its.  The model has
+   * one line for all four sides, as Word 97's box set them, so the last
+   * side read is the line kept. */
+  if (g_str_has_prefix (word, "pgbrdr"))
+    {
+      r->page_border = r->page != NULL &&
+                       (g_str_equal (word, "pgbrdrt") || g_str_equal (word, "pgbrdrl") ||
+                        g_str_equal (word, "pgbrdrb") || g_str_equal (word, "pgbrdrr"));
+      return;
+    }
+  if (r->page_border)
+    {
+      W42BorderEdge edge;
+
+      edge.style = r->page->border_style;
+      edge.width = r->page->border_width;
+      edge.color = r->page->border_color;
+      if (g_str_equal (word, "brsp") && has_param)
+        {
+          r->page->border_space = CLAMP (param, 0, 4000);
+          return;
+        }
+      if (g_str_equal (word, "brdrnone") || g_str_equal (word, "brdrnil"))
+        {
+          r->page_border = FALSE;
+          return;
+        }
+      if (rtf_border_line (word, param, has_param, r, &edge))
+        {
+          r->page->has_border = 1;
+          r->page->border_style = edge.style;
+          r->page->border_width = edge.width;
+          r->page->border_color = edge.color;
+          return;
+        }
+      r->page_border = FALSE;
+    }
+
   /* What the document says about itself. */
   if (g_str_equal (word, "info"))
     {
@@ -2594,6 +2661,16 @@ formatting:
     { flush_text (r); st->ch.overline = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "strike"))
     { flush_text (r); st->ch.strikeout = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "striked"))
+    { flush_text (r); st->ch.dstrike = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "shad"))
+    { flush_text (r); st->ch.shadow = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "outl"))
+    { flush_text (r); st->ch.outline = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "embo"))
+    { flush_text (r); st->ch.emboss = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "impr"))
+    { flush_text (r); st->ch.engrave = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "super"))
     { flush_text (r); st->ch.script = 1; }
   else if (g_str_equal (word, "sub"))

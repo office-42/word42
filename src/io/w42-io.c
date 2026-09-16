@@ -80,6 +80,10 @@ w42_page_setup_sanitize (W42PageSetup *page)
   page->margin_bottom = CLAMP (page->margin_bottom, 0, page->height / 2 - 720);
   page->columns    = CLAMP (page->columns, 0, 6);
   page->column_gap = CLAMP (page->column_gap, 0, page->width / 2);
+  /* The page border stays on the paper, short of the middle. */
+  page->border_space = CLAMP (page->border_space, 0, MIN (page->width, page->height) / 4);
+  if (page->border_style > 3)
+    page->border_style = 0;
 }
 
 gboolean
@@ -91,6 +95,20 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 
   g_return_val_if_fail (pt != NULL, FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  /* A file says what colour its page is and whether it has a border, or
+   * says nothing; either way the page it is read into does not keep the
+   * last document's, since a window's document is loaded into again. */
+  if (page != NULL)
+    {
+      page->has_background = 0;
+      page->background = 0;
+      page->has_border = 0;
+      page->border_style = 0;
+      page->border_width = 0;
+      page->border_space = 0;
+      page->border_color = 0;
+    }
 
   {
     gboolean ok = FALSE, handled = TRUE;

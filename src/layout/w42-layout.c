@@ -26,6 +26,11 @@ struct _W42Layout {
   gboolean      galley;
   gboolean      show_marks;
 
+  /* Format > Borders and Shading > Page Border, in layout px. */
+  gboolean      page_border;
+  W42BorderEdge page_edge;
+  double        page_border_space;
+
   W42ObjectTable *objects;   /* the document's pictures; not owned */
   GArray         *floats;    /* W42FloatBox: the wrapped pictures placed */
   GArray         *caps;      /* CapBox: dropped letters placed */
@@ -811,8 +816,23 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
                 start, end);
       add_attr (list, pango_attr_underline_new (pango_underline_for (ch->underline)),
                 start, end);
-      add_attr (list, pango_attr_strikethrough_new (ch->strikeout != 0),
+      /* A double strikethrough is drawn by hand, in draw_effects(); Pango
+       * knows one line only. */
+      add_attr (list, pango_attr_strikethrough_new (ch->strikeout != 0 && !ch->dstrike),
                 start, end);
+      /* Outlined, embossed and engraved glyphs are drawn from their paths
+       * in draw_effects(); Pango's own ink for them is made all but
+       * transparent (nought means "unset" to Pango) so it does not show
+       * through.  The underline keeps the text's colour. */
+      if (ch->outline || ch->emboss || ch->engrave)
+        {
+          add_attr (list, pango_attr_foreground_alpha_new (1), start, end);
+          add_attr (list,
+                    pango_attr_underline_color_new ((guint16) (((ch->color >> 16) & 0xff) * 257),
+                                                    (guint16) (((ch->color >> 8) & 0xff) * 257),
+                                                    (guint16) ((ch->color & 0xff) * 257)),
+                    start, end);
+        }
       if (ch->overline)
         add_attr (list, pango_attr_overline_new (PANGO_OVERLINE_SINGLE), start, end);
       if (ch->smallcaps)
@@ -2057,6 +2077,11 @@ w42_layout_build_pt (W42Layout          *self,
   self->mar_r  = w42_twips_to_px (page->margin_right);
   self->mar_t  = w42_twips_to_px (page->margin_top);
   self->mar_b  = w42_twips_to_px (page->margin_bottom);
+  self->page_border = page->has_border != 0;
+  self->page_edge.style = page->border_style;
+  self->page_edge.width = page->border_width;
+  self->page_edge.color = page->border_color;
+  self->page_border_space = w42_twips_to_px (page->border_space);
 
   text_w = self->page_w - self->mar_l - self->mar_r;
   text_h = self->page_h - self->mar_t - self->mar_b;
@@ -3283,6 +3308,25 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
   if (self->blocks == NULL)
     return;
 
+  /* The page border, under everything else on the page.  Normal view has
+   * no pages, so it has no page border either, as Word's had none. */
+  if (self->page_border && !self->galley && self->page_edge.style != W42_BORDER_NONE)
+    {
+      double inset = self->page_border_space + w42_twips_to_px (W42_EDGE_WIDTH (&self->page_edge)) / 2.0;
+      double x0 = inset, y0 = inset;
+      double x1 = self->page_w - inset, y1 = self->page_h - inset;
+
+      if (x1 > x0 && y1 > y0)
+        {
+          cairo_save (cr);
+          draw_edge (cr, &self->page_edge, x0, y0, x1, y0, FALSE);
+          draw_edge (cr, &self->page_edge, x0, y1, x1, y1, FALSE);
+          draw_edge (cr, &self->page_edge, x0, y0, x0, y1, FALSE);
+          draw_edge (cr, &self->page_edge, x1, y0, x1, y1, FALSE);
+          cairo_restore (cr);
+        }
+    }
+
   /* Pictures and shapes set behind the text. */
   for (guint i = 0; self->objects != NULL && i < self->floats->len; i++)
     {
@@ -3698,9 +3742,139 @@ draw_leaders (W42Layout *self, cairo_t *cr, const W42LineBox *box)
     }
 }
 
+/* Word 97's effects that Pango has no attribute for: a shadow, a hollow
+ * outline, text raised out of the page or pressed into it, and a double
+ * strikethrough.  Each run that wants one has its glyph outlines taken
+ * from the line again, clipped to the run's own width, and filled or
+ * stroked as the effect asks -- the copies that go under the text before
+ * Pango draws the line, and the strokes over it after. */
+static void
+draw_effects (W42Layout *self, cairo_t *cr, const W42LineBox *box, gboolean under)
+{
+  const W42Block *block = g_ptr_array_index (self->blocks, box->block);
+  const char *text = block->text->str;
+  gsize line_end = box->start_index + box->length;
+
+  for (guint r = 0; r < block->runs->len; r++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, r);
+      const W42CharFmt *ch = &w42_ap_table_get (self->aps, run->ap)->ch;
+      gsize rs = run->byte_offset, re = run->byte_offset + run->n_bytes;
+      gsize last;
+      int x0 = 0, x1 = 0;
+      double from, to, d, size_px, t;
+      double cr_ = ((ch->color >> 16) & 0xff) / 255.0;
+      double cg_ = ((ch->color >> 8) & 0xff) / 255.0;
+      double cb_ = (ch->color & 0xff) / 255.0;
+      gboolean relief = ch->emboss || ch->engrave;
+
+      if (!(ch->dstrike || ch->shadow || ch->outline || relief))
+        continue;
+      if (run->n_bytes == 0 || re <= box->start_index || rs >= line_end)
+        continue;
+      rs = MAX (rs, box->start_index);
+      re = MIN (re, line_end);
+      if (re <= rs)
+        continue;
+
+      last = g_utf8_prev_char (text + re) - text;
+      pango_layout_line_index_to_x (box->line, (int) rs, FALSE, &x0);
+      pango_layout_line_index_to_x (box->line, (int) last, TRUE, &x1);
+      from = box->x + MIN (x0, x1) / (double) PANGO_SCALE;
+      to   = box->x + MAX (x0, x1) / (double) PANGO_SCALE;
+      if (to - from < 0.5)
+        continue;
+
+      size_px = w42_twips_to_px (ch->size > 0 ? ch->size * 10 : 200);
+      d = MAX (1.0, size_px / 24.0);
+      t = MAX (0.8, size_px / 22.0);
+
+      cairo_save (cr);
+      cairo_rectangle (cr, from - 2.0 * d, box->y - 2.0 * d,
+                       to - from + 4.0 * d, box->height + 4.0 * d);
+      cairo_clip (cr);
+      cairo_new_path (cr);
+
+      if (under)
+        {
+          /* The shadow falls down and to the right, as Word's did. */
+          if (ch->shadow)
+            {
+              cairo_save (cr);
+              cairo_translate (cr, d, d);
+              cairo_move_to (cr, box->x, box->y + box->baseline);
+              pango_cairo_layout_line_path (cr, box->line);
+              cairo_set_source_rgb (cr, 0.55, 0.55, 0.55);
+              cairo_fill (cr);
+              cairo_restore (cr);
+            }
+          if (relief)
+            {
+              /* Light from the top left: a raised letter is dark below
+               * and to the right, a pressed one dark above and to the
+               * left, and the letter itself is the paper's white. */
+              double dark_x = ch->emboss ? d : -d;
+
+              cairo_save (cr);
+              cairo_translate (cr, dark_x, dark_x);
+              cairo_move_to (cr, box->x, box->y + box->baseline);
+              pango_cairo_layout_line_path (cr, box->line);
+              cairo_set_source_rgb (cr, 0.5, 0.5, 0.5);
+              cairo_fill (cr);
+              cairo_restore (cr);
+
+              cairo_save (cr);
+              cairo_translate (cr, -dark_x, -dark_x);
+              cairo_move_to (cr, box->x, box->y + box->baseline);
+              pango_cairo_layout_line_path (cr, box->line);
+              cairo_set_source_rgb (cr, 0.85, 0.85, 0.85);
+              cairo_fill (cr);
+              cairo_restore (cr);
+
+              cairo_move_to (cr, box->x, box->y + box->baseline);
+              pango_cairo_layout_line_path (cr, box->line);
+              cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+              cairo_fill (cr);
+            }
+        }
+      else
+        {
+          if (ch->outline)
+            {
+              cairo_move_to (cr, box->x, box->y + box->baseline);
+              pango_cairo_layout_line_path (cr, box->line);
+              cairo_set_source_rgb (cr, cr_, cg_, cb_);
+              cairo_set_line_width (cr, MAX (0.7, size_px / 30.0));
+              cairo_stroke (cr);
+            }
+          if (ch->dstrike)
+            {
+              /* Two lines either side of where the single one goes,
+               * a third of the way up the em. */
+              double y = box->y + box->baseline - size_px * 0.3;
+
+              cairo_set_source_rgb (cr, cr_, cg_, cb_);
+              cairo_set_line_width (cr, t);
+              cairo_move_to (cr, from, y - t * 1.2);
+              cairo_line_to (cr, to, y - t * 1.2);
+              cairo_move_to (cr, from, y + t * 1.2);
+              cairo_line_to (cr, to, y + t * 1.2);
+              cairo_stroke (cr);
+            }
+        }
+      cairo_restore (cr);
+    }
+}
+
 void
 w42_layout_draw_line (W42Layout *self, cairo_t *cr, const W42LineBox *box)
 {
+  gboolean have_block = self->blocks != NULL && box->block >= 0 &&
+                        (guint) box->block < self->blocks->len;
+
+  if (have_block)
+    draw_effects (self, cr, box, TRUE);
+
   if (box->prefix != NULL)
     {
       double baseline = pango_layout_get_baseline (box->prefix) /
@@ -3713,9 +3887,11 @@ w42_layout_draw_line (W42Layout *self, cairo_t *cr, const W42LineBox *box)
   cairo_move_to (cr, box->x, box->y + box->baseline);
   pango_cairo_show_layout_line (cr, box->line);
 
-  if (self->blocks != NULL && box->block >= 0 &&
-      (guint) box->block < self->blocks->len)
-    draw_leaders (self, cr, box);
+  if (have_block)
+    {
+      draw_effects (self, cr, box, FALSE);
+      draw_leaders (self, cr, box);
+    }
 
   if (self->show_marks && self->blocks != NULL && box->block >= 0 &&
       (guint) box->block < self->blocks->len)

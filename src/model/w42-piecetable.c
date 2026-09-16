@@ -2097,6 +2097,11 @@ char_fmt_apply_mask (W42CharFmt *fmt, W42CharMask mask, const W42CharFmt *value)
   if (mask & W42_CHAR_FIELD)     fmt->field     = value->field;
   if (mask & W42_CHAR_LANG)      fmt->lang      = value->lang;
   if (mask & W42_CHAR_BOOKMARK)  fmt->bookmark  = value->bookmark;
+  if (mask & W42_CHAR_DSTRIKE)   fmt->dstrike   = value->dstrike;
+  if (mask & W42_CHAR_SHADOW)    fmt->shadow    = value->shadow;
+  if (mask & W42_CHAR_OUTLINE)   fmt->outline   = value->outline;
+  if (mask & W42_CHAR_EMBOSS)    fmt->emboss    = value->emboss;
+  if (mask & W42_CHAR_ENGRAVE)   fmt->engrave   = value->engrave;
 }
 
 static void

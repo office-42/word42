@@ -64,6 +64,7 @@ static const struct {
   { "win.font-grow",       { "<Control>bracketright", NULL } },
   { "win.font-shrink",     { "<Control>bracketleft", NULL } },
   { "win.spelling",        { "F7", NULL } },
+  { "win.thesaurus",       { "<Shift>F7", NULL } },
   { "win.print-preview",   { "<Control>F2", NULL } },
   { "win.update-fields",   { "F9", NULL } },
   { "win.hyperlink",  { "<Control>k", NULL } },
