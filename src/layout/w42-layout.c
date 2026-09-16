@@ -24,6 +24,7 @@ struct _W42Layout {
   double        mar_r;
   double        mar_b;
   gboolean      galley;
+  double        galley_width;   /* Online Layout: the window's, in px; 0 for the page's */
   gboolean      show_marks;
 
   /* Format > Borders and Shading > Page Border, in layout px. */
@@ -612,6 +613,20 @@ w42_layout_set_galley (W42Layout *self, gboolean galley)
 {
   g_return_if_fail (self != NULL);
   self->galley = galley;
+}
+
+void
+w42_layout_set_galley_width (W42Layout *self, double px)
+{
+  g_return_if_fail (self != NULL);
+  self->galley_width = MAX (px, 0.0);
+}
+
+double
+w42_layout_get_galley_width (W42Layout *self)
+{
+  g_return_val_if_fail (self != NULL, 0.0);
+  return self->galley_width;
 }
 
 void
@@ -2085,6 +2100,12 @@ w42_layout_build_pt (W42Layout          *self,
 
   text_w = self->page_w - self->mar_l - self->mar_r;
   text_h = self->page_h - self->mar_t - self->mar_b;
+
+  /* Online Layout: the text wraps to the window, not to the page, as
+   * Word 97's did; the galley's narrow inset is all that is kept of the
+   * margins, and a window too narrow for a word still gets a column. */
+  if (self->galley && self->galley_width > 0.0)
+    text_w = MAX (self->galley_width - 2.0 * w42_twips_to_px (360), 120.0);
 
   /* Newspaper columns: the text flows down one column and on to the next,
    * so the flow below is laid out into columns as if each were a page, and

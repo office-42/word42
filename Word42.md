@@ -20,19 +20,16 @@ See docs/PARITY.md for the full comparison with Word 97 and AbiWord.
 - Text boxes placed freely on the page, and the Drawing toolbar's
   AutoShapes, WordArt and editable shapes (drawings are pictures with a
   box of their own today).
-- Tools > Track Changes > Compare Documents, and revisions coloured by
-  author (one author today).
-- Online Layout view (text wrapped to the window, no pages) and Outline
-  view; Master Document.
+- Revisions coloured by author (one author today).
+- Outline view; Master Document.
 - Grammar checking; the Office Assistant is not planned.
-- Insert > Index and Tables: Table of Figures and Table of Authorities.
+- Insert > Index and Tables: Table of Authorities.
 - File > Versions (several versions kept inside one document).
 - Format > Text Direction (vertical text in table cells); Table > Draw
   Table with the pencil and eraser.
 - Format > Font: the Animation tab (blinking backgrounds and marching
   ants are not planned) and Character Spacing's kerning and scale.
-- AutoCorrect exceptions; AutoComplete for dates and days as well as
-  AutoText (AutoText tips are done).
+- AutoCorrect exceptions.
 
 ## To do — editing and layout
 

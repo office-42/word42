@@ -50,7 +50,7 @@ Early, but real. Word42 today is a working word processor:
   yields its text and paragraphs. Saving goes to RTF or .docx, which Word opens.
   Lists are read from the list tables, so numbered lists come in
   numbered and bulleted ones bulleted.
-- **Table of Contents** — Insert ▸ Table of Contents puts one paragraph per
+- **Table of Contents** — Insert ▸ Index and Tables ▸ Table of Contents puts one paragraph per
   heading at the caret, indented by level, with the page number at a right
   tab stop at the margin — plain paragraphs, as the classic field result was,
   to edit or delete freely.
@@ -82,8 +82,8 @@ Early, but real. Word42 today is a working word processor:
 - **AutoFormat** — Format ▸ AutoFormat the Whole Document turns typed
   text into a formatted document: headings, lists, printer's quotes, and
   runs of empty paragraphs tidied, all in one undo step.
-- **Index** — Insert ▸ Index ▸ Mark Entry marks words for the index,
-  under themselves or under a term of your own; Build the Index gathers
+- **Index** — Insert ▸ Index and Tables ▸ Mark Index Entry marks words for
+  the index, under themselves or under a term of your own; Index gathers
   them alphabetically with the pages they are on. The marks go through
   RTF, Word and OpenDocument.
 - **Templates** — File ▸ New from Template starts from a Letter, Memo,
@@ -181,7 +181,7 @@ Early, but real. Word42 today is a working word processor:
 - **Change Case** — Format ▸ Change Case: Sentence case, lowercase,
   UPPERCASE, Title Case, tOGGLE cASE (Shift+F3), each character keeping
   its own formatting.
-- **Revision marks** — Tools ▸ Revisions ▸ Mark Revisions While Editing
+- **Track changes** — Tools ▸ Track Changes ▸ Highlight Changes
   (Ctrl+Shift+E): from then on typed text is underlined in red and
   deleted text is struck through in red rather than removed. Accept All
   keeps the insertions and drops the deletions; Reject All does the
@@ -193,8 +193,8 @@ Early, but real. Word42 today is a working word processor:
   each on its own page, and opens it in a new window.
 - **Captions** — Insert ▸ Caption starts a "Figure N:" paragraph in the
   Caption style, N counting on from the captions already there.
-- **Annotations** — Insert ▸ Annotation (Ctrl+Alt+A), the classic comments:
-  an annotation on the selected text, shown as a pale wash, listed in a
+- **Comments** — Insert ▸ Comment (Ctrl+Alt+A), Word 97's name for the
+  annotations: a note on the selected text, shown as a pale wash, listed in a
   modeless box that selects each one on a click and deletes them; through
   RTF as Word's `\atrfstart`/`\annotation` groups, and as tooltips in the
   web page export.
@@ -459,7 +459,19 @@ Early, but real. Word42 today is a working word processor:
   at the caret up in a MyThes file, the ones LibreOffice uses: meanings,
   synonyms, Replace, Look Up and Previous.
 - **AutoComplete** — the first four letters of an AutoText entry's name
-  bring up a tip with the entry over the caret, and Enter puts it in.
+  bring up a tip with the entry over the caret, and Enter puts it in;
+  months, days of the week and today's date are offered the same way.
+- **Online Layout** — View ▸ Online Layout is the galley as wide as the
+  window, wrapping again as the window is resized, as Word 97 read on a
+  screen.
+- **Compare Documents** — Tools ▸ Track Changes ▸ Compare Documents
+  marks how the open document differs from an earlier version of it, as
+  changes: paragraphs matched first, then words; one undo step.
+- **Table of Figures** — Insert ▸ Index and Tables ▸ Table of Figures
+  lists the captions with their pages, and replaces itself when asked
+  again.
+- **Web Page Preview** — File ▸ Web Page Preview opens the document as a
+  web page in the browser.
 - **Safety** — closing a modified document asks before discarding it.
 
 What it does not do yet is listed in [Word42.md](../Word42.md), with the

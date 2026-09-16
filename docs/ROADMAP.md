@@ -11,12 +11,13 @@ deliberate: the menu bar is the specification.
 ## Next
 
 **Word 97's additions**, in the order they close the most ground:
-positioned text boxes and editable drawing objects; Online Layout view;
-Tools > Track Changes > Compare Documents and revisions coloured by
-author; Outline view; Table of Figures; vertical text in cells; File >
-Versions.  Done in the twelfth round: the Document Map, the page border,
-the Font box's shadow, outline, emboss, engrave and double
-strikethrough, the thesaurus, and AutoComplete tips for AutoText.
+positioned text boxes and editable drawing objects; revisions coloured
+by author; Outline view; vertical text in cells; File > Versions.  Done
+in the twelfth round: the Document Map, the page border, the Font box's
+shadow, outline, emboss, engrave and double strikethrough, the
+thesaurus, and AutoComplete tips for AutoText; in the thirteenth:
+Online Layout view, Compare Documents, the Table of Figures, Web Page
+Preview, AutoComplete for dates, and Word 97's own menu names.
 
 **Headers and footers edited in place**, with pictures and several
 paragraphs, different on the first page and on odd and even pages.

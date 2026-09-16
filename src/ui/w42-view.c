@@ -9,6 +9,7 @@
 #include "w42-autocorrect.h"
 #include "w42-autotext.h"
 #include "w42-index.h"
+#include "w42-compare.h"
 #include "w42-autoformat.h"
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
@@ -25,6 +26,7 @@
 struct _W42View {
   GtkWidget      parent_instance;
   GtkWidget *context_menu;   /* the right-click menu, a popover */
+  guint      online_relayout_id;   /* Online Layout re-wrapping to a new width */
   GtkWidget *tip;            /* the AutoComplete tip, a popover */
   GtkWidget *tip_label;
   char      *tip_text;       /* the AutoText entry the tip offers */
@@ -259,9 +261,10 @@ view_page_origin_x (W42View *self)
   double page_w = w42_layout_page_width (self->layout) * self->zoom;
   double width  = gtk_widget_get_width (GTK_WIDGET (self));
 
-  /* Normal view has no sheet to centre: the text starts at the left, as it
-   * did in Word 97, and the window is simply a window on to the galley. */
-  if (self->mode == W42_VIEW_NORMAL)
+  /* Normal and Online Layout have no sheet to centre: the text starts at
+   * the left, as it did in Word 97, and the window is simply a window on
+   * to the galley. */
+  if (self->mode != W42_VIEW_PAGE_LAYOUT)
     return 0.0;
 
   if (width > page_w + 2 * PAGE_GAP)
@@ -275,7 +278,7 @@ view_page_origin_y (W42View *self, int page)
 {
   double page_h = w42_layout_page_height (self->layout) * self->zoom;
 
-  if (self->mode == W42_VIEW_NORMAL)
+  if (self->mode != W42_VIEW_PAGE_LAYOUT)
     return 0.0;
 
   return PAGE_GAP + page * (page_h + PAGE_GAP);
@@ -802,6 +805,71 @@ w42_view_insert_index (W42View *self)
       view_edited (self);
     }
   return made;
+}
+
+/* Insert > Index and Tables > Table of Figures: the captions, in order,
+ * with their pages; one already there is replaced where it stands. */
+int
+w42_view_insert_table_of_figures (W42View *self)
+{
+  W42PieceTable *pt;
+  gsize at, start, end, after = 0;
+  int made;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 0);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return 0;
+
+  w42_pt_begin_group (pt);
+  if (w42_pt_find_bookmark (pt, W42_FIGURES_BOOKMARK, &start, &end))
+    {
+      w42_pt_delete (pt, start, end - start);
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, start);
+      view_relayout (self);
+    }
+  else
+    {
+      view_delete_selection (self);
+    }
+
+  at = w42_pt_paragraph_start (pt, self->caret) + 1;
+  made = w42_figures_build (pt, self->layout, w42_document_page_setup (self->doc),
+                            at, &after);
+  w42_pt_end_group (pt);
+
+  if (made > 0)
+    {
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, after);
+      view_edited (self);
+    }
+  return made;
+}
+
+/* Tools > Track Changes > Compare Documents: the differences from
+ * `original` marked as changes, as one undo step. */
+int
+w42_view_compare_with (W42View *self, W42PieceTable *original)
+{
+  W42PieceTable *pt;
+  int n;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 0);
+  g_return_val_if_fail (original != NULL, 0);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return 0;
+
+  n = w42_pt_compare (pt, original);
+  if (n > 0)
+    {
+      self->caret = w42_pt_clamp_pos (pt, self->caret);
+      self->anchor = self->caret;
+      view_edited (self);
+    }
+  return n;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -4002,6 +4070,43 @@ view_hide_tip (W42View *self)
   self->tip_back = 0;
 }
 
+/* Word 97 offered the months and the days of the week from their first
+ * four letters, and today's date from the first letters of this month:
+ * "Sept" and Enter gave "September 16, 2026" in September. */
+static char *
+date_complete (const char *word)
+{
+  static const char *const NAMES[] = {
+    "January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December",
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+  };
+  char *want;
+  char *found = NULL;
+
+  if (g_utf8_strlen (word, -1) < 4)
+    return NULL;
+  want = g_utf8_casefold (word, -1);
+  for (guint i = 0; i < G_N_ELEMENTS (NAMES) && found == NULL; i++)
+    {
+      char *have = g_utf8_casefold (NAMES[i], -1);
+
+      if (g_str_has_prefix (have, want) && strlen (have) > strlen (want))
+        {
+          GDateTime *now = g_date_time_new_now_local ();
+
+          if (i < 12 && (int) i + 1 == g_date_time_get_month (now))
+            found = g_date_time_format (now, "%B %-d, %Y");
+          else
+            found = g_strdup (NAMES[i]);
+          g_date_time_unref (now);
+        }
+      g_free (have);
+    }
+  g_free (want);
+  return found;
+}
+
 static void
 view_offer_tip (W42View *self)
 {
@@ -4023,6 +4128,8 @@ view_offer_tip (W42View *self)
     word = g_utf8_prev_char (word);
   if (*word != '\0')
     entry = w42_autotext_complete (word, &name);
+  if (entry == NULL && *word != '\0')
+    entry = date_complete (word);
   if (entry == NULL)
     {
       g_free (before);
@@ -5379,13 +5486,51 @@ w42_view_measure (GtkWidget      *widget,
       double page_h = w42_layout_page_height (self->layout) * self->zoom;
       int n = w42_layout_n_pages (self->layout);
 
-      size = (self->mode == W42_VIEW_NORMAL)
+      size = (self->mode != W42_VIEW_PAGE_LAYOUT)
                ? page_h
                : PAGE_GAP + n * (page_h + PAGE_GAP);
     }
 
   *minimum = *natural = (int) ceil (size);
+  /* Online Layout asks for no width of its own: it takes the window's
+   * and wraps to it, so the minimum must let the window be narrow. */
+  if (orientation == GTK_ORIENTATION_HORIZONTAL && self->mode == W42_VIEW_ONLINE)
+    *minimum = 120;
   *minimum_baseline = *natural_baseline = -1;
+}
+
+/* Online Layout: the width the window gives the view is the width the
+ * text wraps to.  The re-wrap waits for an idle moment rather than
+ * happening inside the allocation, which is not a place to ask for
+ * another. */
+static gboolean
+view_online_relayout (gpointer data)
+{
+  W42View *self = data;
+  double width = gtk_widget_get_width (GTK_WIDGET (self)) / self->zoom;
+
+  self->online_relayout_id = 0;
+  if (self->mode != W42_VIEW_ONLINE || width <= 0.0)
+    return G_SOURCE_REMOVE;
+  if (fabs (w42_layout_get_galley_width (self->layout) - width) < 0.5)
+    return G_SOURCE_REMOVE;
+
+  w42_layout_set_galley_width (self->layout, width);
+  view_relayout (self);
+  view_state_changed (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+w42_view_size_allocate (GtkWidget *widget, int width, int height, int baseline)
+{
+  W42View *self = W42_VIEW (widget);
+
+  GTK_WIDGET_CLASS (w42_view_parent_class)->size_allocate (widget, width, height, baseline);
+
+  if (self->mode == W42_VIEW_ONLINE && self->online_relayout_id == 0 &&
+      fabs (w42_layout_get_galley_width (self->layout) - width / self->zoom) >= 0.5)
+    self->online_relayout_id = g_idle_add (view_online_relayout, self);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -5449,6 +5594,11 @@ w42_view_dispose (GObject *object)
 
   g_clear_pointer (&self->context_menu, gtk_widget_unparent);
   g_clear_pointer (&self->tip, gtk_widget_unparent);
+  if (self->online_relayout_id != 0)
+    {
+      g_source_remove (self->online_relayout_id);
+      self->online_relayout_id = 0;
+    }
   g_clear_pointer (&self->tip_text, g_free);
 
   if (self->blink_id != 0)
@@ -5486,6 +5636,7 @@ w42_view_class_init (W42ViewClass *klass)
 
   widget_class->snapshot = w42_view_snapshot;
   widget_class->measure  = w42_view_measure;
+  widget_class->size_allocate = w42_view_size_allocate;
 
   gtk_widget_class_set_css_name (widget_class, "w42view");
 
@@ -5677,9 +5828,9 @@ w42_view_get_text_column (W42View *self,
   ox = view_page_origin_x (self);
   pw = w42_layout_page_width (self->layout) * zoom;
 
-  /* Normal view drops the page margins for a narrow inset, so the numbers
-   * come from the layout rather than from the page setup. */
-  if (self->mode == W42_VIEW_NORMAL)
+  /* Normal and Online Layout drop the page margins for a narrow inset, so
+   * the numbers come from the layout rather than from the page setup. */
+  if (self->mode != W42_VIEW_PAGE_LAYOUT)
     {
       margin_l = w42_twips_to_px (360) * zoom;
       margin_r = margin_l;
@@ -5718,7 +5869,11 @@ w42_view_set_mode (W42View *self, W42ViewMode mode)
     return;
 
   self->mode = mode;
-  w42_layout_set_galley (self->layout, mode == W42_VIEW_NORMAL);
+  w42_layout_set_galley (self->layout, mode != W42_VIEW_PAGE_LAYOUT);
+  w42_layout_set_galley_width (self->layout,
+                               mode == W42_VIEW_ONLINE
+                                 ? gtk_widget_get_width (GTK_WIDGET (self)) / self->zoom
+                                 : 0.0);
 
   view_relayout (self);
   view_scroll_to_caret (self);
@@ -5738,6 +5893,14 @@ w42_view_set_zoom (W42View *self, double zoom)
   g_return_if_fail (W42_IS_VIEW (self));
 
   self->zoom = CLAMP (zoom, 0.25, 5.0);
+  /* Online Layout wraps to the window: a larger zoom is fewer words to
+   * a line, not a wider galley. */
+  if (self->mode == W42_VIEW_ONLINE)
+    {
+      w42_layout_set_galley_width (self->layout,
+                                   gtk_widget_get_width (GTK_WIDGET (self)) / self->zoom);
+      view_relayout (self);
+    }
   gtk_widget_queue_resize (GTK_WIDGET (self));
   gtk_widget_queue_draw (GTK_WIDGET (self));
   view_state_changed (self);

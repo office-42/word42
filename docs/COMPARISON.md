@@ -3,7 +3,7 @@
 The yardsticks Word42 measures itself against, on the figures that
 decide whether a word processor is worth installing: how big it is, how
 fast it is, what it reads and writes, and what it can do.  Word42's
-numbers were measured on this tree (version 1.0.1-dev, September 2026,
+numbers were measured on this tree (version 1.0.1, September 2026,
 a Linux build with every optional dependency) and say so; the other
 columns are the programs' public figures and typical experience, and
 are marked approximate where they are.  [PARITY.md](PARITY.md) has the

@@ -53,6 +53,10 @@ void       w42_layout_free (W42Layout *self);
  * keeps its width, but nothing is broken into pages.  Page Layout view is
  * the same engine with the breaks left in. */
 void       w42_layout_set_galley (W42Layout *self, gboolean galley);
+/* Online Layout view: the galley is as wide as the window rather than as
+ * the page, and the text wraps to it.  0 means the page's width. */
+void       w42_layout_set_galley_width (W42Layout *self, double px);
+double     w42_layout_get_galley_width (W42Layout *self);
 /* View > Show Formatting Marks: spaces, tabs, line and paragraph ends
  * are painted in blue over the text. */
 void       w42_layout_set_show_marks (W42Layout *self, gboolean show);

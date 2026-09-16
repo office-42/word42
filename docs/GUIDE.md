@@ -187,7 +187,10 @@ are typed, a small tip appears over the caret with the entry's first
 line and "(Press ENTER to Insert)", as Word 97's did. Enter puts the
 whole entry in, in place of the letters typed; Escape, or going on
 typing, takes the tip away and nothing else happens. The entry and the
-letters it replaces are one undo step.
+letters it replaces are one undo step. The months and the days of the
+week are offered the same way from their first four letters, and the
+first letters of the current month offer today's date — "Sept" in
+September offers "September 16, 2026".
 
 ### Find and Replace
 
@@ -584,11 +587,14 @@ the bookmarked text itself.
 
 ### Table of contents
 
-**Insert ▸ Table of Contents** puts one paragraph per heading at the caret,
+Word 97 kept the tables a document builds from itself under one
+submenu, **Insert ▸ Index and Tables**, and so does Word42.
+
+**Insert ▸ Index and Tables ▸ Table of Contents** puts one paragraph per heading at the caret,
 indented by level, with dots running out to the page number at a right tab
 stop at the margin.
-It is ordinary text, to edit or delete freely. **Insert ▸ Update Table of
-Contents** rebuilds it in place from the headings and page numbers as they
+It is ordinary text, to edit or delete freely. **Insert ▸ Index and
+Tables ▸ Update Table of Contents** rebuilds it in place from the headings and page numbers as they
 now are.
 
 ### Index
@@ -596,12 +602,13 @@ now are.
 An index is made the way a book's is: mark the words as you write, then
 gather them.
 
-Select a word or a phrase and **Insert ▸ Index ▸ Mark Entry** marks it.
+Select a word or a phrase and **Insert ▸ Index and Tables ▸ Mark Index
+Entry** marks it.
 The box offers the words themselves as the entry; type something else to
 file it under that instead — "Cats" marked, but filed under "Animals".
 The words on the page do not change and read as they did.
 
-**Insert ▸ Index ▸ Build the Index** puts the index in at the caret: one
+**Insert ▸ Index and Tables ▸ Index** puts the index in at the caret: one
 paragraph per entry, in alphabetical order, with the page numbers at a
 right tab stop and dots leading out to them. Ask for it again and the
 index already there is replaced where it stands, so it can be brought up
@@ -612,14 +619,20 @@ The marks travel with the document: RTF and Word carry them as XE
 fields, OpenDocument as the pair of index marks it has for the purpose,
 and LibreOffice reads all three as its own index entries.
 
-### Captions and annotations
+**Insert ▸ Index and Tables ▸ Table of Figures** lists the captions —
+every paragraph in the Caption style, which is what Insert ▸ Caption
+makes — in the order they come, each with its page number at a right tab
+stop and dots leading out to it, at the caret. Ask for it again and the
+table is replaced where it stands, as the index is.
+
+### Captions and comments
 
 **Insert ▸ Caption** starts a "Figure N:" paragraph in the Caption style,
 N counting on from the captions already there.
 
-**Insert ▸ Annotation** (Ctrl+Alt+A) attaches a note to the selected text,
-shown as a pale wash. The annotations box lists them, selects each one on a
-click, and deletes them. They carry your name from Tools ▸ Options.
+**Insert ▸ Comment** (Ctrl+Alt+A) attaches a note to the selected text,
+shown as a pale wash, as Word 97 named what had been annotations. The
+comments box lists them, selects each one on a click, and deletes them. They carry your name from Tools ▸ Options.
 
 ### Fields
 
@@ -730,13 +743,26 @@ The delivery address starts as whatever is selected in the document, and
 the return address as the name in Tools ▸ Options. Sizes are named by
 what they measure rather than by any maker's catalogue number.
 
-### Tools ▸ Revisions
+### Tools ▸ Track Changes
 
-**Mark Revisions While Editing** (Ctrl+Shift+E): from then on, text you
-type is underlined in red and text you delete is struck through in red
-rather than removed. **Accept All Revisions** keeps the insertions and
-drops the deletions; **Reject All Revisions** does the opposite. The marks
+**Highlight Changes** (Ctrl+Shift+E): from then on, text you type is
+underlined in red and text you delete is struck through in red rather
+than removed. **Accept All Changes** keeps the insertions and drops the
+deletions; **Reject All Changes** does the opposite. The marks
 survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
+
+**Compare Documents** asks for an earlier version of the open document
+— any file Word42 reads — and marks how the open one differs from it, as
+if every change since had been made with Highlight Changes on: words
+that are only here are underlined as insertions, and words that were
+only there are put back where they stood, struck through as deletions;
+a paragraph that was taken out comes back whole, and one that was added
+is marked whole. The paragraphs are matched first and then the words
+within the ones that changed, so a paragraph moved a little reads as
+one change rather than as a hundred. The whole comparison is one undo
+step, and Accept All Changes and Reject All Changes work on it as on any
+other: accept and the document is as it is, reject and it is the
+original again.
 
 ### Tools ▸ Mail Merge
 
@@ -851,13 +877,21 @@ with the toolbar and ruler switches from the View menu.
 
 ## 13. Views and windows
 
-### View ▸ Normal and View ▸ Page Layout
+### View ▸ Normal, Online Layout and Page Layout
 
 **Normal** is a continuous galley: one column, no page furniture, the
 fastest way to write. **Page Layout** is the printed page — sheets with
 their margins, headers, footers, columns and footnotes in place, centred on
 a light grey desk. Both use the same layout engine, so what you see in one
 is what the other will print.
+
+**Online Layout** is Word 97's third view, for reading on a screen rather
+than on paper: the galley again, but as wide as the window, with the
+text wrapping to it and wrapping again when the window is resized; zoom
+makes the words larger and fewer to a line rather than the galley wider.
+No pages, so no page border, headers or footers; Print and Print Preview
+still paginate. Tools ▸ Options can make any of the three the view a
+document opens in.
 
 The zoom box on the standard toolbar offers 50%, 75%, 100%, 150% and
 200%, Page Width and Whole Page, and shows whatever figure is in force.
@@ -956,6 +990,10 @@ embedded in the file itself, footnotes as links to the notes at the end,
 annotations as tooltips, revision marks as `<ins>` and `<del>`, and the
 Summary Info as `<meta>` tags. Nothing is left pointing at another file,
 so the page can be sent as it is.
+
+**File ▸ Web Page Preview** writes that page to the cache folder and
+opens it in the browser, so that what a reader on the web would see can
+be seen without saving anything; one file is written over each time.
 
 Fields are updated before printing and before either export.
 
@@ -1064,7 +1102,7 @@ about the document is sent anywhere.
 | Ctrl+Alt+N | Go to note |
 | Ctrl+K | Hyperlink |
 | Ctrl+Shift+F5 | Bookmark |
-| Ctrl+Alt+A | Annotation |
+| Ctrl+Alt+A | Comment |
 | Alt+Shift+D | Date and time |
 | F9 | Update fields |
 
