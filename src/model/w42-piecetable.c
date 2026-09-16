@@ -2202,8 +2202,15 @@ pt_apply_fmt (W42PieceTable *pt,
 
       take = MIN (piece->length - offset, end - p);
 
+      /* Character formatting is the text's, and paragraph formatting the
+       * paragraph mark's -- except the revision mark, which a paragraph
+       * mark carries too, as Word's did: a paragraph put back by Compare
+       * Documents is deleted whole, mark and all, when the change is
+       * accepted. */
       touched = (kind == FMT_CHAR)
-                  ? (piece->type == W42_PIECE_TEXT)
+                  ? (piece->type == W42_PIECE_TEXT ||
+                     (mask == W42_CHAR_REVISION && piece->type == W42_PIECE_STRUX &&
+                      (W42StruxType) piece->strux == W42_STRUX_BLOCK))
                   : (piece->type == W42_PIECE_STRUX &&
                      (W42StruxType) piece->strux == W42_STRUX_BLOCK);
 

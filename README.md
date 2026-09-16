@@ -11,8 +11,9 @@ Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
 A working word processor: typing, formatting, styles and numbered headings,
 headers and footers, footnotes and endnotes, tables, pictures, lists,
 columns, page borders, find and replace, spelling, a thesaurus,
-hyphenation, mail merge, macros in a dialect of VBA, a Document Map, a
-split window, a page-layout view and print preview — reading and writing
+hyphenation, mail merge, macros in a dialect of VBA, a Document Map,
+Compare Documents, a split window, Normal, Online Layout and Page Layout
+views and print preview — reading and writing
 RTF, OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and
 plain text. Word 97 is the yardstick: its menus are the specification
 and [docs/PARITY.md](docs/PARITY.md) keeps the score against it.

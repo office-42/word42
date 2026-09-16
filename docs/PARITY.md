@@ -1,7 +1,7 @@
 # Feature parity: Word42 against Word 97 and AbiWord
 
-A review of the sources as of version 1.0.1-dev (September 2026), area
-by area, twelfth round.
+A review of the sources as of version 1.0.1 (September 2026), area by
+area, thirteenth round.
 "Full" means the feature works the way the other program's does for
 ordinary documents; "partial" means it exists with named limits; "no"
 means it is absent.  Word 97 is the target Word42 measures itself
@@ -31,7 +31,7 @@ yardstick.
 | AutoCorrect as you type | full (quotes, capitals, dashes, misspellings) | full, with exceptions | partial |
 | AutoFormat a whole document | full (headings, lists, quotes, blanks) | full | no |
 | AutoText | full (named entries, Ctrl+F3) | full | yes |
-| AutoComplete tips (an AutoText entry offered as its name is typed) | full (Enter takes it) | full, dates too | no |
+| AutoComplete tips (an AutoText entry, a month, a day or today's date offered as it is typed) | full (Enter takes it) | full | no |
 | Formatting marks (¶, ·, →) | full | full | full |
 
 ## Character and paragraph formatting
@@ -80,14 +80,14 @@ yardstick.
 | Floating text boxes placed anywhere on the page | no | yes | yes |
 | Drawing shapes (line, arrow, rectangle, rounded rectangle, ellipse, with fill, outline and text) | as objects, drawn as vectors | AutoShapes and WordArt, editable | as objects |
 | Table of contents (insert, update) | full | full | full |
-| Table of figures, table of authorities | no | yes | no |
+| Table of figures, table of authorities | yes, no | yes | no |
 | Index (mark entries, build, rebuild) | full | full | no |
 | Bookmarks, hyperlinks, cross-references | full | full (Ctrl+K) | full |
 | Fields in the body (page, pages, date, time, filename, word count) | full (F9 updates) | full, dozens | yes |
 | Captions | numbered text | yes | yes |
 | Comments | full | full | yes |
 | Track changes (mark, accept/reject all) | full, one author | full, coloured by author | full |
-| Compare Documents | no | yes | no |
+| Compare Documents | full (paragraphs, then words; one undo step) | yes | no |
 | Versions kept inside the document | no | yes | no |
 | Mail merge (CSV) | full | full | yes |
 | Envelopes and labels | full (a document of their own) | full | no |
@@ -115,7 +115,7 @@ yardstick.
 | Feature | Word42 | Word 97 | AbiWord |
 |---|---|---|---|
 | Normal and Page Layout views | full | full | full |
-| Online Layout (Web Layout) view | no | yes | yes |
+| Online Layout (Web Layout) view | full (wraps to the window) | yes | yes |
 | Outline view, Master Document | no | yes | no |
 | Document Map (headings in a pane, click to go) | full | full | no |
 | Print (range, current page, selection, copies, collate, odd/even, reverse, draft, print to file), Print Preview (multiple pages, magnifier, fit zooms, shrink to fit), Page Setup | full (no gutter, mirror margins or shrink to fit) | full | full |
@@ -146,11 +146,11 @@ tabs, lists, tables and their properties, pictures, frames, drop caps,
 page borders, headers and footers, notes, fields, a table of contents
 and an index, comments and revisions, spelling and the thesaurus,
 AutoCorrect, AutoText with its tips, the Document Map, mail merge,
-macros in a VBA dialect, and Word 97's own .doc read.  It lacks
-positioned text boxes and the Drawing toolbar's editable objects,
-Online Layout and Outline views, Compare Documents, grammar, Equation
-Editor, tables of figures, versions, and vertical text; it exceeds Word
-97 in Unicode, right-to-left text, PDF and every file format made since.
+macros in a VBA dialect, Online Layout view, Compare Documents, the
+table of figures, and Word 97's own .doc read.  It lacks positioned text
+boxes and the Drawing toolbar's editable objects, Outline view, grammar,
+Equation Editor, versions, and vertical text; it exceeds Word 97 in
+Unicode, right-to-left text, PDF and every file format made since.
 
 Against **AbiWord**, Word42 covers the everyday word-processing set —
 formatting, multi-level lists, tables and their properties, notes,
@@ -161,9 +161,8 @@ document's own, text frames and drop caps — and lacks free-floating text
 boxes, equations, accessibility and translations.
 
 The order of work that closes the most ground now: positioned text
-boxes, Online Layout view, Compare Documents, editing the header and
-footer on the page itself rather than in a box, then translations and
-accessibility.
+boxes, editing the header and footer on the page itself rather than in
+a box, Outline view, then translations and accessibility.
 
 ## Round by round
 
@@ -671,4 +670,67 @@ review's: P = present, Pa = partial, M = missing.
 |---|---|---|
 | Word 97 | about 72 % | everything typed and formatted in the first week is there, Word 97's own file format is read, and the Document Map, page borders, the Font box's effects, the thesaurus and AutoComplete are done; positioned text boxes, the Drawing toolbar, Online Layout and Outline views, Compare Documents, grammar, Equation Editor and versions are not |
 | AbiWord | about 78 % | as the eleventh round had it, plus the thesaurus and the Document Map, which AbiWord has not got |
+
+## The thirteenth round (September 2026)
+
+Version 1.0.1.  Five more of Word 97's commands, and its names for
+some that were here under older ones.
+
+**View > Online Layout.**  Word 97's third view, for reading on a
+screen: the galley as wide as the window, the text wrapping to it and
+wrapping again as the window is resized, the zoom making the words
+larger and fewer to a line rather than the galley wider.  The layout
+takes a galley width of its own for it, the view asks for no width of
+its own so the window can be narrow, and the re-wrap waits for an idle
+moment after the allocation rather than happening inside it.  Tools >
+Options offers it as the view a document opens in.
+
+**Tools > Track Changes > Compare Documents.**  An earlier version of
+the open document is read into a piece table of its own and the two are
+compared twice over: the paragraphs matched by their text, as the
+longest common subsequence, and then the paragraphs that did not match
+paired off in order and their words matched the same way.  A word only
+here is marked inserted; a word only in the original is put back where
+it stood, marked deleted; a paragraph only in the original comes back
+whole, its mark first and marked deleted too, so that Accept All takes
+it away again; a paragraph only here is marked whole, its mark
+included, so that Reject All joins its neighbours up again.  For that
+the revision mark now reaches paragraph marks in the piece table,
+which no other character formatting does.  The edits are gathered and
+then applied from the back of the document in one undo step, so no
+position moves under another, and two documents the same say so.
+
+**Insert > Index and Tables > Table of Figures.**  The captions --
+every paragraph in the Caption style -- in the order they come, with
+the page each is on at a right stop with dots to it, built beside the
+index by the same means and replaced where it stands when asked again.
+The Insert menu's Index and Tables submenu is Word 97's, holding the
+table of contents, the index and this.
+
+**File > Web Page Preview**, **AutoComplete for dates**, and the names:
+the web page is written to the cache folder and opened in the browser;
+the tip offers the months, the days and today's date from their first
+four letters; and Insert > Comment, Tools > Track Changes with Highlight
+Changes, Accept All and Reject All Changes, and View > Online Layout
+are what Word 97 called them.
+
+The command counts against Word 97, by the seventh review's method:
+
+| Menu | vs Word 97 (P/Pa/M) | Most missed there |
+|---|---|---|
+| File | 16/1/2 | Versions, Send To |
+| Edit | 14/1/2 | Paste as Hyperlink, Links |
+| View | 9/2/2 | Outline, Master Document |
+| Insert | 13/5/2 | Text Box, Object |
+| Format | 15/5/3 | Text Direction, Style Gallery, Theme |
+| Tools | 11/3/5 | Grammar, Protect Document, Customize |
+| Table | 14/2/2 | Draw Table, Cell Height and Width's rows tab |
+| Window | 3/0/0 | -- |
+| Help | 5/1/2 | What's This?, WordPerfect Help |
+| **Total** | **100/20/20** | |
+
+| Yardstick | Estimate | Why |
+|---|---|---|
+| Word 97 | about 75 % | as the twelfth round had it, plus Online Layout, Compare Documents, the Table of Figures, Web Page Preview and AutoComplete for dates; positioned text boxes, the Drawing toolbar, Outline view, grammar, Equation Editor and versions are not |
+| AbiWord | about 79 % | as the twelfth round had it, plus Compare Documents, which AbiWord has not got |
 

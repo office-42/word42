@@ -459,7 +459,19 @@ Early, but real. Word42 today is a working word processor:
   at the caret up in a MyThes file, the ones LibreOffice uses: meanings,
   synonyms, Replace, Look Up and Previous.
 - **AutoComplete** — the first four letters of an AutoText entry's name
-  bring up a tip with the entry over the caret, and Enter puts it in.
+  bring up a tip with the entry over the caret, and Enter puts it in;
+  months, days of the week and today's date are offered the same way.
+- **Online Layout** — View ▸ Online Layout is the galley as wide as the
+  window, wrapping again as the window is resized, as Word 97 read on a
+  screen.
+- **Compare Documents** — Tools ▸ Track Changes ▸ Compare Documents
+  marks how the open document differs from an earlier version of it, as
+  changes: paragraphs matched first, then words; one undo step.
+- **Table of Figures** — Insert ▸ Index and Tables ▸ Table of Figures
+  lists the captions with their pages, and replaces itself when asked
+  again.
+- **Web Page Preview** — File ▸ Web Page Preview opens the document as a
+  web page in the browser.
 - **Safety** — closing a modified document asks before discarding it.
 
 What it does not do yet is listed in [Word42.md](../Word42.md), with the

@@ -20,7 +20,8 @@ G_BEGIN_DECLS
  * where the pages fell. */
 typedef enum {
   W42_VIEW_NORMAL = 0,
-  W42_VIEW_PAGE_LAYOUT
+  W42_VIEW_PAGE_LAYOUT,
+  W42_VIEW_ONLINE        /* Word 97's Online Layout: a galley as wide as the window */
 } W42ViewMode;
 
 #define W42_TYPE_VIEW (w42_view_get_type ())
@@ -316,6 +317,13 @@ int      w42_view_autoformat (W42View *self, const W42AutoFormat *what);
 
 gboolean w42_view_mark_index_entry (W42View *self, const char *term);
 int      w42_view_insert_index     (W42View *self);
+/* The table of figures: the captions with their pages, at the caret; a
+ * table already there is replaced.  Returns how many were listed. */
+int      w42_view_insert_table_of_figures (W42View *self);
+/* The differences from `original` marked as changes: what is only here
+ * inserted, what was only there put back as deleted.  Returns how many
+ * changes were marked. */
+int      w42_view_compare_with (W42View *self, W42PieceTable *original);
 
 /* Insert > Cross-reference: the page number the bookmark is on, or the
  * bookmarked text itself, put in at the caret.  FALSE if no such

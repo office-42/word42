@@ -187,7 +187,10 @@ are typed, a small tip appears over the caret with the entry's first
 line and "(Press ENTER to Insert)", as Word 97's did. Enter puts the
 whole entry in, in place of the letters typed; Escape, or going on
 typing, takes the tip away and nothing else happens. The entry and the
-letters it replaces are one undo step.
+letters it replaces are one undo step. The months and the days of the
+week are offered the same way from their first four letters, and the
+first letters of the current month offer today's date — "Sept" in
+September offers "September 16, 2026".
 
 ### Find and Replace
 
@@ -616,6 +619,12 @@ The marks travel with the document: RTF and Word carry them as XE
 fields, OpenDocument as the pair of index marks it has for the purpose,
 and LibreOffice reads all three as its own index entries.
 
+**Insert ▸ Index and Tables ▸ Table of Figures** lists the captions —
+every paragraph in the Caption style, which is what Insert ▸ Caption
+makes — in the order they come, each with its page number at a right tab
+stop and dots leading out to it, at the caret. Ask for it again and the
+table is replaced where it stands, as the index is.
+
 ### Captions and comments
 
 **Insert ▸ Caption** starts a "Figure N:" paragraph in the Caption style,
@@ -742,6 +751,19 @@ than removed. **Accept All Changes** keeps the insertions and drops the
 deletions; **Reject All Changes** does the opposite. The marks
 survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
 
+**Compare Documents** asks for an earlier version of the open document
+— any file Word42 reads — and marks how the open one differs from it, as
+if every change since had been made with Highlight Changes on: words
+that are only here are underlined as insertions, and words that were
+only there are put back where they stood, struck through as deletions;
+a paragraph that was taken out comes back whole, and one that was added
+is marked whole. The paragraphs are matched first and then the words
+within the ones that changed, so a paragraph moved a little reads as
+one change rather than as a hundred. The whole comparison is one undo
+step, and Accept All Changes and Reject All Changes work on it as on any
+other: accept and the document is as it is, reject and it is the
+original again.
+
 ### Tools ▸ Mail Merge
 
 1. **Get Data** opens a CSV file whose first row names the fields.
@@ -855,13 +877,21 @@ with the toolbar and ruler switches from the View menu.
 
 ## 13. Views and windows
 
-### View ▸ Normal and View ▸ Page Layout
+### View ▸ Normal, Online Layout and Page Layout
 
 **Normal** is a continuous galley: one column, no page furniture, the
 fastest way to write. **Page Layout** is the printed page — sheets with
 their margins, headers, footers, columns and footnotes in place, centred on
 a light grey desk. Both use the same layout engine, so what you see in one
 is what the other will print.
+
+**Online Layout** is Word 97's third view, for reading on a screen rather
+than on paper: the galley again, but as wide as the window, with the
+text wrapping to it and wrapping again when the window is resized; zoom
+makes the words larger and fewer to a line rather than the galley wider.
+No pages, so no page border, headers or footers; Print and Print Preview
+still paginate. Tools ▸ Options can make any of the three the view a
+document opens in.
 
 The zoom box on the standard toolbar offers 50%, 75%, 100%, 150% and
 200%, Page Width and Whole Page, and shows whatever figure is in force.
@@ -960,6 +990,10 @@ embedded in the file itself, footnotes as links to the notes at the end,
 annotations as tooltips, revision marks as `<ins>` and `<del>`, and the
 Summary Info as `<meta>` tags. Nothing is left pointing at another file,
 so the page can be sent as it is.
+
+**File ▸ Web Page Preview** writes that page to the cache folder and
+opens it in the browser, so that what a reader on the web would see can
+be seen without saving anything; one file is written over each time.
 
 Fields are updated before printing and before either export.
 

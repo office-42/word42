@@ -33,6 +33,7 @@ w42_core_sources = files(
   'io/w42-pptx.c',
   'model/w42-hyphenate.c',
   'model/w42-thesaurus.c',
+  'model/w42-compare.c',
   'model/w42-autocorrect.c',
   'model/w42-tableformat.c',
   'model/w42-envelope.c',

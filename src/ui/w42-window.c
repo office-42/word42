@@ -1147,6 +1147,18 @@ action_options (GSimpleAction *action, GVariant *param, gpointer data)
   w42_options_dialog_show (GTK_WINDOW (self), self->view);
 }
 
+/* The View menu's names for the three views, which the settings file and
+ * the view-mode action use too. */
+static W42ViewMode
+view_mode_from_name (const char *name)
+{
+  if (g_strcmp0 (name, "page-layout") == 0)
+    return W42_VIEW_PAGE_LAYOUT;
+  if (g_strcmp0 (name, "online") == 0)
+    return W42_VIEW_ONLINE;
+  return W42_VIEW_NORMAL;
+}
+
 /* What Tools > Options and the View menu remembered, applied to a new
  * window. */
 static void
@@ -1154,14 +1166,15 @@ window_apply_settings (W42Window *self)
 {
   char *view = w42_settings_get_string ("default-view", "page-layout");
   int zoom = w42_settings_get_int ("zoom", 100);
-  gboolean paged = g_str_equal (view, "page-layout");
+  W42ViewMode mode = view_mode_from_name (view);
   GAction *act;
 
   act = g_action_map_lookup_action (G_ACTION_MAP (self), "view-mode");
-  w42_view_set_mode (self->view, paged ? W42_VIEW_PAGE_LAYOUT : W42_VIEW_NORMAL);
+  w42_view_set_mode (self->view, mode);
   if (act != NULL)
     g_simple_action_set_state (G_SIMPLE_ACTION (act),
-                               g_variant_new_string (paged ? "page-layout" : "normal"));
+                               g_variant_new_string (mode == W42_VIEW_PAGE_LAYOUT ? "page-layout"
+                                                     : mode == W42_VIEW_ONLINE ? "online" : "normal"));
   g_free (view);
 
   if (zoom >= 25 && zoom <= 500)
@@ -1383,10 +1396,8 @@ action_view_mode (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   const char *which = g_variant_get_string (param, NULL);
-  gboolean paged = g_strcmp0 (which, "page-layout") == 0;
 
-  w42_view_set_mode (self->view,
-                     paged ? W42_VIEW_PAGE_LAYOUT : W42_VIEW_NORMAL);
+  w42_view_set_mode (self->view, view_mode_from_name (which));
   g_simple_action_set_state (action, g_variant_new_string (which));
 }
 
@@ -2250,6 +2261,26 @@ action_insert_index (GSimpleAction *action, GVariant *param, gpointer data)
     show_message (self, "There is nothing marked for the index.",
                   "Select a word and use Insert â¸ Index Entry to "
                   "mark it, then ask for the index again.");
+}
+
+static void
+action_table_of_figures (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+
+  if (w42_view_caret_in_note (self->view))
+    {
+      window_flash (self, "The caret is in a note: put it in the body of the "
+                          "document first.");
+      return;
+    }
+
+  if (w42_view_insert_table_of_figures (self->view) == 0)
+    show_message (self, "There are no captions to list.",
+                  "Insert \u25b8 Caption puts a caption under a picture, "
+                  "and the table of figures lists them.");
 }
 
 static void
@@ -3870,6 +3901,57 @@ on_insert_file_response (GObject *source, GAsyncResult *result, gpointer data)
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
+/* Tools > Track Changes > Compare Documents: the file chosen is the
+ * original, and what this document has that it had not is marked
+ * inserted, what it had that this has not is put back marked deleted. */
+static void
+on_compare_response (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
+
+  if (file != NULL)
+    {
+      W42PieceTable *other = w42_pt_new ();
+
+      if (w42_io_load (other, NULL, file, &error))
+        {
+          int n = w42_view_compare_with (self->view, other);
+
+          if (n == 0)
+            window_flash (self, "The two documents are the same.");
+          else
+            window_flash (self, n == 1 ? "1 change marked."
+                                       : "%d changes marked.", n);
+        }
+      else
+        show_error (self, "Word42 could not read that file.", error);
+      w42_pt_free (other);
+      g_object_unref (file);
+    }
+  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
+                                              GTK_DIALOG_ERROR_DISMISSED))
+    show_error (self, "Word42 could not open that file.", error);
+  g_clear_error (&error);
+  gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+static void
+action_compare_documents (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
+  GListModel *filters = file_filters ();
+
+  (void) action; (void) param;
+  gtk_file_dialog_set_title (dialog, "Compare Documents: the original");
+  gtk_file_dialog_set_filters (dialog, filters);
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_compare_response, self);
+  g_object_unref (filters);
+  g_object_unref (dialog);
+}
+
 static void
 action_insert_file (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -4370,6 +4452,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "open-recent",   action_open_recent,   "s",  NULL, NULL, { 0 } },
   { "export-html",   action_export_html,   NULL, NULL, NULL, { 0 } },
   { "web-preview",   action_web_preview,   NULL, NULL, NULL, { 0 } },
+  { "table-of-figures", action_table_of_figures, NULL, NULL, NULL, { 0 } },
+  { "compare-documents", action_compare_documents, NULL, NULL, NULL, { 0 } },
   { "bookmark",      action_bookmark,      NULL, NULL, NULL, { 0 } },
   { "annotation",    action_annotation,    NULL, NULL, NULL, { 0 } },
   { "mail-merge",    action_mail_merge,    NULL, NULL, NULL, { 0 } },

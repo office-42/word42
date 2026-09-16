@@ -20,6 +20,7 @@ G_BEGIN_DECLS
 
 #define W42_INDEX_FIELD    "XE"       /* the field code of a marked run */
 #define W42_INDEX_BOOKMARK "_Index"   /* what the index itself carries */
+#define W42_FIGURES_BOOKMARK "_Tof"   /* what the table of figures carries */
 
 typedef struct {
   char   *term;
@@ -36,5 +37,12 @@ GPtrArray *w42_index_gather (W42PieceTable *pt, W42Layout *layout);
  * says where it is). */
 int w42_index_build (W42PieceTable *pt, W42Layout *layout,
                      const W42PageSetup *page, gsize at, gsize *end);
+
+/* Insert > Index and Tables > Table of Figures: one paragraph per
+ * caption, in the order they come, with the page at a right stop and dots
+ * leading out to it, put in at `at`.  Returns how many, and where the
+ * table ends.  A table already there is the caller's to take out first. */
+int w42_figures_build (W42PieceTable *pt, W42Layout *layout,
+                       const W42PageSetup *page, gsize at, gsize *end);
 
 G_END_DECLS

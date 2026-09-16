@@ -1997,7 +1997,8 @@ typedef struct {
 } OptionsBox;
 
 static const char * const UNIT_NAMES[] = { "Inches", "Centimeters", NULL };
-static const char * const VIEW_NAMES[] = { "Normal", "Page Layout", NULL };
+static const char * const VIEW_NAMES[] = { "Normal", "Online Layout", "Page Layout", NULL };
+static const char * const VIEW_KEYS[]  = { "normal", "online", "page-layout" };
 static const char * const ZOOM_NAMES[] = { "50%", "75%", "100%", "150%", "200%", NULL };
 static const int ZOOM_VALUES[] = { 50, 75, 100, 150, 200 };
 
@@ -2014,8 +2015,7 @@ on_options_ok (GtkButton *button, gpointer data)
   w42_settings_set_units (gtk_drop_down_get_selected (GTK_DROP_DOWN (box->units)) == 1
                             ? W42_UNITS_CM : W42_UNITS_INCHES);
   w42_settings_set_string ("default-view",
-                           gtk_drop_down_get_selected (GTK_DROP_DOWN (box->default_view)) == 1
-                             ? "page-layout" : "normal");
+                           VIEW_KEYS[MIN (gtk_drop_down_get_selected (GTK_DROP_DOWN (box->default_view)), 2)]);
   if (zoom < G_N_ELEMENTS (ZOOM_VALUES))
     w42_settings_set_int ("zoom", ZOOM_VALUES[zoom]);
   w42_settings_set_bool ("auto-spell", want_spell);
@@ -2031,7 +2031,7 @@ on_options_ok (GtkButton *button, gpointer data)
     guint dv = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->default_view));
 
     g_action_group_activate_action (G_ACTION_GROUP (box->parent), "view-mode",
-                                    g_variant_new_string (dv == 1 ? "page-layout" : "normal"));
+                                    g_variant_new_string (VIEW_KEYS[MIN (dv, 2)]));
     if (zoom < G_N_ELEMENTS (ZOOM_VALUES))
       g_action_group_activate_action (G_ACTION_GROUP (box->parent), "zoom",
                                       g_variant_new_double (ZOOM_VALUES[zoom] / 100.0));
@@ -2086,7 +2086,8 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   grid = group (content, "View");
   default_view = w42_settings_get_string ("default-view", "page-layout");
   box->default_view = choice_row (grid, 0, 0, "Default _View:", VIEW_NAMES,
-                                  g_str_equal (default_view, "page-layout") ? 1 : 0);
+                                  g_str_equal (default_view, "page-layout") ? 2
+                                  : g_str_equal (default_view, "online") ? 1 : 0);
   g_free (default_view);
 
   zoom = w42_settings_get_int ("zoom", 100);
