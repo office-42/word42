@@ -33,7 +33,7 @@ short table.
 |---|---|---|---|---|
 | Native format | none of its own: RTF, .docx, .odt and .abw are all written in full | .docx | .abw | .odt |
 | Word .docx | read and write | native | read and write (plugin) | read and write |
-| Word .doc (97–2003) | read | read and write | read and write | read and write |
+| Word .doc (Word 97's format) | read | read and write | read and write | read and write |
 | RTF | read and write | read and write | read and write | read and write |
 | OpenDocument .odt | read and write | read and write | read and write | native |
 | AbiWord .abw | read and write | no | native | read (import filter) |

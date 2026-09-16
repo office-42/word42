@@ -25,7 +25,7 @@
 #include <string.h>
 
 /* Measurements are entered in the user's unit -- inches unless Tools >
- * Options says centimetres -- and stored in twips, as Word 6 stored them. */
+ * Options says centimetres -- and stored in twips, as Word 97 stored them. */
 #define TWIPS_PER_INCH 1440.0
 
 static double
@@ -1541,7 +1541,7 @@ typedef struct {
   GtkWidget *list;      /* GtkListBox of today in each format */
 } DateTimeBox;
 
-/* The formats Word 6 offered, near enough, with the ISO one added. */
+/* The formats Word 97 offered, near enough, with the ISO one added. */
 static const char * const DATE_FORMATS[] = {
   "%d.%m.%Y", "%m/%d/%Y", "%Y-%m-%d", "%d %B %Y", "%B %d, %Y",
   "%A, %d %B %Y", "%A, %B %d, %Y", "%d %b %Y", "%b %d, %Y",
@@ -1685,7 +1685,7 @@ w42_symbol_dialog_show (GtkWindow *parent, W42View *view)
 
   window = dialog_shell (parent, "Symbol", &content, view);
 
-  /* Modeless, as Word 6's was: pick a symbol, type, pick another. */
+  /* Modeless, as Word 97's was: pick a symbol, type, pick another. */
   gtk_window_set_modal (GTK_WINDOW (window), FALSE);
 
   flow = gtk_flow_box_new ();
@@ -1817,7 +1817,7 @@ typedef struct {
 } TabsBox;
 
 static const char * const TAB_KINDS[] = { "Left", "Center", "Right", "Decimal", NULL };
-/* Word 6's four, in its order and drawn as it drew them. */
+/* Word 97's four, in its order and drawn as it drew them. */
 static const char * const TAB_LEADERS[] = { "1  None", "2  ......", "3  ------", "4  ______", NULL };
 
 static void
@@ -2158,7 +2158,7 @@ typedef struct {
   GtkWidget *page_space;
 } BordersBox;
 
-/* The sixteen colours Word 6 offered, which is what a colour is chosen from
+/* The sixteen colours Word 97 offered, which is what a colour is chosen from
  * anywhere in Word42. */
 static const char *const PALETTE_NAMES[] = {
   "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
@@ -2187,7 +2187,7 @@ palette_index (guint32 rgb)
   return 0;
 }
 
-/* Word XP's line widths, from a quarter point to six. */
+/* Word 97's line widths, from a quarter point to six. */
 static const char * const BORDER_WIDTHS[] = {
   "\302\274 pt", "\302\275 pt", "\302\276 pt", "1 pt", "1\302\275 pt", "2\302\274 pt",
   "3 pt", "4\302\275 pt", "6 pt", NULL
@@ -2239,7 +2239,7 @@ on_borders_ok (GtkButton *button, gpointer data)
   line.style = (guint8) MIN (st, W42_BORDER_DOTTED);
   w42_para_fmt_set_edges (&want, line.width, line.color, (W42BorderStyle) line.style);
   /* A colour behind the paragraph is a colour; without one it is a
-   * percentage of black, as Word 6 had it. */
+   * percentage of black, as Word 97 had it. */
   if (bg > 0)
     {
       want.has_shading_color = 1;
@@ -2450,7 +2450,7 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
                                  palette_index (w42_para_fmt_border_color (&now)));
   if (w42_view_in_table (view))
     {
-      /* In a table, Word XP's dialog could rule the cell or the whole
+      /* In a table, Word 97's dialog could rule the cell or the whole
        * table as well as the paragraph. */
       box->apply_to = choice_row (grid, 7, 0, "_Apply to:", APPLY_TO, 1);
       g_signal_connect (box->apply_to, "notify::selected", G_CALLBACK (on_borders_apply_to), box);
@@ -2786,8 +2786,8 @@ typedef struct {
   GtkWidget *colour;
 } EffectsBox;
 
-/* Word 6 offered the first four; the rest are what the file formats can
- * say, and what other programs write. */
+/* Word 97's Font box offered these and a few more; these are the ones
+ * every file format can say. */
 static const char * const UNDERLINES[] = {
   "(none)", "Single", "Double", "Words Only", "Dotted", "Dashed", "Thick", "Wave", NULL
 };
@@ -2799,7 +2799,7 @@ static const char * const HIGHLIGHTS[] = {
 };
 static const guint8 HIGHLIGHT_INDEX[] = { 0, 7, 4, 3, 5, 2, 6, 9, 10, 11, 12, 13, 14, 15, 16 };
 
-/* Word 6's sixteen colours, as its Font box listed them; Auto is black. */
+/* Word 97's sixteen colours, as its Font box listed them; Auto is black. */
 static const char *const TEXT_COLOURS[] = {
   "Auto", "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
   "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red", "Dark Yellow", "Dark Gray", "Light Gray", NULL
@@ -4112,7 +4112,7 @@ w42_formula_dialog_show (GtkWindow *parent, W42View *view)
   box->window = dialog_shell (parent, "Formula", &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  /* Word XP guessed: numbers above the cell mean SUM(ABOVE), otherwise
+  /* Word 97 guessed: numbers above the cell mean SUM(ABOVE), otherwise
    * SUM(LEFT). */
   {
     int table_row = 0, table_col = 0;
@@ -4190,7 +4190,7 @@ on_document_autoformat_ok (GtkButton *button, gpointer data)
   changed = w42_view_autoformat (box->view, &what);
   gtk_window_destroy (GTK_WINDOW (box->window));
 
-  /* Word 6 said what it had done and offered to look through it; this
+  /* Word 97 said what it had done and offered to look through it; this
    * says what it did, and Ctrl+Z takes the lot back. */
   {
     char *detail = changed > 0
@@ -4531,7 +4531,7 @@ on_envelope_ok (GtkButton *button, gpointer data)
   (void) button;
 
   /* The envelope or the sheet is a document of its own, in a window of
-   * its own: Word 6 offered to put it in front of the letter, but a
+   * its own: Word 97 offered to put it in front of the letter, but a
    * separate document is the honest thing when a section cannot have a
    * page size of its own yet. */
   doc = w42_window_new_document (parent);
@@ -4610,7 +4610,7 @@ w42_envelope_dialog_show (GtkWindow *parent, W42View *view)
   address_box (grid, 1, "_Return address:", &box->sender);
 
   /* An address is often already in the document: the selection is the
-   * likeliest one, as Word 6 took it. */
+   * likeliest one, as Word 97 took it. */
   {
     char *selected = w42_view_get_selected_text (view);
 
@@ -5012,7 +5012,7 @@ w42_autotext_dialog_show (GtkWindow *parent, W42View *view)
   autotext_refill (box, NULL);
 
   /* With text selected the box is there to keep it: the name is filled
-   * in from its first words, as Word 6 filled it in. */
+   * in from its first words, as Word 97 filled it in. */
   selected = w42_view_get_selected_text (view);
   if (selected != NULL && *selected != '\0')
     {
@@ -6181,7 +6181,7 @@ w42_macro_editor_show (GtkWindow *parent, W42View *view, const char *name)
   gtk_widget_grab_focus (ed->text);
 }
 
-/* The Macros box: Word 6's Tools > Macro, with Run, Create, Edit and
+/* The Macros box: Word 97's Tools > Macro, with Run, Create, Edit and
  * Delete on a list of the macros in the folder. */
 typedef struct {
   W42View   *view;

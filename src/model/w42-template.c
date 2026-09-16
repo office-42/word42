@@ -142,7 +142,7 @@ w42_template_make (W42PieceTable *pt, W42PageSetup *page, int which)
 
   if (page != NULL)
     {
-      /* Every one of these is an ordinary page; the margins are Word 6's
+      /* Every one of these is an ordinary page; the margins are Word 97's
        * defaults, which the rest of the program uses too. */
       page->columns = 0;
       page->column_gap = 0;

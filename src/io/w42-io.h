@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Plain text and RTF.  The importer/exporter pair is kept behind this narrow
- * interface so that Word 6 .doc -- the OLE2 compound file with its FIB, its
+ * interface so that Word 97 .doc -- the OLE2 compound file with its FIB, its
  * own piece table and its character/paragraph property bins -- can be added
  * as a further backend without the model noticing.
  */
@@ -22,9 +22,9 @@ typedef enum {
   W42_FORMAT_TEXT,
   W42_FORMAT_RTF,
   W42_FORMAT_PDF,      /* written always; read when built with poppler */
-  W42_FORMAT_DOC,      /* Word 97-2003; read only */
+  W42_FORMAT_DOC,      /* Word 97's .doc; read only */
   W42_FORMAT_HTML,     /* read and written */
-  W42_FORMAT_DOCX,     /* Word 2007 and later; read and written */
+  W42_FORMAT_DOCX,     /* .docx, Word's XML format; read and written */
   W42_FORMAT_ABW,      /* AbiWord, plain or gzipped; read and written */
   W42_FORMAT_ODT,      /* OpenDocument text; read and written */
   W42_FORMAT_PPTX      /* slides: PowerPoint's presentation, read and written */

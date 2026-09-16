@@ -291,7 +291,7 @@ Normal, as it is in Word, since nobody wants two Heading 1s in a row.
 
 ## Word .doc
 
-`w42-doc.c` reads Word 97-2003 files. An OLE2 walker (FAT, mini FAT,
+`w42-doc.c` reads Word 97 .doc files. An OLE2 walker (FAT, mini FAT,
 directory) hands over the WordDocument and Table streams; the File
 Information Block says where everything else is. Text comes through
 Word's own piece table, each piece 8-bit or UTF-16; paragraph and
@@ -398,7 +398,7 @@ its own, since a text flow cannot represent where on the page they were.
 `w42_layout_set_galley()` switches the layout engine between the two views the
 View menu offers. Page Layout breaks lines onto sheets; Normal leaves the
 breaks out, puts the whole document on one very tall page, and swaps the page
-margins for a narrow inset — Word 6 sat the galley just inside the window with
+margins for a narrow inset — Word 97 sat the galley just inside the window with
 a selection bar to its left and nothing above it.
 
 Everything else is shared. The same blocks, the same Pango layouts, the same
@@ -409,7 +409,7 @@ disagree in Normal view.
 
 ## The look
 
-Word 6 predates theming, so the stylesheet states its colours outright rather
+Word 97 predates theming, so the stylesheet states its colours outright rather
 than inheriting the desktop's: the Windows 3.1 palette, a silver face, white
 and light grey for a control's lit edges and mid and black grey for its shaded
 ones. Every raised control is that four-tone bevel and every field is the same

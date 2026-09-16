@@ -18,9 +18,8 @@ typedef guint32 W42ApIdx;
 
 #define W42_AP_INVALID ((W42ApIdx) G_MAXUINT32)
 
-/* How a run is underlined.  Word 6 offered None, Single, Words Only and
- * Double; the others are what the file formats can say, and what other
- * programs write. */
+/* How a run is underlined.  Word 97's Font box offered these and a few
+ * more; these are the ones every file format can say. */
 typedef enum {
   W42_UNDERLINE_NONE = 0,
   W42_UNDERLINE_SINGLE,
@@ -40,7 +39,7 @@ typedef struct {
   guint       underline : 3;   /* W42Underline: 0 none, 1 single, ... */
   guint       strikeout : 1;
   guint       overline  : 1;   /* AbiWord has it; Word never did */
-  /* Word 97's Font box added these to Word 6's effects.  The shadow and
+  /* The rest of Word 97's Font box effects.  The shadow and
    * the relief are drawn as offset copies of the glyphs; outline leaves
    * them hollow; double strikethrough is two lines where one was. */
   guint       dstrike   : 1;
@@ -100,7 +99,7 @@ typedef enum {
   W42_TAB_DECIMAL
 } W42TabKind;
 
-/* What fills the gap in front of a tab stop.  Word 6 offered these four
+/* What fills the gap in front of a tab stop.  Word 97 offered these four
  * on its Tabs dialog, and a table of contents is unreadable without the
  * dots. */
 typedef enum {
@@ -144,7 +143,7 @@ enum {
   W42_N_EDGES
 };
 
-/* How a border's line is drawn.  Word XP's Borders and Shading dialog
+/* How a border's line is drawn.  Word 97's Borders and Shading dialog
  * offered two dozen; these are the ones every file format can say, and
  * the rest come in as the nearest of them. */
 typedef enum {

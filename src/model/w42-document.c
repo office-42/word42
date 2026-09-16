@@ -61,7 +61,7 @@ w42_document_init (W42Document *self)
   self->pt = w42_pt_new ();
   self->untitled_number = ++counter;
 
-  /* US Letter with one-inch margins, as Word 6 shipped. */
+  /* US Letter with one-inch margins, as Word 97 shipped. */
   self->page.width         = 12240;
   self->page.height        = 15840;
   self->page.margin_left   = 1440;

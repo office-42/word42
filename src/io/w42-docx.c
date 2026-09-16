@@ -2734,7 +2734,7 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
 
   if (object->shape != W42_SHAPE_PICTURE)
     {
-      /* A shape, as Word 2010 and later say one: its geometry, its fill,
+      /* A shape, as the newer .docx files say one: its geometry, its fill,
        * its outline and the text in it. */
       const char *prst = object->shape == W42_SHAPE_ELLIPSE ? "ellipse"
                        : object->shape == W42_SHAPE_ROUNDED_RECTANGLE ? "roundRect"

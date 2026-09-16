@@ -15,7 +15,7 @@
 
 G_BEGIN_DECLS
 
-/* Word 6 opened in Normal view -- a plain white galley -- and kept Page
+/* Word 97 opened in Normal view -- a plain white galley -- and kept Page
  * Layout, with its grey desktop and paper edges, for when you wanted to see
  * where the pages fell. */
 typedef enum {
@@ -85,7 +85,7 @@ void w42_view_select_word (W42View *self);
 void     w42_view_insert_table     (W42View *self, int rows, int cols);
 gboolean w42_view_in_table         (W42View *self);
 void     w42_view_table_insert_row (W42View *self);
-/* Word XP's Table menu: rows above, columns to the left, the whole table
+/* The Table menu's submenus: rows above, columns to the left, the whole table
  * gone, a column or a cell selected. */
 void     w42_view_table_insert_row_above (W42View *self);
 void     w42_view_table_insert_column_left (W42View *self);
@@ -263,7 +263,7 @@ gboolean    w42_view_go_to_bookmark (W42View *self, const char *name);
 
 /* Puts a table of contents at the caret: one paragraph per heading, indented
  * by level, with the page number at a right tab stop at the margin.  Plain
- * paragraphs, as Word 6's field result was: edit or delete them freely.
+ * paragraphs, as Word 97's field result was: edit or delete them freely.
  * Returns how many entries were made. */
 int  w42_view_insert_toc (W42View *self);
 

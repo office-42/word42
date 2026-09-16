@@ -575,7 +575,7 @@ help_key (GtkEventControllerKey *key, guint keyval, guint code,
   return GDK_EVENT_PROPAGATE;
 }
 
-/* One help window at a time, as Word 6 had one: asking again brings the
+/* One help window at a time, as Word 97 had one: asking again brings the
  * one that is open to the front. */
 static GtkWidget *open_help;
 

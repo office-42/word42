@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6 predates theming, so word42 states its colours outright rather than
+ * Word 97 predates theming, so word42 states its colours outright rather than
  * inheriting the desktop's.  The palette is Windows 3.1's: a silver face,
  * white and light grey for the lit edges of a control, mid and black grey for
  * the shaded ones.  Every raised control is that four-tone bevel, and every
@@ -342,7 +342,7 @@ popover.menu contents separator {
   padding: 1px 4px;
 }
 
-/* Each reading sits in its own sunken well, as Word 6's did. */
+/* Each reading sits in its own sunken well, as Word 97's did. */
 .w42-status-cell {
   border: 1px solid;
   border-top-color: @w42_shadow;

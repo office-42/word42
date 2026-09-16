@@ -17,7 +17,7 @@ G_DECLARE_FINAL_TYPE (W42Window, w42_window, W42, WINDOW, GtkApplicationWindow)
 
 GtkWidget *w42_window_new  (GtkApplication *app);
 
-/* Another window on a document that is already open in one, as Word 6's
+/* Another window on a document that is already open in one, as Word 97's
  * Window > New Window gave you: both show the same text, and an edit in
  * either appears in both. */
 GtkWidget *w42_window_new_for_document (GtkApplication *app, W42Document *doc);

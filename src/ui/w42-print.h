@@ -13,7 +13,7 @@
 
 G_BEGIN_DECLS
 
-/* What Word XP's Print dialog could be told beyond the document: the
+/* What Word 97's Print dialog could be told beyond the document: the
  * selection, to print that alone, and the page the caret is on, for
  * "Current page".  `selection` is a fragment the caller made and the
  * print takes; NULL when there is none. */

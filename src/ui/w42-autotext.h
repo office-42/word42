@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6 kept a list of named pieces of text -- an address, a closing,
+ * Word 97 kept a list of named pieces of text -- an address, a closing,
  * a company name -- and put one in wherever the caret was, either from
  * the Edit menu or by typing the name and pressing F3.  These are the
  * entries, kept in the settings file between runs.  What is kept is the
@@ -36,7 +36,7 @@ void   w42_autotext_set (const char *name, const char *text);
 /* Takes one out.  Nothing happens when there is no such entry. */
 void   w42_autotext_remove (const char *name);
 
-/* A name for a piece of text, the way Word 6 offered one: its first few
+/* A name for a piece of text, the way Word 97 offered one: its first few
  * words, cut short.  g_free(). */
 char  *w42_autotext_suggest_name (const char *text);
 

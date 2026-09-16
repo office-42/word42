@@ -8,7 +8,7 @@
 
 #include <string.h>
 
-/* The misspellings Word 6 shipped with, near enough: the ones a hand
+/* The misspellings Word 97 shipped with, near enough: the ones a hand
  * makes rather than a head.  Pairs of wrong and right. */
 static const char *const REPLACEMENTS[] = {
   "teh",      "the",

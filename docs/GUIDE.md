@@ -82,7 +82,7 @@ throw away.
 | --- | --- | --- |
 | Rich Text Format (`.rtf`) | yes | yes |
 | Word document (`.docx`) | yes | yes |
-| Word 97–2003 (`.doc`) | yes | — (save as `.rtf` or `.docx`) |
+| Word 97 (`.doc`) | yes | — (save as `.rtf` or `.docx`) |
 | OpenDocument Text (`.odt`) | yes | yes |
 | AbiWord (`.abw`, `.zabw`) | yes | yes |
 | Web page (`.html`, `.htm`) | yes | yes |
@@ -178,7 +178,7 @@ is kept: pick one and **Insert** puts it in at the caret, and **Delete**
 takes it out of the list for good.
 
 Typing the name and pressing **Ctrl+F3** puts the entry in without the box,
-the way Word 6's F3 did (F3 alone is Find Next here). Entries are kept
+the way Word 97's F3 did (F3 alone is Find Next here). Entries are kept
 between runs, in the settings file; what is kept is the text, not its
 formatting, so an entry takes the formatting of the place it lands in.
 
@@ -322,7 +322,7 @@ ours.
 ### Format ▸ Borders and Shading
 
 A line above, below, to the left or right of a paragraph, or round it:
-single, double, dashed or dotted, in any of Word XP's nine weights from a
+single, double, dashed or dotted, in any of Word 97's nine weights from a
 quarter point to six, in any of the sixteen colours, and a grey shading or
 a colour behind it. Everything that draws the document draws them, so they
 print and export as they appear.
@@ -435,7 +435,7 @@ view.
 ## 9. Tables
 
 **Table ▸ Insert ▸ Table** puts a grid of any size after the paragraph
-you are in. The Table menu is laid out as Word XP laid it out: Insert,
+you are in. The Table menu gathers its commands as Word's later versions did: Insert,
 Delete and Select as submenus, then the cell commands, AutoFormat and
 AutoFit, and the rest.
 
@@ -528,7 +528,7 @@ keeping its proportions, a side to stretch it. A dotted outline shows the
 size it will be until you let go.
 
 **Format ▸ Picture** sets the size by number and how the text treats it,
-in Word XP's terms: in line with the text; at the left or right with the
+in Word 97's terms: in line with the text; at the left or right with the
 text running down the other side; top and bottom, with the text stopping
 above it and going on below; in front of the text, which runs on under
 it; or behind the text. A picture read from a file that was put at a
@@ -692,7 +692,7 @@ checker looks past them.
 
 ### Tools ▸ AutoCorrect
 
-What is put right as you type, as Word 6 did it:
+What is put right as you type, as Word 97 did it:
 
 - **Quotes** — a straight `"` or `'` becomes the opening or closing curly
   one, whichever fits where it stands.
@@ -747,7 +747,7 @@ survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
 
 ### Tools ▸ Macro
 
-Word 6 had WordBasic and Word has VBA; Word42 has **Word42 Basic**, a
+Word 97 brought Visual Basic for Applications to Word; Word42 has **Word42 Basic**, a
 dialect of Visual Basic for Applications that runs on the MY-BASIC
 interpreter built into the program. A macro is a file of it in the
 `word42/macros` folder of your data directory, holding one Sub or more.
@@ -755,7 +755,7 @@ Nothing runs on its own: there is no AutoOpen, and a document carries no
 macros. A macro runs when you run it, and everything it does to the
 document is one undo step.
 
-**Tools ▸ Macro ▸ Macros...** (Alt+F8) is Word 6's Macro box: the macros
+**Tools ▸ Macro ▸ Macros...** (Alt+F8) is Word 97's Macros box: the macros
 in the folder, listed as `File.Sub` (a file with one Sub of its own name
 is listed by the name alone), with **Run**, **Create**, **Edit** and
 **Delete**. Type a new name and press Create to start one; it opens in
@@ -861,7 +861,7 @@ is what the other will print.
 
 The zoom box on the standard toolbar offers 50%, 75%, 100%, 150% and
 200%, Page Width and Whole Page, and shows whatever figure is in force.
-View ▸ Zoom has the same, and **View ▸ Zoom...** opens Word 6's box:
+View ▸ Zoom has the same, and **View ▸ Zoom...** opens Word 97's box:
 200%, 100%, 75%, Page Width, Whole Page, or any percentage from 25 to
 500 typed in. Page Width fits the sheet between the window's edges;
 Whole Page fits the whole sheet in the window.
@@ -924,7 +924,7 @@ raise it.
 
 ## 14. Printing and exporting
 
-**File ▸ Print** (Ctrl+P) opens Word42's Print box, laid out as Word XP's
+**File ▸ Print** (Ctrl+P) opens Word42's Print box, laid out as Word 97's
 was: the printer the last job went to; a page range -- All, Current page,
 Selection, or Pages typed as `1,3,5-12`; the number of copies and Collate;
 All, Odd or Even pages in the range; and the options that mean something
@@ -938,7 +938,7 @@ printer can be given. What the box was left at is what it opens with next
 time, in this session and the next.
 
 **File ▸ Print Preview** (Ctrl+F2) opens Word42's own preview, with the
-bar Word XP's had: Print, One Page, Multiple Pages (two across, then
+bar Word 97's had: Print, One Page, Multiple Pages (two across, then
 three), Zoom Out and In, a zoom box with the percentages, Page Width, Whole
 Page and Two Pages, Previous and Next, a page counter and Close. Click a
 page and the magnifier takes it to 100% round the point clicked; click

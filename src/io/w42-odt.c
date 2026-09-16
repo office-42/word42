@@ -3244,7 +3244,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     "<style:style style:name=\"frR\" style:family=\"graphic\"><style:graphic-properties "
     "style:wrap=\"left\" style:horizontal-pos=\"right\" style:horizontal-rel=\"paragraph\" "
     "style:vertical-pos=\"top\" style:vertical-rel=\"paragraph\" fo:margin-left=\"0.125in\" fo:margin-bottom=\"0.125in\"/></style:style>"
-    /* Word XP's other wrapping styles: the text above and below, and
+    /* Word 97's other wrapping styles: the text above and below, and
      * running on over or under the object. */
     "<style:style style:name=\"frTB\" style:family=\"graphic\"><style:graphic-properties "
     "style:wrap=\"none\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"paragraph\" "

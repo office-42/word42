@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6's Help menu had Contents, a search and an index.  This is the
+ * Word 97's Help menu had Contents, a search and an index.  This is the
  * same, built from the user guide that ships with the program: the
  * guide's sections are the topics, its sub-headings are the index,
  * and the search looks through the lot.

@@ -47,13 +47,13 @@ static void window_saved (W42Window *self, gboolean succeeded);
  * default. */
 static const double ZOOM_STEPS[] = { 0.5, 0.75, 1.0, 1.5, 2.0 };
 static const char  *ZOOM_LABELS[] = { "50%", "75%", "100%", "150%", "200%" };
-/* After the steps, the box offers the two fits Word 6's did; and after
+/* After the steps, the box offers the two fits Word 97's did; and after
  * those, when the zoom is none of the above, one entry saying what it
  * is, spliced in and out as the zoom changes. */
 static const char  *ZOOM_FIT_LABELS[] = { "Page Width", "Whole Page" };
 #define ZOOM_N_FIXED (G_N_ELEMENTS (ZOOM_LABELS) + G_N_ELEMENTS (ZOOM_FIT_LABELS))
 
-/* The sizes Word 6's Formatting toolbar offered. */
+/* The sizes Word 97's Formatting toolbar offered. */
 static const int FONT_SIZES[] = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 22,
                                   24, 26, 28, 36, 48, 72 };
 
@@ -135,7 +135,7 @@ static void on_view_state_changed (W42View *view, gpointer data);
 
 /* Commands that can do nothing at all -- no fields to update, no
  * revisions to accept -- say so in the status bar rather than looking
- * broken.  Word 6 wrote its messages there too. */
+ * broken.  Word 97 wrote its messages there too. */
 static gboolean
 window_flash_done (gpointer data)
 {
@@ -276,7 +276,7 @@ file_filters (void)
                                             all_docs));
   g_list_store_append (store, named_filter ("Rich Text Format (*.rtf)", rtf));
   g_list_store_append (store, named_filter ("Word Document (*.docx)", docx));
-  g_list_store_append (store, named_filter ("Word 97-2003 (*.doc)", doc));
+  g_list_store_append (store, named_filter ("Word 97 (*.doc)", doc));
   g_list_store_append (store, named_filter ("OpenDocument Text (*.odt)", odt));
   g_list_store_append (store, named_filter ("AbiWord (*.abw, *.zabw)", abw));
   g_list_store_append (store, named_filter ("Web Pages (*.html)", web));
@@ -1431,7 +1431,7 @@ action_show_marks (GSimpleAction *action, GVariant *param, gpointer data)
   g_variant_unref (state);
   g_simple_action_set_state (action, g_variant_new_boolean (on));
   w42_view_set_show_marks (self->view, on);
-  /* Not remembered: a document opens clean, as in Word 6; the marks are a
+  /* Not remembered: a document opens clean, as in Word 97; the marks are a
    * look under the bonnet, one keystroke away. */
 }
 
@@ -1552,7 +1552,7 @@ on_font_dialog_done (GObject *source, GAsyncResult *result, gpointer data)
   pango_font_description_free (desc);
 }
 
-/* Ctrl+] and Ctrl+[: the size a point up or down, as Word 6 stepped it. */
+/* Ctrl+] and Ctrl+[: the size a point up or down, as Word 97 stepped it. */
 /* The name from Options > User Info, or the account's. */
 static const char *
 window_author_name (void)
@@ -1611,7 +1611,7 @@ action_font_dialog (GSimpleAction *action, GVariant *param, gpointer data)
   g_object_unref (dialog);
 }
 
-/* Word 6's About box was a banner, a version line and an OK button, and so is
+/* Word 97's About box was a banner, a version line and an OK button, and so is
  * this one.  It is built by hand rather than with GtkAboutDialog because the
  * whole point of the banner is that it should not look like every other GTK
  * dialog on the desktop. */
@@ -3057,7 +3057,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
 /* Title bar                                                               */
 /* ---------------------------------------------------------------------- */
 
-/* Word 6's title bar was navy with its name centred on it in white, and the
+/* Word 97's title bar was navy with its name on it in white, and the
  * desktop's own title bar cannot be made to look like that.  So word42 draws
  * its own: a GtkWindowHandle, which keeps dragging and the double-click to
  * maximise working, wrapped round a centre box. */
@@ -3313,7 +3313,7 @@ build_standard_bar (void)
   return bar;
 }
 
-/* Word 6 kept the zoom control at the right-hand end of the Standard bar. */
+/* Word 97 kept the zoom control at the right-hand end of the Standard bar. */
 static GtkWidget *
 build_zoom_drop (W42Window *self)
 {
@@ -3513,7 +3513,7 @@ build_format_bar (W42Window *self)
   gtk_widget_add_css_class (bar, "w42-toolbar");
 
   {
-    /* The Style box, at the left end as Word 6 had it. */
+    /* The Style box, at the left end as Word 97 had it. */
     self->style_list = gtk_string_list_new (NULL);
     self->style_drop = gtk_drop_down_new (g_object_ref (G_LIST_MODEL (self->style_list)), NULL);
     gtk_widget_set_size_request (self->style_drop, 120, -1);
@@ -3625,7 +3625,7 @@ build_status_bar (W42Window *self)
   gtk_widget_set_hexpand (self->status_mod, TRUE);
   gtk_label_set_xalign (GTK_LABEL (self->status_mod), 0.0);
 
-  /* Each reading sits in its own sunken well, as Word 6's readings did. */
+  /* Each reading sits in its own sunken well, as Word 97's readings did. */
   {
     GtkWidget *cells[] = { self->status_page, self->status_at,
                            self->status_ln, self->status_col,
@@ -3647,7 +3647,7 @@ build_status_bar (W42Window *self)
 
 /* ---------------------------------------------------------------------- */
 /* Keeping the chrome in step with the document                            */
-/* The Window menu lists the open documents, numbered as Word 6 did. */
+/* The Window menu lists the open documents, numbered as Word 97 did. */
 static int
 window_by_serial (gconstpointer a, gconstpointer b)
 {

@@ -22,7 +22,7 @@ w42_fmt_init_default (W42Fmt *fmt)
   memset (fmt, 0, sizeof *fmt);
 
   fmt->ch.family = g_intern_static_string ("Times New Roman");
-  fmt->ch.size   = 20;          /* 10pt, Word 6's default */
+  fmt->ch.size   = 20;          /* 10pt, Word 97's default */
   fmt->ch.color  = 0x000000;
   fmt->ch.script = 0;
 

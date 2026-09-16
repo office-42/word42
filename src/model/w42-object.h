@@ -24,7 +24,7 @@ typedef guint32 W42ObjectIdx;
 
 /* How the text treats a picture: as a character in the line, or as a
  * frame at the left or right of its paragraph with the text beside it,
- * or -- Word XP's other wrapping styles -- with the text above and below
+ * or -- Word 97's other wrapping styles -- with the text above and below
  * it only, or running on under or over it. */
 typedef enum {
   W42_WRAP_INLINE = 0,

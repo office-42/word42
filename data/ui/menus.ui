@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Word 97's menu bar, in Word 6's dress.  Items whose actions are
+<!-- Word 97's menu bar.  Items whose actions are
      disabled are features word42 intends to have and does not have yet;
      they show greyed out rather than being hidden, so the menus say what
      the program is aiming at. -->
@@ -595,7 +595,7 @@
 
     <submenu>
       <attribute name="label" translatable="yes">T_able</attribute>
-      <!-- Word XP's Table menu: Insert, Delete and Select as submenus,
+      <!-- The Table menu: Insert, Delete and Select as submenus,
            AutoFit, Heading Rows Repeat and Formula. -->
       <section>
         <submenu>

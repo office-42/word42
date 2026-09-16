@@ -871,7 +871,7 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
           add_attr (list, pango_attr_underline_new (PANGO_UNDERLINE_SINGLE), start, end);
         }
 
-      /* Revision marks the way Word 6 showed them: inserted text
+      /* Revision marks the way Word 97 showed them: inserted text
        * underlined, deleted text struck through, both in a colour of
        * their own. */
       if (ch->revision != 0)
@@ -2089,7 +2089,7 @@ w42_layout_build_pt (W42Layout          *self,
   /* Newspaper columns: the text flows down one column and on to the next,
    * so the flow below is laid out into columns as if each were a page, and
    * those "column pages" are folded on to real pages at the end.  Normal
-   * view shows one column, as Word 6's did. */
+   * view shows one column, as Word 97's did. */
   int n_columns = self->galley ? 1 : w42_page_columns (page);
   double column_gap = w42_twips_to_px (w42_page_column_gap (page));
   double column_w = (text_w - (n_columns - 1) * column_gap) / n_columns;
@@ -2102,7 +2102,7 @@ w42_layout_build_pt (W42Layout          *self,
   }
 
   /* Normal view keeps the text column the width the page gives it, but does
-   * not show the page's margins: Word 6 sat the galley just inside the window
+   * not show the page's margins: Word 97 sat the galley just inside the window
    * with a narrow selection bar to its left, and nothing above it. */
   if (self->galley)
     {
@@ -2125,7 +2125,7 @@ w42_layout_build_pt (W42Layout          *self,
 
   /* A wrapped picture: the paragraph it is anchored to and those after it
    * on the same page, down to its foot, are set in the rest of the column.
-   * Word 6 framed pictures the same way, paragraph by paragraph. */
+   * Word 97 framed pictures the same way, paragraph by paragraph. */
   /* An obstacle at either side of the column -- a picture, a frame or a
    * dropped letter -- with the page it is on, its foot and what it takes
    * off the column.  One at each side can stand at once. */
@@ -2150,8 +2150,8 @@ w42_layout_build_pt (W42Layout          *self,
   GArray *placed = g_array_new (FALSE, TRUE, sizeof (gboolean));
 
   /* Section numbers: one counter per outline level, the deeper ones reset
-   * whenever a shallower heading comes along.  Word 6's Heading Numbering
-   * did exactly this and nothing more. */
+   * whenever a shallower heading comes along.  Heading Numbering does
+   * exactly this and nothing more. */
   int counters[10] = { 0 };
   gboolean numbering = w42_stylesheet_get_number_headings (self->styles);
 

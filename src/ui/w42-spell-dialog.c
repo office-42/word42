@@ -386,7 +386,7 @@ w42_spell_dialog_init (W42SpellDialog *self)
   gtk_widget_add_css_class (self->status, "w42-dialog-status");
   gtk_box_append (GTK_BOX (left), self->status);
 
-  /* The column of buttons down the right, as Word 6 laid them out. */
+  /* The column of buttons down the right, as Word 97 laid them out. */
   right = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
   gtk_box_append (GTK_BOX (columns), right);
 
