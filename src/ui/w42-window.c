@@ -1795,6 +1795,41 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
   g_clear_error (&error);
 }
 
+/* File > Web Page Preview: Word 97 wrote the document out as a web page
+ * and opened it in the browser, so that what a reader on the web would
+ * see could be seen.  The page goes to the cache folder, one file written
+ * over each time, so nothing is left lying about. */
+static void
+action_web_preview (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  char *dir = g_build_filename (g_get_user_cache_dir (), "word42", NULL);
+  char *path = g_build_filename (dir, "preview.html", NULL);
+  GFile *file;
+
+  (void) action; (void) param;
+
+  g_mkdir_with_parents (dir, 0700);
+  file = g_file_new_for_path (path);
+  if (w42_html_export (w42_document_pt (self->doc),
+                       w42_document_page_setup (self->doc), file, &error))
+    {
+      char *uri = g_file_get_uri (file);
+      GtkUriLauncher *launcher = gtk_uri_launcher_new (uri);
+
+      gtk_uri_launcher_launch (launcher, GTK_WINDOW (self), NULL, NULL, NULL);
+      g_object_unref (launcher);
+      g_free (uri);
+    }
+  else
+    show_error (self, "Word42 could not write the web page to preview.", error);
+  g_clear_error (&error);
+  g_object_unref (file);
+  g_free (path);
+  g_free (dir);
+}
+
 static void
 action_export_html (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -4334,6 +4369,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "insert-index",  action_insert_index,  NULL, NULL, NULL, { 0 } },
   { "open-recent",   action_open_recent,   "s",  NULL, NULL, { 0 } },
   { "export-html",   action_export_html,   NULL, NULL, NULL, { 0 } },
+  { "web-preview",   action_web_preview,   NULL, NULL, NULL, { 0 } },
   { "bookmark",      action_bookmark,      NULL, NULL, NULL, { 0 } },
   { "annotation",    action_annotation,    NULL, NULL, NULL, { 0 } },
   { "mail-merge",    action_mail_merge,    NULL, NULL, NULL, { 0 } },

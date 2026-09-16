@@ -74,6 +74,10 @@
           <attribute name="action">win.export-html</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">Web Pa_ge Preview</attribute>
+          <attribute name="action">win.web-preview</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Export as Presen_tation...</attribute>
           <attribute name="action">win.export-pptx</attribute>
         </item>
@@ -159,6 +163,11 @@
           <attribute name="label" translatable="yes">_Normal</attribute>
           <attribute name="action">win.view-mode</attribute>
           <attribute name="target">normal</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Online Layout</attribute>
+          <attribute name="action">win.view-mode</attribute>
+          <attribute name="target">online</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">_Page Layout</attribute>
@@ -305,24 +314,32 @@
           <attribute name="label" translatable="yes">_Hyperlink...</attribute>
           <attribute name="action">win.hyperlink</attribute>
         </item>
-        <item>
-          <attribute name="label" translatable="yes">_Table of Contents</attribute>
-          <attribute name="action">win.insert-toc</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">Up_date Table of Contents</attribute>
-          <attribute name="action">win.update-toc</attribute>
-        </item>
         <submenu>
-          <attribute name="label" translatable="yes">Inde_x</attribute>
+          <attribute name="label" translatable="yes">Inde_x and Tables</attribute>
           <section>
             <item>
-              <attribute name="label" translatable="yes">_Mark Entry...</attribute>
+              <attribute name="label" translatable="yes">_Table of Contents</attribute>
+              <attribute name="action">win.insert-toc</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Update Table of Contents</attribute>
+              <attribute name="action">win.update-toc</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Mark Index Entry...</attribute>
               <attribute name="action">win.index-entry</attribute>
             </item>
             <item>
-              <attribute name="label" translatable="yes">_Build the Index</attribute>
+              <attribute name="label" translatable="yes">_Index</attribute>
               <attribute name="action">win.insert-index</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">Table of _Figures</attribute>
+              <attribute name="action">win.table-of-figures</attribute>
             </item>
           </section>
         </submenu>
@@ -335,7 +352,7 @@
           <attribute name="action">win.caption</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">A_nnotation...</attribute>
+          <attribute name="label" translatable="yes">Comme_nt...</attribute>
           <attribute name="action">win.annotation</attribute>
         </item>
         <submenu>
@@ -545,21 +562,27 @@
       </section>
       <section>
         <submenu>
-          <attribute name="label" translatable="yes">_Revisions</attribute>
+          <attribute name="label" translatable="yes">_Track Changes</attribute>
           <section>
             <item>
-              <attribute name="label" translatable="yes">_Mark Revisions While Editing</attribute>
+              <attribute name="label" translatable="yes">_Highlight Changes</attribute>
               <attribute name="action">win.track-changes</attribute>
             </item>
           </section>
           <section>
             <item>
-              <attribute name="label" translatable="yes">Acce_pt All Revisions</attribute>
+              <attribute name="label" translatable="yes">Acce_pt All Changes</attribute>
               <attribute name="action">win.accept-revisions</attribute>
             </item>
             <item>
-              <attribute name="label" translatable="yes">Re_ject All Revisions</attribute>
+              <attribute name="label" translatable="yes">Re_ject All Changes</attribute>
               <attribute name="action">win.reject-revisions</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Compare Documents...</attribute>
+              <attribute name="action">win.compare-documents</attribute>
             </item>
           </section>
         </submenu>
@@ -706,7 +729,7 @@
               <attribute name="target">rows</attribute>
             </item>
             <item>
-              <attribute name="label" translatable="yes">Distribute _Columns Evenly</attribute>
+              <attribute name="label" translatable="yes">Distribute Co_lumns Evenly</attribute>
               <attribute name="action">win.table-autofit</attribute>
               <attribute name="target">columns</attribute>
             </item>

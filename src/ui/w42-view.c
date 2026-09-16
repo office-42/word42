@@ -4002,6 +4002,43 @@ view_hide_tip (W42View *self)
   self->tip_back = 0;
 }
 
+/* Word 97 offered the months and the days of the week from their first
+ * four letters, and today's date from the first letters of this month:
+ * "Sept" and Enter gave "September 16, 2026" in September. */
+static char *
+date_complete (const char *word)
+{
+  static const char *const NAMES[] = {
+    "January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December",
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+  };
+  char *want;
+  char *found = NULL;
+
+  if (g_utf8_strlen (word, -1) < 4)
+    return NULL;
+  want = g_utf8_casefold (word, -1);
+  for (guint i = 0; i < G_N_ELEMENTS (NAMES) && found == NULL; i++)
+    {
+      char *have = g_utf8_casefold (NAMES[i], -1);
+
+      if (g_str_has_prefix (have, want) && strlen (have) > strlen (want))
+        {
+          GDateTime *now = g_date_time_new_now_local ();
+
+          if (i < 12 && (int) i + 1 == g_date_time_get_month (now))
+            found = g_date_time_format (now, "%B %-d, %Y");
+          else
+            found = g_strdup (NAMES[i]);
+          g_date_time_unref (now);
+        }
+      g_free (have);
+    }
+  g_free (want);
+  return found;
+}
+
 static void
 view_offer_tip (W42View *self)
 {
@@ -4023,6 +4060,8 @@ view_offer_tip (W42View *self)
     word = g_utf8_prev_char (word);
   if (*word != '\0')
     entry = w42_autotext_complete (word, &name);
+  if (entry == NULL && *word != '\0')
+    entry = date_complete (word);
   if (entry == NULL)
     {
       g_free (before);

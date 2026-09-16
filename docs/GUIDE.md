@@ -584,11 +584,14 @@ the bookmarked text itself.
 
 ### Table of contents
 
-**Insert ▸ Table of Contents** puts one paragraph per heading at the caret,
+Word 97 kept the tables a document builds from itself under one
+submenu, **Insert ▸ Index and Tables**, and so does Word42.
+
+**Insert ▸ Index and Tables ▸ Table of Contents** puts one paragraph per heading at the caret,
 indented by level, with dots running out to the page number at a right tab
 stop at the margin.
-It is ordinary text, to edit or delete freely. **Insert ▸ Update Table of
-Contents** rebuilds it in place from the headings and page numbers as they
+It is ordinary text, to edit or delete freely. **Insert ▸ Index and
+Tables ▸ Update Table of Contents** rebuilds it in place from the headings and page numbers as they
 now are.
 
 ### Index
@@ -596,12 +599,13 @@ now are.
 An index is made the way a book's is: mark the words as you write, then
 gather them.
 
-Select a word or a phrase and **Insert ▸ Index ▸ Mark Entry** marks it.
+Select a word or a phrase and **Insert ▸ Index and Tables ▸ Mark Index
+Entry** marks it.
 The box offers the words themselves as the entry; type something else to
 file it under that instead — "Cats" marked, but filed under "Animals".
 The words on the page do not change and read as they did.
 
-**Insert ▸ Index ▸ Build the Index** puts the index in at the caret: one
+**Insert ▸ Index and Tables ▸ Index** puts the index in at the caret: one
 paragraph per entry, in alphabetical order, with the page numbers at a
 right tab stop and dots leading out to them. Ask for it again and the
 index already there is replaced where it stands, so it can be brought up
@@ -612,14 +616,14 @@ The marks travel with the document: RTF and Word carry them as XE
 fields, OpenDocument as the pair of index marks it has for the purpose,
 and LibreOffice reads all three as its own index entries.
 
-### Captions and annotations
+### Captions and comments
 
 **Insert ▸ Caption** starts a "Figure N:" paragraph in the Caption style,
 N counting on from the captions already there.
 
-**Insert ▸ Annotation** (Ctrl+Alt+A) attaches a note to the selected text,
-shown as a pale wash. The annotations box lists them, selects each one on a
-click, and deletes them. They carry your name from Tools ▸ Options.
+**Insert ▸ Comment** (Ctrl+Alt+A) attaches a note to the selected text,
+shown as a pale wash, as Word 97 named what had been annotations. The
+comments box lists them, selects each one on a click, and deletes them. They carry your name from Tools ▸ Options.
 
 ### Fields
 
@@ -730,12 +734,12 @@ The delivery address starts as whatever is selected in the document, and
 the return address as the name in Tools ▸ Options. Sizes are named by
 what they measure rather than by any maker's catalogue number.
 
-### Tools ▸ Revisions
+### Tools ▸ Track Changes
 
-**Mark Revisions While Editing** (Ctrl+Shift+E): from then on, text you
-type is underlined in red and text you delete is struck through in red
-rather than removed. **Accept All Revisions** keeps the insertions and
-drops the deletions; **Reject All Revisions** does the opposite. The marks
+**Highlight Changes** (Ctrl+Shift+E): from then on, text you type is
+underlined in red and text you delete is struck through in red rather
+than removed. **Accept All Changes** keeps the insertions and drops the
+deletions; **Reject All Changes** does the opposite. The marks
 survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
 
 ### Tools ▸ Mail Merge
@@ -1064,7 +1068,7 @@ about the document is sent anywhere.
 | Ctrl+Alt+N | Go to note |
 | Ctrl+K | Hyperlink |
 | Ctrl+Shift+F5 | Bookmark |
-| Ctrl+Alt+A | Annotation |
+| Ctrl+Alt+A | Comment |
 | Alt+Shift+D | Date and time |
 | F9 | Update fields |
 
