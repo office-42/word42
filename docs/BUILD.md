@@ -23,6 +23,18 @@ meson configure builddir -Dprefix=$HOME/.local
 meson install -C builddir
 ```
 
+## Optional
+
+Four things are found if they are installed and done without if not:
+**poppler-glib** to read PDF, **Enchant** (with a Hunspell dictionary)
+for spelling, **libhyphen** with a `hyph_*.dic` for hyphenation, and a
+**MyThes** thesaurus -- `th_en_US_v2.dat` and `.idx`, the pair
+LibreOffice uses -- for Tools ▸ Language ▸ Thesaurus. The thesaurus
+needs no library: the files are looked for in the mythes folder
+(`/usr/share/mythes`, `$prefix/share/mythes`, or `W42_THESAURUS_DIR`).
+On Debian and Ubuntu: `libpoppler-glib-dev libenchant-2-dev
+hunspell-en-us libhyphen-dev hyphen-en-us mythes-en-us`.
+
 ## Linux
 
 ```sh

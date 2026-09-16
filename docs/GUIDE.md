@@ -182,6 +182,13 @@ the way Word 6's F3 did (F3 alone is Find Next here). Entries are kept
 between runs, in the settings file; what is kept is the text, not its
 formatting, so an entry takes the formatting of the place it lands in.
 
+**AutoComplete.** Once the first four or more letters of an entry's name
+are typed, a small tip appears over the caret with the entry's first
+line and "(Press ENTER to Insert)", as Word 97's did. Enter puts the
+whole entry in, in place of the letters typed; Escape, or going on
+typing, takes the tip away and nothing else happens. The entry and the
+letters it replaces are one undo step.
+
 ### Find and Replace
 
 **Edit ▸ Find** (Ctrl+F) searches forward from the caret; F3 finds the next
@@ -223,6 +230,14 @@ the effects — strikeout, superscript, subscript — with a preview.
 The rest of them: strikethrough, overline, superscript, subscript, small
 capitals, all capitals, a highlight colour, and character spacing (letters
 pushed apart or drawn together, in points).
+
+Word 97's five as well: **double strikethrough**, **shadow** (a grey copy
+of the letters below and to the right), **outline** (the letters hollow),
+**emboss** (raised out of the page: white letters lit from the top left)
+and **engrave** (pressed into it). Emboss and engrave cannot both be on.
+Every painter draws them alike, so they print and export to PDF as they
+show, and RTF, Word and OpenDocument carry all five both ways; HTML says
+what CSS can.
 
 It also carries the **underline**, which has seven kinds: single, double,
 words only (the spaces between words are left alone), dotted, dashed,
@@ -317,6 +332,16 @@ sides, their line, its background -- or to the whole table, where the
 checked sides are the table's outside, "Inside" rules between its cells,
 and the line is drawn round it all. Where two cells disagree about the
 rule between them, the heavier line wins, as in Word.
+
+**Page Border.** The same box's last group puts a line round every page,
+as Word 97's Page Border tab did: its style, width and colour, and its
+distance from the edge of the paper in points (Word's 24 unless the
+document says otherwise). It is the document's, not the paragraph's: it
+shows in Page Layout view, in Print Preview, on paper and in PDF, and
+Normal view, having no pages, has no border. RTF (`\pgbrdrt` and the
+others), Word (`w:pgBorders`) and OpenDocument (`fo:border` on the page
+layout, with the margins turned into its padding as LibreOffice has
+them) carry it both ways; HTML writes it into the `@page` rule.
 
 ### Bullets and numbering
 
@@ -628,8 +653,12 @@ any dictionary at all, the box says so.
 
 ### Tools ▸ Language
 
-**Tools ▸ Language** marks the selected text as written in a language of
-its own: pick it from the list, and the spelling checker uses the
+Word 97 gathered the language tools under one submenu, and so does
+Word42: **Set Language**, **Thesaurus**, and the two hyphenation
+commands.
+
+**Tools ▸ Language ▸ Set Language** marks the selected text as written in
+a language of its own: pick it from the list, and the spelling checker uses the
 dictionary for it rather than the document's. A tick in the list marks the
 languages a dictionary is installed for; the first entry leaves the text
 in the document's own language, and "(no proofing)" says the text is not
@@ -640,6 +669,26 @@ With nothing selected the language is set for what is typed next, the way
 bold is. The mark travels with the text: RTF carries it as `\lang`, Word
 as `w:lang`, OpenDocument as `fo:language` and `fo:country`, AbiWord as
 its `lang` property and HTML as `lang=`.
+
+**Tools ▸ Language ▸ Thesaurus** (Shift+F7) looks up the word at the
+caret, or the selection, in Word 97's box: the word under **Looked Up**,
+its **Meanings** down the left with the part of speech beside each, and
+the synonyms of the chosen meaning down the right with the one picked
+in the **Replace with Synonym** box. **Replace** puts that word in place
+of the one looked up; **Look Up** looks up whatever is in the box, so
+the thesaurus can be walked from word to word, and **Previous** goes
+back a step. A synonym double-clicked is looked up too.
+
+The thesaurus is a MyThes file -- `th_en_US_v2.dat` and its `.idx`, the
+pair LibreOffice uses -- for your language, looked for in the mythes
+folder (`/usr/share/mythes` and its like, or `W42_THESAURUS_DIR`).
+Without one the command says so. English files come with LibreOffice
+and as the `mythes-en-us` package on Debian and Ubuntu.
+
+**Hyphenate Document** puts soft hyphens into words by the language's
+patterns, so lines may break inside words; **Remove Hyphenation** takes
+them out again. The soft hyphens travel in RTF and HTML, and the spelling
+checker looks past them.
 
 ### Tools ▸ AutoCorrect
 
@@ -680,13 +729,6 @@ label, or on the first one only.
 The delivery address starts as whatever is selected in the document, and
 the return address as the name in Tools ▸ Options. Sizes are named by
 what they measure rather than by any maker's catalogue number.
-
-### Tools ▸ Hyphenation
-
-**Hyphenate Document** puts soft hyphens into words by the language's
-patterns, so lines may break inside words; **Remove Hyphenation** takes
-them out again. The soft hyphens travel in RTF and HTML, and the spelling
-checker looks past them.
 
 ### Tools ▸ Revisions
 
@@ -829,11 +871,23 @@ Whole Page fits the whole sheet in the window.
 A dot for every space, an arrow for a tab, a bent arrow for a line break
 and a pilcrow at every paragraph end, in blue.
 
+### View ▸ Document Map
+
+Word 97's pane down the left of the window: every heading in the
+document, indented by its level, with the one the caret is under shown
+selected. Click a heading and the caret goes to it and the page scrolls
+to show it. The list follows the text as it is typed -- a heading added,
+renamed or taken out shows a moment later -- and shows the section
+numbers when Format ▸ Heading Numbering is on. The Title counts as the
+top of the outline, as it does in the slide show; headings in tables and
+notes are not listed. A bar between the map and the page drags to size
+it, and the setting is remembered between runs.
+
 ### View ▸ Full Screen
 
-Gives the page the whole screen: the menu bar, both toolbars, the ruler
-and the status bar go away. Escape brings them back, or View ▸ Full
-Screen again.
+Gives the page the whole screen: the menu bar, both toolbars, the ruler,
+the Document Map and the status bar go away. Escape brings them back, or
+View ▸ Full Screen again.
 
 ### View ▸ Slide Show
 
@@ -1019,6 +1073,7 @@ about the document is sent anywhere.
 | Key | Command |
 | --- | --- |
 | F7 | Spelling |
+| Shift+F7 | Thesaurus |
 | Ctrl+Shift+E | Mark revisions while editing |
 | Ctrl+Shift+8 | Show formatting marks |
 | F1 | Help contents |

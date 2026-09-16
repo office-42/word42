@@ -376,6 +376,14 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
       else if (g_str_equal (k, "style:text-underline-mode") && g_str_equal (v, "skip-white-space"))
         ch->underline = W42_UNDERLINE_WORDS;
       else if (g_str_equal (k, "style:text-line-through-style")) ch->strikeout = !g_str_equal (v, "none");
+      else if (g_str_equal (k, "style:text-line-through-type")) ch->dstrike = g_str_equal (v, "double");
+      else if (g_str_equal (k, "fo:text-shadow"))      ch->shadow = !g_str_equal (v, "none");
+      else if (g_str_equal (k, "style:text-outline"))  ch->outline = g_str_equal (v, "true");
+      else if (g_str_equal (k, "style:font-relief"))
+        {
+          ch->emboss = g_str_equal (v, "embossed");
+          ch->engrave = g_str_equal (v, "engraved");
+        }
       else if (g_str_equal (k, "style:text-overline-style")) ch->overline = !g_str_equal (v, "none");
       else if (g_str_equal (k, "fo:font-size"))
         {
@@ -527,6 +535,11 @@ resolve_style (Odt *o, const char *name, int depth)
               if (s->ch.allcaps) ch.allcaps = 1;
               if (s->ch.spacing) ch.spacing = s->ch.spacing;
               if (s->ch.lang != NULL) ch.lang = s->ch.lang;
+              if (s->ch.dstrike) ch.dstrike = 1;
+              if (s->ch.shadow) ch.shadow = 1;
+              if (s->ch.outline) ch.outline = 1;
+              if (s->ch.emboss) ch.emboss = 1;
+              if (s->ch.engrave) ch.engrave = 1;
             }
           s->pa = pa;
           s->ch = ch;
@@ -890,6 +903,40 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
       if (attr (an, av, "fo:margin-bottom")) o->page->margin_bottom = length_twips (attr (an, av, "fo:margin-bottom"));
       if (attr (an, av, "fo:margin-left")) o->page->margin_left = length_twips (attr (an, av, "fo:margin-left"));
       if (attr (an, av, "fo:margin-right")) o->page->margin_right = length_twips (attr (an, av, "fo:margin-right"));
+      {
+        /* A border round the page.  OpenDocument draws it inside the
+         * margins with the padding between it and the text, where Word
+         * measures the margin to the text and the border from the edge:
+         * the margins read are the border's distance, and the text's
+         * margin is what the padding adds to them. */
+        const char *border = attr (an, av, "fo:border");
+        int t = 0, r = 0, b = 0, l = 0;
+        const char *pad = attr (an, av, "fo:padding");
+
+        if (border == NULL) border = attr (an, av, "fo:border-top");
+        if (border == NULL) border = attr (an, av, "fo:border-left");
+        if (pad != NULL) margin_shorthand (pad, &t, &r, &b, &l);
+        if (attr (an, av, "fo:padding-top")) t = length_twips (attr (an, av, "fo:padding-top"));
+        if (attr (an, av, "fo:padding-right")) r = length_twips (attr (an, av, "fo:padding-right"));
+        if (attr (an, av, "fo:padding-bottom")) b = length_twips (attr (an, av, "fo:padding-bottom"));
+        if (attr (an, av, "fo:padding-left")) l = length_twips (attr (an, av, "fo:padding-left"));
+        if (border != NULL && !g_str_equal (border, "none"))
+          {
+            const char *hash = strchr (border, '#');
+            int width = CLAMP (length_twips (border), 5, 120);
+
+            o->page->has_border = 1;
+            o->page->border_style = (guint8) w42_border_style_from_css (border);
+            o->page->border_width = (guint8) width;
+            o->page->border_color = (hash != NULL && strlen (hash) >= 7)
+                                      ? (guint32) strtoul (hash + 1, NULL, 16) & 0xFFFFFF : 0;
+            o->page->border_space = o->page->margin_top;
+            o->page->margin_top += t + width;
+            o->page->margin_bottom += b + width;
+            o->page->margin_left += l + width;
+            o->page->margin_right += r + width;
+          }
+      }
       {
         /* The colour behind the page. */
         const char *bg = attr (an, av, "fo:background-color");
@@ -1348,6 +1395,11 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           if (s->ch.allcaps) ch.allcaps = 1;
           if (s->ch.spacing) ch.spacing = s->ch.spacing;
           if (s->ch.lang != NULL) ch.lang = s->ch.lang;
+          if (s->ch.dstrike) ch.dstrike = 1;
+          if (s->ch.shadow) ch.shadow = 1;
+          if (s->ch.outline) ch.outline = 1;
+          if (s->ch.emboss) ch.emboss = 1;
+          if (s->ch.engrave) ch.engrave = 1;
         }
       g_array_append_val (o->span_stack, ch);
     }
@@ -2348,8 +2400,18 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
    * or colour, and what a style leaves unsaid it inherits. */
   else if (base == NULL)
     g_string_append (s, " style:text-underline-style=\"none\"");
-  if (ch->strikeout) g_string_append (s, " style:text-line-through-style=\"solid\"");
+  if (ch->strikeout || ch->dstrike) g_string_append (s, " style:text-line-through-style=\"solid\"");
   else if (base == NULL) g_string_append (s, " style:text-line-through-style=\"none\"");
+  if (ch->dstrike) g_string_append (s, " style:text-line-through-type=\"double\"");
+  else if (base == NULL || base->dstrike) g_string_append (s, " style:text-line-through-type=\"single\"");
+  /* The shadow's offset is what LibreOffice writes for its own. */
+  if (ch->shadow) g_string_append (s, " fo:text-shadow=\"1pt 1pt\"");
+  else if (base == NULL || base->shadow) g_string_append (s, " fo:text-shadow=\"none\"");
+  if (ch->outline) g_string_append (s, " style:text-outline=\"true\"");
+  else if (base == NULL || base->outline) g_string_append (s, " style:text-outline=\"false\"");
+  if (ch->emboss) g_string_append (s, " style:font-relief=\"embossed\"");
+  else if (ch->engrave) g_string_append (s, " style:font-relief=\"engraved\"");
+  else if (base == NULL || base->emboss || base->engrave) g_string_append (s, " style:font-relief=\"none\"");
   if (ch->overline)  g_string_append (s, " style:text-overline-style=\"solid\"");
   else if (base == NULL) g_string_append (s, " style:text-overline-style=\"none\"");
   if (ch->color != 0 || base == NULL) g_string_append_printf (s, " fo:color=\"#%06x\"", ch->color);
@@ -3235,15 +3297,45 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   twips_out (stylesxml, pg.width);
   g_string_append (stylesxml, "\" fo:page-height=\"");
   twips_out (stylesxml, pg.height);
-  g_string_append_printf (stylesxml, "\" style:print-orientation=\"%s\" fo:margin-top=\"", pg.width > pg.height ? "landscape" : "portrait");
-  twips_out (stylesxml, pg.margin_top);
-  g_string_append (stylesxml, "\" fo:margin-bottom=\"");
-  twips_out (stylesxml, pg.margin_bottom);
-  g_string_append (stylesxml, "\" fo:margin-left=\"");
-  twips_out (stylesxml, pg.margin_left);
-  g_string_append (stylesxml, "\" fo:margin-right=\"");
-  twips_out (stylesxml, pg.margin_right);
-  g_string_append (stylesxml, "\"");
+  g_string_append_printf (stylesxml, "\" style:print-orientation=\"%s\"", pg.width > pg.height ? "landscape" : "portrait");
+  if (pg.has_border)
+    {
+      /* OpenDocument's page border stands inside the margins, the
+       * padding between it and the text: Word's distance from the edge
+       * becomes the margin, and the rest of the margin the padding. */
+      int width = pg.border_width > 0 ? pg.border_width : W42_BORDER_HAIRLINE;
+      int space = CLAMP (pg.border_space, 0, MIN (pg.width, pg.height) / 4);
+      int pad_t = MAX (pg.margin_top - space - width, 0);
+      int pad_b = MAX (pg.margin_bottom - space - width, 0);
+      int pad_l = MAX (pg.margin_left - space - width, 0);
+      int pad_r = MAX (pg.margin_right - space - width, 0);
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      g_string_append (stylesxml, " fo:margin-top=\"");  twips_out (stylesxml, space);
+      g_string_append (stylesxml, "\" fo:margin-bottom=\""); twips_out (stylesxml, space);
+      g_string_append (stylesxml, "\" fo:margin-left=\""); twips_out (stylesxml, space);
+      g_string_append (stylesxml, "\" fo:margin-right=\""); twips_out (stylesxml, space);
+      g_string_append (stylesxml, "\" fo:padding-top=\""); twips_out (stylesxml, pad_t);
+      g_string_append (stylesxml, "\" fo:padding-bottom=\""); twips_out (stylesxml, pad_b);
+      g_string_append (stylesxml, "\" fo:padding-left=\""); twips_out (stylesxml, pad_l);
+      g_string_append (stylesxml, "\" fo:padding-right=\""); twips_out (stylesxml, pad_r);
+      g_string_append_printf (stylesxml, "\" fo:border=\"%spt %s #%06x\"",
+                              g_ascii_formatd (buf, sizeof buf, "%.2f", width / 20.0),
+                              w42_border_style_css ((W42BorderStyle) pg.border_style),
+                              pg.border_color & 0xFFFFFF);
+    }
+  else
+    {
+      g_string_append (stylesxml, " fo:margin-top=\"");
+      twips_out (stylesxml, pg.margin_top);
+      g_string_append (stylesxml, "\" fo:margin-bottom=\"");
+      twips_out (stylesxml, pg.margin_bottom);
+      g_string_append (stylesxml, "\" fo:margin-left=\"");
+      twips_out (stylesxml, pg.margin_left);
+      g_string_append (stylesxml, "\" fo:margin-right=\"");
+      twips_out (stylesxml, pg.margin_right);
+      g_string_append (stylesxml, "\"");
+    }
   if (pg.has_background)
     g_string_append_printf (stylesxml, " fo:background-color=\"#%06x\"",
                             pg.background & 0xFFFFFF);

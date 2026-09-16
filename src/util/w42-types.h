@@ -42,6 +42,14 @@ typedef struct {
   int column_gap;       /* twips between them; 0 means a half inch */
   guint8  has_background;  /* the page has a colour of its own */
   guint32 background;      /* 0x00RRGGBB, when it has */
+  /* Word 97's page border: one line round every page, at a distance
+   * from the paper's edge.  The style is a W42BorderStyle; the width is
+   * in twips, 0 for the hairline. */
+  guint8  has_border;
+  guint8  border_style;
+  guint8  border_width;
+  int     border_space;    /* twips from the edge of the paper to the line */
+  guint32 border_color;    /* 0x00RRGGBB */
 } W42PageSetup;
 
 static inline int w42_page_columns (const W42PageSetup *page)

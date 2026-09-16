@@ -2150,6 +2150,12 @@ typedef struct {
   GtkWidget *apply_to;     /* NULL outside a table */
   GtkWidget *shading;
   GtkWidget *fill;
+  /* Word 97's Page Border tab: a line round every page. */
+  GtkWidget *page_on;
+  GtkWidget *page_style;
+  GtkWidget *page_width;
+  GtkWidget *page_colour;
+  GtkWidget *page_space;
 } BordersBox;
 
 /* The sixteen colours Word 6 offered, which is what a colour is chosen from
@@ -2292,7 +2298,42 @@ on_borders_ok (GtkButton *button, gpointer data)
     }
   else
     w42_view_apply_para_fmt (box->view, W42_PARA_BORDER | W42_PARA_SHADING, &want);
+
+  /* The page border is the document's, not the paragraph's: it goes on
+   * the page setup, as the background colour does, when it changed. */
+  {
+    W42Document *doc = w42_view_get_document (box->view);
+
+    if (doc != NULL)
+      {
+        W42PageSetup page = *w42_document_page_setup (doc);
+        guint pw = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->page_width));
+        guint pc = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->page_colour));
+        guint ps = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->page_style));
+
+        page.has_border = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->page_on)) ? 1 : 0;
+        page.border_style = (guint8) MIN (ps, W42_BORDER_DOTTED);
+        page.border_width = (guint8) BORDER_WIDTH_TWIPS[MIN (pw, G_N_ELEMENTS (BORDER_WIDTH_TWIPS) - 1)];
+        page.border_color = PALETTE_VALUES[MIN (pc, G_N_ELEMENTS (PALETTE_VALUES) - 1)];
+        page.border_space = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->page_space)) * 20.0);
+        if (memcmp (&page, w42_document_page_setup (doc), sizeof page) != 0)
+          w42_document_set_page_setup (doc, &page);
+      }
+  }
   gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+/* The page border's line is chosen only when there is to be one. */
+static void
+on_page_border_toggled (GtkCheckButton *button, gpointer data)
+{
+  BordersBox *box = data;
+  gboolean on = gtk_check_button_get_active (button);
+
+  gtk_widget_set_sensitive (box->page_style, on);
+  gtk_widget_set_sensitive (box->page_width, on);
+  gtk_widget_set_sensitive (box->page_colour, on);
+  gtk_widget_set_sensitive (box->page_space, on);
 }
 
 /* The table's four sides and its inside rule, as set from the table's
@@ -2424,6 +2465,36 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
   box->fill = choice_row (grid, 1, 0, "Bac_kground:", FILL_NAMES,
                           now.has_shading_color
                             ? palette_index (now.shading_color) + 1 : 0);
+
+  /* Word 97 added a Page Border tab to this box; here it is a group,
+   * with the line's style, width and colour and Word's "distance from
+   * edge", 24 points unless the document says otherwise. */
+  grid = group (content, "Page Border");
+  {
+    const W42PageSetup *page = w42_document_page_setup (w42_view_get_document (view));
+    GtkWidget *label = gtk_label_new_with_mnemonic ("_Distance from edge (pt):");
+
+    box->page_on = gtk_check_button_new_with_mnemonic ("A border round _every page");
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->page_on), page->has_border != 0);
+    gtk_grid_attach (GTK_GRID (grid), box->page_on, 0, 0, 2, 1);
+    box->page_style = choice_row (grid, 1, 0, "Style:", BORDER_STYLES,
+                                  MIN (page->border_style, W42_BORDER_DOTTED));
+    box->page_width = choice_row (grid, 2, 0, "Line Width:", BORDER_WIDTHS,
+                                  width_index_for (page->border_width > 0 ? page->border_width
+                                                                          : W42_BORDER_HAIRLINE));
+    box->page_colour = choice_row (grid, 3, 0, "Line Color:", PALETTE_NAMES,
+                                   palette_index (page->border_color));
+    box->page_space = gtk_spin_button_new_with_range (0.0, 100.0, 1.0);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->page_space),
+                               page->has_border ? page->border_space / 20.0 : 24.0);
+    gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->page_space), TRUE);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->page_space);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 4, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->page_space, 1, 4, 1, 1);
+    g_signal_connect (box->page_on, "toggled", G_CALLBACK (on_page_border_toggled), box);
+    on_page_border_toggled (GTK_CHECK_BUTTON (box->page_on), box);
+  }
 
   button_row (content, box->window, G_CALLBACK (on_borders_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -2708,6 +2779,7 @@ typedef struct {
   GtkWidget *window;
   W42View   *view;
   GtkWidget *strike, *super, *sub, *smallcaps, *allcaps, *overline;
+  GtkWidget *dstrike, *shadow, *outline, *emboss, *engrave;
   GtkWidget *underline;
   GtkWidget *highlight;
   GtkWidget *spacing;
@@ -2753,6 +2825,11 @@ on_effects_ok (GtkButton *button, gpointer data)
                  : gtk_check_button_get_active (GTK_CHECK_BUTTON (box->sub)) ? -1 : 0;
   want.smallcaps = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->smallcaps)) ? 1 : 0;
   want.allcaps   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->allcaps)) ? 1 : 0;
+  want.dstrike   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->dstrike)) ? 1 : 0;
+  want.shadow    = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->shadow)) ? 1 : 0;
+  want.outline   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->outline)) ? 1 : 0;
+  want.emboss    = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->emboss)) ? 1 : 0;
+  want.engrave   = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->engrave)) ? 1 : 0;
   want.highlight = h < G_N_ELEMENTS (HIGHLIGHT_INDEX) ? HIGHLIGHT_INDEX[h] : 0;
   want.underline = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->underline));
   want.spacing   = (gint16) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->spacing)) * 20.0);
@@ -2765,14 +2842,16 @@ on_effects_ok (GtkButton *button, gpointer data)
   w42_view_apply_char_fmt (box->view,
                            W42_CHAR_STRIKEOUT | W42_CHAR_OVERLINE | W42_CHAR_SCRIPT | W42_CHAR_SMALLCAPS |
                            W42_CHAR_ALLCAPS | W42_CHAR_HIGHLIGHT | W42_CHAR_SPACING | W42_CHAR_COLOR |
-                           W42_CHAR_UNDERLINE, &want);
+                           W42_CHAR_UNDERLINE | W42_CHAR_DSTRIKE | W42_CHAR_SHADOW |
+                           W42_CHAR_OUTLINE | W42_CHAR_EMBOSS | W42_CHAR_ENGRAVE, &want);
   gtk_window_destroy (GTK_WINDOW (box->window));
 }
 
 static void
 on_effects_exclusive (GtkCheckButton *button, gpointer data)
 {
-  /* Superscript and subscript cannot both be on. */
+  /* Superscript and subscript cannot both be on, nor emboss and engrave:
+   * a letter is raised out of the page or pressed into it. */
   GtkCheckButton *other = data;
 
   if (gtk_check_button_get_active (button))
@@ -2819,6 +2898,25 @@ w42_effects_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), box->allcaps, 1, 1, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->sub, 0, 2, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->overline, 1, 2, 1, 1);
+
+  /* Word 97's additions, in the order its Font box listed them. */
+  box->dstrike = gtk_check_button_new_with_mnemonic ("Dou_ble Strikethrough");
+  box->shadow  = gtk_check_button_new_with_mnemonic ("Shado_w");
+  box->outline = gtk_check_button_new_with_mnemonic ("Out_line");
+  box->emboss  = gtk_check_button_new_with_mnemonic ("Em_boss");
+  box->engrave = gtk_check_button_new_with_mnemonic ("En_grave");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->dstrike), now.dstrike);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->shadow), now.shadow);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->outline), now.outline);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->emboss), now.emboss);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->engrave), now.engrave);
+  g_signal_connect (box->emboss, "toggled", G_CALLBACK (on_effects_exclusive), box->engrave);
+  g_signal_connect (box->engrave, "toggled", G_CALLBACK (on_effects_exclusive), box->emboss);
+  gtk_grid_attach (GTK_GRID (grid), box->dstrike, 0, 3, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->shadow, 1, 3, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->outline, 0, 4, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->emboss, 1, 4, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->engrave, 1, 5, 1, 1);
 
   grid = group (content, "Underline");
   box->underline = choice_row (grid, 0, 0, "_Underline:", UNDERLINES,

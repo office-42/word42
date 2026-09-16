@@ -25,6 +25,10 @@
 struct _W42View {
   GtkWidget      parent_instance;
   GtkWidget *context_menu;   /* the right-click menu, a popover */
+  GtkWidget *tip;            /* the AutoComplete tip, a popover */
+  GtkWidget *tip_label;
+  char      *tip_text;       /* the AutoText entry the tip offers */
+  gsize      tip_back;       /* the characters typed of its name */
   gboolean   autocorrect;    /* Tools > Options: correct as you type */
 
   W42Document   *doc;
@@ -206,11 +210,15 @@ view_reset_blink (W42View *self)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+static void view_hide_tip (W42View *self);
+
 /* Moving the caret ends a run of typing for undo, drops any sticky column and
  * forgets formatting that was toggled but never used. */
 static void
 view_caret_moved (W42View *self, gboolean keep_want_x)
 {
+  if (self->tip_text != NULL)
+    view_hide_tip (self);
   W42PieceTable *pt = view_pt (self);
 
   if (pt != NULL)
@@ -426,6 +434,11 @@ w42_view_get_char_fmt (W42View *self, W42CharFmt *out)
       if (m & W42_CHAR_STRIKEOUT) out->strikeout = self->pending.strikeout;
       if (m & W42_CHAR_COLOR)     out->color     = self->pending.color;
       if (m & W42_CHAR_LANG)      out->lang      = self->pending.lang;
+      if (m & W42_CHAR_DSTRIKE)   out->dstrike   = self->pending.dstrike;
+      if (m & W42_CHAR_SHADOW)    out->shadow    = self->pending.shadow;
+      if (m & W42_CHAR_OUTLINE)   out->outline   = self->pending.outline;
+      if (m & W42_CHAR_EMBOSS)    out->emboss    = self->pending.emboss;
+      if (m & W42_CHAR_ENGRAVE)   out->engrave   = self->pending.engrave;
     }
 }
 
@@ -1583,6 +1596,11 @@ view_apply_char_fmt (W42View *self, W42CharMask mask, const W42CharFmt *value)
   if (mask & W42_CHAR_STRIKEOUT) self->pending.strikeout = value->strikeout;
   if (mask & W42_CHAR_COLOR)     self->pending.color     = value->color;
   if (mask & W42_CHAR_LANG)      self->pending.lang      = value->lang;
+  if (mask & W42_CHAR_DSTRIKE)   self->pending.dstrike   = value->dstrike;
+  if (mask & W42_CHAR_SHADOW)    self->pending.shadow    = value->shadow;
+  if (mask & W42_CHAR_OUTLINE)   self->pending.outline   = value->outline;
+  if (mask & W42_CHAR_EMBOSS)    self->pending.emboss    = value->emboss;
+  if (mask & W42_CHAR_ENGRAVE)   self->pending.engrave   = value->engrave;
 
   view_state_changed (self);
 }
@@ -3971,14 +3989,119 @@ autocorrect_after_typing (W42View *self, const char *typed)
   view_edited (self);
 }
 
+/* Word 97's AutoComplete: once four or more letters of an AutoText
+ * entry's name are typed, a tip over the caret shows what the entry
+ * says, and Enter puts it in.  Any other key takes the tip away and
+ * does what it always did. */
+static void
+view_hide_tip (W42View *self)
+{
+  if (self->tip != NULL && gtk_widget_get_visible (self->tip))
+    gtk_popover_popdown (GTK_POPOVER (self->tip));
+  g_clear_pointer (&self->tip_text, g_free);
+  self->tip_back = 0;
+}
+
+static void
+view_offer_tip (W42View *self)
+{
+  char *before, *entry = NULL, *name = NULL;
+  const char *word;
+  GdkRectangle at = { 0, 0, 1, 1 };
+  int page = 0;
+  double x = 0, y = 0, h = 0;
+
+  if (self->tip == NULL)
+    return;
+  before = text_before_caret (self);
+  if (before == NULL)
+    return;
+
+  /* The name is what was typed since the last space. */
+  word = before + strlen (before);
+  while (word > before && !g_unichar_isspace (g_utf8_get_char (g_utf8_prev_char (word))))
+    word = g_utf8_prev_char (word);
+  if (*word != '\0')
+    entry = w42_autotext_complete (word, &name);
+  if (entry == NULL)
+    {
+      g_free (before);
+      return;
+    }
+
+  {
+    /* The first line of the entry, cut short, and the word on how to
+     * have it, as Word 97's tip said. */
+    char *first = g_strdup (entry);
+    char *nl = strchr (first, '\n');
+    char *shown;
+
+    if (nl != NULL)
+      *nl = '\0';
+    if (g_utf8_strlen (first, -1) > 40)
+      {
+        char *cut = g_utf8_offset_to_pointer (first, 40);
+        *cut = '\0';
+        shown = g_strdup_printf ("%s\u2026  (Press ENTER to Insert)", first);
+      }
+    else
+      shown = g_strdup_printf ("%s  (Press ENTER to Insert)", first);
+    gtk_label_set_text (GTK_LABEL (self->tip_label), shown);
+    g_free (shown);
+    g_free (first);
+  }
+
+  g_free (self->tip_text);
+  self->tip_text = entry;
+  self->tip_back = (gsize) g_utf8_strlen (word, -1);
+  g_free (name);
+  g_free (before);
+
+  if (w42_layout_pos_to_caret (self->layout, self->caret, &page, &x, &y, &h))
+    {
+      at.x = (int) (view_page_origin_x (self) + x * self->zoom);
+      at.y = (int) (view_page_origin_y (self, page) + y * self->zoom);
+      at.height = (int) (h * self->zoom);
+    }
+  gtk_popover_set_pointing_to (GTK_POPOVER (self->tip), &at);
+  gtk_popover_popup (GTK_POPOVER (self->tip));
+}
+
+/* Enter on a tip: the name typed goes, the entry comes, one undo step. */
+static gboolean
+view_accept_tip (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  char *entry;
+  gsize back = self->tip_back;
+
+  if (pt == NULL || self->tip_text == NULL || back == 0 || back > self->caret)
+    return FALSE;
+  entry = g_steal_pointer (&self->tip_text);
+  view_hide_tip (self);
+
+  w42_pt_begin_group (pt);
+  w42_pt_delete (pt, self->caret - back, back);
+  self->caret -= back;
+  w42_pt_insert_text (pt, self->caret, entry, view_effective_ap (self));
+  self->caret += g_utf8_strlen (entry, -1);
+  self->anchor = self->caret;
+  w42_pt_end_group (pt);
+  view_edited (self);
+  g_free (entry);
+  return TRUE;
+}
+
 static void
 on_im_commit (GtkIMContext *im, const char *text, gpointer data)
 {
   W42View *self = W42_VIEW (data);
 
   (void) im;
+  view_hide_tip (self);
   w42_view_insert_text (self, text);
   autocorrect_after_typing (self, text);
+  view_offer_tip (self);
 }
 
 static gboolean
@@ -3998,6 +4121,18 @@ on_key_pressed (GtkEventControllerKey *controller,
 
   if (pt == NULL)
     return GDK_EVENT_PROPAGATE;
+
+  /* An AutoComplete tip showing: Enter takes it, Escape declines it, and
+   * any other key puts it away and goes on to what it does. */
+  if (self->tip_text != NULL)
+    {
+      if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) &&
+          !ctrl && !extend && view_accept_tip (self))
+        return GDK_EVENT_STOP;
+      view_hide_tip (self);
+      if (keyval == GDK_KEY_Escape)
+        return GDK_EVENT_STOP;
+    }
 
   if (keyval == GDK_KEY_Menu ||
       (keyval == GDK_KEY_F10 && (state & GDK_SHIFT_MASK) != 0))
@@ -5313,6 +5448,8 @@ w42_view_dispose (GObject *object)
   W42View *self = W42_VIEW (object);
 
   g_clear_pointer (&self->context_menu, gtk_widget_unparent);
+  g_clear_pointer (&self->tip, gtk_widget_unparent);
+  g_clear_pointer (&self->tip_text, g_free);
 
   if (self->blink_id != 0)
     {
@@ -5426,6 +5563,19 @@ w42_view_init (W42View *self)
     gtk_popover_set_has_arrow (GTK_POPOVER (self->context_menu), FALSE);
     gtk_widget_set_halign (self->context_menu, GTK_ALIGN_START);
     gtk_widget_set_parent (self->context_menu, GTK_WIDGET (self));
+
+    /* The AutoComplete tip: a popover that takes no focus, so typing
+     * goes on underneath it, above the caret's line. */
+    self->tip = gtk_popover_new ();
+    self->tip_label = gtk_label_new ("");
+    gtk_widget_add_css_class (self->tip, "w42-tip");
+    gtk_popover_set_child (GTK_POPOVER (self->tip), self->tip_label);
+    gtk_popover_set_has_arrow (GTK_POPOVER (self->tip), FALSE);
+    gtk_popover_set_autohide (GTK_POPOVER (self->tip), FALSE);
+    gtk_popover_set_position (GTK_POPOVER (self->tip), GTK_POS_TOP);
+    gtk_widget_set_can_focus (self->tip, FALSE);
+    gtk_widget_set_halign (self->tip, GTK_ALIGN_START);
+    gtk_widget_set_parent (self->tip, GTK_WIDGET (self));
 
     gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (secondary), GDK_BUTTON_SECONDARY);
     g_signal_connect (secondary, "pressed", G_CALLBACK (on_secondary_pressed), self);

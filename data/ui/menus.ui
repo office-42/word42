@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Word 6's menu bar.  Items whose actions are disabled are features word42
-     intends to have and does not have yet; they show greyed out rather than
-     being hidden, so the menus say what the program is aiming at. -->
+<!-- Word 97's menu bar, in Word 6's dress.  Items whose actions are
+     disabled are features word42 intends to have and does not have yet;
+     they show greyed out rather than being hidden, so the menus say what
+     the program is aiming at. -->
 <interface>
   <menu id="menubar">
 
@@ -180,6 +181,10 @@
         <item>
           <attribute name="label" translatable="yes">_Ruler</attribute>
           <attribute name="action">win.ruler</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Document Map</attribute>
+          <attribute name="action">win.document-map</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">_Full Screen</attribute>
@@ -510,18 +515,18 @@
           <attribute name="label" translatable="yes">A_utoCorrect...</attribute>
           <attribute name="action">win.autocorrect</attribute>
         </item>
-        <item>
-          <attribute name="label" translatable="yes">_Language...</attribute>
-          <attribute name="action">win.language</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">_Word Count...</attribute>
-          <attribute name="action">win.word-count</attribute>
-        </item>
-      </section>
-      <section>
         <submenu>
-          <attribute name="label" translatable="yes">_Hyphenation</attribute>
+          <attribute name="label" translatable="yes">_Language</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Set Language...</attribute>
+              <attribute name="action">win.language</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Thesaurus...</attribute>
+              <attribute name="action">win.thesaurus</attribute>
+            </item>
+          </section>
           <section>
             <item>
               <attribute name="label" translatable="yes">_Hyphenate Document</attribute>
@@ -533,6 +538,12 @@
             </item>
           </section>
         </submenu>
+        <item>
+          <attribute name="label" translatable="yes">_Word Count...</attribute>
+          <attribute name="action">win.word-count</attribute>
+        </item>
+      </section>
+      <section>
         <submenu>
           <attribute name="label" translatable="yes">_Revisions</attribute>
           <section>

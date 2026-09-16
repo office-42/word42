@@ -1200,6 +1200,11 @@ font_get_switch (struct mb_interpreter_t *s, void **l, int which)
     case 4: v = ch.script < 0; break;
     case 5: v = ch.allcaps; break;
     case 6: v = ch.smallcaps; break;
+    case 7: v = ch.dstrike; break;
+    case 8: v = ch.shadow; break;
+    case 9: v = ch.outline; break;
+    case 10: v = ch.emboss; break;
+    case 11: v = ch.engrave; break;
     default: break;
     }
   return mb_push_int (s, l, v);
@@ -1233,6 +1238,18 @@ font_set_switch (struct mb_interpreter_t *s, void **l, int which)
             w42_view_apply_char_fmt (c->view, W42_CHAR_ALLCAPS, &ch); break;
     case 6: on = switch_value (value, ch.smallcaps); ch.smallcaps = on;
             w42_view_apply_char_fmt (c->view, W42_CHAR_SMALLCAPS, &ch); break;
+    case 7: on = switch_value (value, ch.dstrike); ch.dstrike = on;
+            w42_view_apply_char_fmt (c->view, W42_CHAR_DSTRIKE, &ch); break;
+    case 8: on = switch_value (value, ch.shadow); ch.shadow = on;
+            w42_view_apply_char_fmt (c->view, W42_CHAR_SHADOW, &ch); break;
+    case 9: on = switch_value (value, ch.outline); ch.outline = on;
+            w42_view_apply_char_fmt (c->view, W42_CHAR_OUTLINE, &ch); break;
+    case 10: on = switch_value (value, ch.emboss); ch.emboss = on;
+            if (on) ch.engrave = 0;
+            w42_view_apply_char_fmt (c->view, W42_CHAR_EMBOSS | W42_CHAR_ENGRAVE, &ch); break;
+    case 11: on = switch_value (value, ch.engrave); ch.engrave = on;
+            if (on) ch.emboss = 0;
+            w42_view_apply_char_fmt (c->view, W42_CHAR_EMBOSS | W42_CHAR_ENGRAVE, &ch); break;
     default: break;
     }
   return MB_FUNC_OK;
@@ -1252,6 +1269,16 @@ NATIVE (n_font_allcaps)       { return font_get_switch (s, l, 5); }
 NATIVE (n_font_allcaps_set)   { return font_set_switch (s, l, 5); }
 NATIVE (n_font_smallcaps)     { return font_get_switch (s, l, 6); }
 NATIVE (n_font_smallcaps_set) { return font_set_switch (s, l, 6); }
+NATIVE (n_font_dstrike)       { return font_get_switch (s, l, 7); }
+NATIVE (n_font_dstrike_set)   { return font_set_switch (s, l, 7); }
+NATIVE (n_font_shadow)        { return font_get_switch (s, l, 8); }
+NATIVE (n_font_shadow_set)    { return font_set_switch (s, l, 8); }
+NATIVE (n_font_outline)       { return font_get_switch (s, l, 9); }
+NATIVE (n_font_outline_set)   { return font_set_switch (s, l, 9); }
+NATIVE (n_font_emboss)        { return font_get_switch (s, l, 10); }
+NATIVE (n_font_emboss_set)    { return font_set_switch (s, l, 10); }
+NATIVE (n_font_engrave)       { return font_get_switch (s, l, 11); }
+NATIVE (n_font_engrave_set)   { return font_set_switch (s, l, 11); }
 
 /* Underline by Word's numbers: 0 none, 1 single, 2 words, 3 double. */
 NATIVE (n_font_underline)
@@ -2089,6 +2116,11 @@ static const Native NATIVES[] = {
   { "SELECTION_FONT_SUBSCRIPT", n_font_sub }, { "SELECTION_FONT_SUBSCRIPT_SET", n_font_sub_set },
   { "SELECTION_FONT_ALLCAPS", n_font_allcaps }, { "SELECTION_FONT_ALLCAPS_SET", n_font_allcaps_set },
   { "SELECTION_FONT_SMALLCAPS", n_font_smallcaps }, { "SELECTION_FONT_SMALLCAPS_SET", n_font_smallcaps_set },
+  { "SELECTION_FONT_DOUBLESTRIKETHROUGH", n_font_dstrike }, { "SELECTION_FONT_DOUBLESTRIKETHROUGH_SET", n_font_dstrike_set },
+  { "SELECTION_FONT_SHADOW", n_font_shadow }, { "SELECTION_FONT_SHADOW_SET", n_font_shadow_set },
+  { "SELECTION_FONT_OUTLINE", n_font_outline }, { "SELECTION_FONT_OUTLINE_SET", n_font_outline_set },
+  { "SELECTION_FONT_EMBOSS", n_font_emboss }, { "SELECTION_FONT_EMBOSS_SET", n_font_emboss_set },
+  { "SELECTION_FONT_ENGRAVE", n_font_engrave }, { "SELECTION_FONT_ENGRAVE_SET", n_font_engrave_set },
   { "SELECTION_FONT_SIZE", n_font_size }, { "SELECTION_FONT_SIZE_SET", n_font_size_set },
   { "SELECTION_FONT_NAME", n_font_name }, { "SELECTION_FONT_NAME_SET", n_font_name_set },
   { "SELECTION_FONT_COLOR", n_font_color }, { "SELECTION_FONT_COLOR_SET", n_font_color_set },
