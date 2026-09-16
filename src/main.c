@@ -1,4 +1,4 @@
-/* main.c - word42, a word processor in the shape of Word 6
+/* main.c - word42, a word processor in the shape of Word 97
  *
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later

@@ -1,128 +1,158 @@
-# Feature parity: Word42 against AbiWord and Microsoft Word
+# Feature parity: Word42 against Word 97 and AbiWord
 
-A review of the sources as of version 0.9.0 (August 2026), area by area,
-tenth round.
+A review of the sources as of version 1.0.1-dev (September 2026), area
+by area, twelfth round.
 "Full" means the feature works the way the other program's does for
 ordinary documents; "partial" means it exists with named limits; "no"
-means it is absent.  AbiWord is the free word processor Word42 measures
-itself against; Word 6 is the look and behaviour it imitates; Word (modern)
-is listed so the distance to the current product is honest.
+means it is absent.  Word 97 is the target Word42 measures itself
+against: the word processor whose menus, dialogs and file format the
+ones since are built on, and the one this program imitates.  AbiWord is
+the free word processor closest to it in spirit, and Word (modern) is
+listed so the distance to the current product is honest.  Word 6 was
+the yardstick until the eleventh round; the rounds below say what was
+done against it.
 
 ## Editing and text
 
-| Feature | Word42 | AbiWord | Word 6 | Word (modern) |
+| Feature | Word42 | Word 97 | AbiWord | Word (modern) |
 |---|---|---|---|---|
 | Typing, selection (mouse, keyboard, word/paragraph clicks) | full | full | full | full |
-| Undo/redo, unlimited, typing coalesced | full (saved-state aware) | full | limited | full |
-| Repeat the last action (F4) | yes (typing, formatting, style, case) | no | yes | yes |
-| Cut/copy/paste | rich (RTF, HTML and text out; RTF, pictures and text in) | rich (RTF/HTML/images) | rich | rich |
+| Undo/redo, unlimited, typing coalesced | full (saved-state aware) | full | full | full |
+| Repeat the last action (F4) | yes (typing, formatting, style, case) | yes | no | yes |
+| Cut/copy/paste | rich (RTF, HTML and text out; RTF, pictures and text in) | rich | rich (RTF/HTML/images) | rich |
+| Spike (cut several things, paste them together) | no | yes | no | yes |
 | Drag-and-drop text | yes (move; Ctrl copies; one undo step) | yes | yes | yes |
-| Find/Replace (case, whole word, wrap, replace all) | full | full + regex | full | full + formats |
+| Find/Replace (case, whole word, wrap, replace all) | full | full + formats and wildcards | full + regex | full + formats |
 | Go To (page, line, bookmark) | full | full | full | full |
 | Change Case | full | full | full | full |
 | Spelling as you type + dialog (Enchant) | full, and only the script the dictionary is for | full | full | full |
-| Grammar check | no | no | yes | yes |
-| Thesaurus | no | no | yes | yes |
-| Hyphenation (libhyphen patterns) | full | no (stub) | full | full |
+| Grammar check | no | yes | no | yes |
+| Thesaurus (Shift+F7) | full (MyThes files; meanings, synonyms, Look Up, Replace) | full | no | full |
+| Hyphenation (libhyphen patterns) | full | full | no (stub) | full |
 | Word count | full | full | full | full |
-| AutoCorrect as you type | full (quotes, capitals, dashes, misspellings) | partial | full | full |
-| AutoFormat a whole document | full (headings, lists, quotes, blanks) | no | full | full |
-| AutoText | full (named entries, Ctrl+F3) | yes | yes | yes |
+| AutoCorrect as you type | full (quotes, capitals, dashes, misspellings) | full, with exceptions | partial | full |
+| AutoFormat a whole document | full (headings, lists, quotes, blanks) | full | no | full |
+| AutoText | full (named entries, Ctrl+F3) | full | yes | yes |
+| AutoComplete tips (an AutoText entry offered as its name is typed) | full (Enter takes it) | full, dates too | no | yes |
 | Formatting marks (¶, ·, →) | full | full | full | full |
 
 ## Character and paragraph formatting
 
-| Feature | Word42 | AbiWord | Word 6 | Word (modern) |
+| Feature | Word42 | Word 97 | AbiWord | Word (modern) |
 |---|---|---|---|---|
 | Font, size, bold, italic, underline, strikeout, colour | full | full | full | full |
-| Overline, small caps, all caps, super/subscript, highlight, letter spacing | full | full | most | full |
-| Underline styles (single, words only, double, dotted, dashed, thick, wave) | full | single and double | Word 6's four | full |
-| Double strike, emboss, engrave | no | partial | some | full |
+| Overline, small caps, all caps, super/subscript, highlight, letter spacing | full | full (no overline) | full | full |
+| Underline styles (single, words only, double, dotted, dashed, thick, wave) | full | full, and more | single and double | full |
+| Double strikethrough, shadow, outline, emboss, engrave | full | full | partial | full |
+| Animated text (blinking, marching ants) | no, and not planned | yes | no | no (dropped) |
 | Language per run | full | yes | yes | yes |
 | Alignment, indents, spacing, line spacing (single, 1½, double, At Least, Exactly, multiple) | full | full | full | full |
 | Tabs (left/centre/right/decimal), live ruler, leaders | full | full | full | full |
-| Borders and shading | paragraph and cell: single/double/dashed/dotted, nine weights, sixteen colours per side; no page border | full | full | full |
-| Page background colour | full (screen and preview) | yes | no | yes |
+| Paragraph borders and shading | single/double/dashed/dotted, nine weights, sixteen colours per side | full, more styles | full | full |
+| Page border | full (Borders and Shading; style, weight, colour, distance; docx, rtf, odt, html) | full, and art borders | no | full |
+| Page background colour | full (screen and preview) | yes (Online Layout) | yes | yes |
 | Keep with next/together, widows, page break before | full | full | full | full |
-| Right-to-left paragraphs | full | full | (later versions) | full |
+| Right-to-left paragraphs | full | (Middle East editions) | full | full |
 | Styles: paragraph styles, character styles, user-defined, based on | full: a style keeps its own settings and follows its base for the rest | full | full | full |
-| Lists: bullets, numbers, letters, roman, restart | nine levels | multi-level | multi-level | multi-level |
-| Heading numbering (1, 1.1) | full | via lists | full | full |
-| Drop caps | yes (Format ▸ Drop Cap; docx, odt, html) | no | yes | yes |
+| Lists: bullets, numbers, letters, roman, restart | nine levels | multi-level, outline numbered | multi-level | multi-level |
+| Heading numbering (1, 1.1) | full | full | via lists | full |
+| Drop caps | yes (Format ▸ Drop Cap; docx, odt, html) | yes | no | yes |
 | Columns (per section, balanced) | full | full | full | full |
 | Sections with own columns | full | full | full | full |
 | Per-section page size/orientation | no | yes | yes | yes |
+| Text direction (vertical text in cells) | no | yes | no | yes |
 
 ## Structures
 
-| Feature | Word42 | AbiWord | Word 6 | Word (modern) |
+| Feature | Word42 | Word 97 | AbiWord | Word (modern) |
 |---|---|---|---|---|
 | Tables: insert, rows, columns, column widths (drag), merge and split cells (across and down) | full | full | full | full |
+| Draw Table (pencil and eraser) | no | yes | no | yes |
 | A row taller than a page | broken between its lines, header rows repeated | breaks | breaks | breaks |
 | Table properties: borders (table outside and inside, per cell side, each with its own line style, weight and colour), cell shading and fill, vertical alignment, row height, header rows repeated | full | full | full | full |
-| Table menu: Insert/Delete/Select submenus, AutoFit (to contents, to window, distribute), Heading Rows Repeat, Formula (SUM, AVERAGE, COUNT, MAX, MIN, PRODUCT) | full | partial | full | full |
+| Table menu: Insert/Delete/Select submenus, AutoFit (to contents, to window, distribute), Heading Rows Repeat, Formula (SUM, AVERAGE, COUNT, MAX, MIN, PRODUCT) | full | full | partial | full |
+| Nested tables | no | no (Word 2000) | yes | yes |
 | Footnotes and endnotes | full | full | full | full |
-| Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full | full |
+| Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full, per section | full |
 | Page numbers | full | full | full | full |
 | Pictures (inline, resize by handles) | full | full | full | full |
-| Insert ▸ Picture ▸ From Scanner or Camera | yes (WIA on Windows, SANE on Linux) | no | yes | yes |
+| Insert ▸ Picture ▸ From Scanner or Camera | yes (WIA on Windows, SANE on Linux) | yes | no | yes |
 | Wrapped pictures (left/right, top and bottom, in front, behind; placed by offset) | yes | yes | yes | yes |
 | Text frames (paragraphs framed at a side, text beside) | yes (Format ▸ Frame; docx, odt, html) | yes | yes | yes |
 | Floating text boxes placed anywhere on the page | no | yes | yes | yes |
-| Drawing shapes (line, arrow, rectangle, rounded rectangle, ellipse, with fill, outline and text) | as objects, drawn as vectors | as objects | as objects | as objects |
+| Drawing shapes (line, arrow, rectangle, rounded rectangle, ellipse, with fill, outline and text) | as objects, drawn as vectors | AutoShapes and WordArt, editable | as objects | as objects |
 | Table of contents (insert, update) | full | full | full | full |
-| Index (mark entries, build, rebuild) | full | no | full | full |
-| Bookmarks, hyperlinks, cross-references | full | full | full | full |
-| Fields in the body (page, pages, date, time, filename, word count) | full (F9 updates) | yes | yes | yes |
+| Table of figures, table of authorities | no | yes | no | yes |
+| Index (mark entries, build, rebuild) | full | full | no | full |
+| Bookmarks, hyperlinks, cross-references | full | full (Ctrl+K) | full | full |
+| Fields in the body (page, pages, date, time, filename, word count) | full (F9 updates) | full, dozens | yes | yes |
 | Captions | numbered text | yes | yes | yes |
-| Annotations/comments | full | yes | yes | yes |
-| Revision marks (track, accept/reject all) | full, one author | full | full | full |
-| Mail merge (CSV) | full | yes | yes | yes |
-| Envelopes and labels | full (a document of their own) | no | full | full |
-| Templates | built-in ones, and a folder of your own | New from Template | full | full |
-| Equations | no | yes (MathML) | Equation Editor | yes |
-| Macros | Word42 Basic: a VBA dialect on the MY-BASIC engine, with Selection, ActiveDocument, Application, Documents, MsgBox and InputBox | no (plugins) | WordBasic | VBA |
+| Comments | full | full | yes | yes |
+| Track changes (mark, accept/reject all) | full, one author | full, coloured by author | full | full |
+| Compare Documents | no | yes | no | yes |
+| Versions kept inside the document | no | yes | no | no (dropped) |
+| Mail merge (CSV) | full | full | yes | yes |
+| Envelopes and labels | full (a document of their own) | full | no | full |
+| Templates and wizards | built-in ones, and a folder of your own | full, with wizards | New from Template | full |
+| Equations | no | Equation Editor 3.0 | yes (MathML) | yes |
+| Macros | Word42 Basic: a VBA dialect on the MY-BASIC engine, with Selection, ActiveDocument, Application, Documents, MsgBox and InputBox | VBA | no (plugins) | VBA |
 
 ## Files
 
-| Format | Word42 | AbiWord | Word 6 | Word (modern) |
+| Format | Word42 | Word 97 | AbiWord | Word (modern) |
 |---|---|---|---|---|
 | RTF read/write | full | full | full | full |
-| Word .doc read | Word 97–2003; Word 6/95 text | yes | native | yes |
-| Word .doc write | no | yes | native | yes |
-| Word .docx read/write | full for the model above | yes | — | native |
-| AbiWord .abw/.zabw | full for the model above | native | — | — |
-| OpenDocument .odt | read and written | yes | no | yes |
-| HTML read/write | full | full | (later) | yes |
-| PDF write | full | yes | no | yes |
+| Word .doc read | Word 97–2003; Word 6/95 text | native | yes | yes |
+| Word .doc write | no | native | yes | yes |
+| Word .docx read/write | full for the model above | — | yes | native |
+| AbiWord .abw/.zabw | full for the model above | — | native | — |
+| OpenDocument .odt | read and written | no | yes | yes |
+| HTML read/write | full | read and write | full | yes |
+| PDF write | full | no | yes | yes |
 | PDF read (poppler) | text and pictures | no | no | yes |
 | Plain text | full | full | full | full |
 
 ## Views and application
 
-| Feature | Word42 | AbiWord | Word 6 | Word (modern) |
+| Feature | Word42 | Word 97 | AbiWord | Word (modern) |
 |---|---|---|---|---|
 | Normal and Page Layout views | full | full | full | full |
-| Print (range, current page, selection, copies, collate, odd/even, reverse, draft, print to file), Print Preview (multiple pages, magnifier, fit zooms), Page Setup | full (no gutter or mirror margins) | full | full | full |
-| Zoom | free: any percentage, page width, whole page | free | presets and a percentage | free |
+| Online Layout (Web Layout) view | no | yes | yes | yes |
+| Outline view, Master Document | no | yes | no | yes |
+| Document Map (headings in a pane, click to go) | full | full | no | full (Navigation pane) |
+| Print (range, current page, selection, copies, collate, odd/even, reverse, draft, print to file), Print Preview (multiple pages, magnifier, fit zooms, shrink to fit), Page Setup | full (no gutter, mirror margins or shrink to fit) | full | full | full |
+| Zoom | free: any percentage, page width, whole page | free | free | free |
 | Full Screen (chrome away, Escape back) | full | full | full | full |
-| Outline view / document map | no | no | yes | yes |
-| Multiple windows on one document | full | yes | full | full |
-| Split window: two panes on one document | full | no | full | full |
+| Multiple windows on one document | full | full | yes | full |
+| Split window: two panes on one document | full | full | no | full |
 | Typing in a long document (173 pages) | 12 ms a keystroke: the changed paragraph is shaped, the rest reused | incremental | incremental | incremental |
-| Autosave and crash recovery | full | yes | yes | yes |
+| Autosave and crash recovery | full | yes (AutoRecover) | yes | yes |
+| Background save and print | no | yes | no | yes |
 | Recent files, options, units | full | full | full | full |
-| Message and confirmation boxes | the program's own chrome | system | own | own |
-| Accessibility (screen reader) | no | partial | — | full |
-| Translations | no | 60+ | — | — |
-| Slides: a presentation from the outline, shown full screen | full | no | no | via PowerPoint |
+| Message and confirmation boxes | the program's own chrome | own | system | own |
+| Office Assistant | no, and not planned | yes | — | no (dropped) |
+| Accessibility (screen reader) | no | partial | partial | full |
+| Translations | no | many editions | 60+ | — |
+| Slides: a presentation from the outline, shown full screen | full | via PowerPoint | no | via PowerPoint |
 | Presentation files (.pptx) read and written | outline: titles and lines | no | no | native (PowerPoint) |
-| Packaging | Windows installer, macOS .app, Flatpak manifest | all | — | — |
+| Packaging | Windows installer, macOS .app, Flatpak manifest | — | all | — |
 
 [COMPARISON.md](COMPARISON.md) sets the same programs, and LibreOffice
 Writer, side by side on size, speed and files.
 
 ## Summary
+
+Against **Word 97**, Word42 has everything typed and formatted in the
+first week of use: fonts with all of Word 97's effects, paragraphs,
+tabs, lists, tables and their properties, pictures, frames, drop caps,
+page borders, headers and footers, notes, fields, a table of contents
+and an index, comments and revisions, spelling and the thesaurus,
+AutoCorrect, AutoText with its tips, the Document Map, mail merge,
+macros in a VBA dialect, and Word 97's own .doc read.  It lacks
+positioned text boxes and the Drawing toolbar's editable objects,
+Online Layout and Outline views, Compare Documents, grammar, Equation
+Editor, tables of figures, versions, and vertical text; it exceeds Word
+97 in Unicode, right-to-left text, PDF and every file format made since.
 
 Against **AbiWord**, Word42 covers the everyday word-processing set —
 formatting, multi-level lists, tables and their properties, notes,
@@ -132,15 +162,10 @@ Word's and OpenDocument, paragraph and character styles of the
 document's own, text frames and drop caps — and lacks free-floating text
 boxes, equations, accessibility and translations.
 
-Against **Word 6**, it lacks positioned text boxes, the Drawing toolbar's
-editable objects, Equation Editor, thesaurus and grammar, and outline
-view; it exceeds Word 6 in Unicode, right-to-left text, PDF and modern
-file formats.
-
-The order of work that closes the most ground now: editing the header and
-footer on the page itself rather than in a box, positioned text boxes,
-then translations and accessibility.  Drag-and-drop of text, Edit >
-Repeat and Window > Split are done since the tenth round.
+The order of work that closes the most ground now: positioned text
+boxes, Online Layout view, Compare Documents, editing the header and
+footer on the page itself rather than in a box, then translations and
+accessibility.
 
 ## Completeness, command by command
 
@@ -579,3 +604,103 @@ sets an inherited indent or spacing back to nought gets the style's
 value instead; Table > Sort drops the footnotes of the rows it moves;
 DOCX and ODT do not carry a list's restart number; hidden text in RTF
 is shown.
+
+## The twelfth round (September 2026): Word 97
+
+The target moved.  Word 6's menus are done as far as they are worth
+doing, and the word processor the ones since are built on is Word 97;
+Word42.md says so, the tables above are scored against it, and this
+round took the first five of what it added.
+
+**View > Document Map.**  A pane down the left of the window lists every
+heading, indented by its level, with the one the caret is under shown
+selected; a click puts the caret on the heading and scrolls it into
+view.  The list is built from the same snapshot of the paragraphs the
+layout uses and the same outline levels the table of contents and the
+slide show use, so the three agree about what a heading is, and it
+shows the section numbers when heading numbering is on.  It follows the
+text as it is typed, a quarter of a second behind so that typing in a
+heading does not remake it at every character, and is left alone while
+hidden.  The ruler sits over the page rather than over the map, so its
+zero stays the page's.  Full Screen puts it away with the rest of the
+chrome, and the setting is remembered.
+
+**Font effects.**  Word 97's Font box added double strikethrough,
+shadow, outline, emboss and engrave to Word 6's, and Format > Font
+Effects has them.  Pango has no attribute for any of them, so the one
+function every painter draws a line through -- screen, print, preview
+and PDF -- takes the glyph outlines of each such run from the line
+again, clipped to the run's own width, and fills or strokes them as the
+effect asks: a grey copy below and to the right for the shadow, a
+stroke and no fill for the outline, two lines for the double
+strikethrough, and for the relief a dark copy to one side, a light copy
+to the other and the letter itself in the paper's white, lit from the
+top left as Word drew it.  Pango's own ink for an outlined or relieved
+run is made all but transparent (nought would mean "unset") so it does
+not show through.  RTF (`\striked1`, `\shad`, `\outl`, `\embo`,
+`\impr`), Word (`w:dstrike`, `w:shadow`, `w:outline`, `w:emboss`,
+`w:imprint`), OpenDocument (`style:text-line-through-type`,
+`fo:text-shadow`, `style:text-outline`, `style:font-relief`) and the
+Word 97 binary format's sprms all carry the five both ways, and HTML
+says what CSS can (a `text-shadow`, a stroke with no fill, a doubled
+line-through) and reads it back.  The macro language's Font object has
+them as Word's `Shadow`, `Outline`, `Emboss`, `Engrave` and
+`DoubleStrikeThrough`.
+
+**Page Border.**  Word 97's Borders and Shading box grew a Page Border
+tab; here it is the last group of the same box: a line round every page
+in a style, width and colour, at a distance from the edge of the paper
+(24 points unless the document says otherwise).  It lives on the page
+setup beside the background colour and is drawn by the layout's
+backdrop, which every painter calls, so Page Layout view, the preview,
+paper and PDF agree and Normal view, having no pages, shows none.  RTF
+(`\pgbrdrt` and its siblings with `\pgbrdropt32`, from the edge), Word
+(`w:pgBorders` with `w:offsetFrom="page"`, and the other measure turned
+into ours on reading) and OpenDocument carry it both ways; in
+OpenDocument the border stands inside the margins with the padding
+between it and the text, so the margins written are the border's
+distance and the rest of each margin is padding, which is how
+LibreOffice reads a Word document's page border, and the reader adds
+them back.  HTML writes it into the `@page` rule and reads it out.
+
+**Thesaurus.**  Tools > Language > Thesaurus (Shift+F7) looks up the
+word at the caret in a MyThes file -- `th_en_US_v2.dat` and its `.idx`,
+the pair LibreOffice uses, in the mythes folder -- and shows Word 97's
+box: the word looked up, its meanings with the part of speech beside
+each, the synonyms of the meaning chosen, Replace, Look Up and
+Previous.  The index is read into a table the first time the command is
+used and the data file is mapped and read at the offset the index
+gives, since it runs to tens of megabytes; no library is needed.  The
+Tools menu's Language item is Word 97's submenu now -- Set Language,
+Thesaurus, Hyphenate Document, Remove Hyphenation -- and the old
+Hyphenation submenu is gone.
+
+**AutoComplete.**  Word 97 offered an AutoText entry as its name was
+typed: the first four letters and up came a tip over the caret with the
+entry and "(Press ENTER to Insert)".  So here: the tip is a popover
+that takes no focus, Enter puts the entry in place of the letters typed
+as one undo step, Escape or any other key puts the tip away and does
+what it always did, and moving the caret by any other means takes it
+away too.
+
+The command counts against Word 97, by the same method as the seventh
+review's: P = present, Pa = partial, M = missing.
+
+| Menu | vs Word 97 (P/Pa/M) | Most missed there |
+|---|---|---|
+| File | 15/1/3 | Versions, Send To, Web Page Preview |
+| Edit | 14/1/2 | Paste as Hyperlink, Links |
+| View | 8/2/3 | Online Layout, Outline, Master Document |
+| Insert | 12/5/3 | Text Box, Object, Table of Figures |
+| Format | 15/5/3 | Text Direction, Style Gallery, Theme |
+| Tools | 10/3/6 | Grammar, Compare Documents, Protect Document, Customize |
+| Table | 14/2/2 | Draw Table, Cell Height and Width's rows tab |
+| Window | 3/0/0 | -- |
+| Help | 5/1/2 | What's This?, WordPerfect Help |
+| **Total** | **96/20/24** | |
+
+| Yardstick | Estimate | Why |
+|---|---|---|
+| Word 97 | about 72 % | everything typed and formatted in the first week is there, Word 97's own file format is read, and the Document Map, page borders, the Font box's effects, the thesaurus and AutoComplete are done; positioned text boxes, the Drawing toolbar, Online Layout and Outline views, Compare Documents, grammar, Equation Editor and versions are not |
+| AbiWord | about 78 % | as the eleventh round had it, plus the thesaurus and the Document Map, which AbiWord has not got |
+
