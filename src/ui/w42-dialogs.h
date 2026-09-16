@@ -54,7 +54,7 @@ void w42_field_dialog_show         (GtkWindow *parent, W42View *view);
 
 /* Tools > Options: units, default view and zoom, spelling as you type. */
 void w42_options_dialog_show       (GtkWindow *parent, W42View *view);
-/* View > Zoom: Word 6's box, with a percentage of one's own. */
+/* View > Zoom: Word 97's box, with a percentage of one's own. */
 void w42_zoom_dialog_show          (GtkWindow *parent, W42View *view);
 /* Tools > Macro: the list of macros to run, edit, make and delete; and
  * the editor for one, by name, which may be new. */

@@ -3,9 +3,9 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word XP asked the scanner through Windows Image Acquisition and put
+ * Word 97's Insert > Picture > From Scanner asked the scanner and put
  * what came back into the text as a picture.  word42 does the same: on
- * Windows through WIA's own dialog, which lists the scanners and cameras
+ * Windows through Windows Image Acquisition's own dialog, which lists the scanners and cameras
  * and drives the one chosen; on Linux through SANE's scanimage; and on
  * macOS not at all, yet.
  */

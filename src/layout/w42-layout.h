@@ -7,7 +7,7 @@
  * resolution and hands back page-relative pixel coordinates.  Zoom is a cairo
  * scale applied at paint time, so a page breaks in the same place whatever
  * the zoom or the screen's DPI -- which is the whole point of a page-layout
- * view, and what Word 6 called Page Layout as opposed to Normal.
+ * view, and what Word 97 called Page Layout as opposed to Normal.
  */
 
 #pragma once
@@ -61,7 +61,7 @@ void       w42_layout_set_show_marks (W42Layout *self, gboolean show);
 void       w42_layout_set_gridlines (W42Layout *self, gboolean show);
 gboolean   w42_layout_get_galley (W42Layout *self);
 
-/* Re-formats everything.  Cheap enough for documents of the size Word 6 was
+/* Re-formats everything.  Cheap enough for documents of the size Word 97 was
  * built for; incremental reformatting is the obvious next optimisation. */
 void       w42_layout_build (W42Layout *self, W42Document *doc);
 

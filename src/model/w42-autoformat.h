@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6's AutoFormat looked over a document that had been typed as
+ * Word 97's AutoFormat looked over a document that had been typed as
  * though on a typewriter and made it a word processor's: short lines
  * that stand alone became headings, lines that began with a dash became
  * a bulleted list, runs of empty paragraphs became one, and the straight

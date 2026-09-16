@@ -7,9 +7,6 @@ Goals:
   docs/PARITY.md keeps the score against it, command by command.
 - AbiWord feature parity as the second yardstick, since it is the free
   word processor closest in spirit: https://github.com/AbiWord/abiword/
-- Word 6 was the target until the eleventh round; everything on its
-  menus that is worth having is done, and what Word 97 added on top of it
-  is the work now.
 
 What Word42 does today is in the README. This is what it does not do yet.
 The menus already name some of these and show them greyed out: the menu bar
@@ -45,8 +42,8 @@ See docs/PARITY.md for the full comparison with Word 97 and AbiWord.
 
 ## To do — files
 
-- Word .doc: metafile pictures; Word 6/95
-  formatting (only their text is read today). Writing .doc is probably
+- Word .doc: metafile pictures; the formatting of files from before
+  Word 97 (only their text is read today). Writing .doc is probably
   never worth doing: RTF is what Word opens.
 
 ## To do — application

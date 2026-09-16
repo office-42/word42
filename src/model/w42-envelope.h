@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6's Tools menu made an envelope out of an address and a sheet of
+ * Word 97's Tools menu made an envelope out of an address and a sheet of
  * labels out of a line of text.  These make the same, as documents:
  * an envelope is a page of the envelope's size with the two addresses
  * on it, and a sheet of labels is a table with a cell per label and no

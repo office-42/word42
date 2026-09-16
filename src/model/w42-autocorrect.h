@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6 corrected four things while you typed, and they are the four
+ * Word 97 corrected four things while you typed, and they are the four
  * everybody still expects: straight quotes become the curly ones a
  * typesetter would use, TWo INitial CApitals become one, the first letter
  * of a sentence is capitalised, and a short list of misspellings is put

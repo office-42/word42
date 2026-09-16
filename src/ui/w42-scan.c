@@ -12,8 +12,8 @@
 
 #ifdef G_OS_WIN32
 
-/* Windows Image Acquisition, through its Automation layer: the same
- * WIA.CommonDialog that Word XP's "From Scanner or Camera" used.  It is
+/* Windows Image Acquisition, through its Automation layer: the
+ * WIA.CommonDialog that Word's "From Scanner or Camera" came to use.  It is
  * driven by IDispatch names so that no WIA headers or import libraries
  * are needed beyond ole32 and oleaut32, which every Windows has. */
 

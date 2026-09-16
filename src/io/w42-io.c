@@ -142,7 +142,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
     }
   else
     {
-      /* Word 6 wrote Windows-1252, so that is the sensible fallback for a
+      /* Word 97 wrote Windows-1252, so that is the sensible fallback for a
        * text file that is not valid UTF-8. */
       utf8 = g_convert (contents, length, "UTF-8", "WINDOWS-1252",
                         NULL, NULL, NULL);

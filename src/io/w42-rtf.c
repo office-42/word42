@@ -882,8 +882,8 @@ w42_rtf_save (W42PieceTable      *pt,
       if (in_table)
         g_string_append (out, "\\intbl");
 
-      /* Lists the way Word 6 wrote them: a \pn group that says what kind of
-       * list the paragraph is in, and a \pntext group holding the marker
+      /* Lists as a \pn group that says what kind of list the paragraph is
+       * in, which every reader of RTF understands, and a \pntext group holding the marker
        * as plain text for readers that do not know \pn. */
       if (w42_list_is_numbered (para->pa.list))
         {
@@ -2979,7 +2979,7 @@ formatting:
 /* Word 97 and everything since -- LibreOffice and AbiWord included -- put
  * lists in two tables at the top of the file: {\*\listtable} says what
  * each list looks like at each level, and {\*\listoverridetable} ties the
- * \ls number a paragraph carries to one of them.  Word 6's \pn groups are
+ * \ls number a paragraph carries to one of them.  The older \pn groups are
  * still read below; this is the newer spelling of the same thing.
  *
  * The tables are self-contained, so they are scanned here, before the

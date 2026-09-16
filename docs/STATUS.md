@@ -42,11 +42,11 @@ Early, but real. Word42 today is a working word processor:
   sections with their columns, headers and footers with page-number
   fields. The zip inside a .docx is read and written with GLib's own
   deflate, so no new library is needed; .zabw is the gzipped .abw.
-- **Word .doc import** — File ▸ Open reads Word 97–2003 documents: text,
+- **Word .doc import** — File ▸ Open reads Word 97 documents (and the .doc files Word wrote until .docx): text,
   paragraph and character formatting, headings by their built-in identity
   (so a Norwegian "Overskrift 1" is a Heading 1), tables, PNG and JPEG
   pictures at the size Word showed them, page setup, header and footer with
-  their page-number fields, footnotes. A Word 6 or 95 file
+  their page-number fields, footnotes. A .doc from before Word 97
   yields its text and paragraphs. Saving goes to RTF or .docx, which Word opens.
   Lists are read from the list tables, so numbered lists come in
   numbered and bulleted ones bulleted.
@@ -100,7 +100,7 @@ Early, but real. Word42 today is a working word processor:
   `Select Case`, `Do`, `For`, `With`, named arguments, and Word's
   `Selection`, `ActiveDocument`, `Application`, `Documents`, `MsgBox`
   and `InputBox`. Macros are `.bas` files in the macros folder, listed
-  and run from Word 6's Macro box (Alt+F8) or edited and run with F5
+  and run from Word 97's Macros box (Alt+F8) or edited and run with F5
   in the Macro Editor (Alt+F11). A macro is one undo step.
 - **Help** — the user guide travels inside the program: Help ▸ Contents
   (F1) opens a window with the guide's sections on the left and the one
@@ -153,7 +153,7 @@ Early, but real. Word42 today is a working word processor:
   a PNG of it.
 - **Text wrapping** — a wrapped picture or shape can sit at the left or
   right with the text beside it, with the text above and below it only,
-  in front of the text, or behind it, as Word XP's Format ▸ Picture
+  in front of the text, or behind it, as Word 97's Format ▸ Picture
   offered; one put at a place of its own -- Word's `posOffset`, RTF's
   `\shpleft`/`\shptop`, OpenDocument's `svg:x`/`svg:y` -- keeps it,
   measured from its paragraph, and a paragraph may carry several. A
@@ -316,7 +316,7 @@ Early, but real. Word42 today is a working word processor:
   and wave, in Format ▸ Font Effects; RTF, Word and OpenDocument files
   carry every one of them, both ways.
 
-- **AutoCorrect** — Word 6's four corrections, made as you type: straight
+- **AutoCorrect** — Word 97's four corrections, made as you type: straight
   quotes become the curly ones that fit where they stand, TWo INitial
   CApitals become one, the first word of a sentence takes its capital, two
   hyphens become a dash, and a short list of misspellings — teh, adn,
@@ -360,7 +360,7 @@ Early, but real. Word42 today is a working word processor:
   paragraphs with tabs between the cells and turns tabbed paragraphs back
   into a table; and Table Gridlines, which shows the cells of an unruled
   table faintly on screen without printing them.
-- **Word XP's Table menu** — Insert (Table, Columns to the Left and
+- **The Table menu** — Insert (Table, Columns to the Left and
   Right, Rows Above and Below), Delete (Table, Columns, Rows), Select
   (Table, Column, Row, Cell), AutoFit (to Window, Distribute Rows and
   Columns Evenly), Heading Rows Repeat, and Formula: `=SUM(ABOVE)`,
@@ -406,7 +406,7 @@ Early, but real. Word42 today is a working word processor:
   heading set in tracked capitals closed back up; the pictures; and the page
   with its margins. A PDF is a picture of a document rather than the
   document, so that is what there is to recover.
-- **Printing** — File ▸ Print opens Word42's Print box, Word XP's layout:
+- **Printing** — File ▸ Print opens Word42's Print box, Word 97's layout:
   page range (All, Current page, Selection, Pages as `1,3,5-12`), copies
   and Collate, All/Odd/Even pages, and Reverse order, Drawing objects,
   Background colour and Draft output; then the printer last used, the

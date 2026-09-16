@@ -17,7 +17,7 @@ G_DECLARE_FINAL_TYPE (W42FindDialog, w42_find_dialog, W42, FIND_DIALOG, GtkWindo
 
 GtkWidget *w42_find_dialog_new (GtkWindow *parent, W42View *view);
 
-/* Word 6 had a Find box and a Replace box that were the same box with one
+/* Word 97 had a Find box and a Replace box that were the same box with one
  * row hidden.  This is that box; `replace` decides whether the row shows. */
 void w42_find_dialog_set_replace_mode (W42FindDialog *self, gboolean replace);
 

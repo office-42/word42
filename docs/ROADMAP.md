@@ -2,8 +2,8 @@
 
 What Word42 does today is in the README; how it measures against Word 97
 and AbiWord is in docs/PARITY.md.  Word 97 is the target now -- Word42.md
-says why -- and the work is what Word 97 added over Word 6.  This is what
-it does not do yet, in roughly the order the work makes sense.
+says why -- and the work is what Word 97 has that this has not.  This is
+what it does not do yet, in roughly the order the work makes sense.
 
 The menus already name some of these and show them greyed out.  That is
 deliberate: the menu bar is the specification.
@@ -74,8 +74,8 @@ and ruler following the pane being edited.
 
 - Text boxes placed anywhere on the page, and frames with borders.
 - Pictures wrapped top-and-bottom, or set behind the text.
-- Word .doc: metafile pictures; Word 6/95 formatting (only their text
-  is read today).  Writing .doc is probably never worth doing.
+- Word .doc: metafile pictures; the formatting of files from before
+  Word 97 (only their text is read today).  Writing .doc is probably never worth doing.
 - Translations (gettext; the menus are already marked translatable).
 - Accessibility: the drawn canvas exposes no text to screen readers.
 - Publishing: the Windows Store submission itself (the MSIX is built

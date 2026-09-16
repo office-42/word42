@@ -6,7 +6,7 @@
  * The ruler is a drawing area with three gestures on it.  It shows the
  * current paragraph's indents and tab stops and lets them be dragged; a
  * click on the empty band sets a tab stop of the kind shown in the little
- * box at the left, which a click on the box cycles, as Word 6's did.
+ * box at the left, which a click on the box cycles, as Word 97's did.
  * Nothing changes in the document until the button goes up.
  */
 

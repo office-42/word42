@@ -53,7 +53,7 @@ struct _W42View {
 
   /* Dragging a handle of the selected picture.  The picture is not resized
    * until the button goes up; while it is down a dotted outline shows the
-   * size it will be, as Word 6 did. */
+   * size it will be, as Word 97 did. */
   int            handle;        /* -1, or the handle being dragged */
   double         drag_x0, drag_y0;
   double         pic_x, pic_y, pic_w, pic_h;   /* page px at the start */
@@ -260,7 +260,7 @@ view_page_origin_x (W42View *self)
   double width  = gtk_widget_get_width (GTK_WIDGET (self));
 
   /* Normal view has no sheet to centre: the text starts at the left, as it
-   * did in Word 6, and the window is simply a window on to the galley. */
+   * did in Word 97, and the window is simply a window on to the galley. */
   if (self->mode == W42_VIEW_NORMAL)
     return 0.0;
 
@@ -623,7 +623,7 @@ view_insert_toc_entries (W42View *self)
 
   /* Pages come from the layout as it stands; in Normal view everything is
    * on page 1, so the numbers are what Page Layout would show only when
-   * that is the view.  Word 6 had the same limitation in reverse. */
+   * that is the view.  Word 97 had the same limitation in reverse. */
   blocks = w42_pt_snapshot_blocks (pt);
   lines = w42_layout_lines (self->layout);
 
@@ -2614,7 +2614,7 @@ w42_view_table_formula (W42View *self, const char *formula)
     return FALSE;
 
   /* "=SUM(ABOVE)", "=AVERAGE(LEFT)", "=COUNT(BELOW)", "=MAX(RIGHT)",
-   * "=MIN(...)", "=PRODUCT(...)": Word XP's functions over the cells in
+   * "=MIN(...)", "=PRODUCT(...)": Word 97's functions over the cells in
    * one direction, up to the first that holds no number. */
   upper = g_ascii_strup (formula, -1);
   g_strstrip (upper);
@@ -3952,7 +3952,7 @@ w42_view_expand_autotext (W42View *self)
   return TRUE;
 }
 
-/* Word 6 corrected as you typed, and so does this: the correction is
+/* Word 97 corrected as you typed, and so does this: the correction is
  * worked out from the text behind the caret and put in as one undo step
  * with the character that prompted it. */
 static void
@@ -5535,7 +5535,7 @@ w42_view_init (W42View *self)
   gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (click));
 
   {
-    /* The right button: the usual short menu, as Word 6 had from 6.0. */
+    /* The right button: the usual short menu, as Word 97 had. */
     GtkGesture *secondary = gtk_gesture_click_new ();
     GMenu *menu = g_menu_new ();
     GMenu *section;

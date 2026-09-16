@@ -2767,7 +2767,7 @@ read_headers (Doc *doc, W42PieceTable *pt)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Word 6 and 95: the text and nothing else                                */
+/* The .doc formats before Word 97: the text and nothing else              */
 /* ---------------------------------------------------------------------- */
 
 static gboolean
@@ -2860,8 +2860,8 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
   if (doc.nfib < 193)
     {
-      /* Word 6 and 95 keep their tables elsewhere in the FIB; the text
-       * is where it says, and that is what we take. */
+      /* A file from before Word 97 keeps its tables elsewhere in the FIB;
+       * the text is where it says, and that is what we take. */
       ok = load_word6_text (&doc, pt, error);
       goto out;
     }

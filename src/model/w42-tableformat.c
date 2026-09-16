@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Table AutoFormat.  Word 6 offered a list of looks and a preview; this
+/* Table AutoFormat.  Word 97 offered a list of looks and a preview; this
  * offers the same kind of list, with looks of its own making, and puts
  * one on the caret's table in a single undo step. */
 

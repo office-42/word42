@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * GTK's own print preview hands a PDF to an external viewer, which is fine
- * on a desktop that has one and nothing at all on Windows or macOS.  Word 6
+ * on a desktop that has one and nothing at all on Windows or macOS.  Word 97
  * had a preview window of its own -- pages on a grey ground, a zoom, a Print
  * button -- and so does word42.  It is the same layout engine as the screen
  * and the printer, so what it shows is what will print.
