@@ -22,7 +22,7 @@ w42_fmt_init_default (W42Fmt *fmt)
   memset (fmt, 0, sizeof *fmt);
 
   fmt->ch.family = g_intern_static_string ("Times New Roman");
-  fmt->ch.size   = 20;          /* 10pt, Word 6's default */
+  fmt->ch.size   = 20;          /* 10pt, Word 97's default */
   fmt->ch.color  = 0x000000;
   fmt->ch.script = 0;
 
@@ -32,16 +32,31 @@ w42_fmt_init_default (W42Fmt *fmt)
   fmt->pa.widow_control = 1;
 }
 
+/* Every intern hashes the whole record, and a reader interns once a run
+ * or oftener, so this is the hottest loop in opening a file.  The record
+ * is read eight bytes at a time -- it is zeroed before use, so the padding
+ * is defined and memcpy on the tail is sound -- which is what made it
+ * cheap: a byte at a time, this was a quarter of the time to open a
+ * long document. */
 static guint
 fmt_hash (gconstpointer key)
 {
   const guint8 *bytes = key;
-  guint hash = 5381;
+  guint64 hash = 0x9E3779B97F4A7C15ull;
+  gsize i = 0;
 
-  for (gsize i = 0; i < sizeof (W42Fmt); i++)
-    hash = (hash << 5) + hash + bytes[i];
+  for (; i + 8 <= sizeof (W42Fmt); i += 8)
+    {
+      guint64 word;
 
-  return hash;
+      memcpy (&word, bytes + i, 8);
+      hash = (hash ^ word) * 0x100000001B3ull;
+      hash ^= hash >> 29;
+    }
+  for (; i < sizeof (W42Fmt); i++)
+    hash = (hash ^ bytes[i]) * 0x100000001B3ull;
+
+  return (guint) (hash ^ (hash >> 32));
 }
 
 static gboolean
@@ -270,6 +285,31 @@ w42_highlight_rgb (int index)
   };
 
   return (index > 0 && index < 17) ? table[index] : 0xFFFF00;
+}
+
+int
+w42_highlight_nearest (guint32 rgb)
+{
+  int best = 0;
+  long best_away = 0;
+
+  if ((rgb & 0xFFFFFF) == 0xFFFFFF)
+    return 0;
+  for (int i = 1; i <= 16; i++)
+    {
+      guint32 c = w42_highlight_rgb (i);
+      long dr = (long) ((c >> 16) & 0xFF) - (long) ((rgb >> 16) & 0xFF);
+      long dg = (long) ((c >> 8) & 0xFF) - (long) ((rgb >> 8) & 0xFF);
+      long db = (long) (c & 0xFF) - (long) (rgb & 0xFF);
+      long away = dr * dr + dg * dg + db * db;
+
+      if (best == 0 || away < best_away)
+        {
+          best = i;
+          best_away = away;
+        }
+    }
+  return best;
 }
 
 /* ---------------------------------------------------------------------- */

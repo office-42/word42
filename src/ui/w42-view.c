@@ -9,10 +9,12 @@
 #include "w42-autocorrect.h"
 #include "w42-autotext.h"
 #include "w42-index.h"
+#include "w42-compare.h"
 #include "w42-autoformat.h"
 #include "w42-hyphenate.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
+#include "w42-html.h"
 
 #include <math.h>
 #include <string.h>
@@ -24,6 +26,11 @@
 struct _W42View {
   GtkWidget      parent_instance;
   GtkWidget *context_menu;   /* the right-click menu, a popover */
+  guint      online_relayout_id;   /* Online Layout re-wrapping to a new width */
+  GtkWidget *tip;            /* the AutoComplete tip, a popover */
+  GtkWidget *tip_label;
+  char      *tip_text;       /* the AutoText entry the tip offers */
+  gsize      tip_back;       /* the characters typed of its name */
   gboolean   autocorrect;    /* Tools > Options: correct as you type */
 
   W42Document   *doc;
@@ -48,7 +55,7 @@ struct _W42View {
 
   /* Dragging a handle of the selected picture.  The picture is not resized
    * until the button goes up; while it is down a dotted outline shows the
-   * size it will be, as Word 6 did. */
+   * size it will be, as Word 97 did. */
   int            handle;        /* -1, or the handle being dragged */
   double         drag_x0, drag_y0;
   double         pic_x, pic_y, pic_w, pic_h;   /* page px at the start */
@@ -205,11 +212,15 @@ view_reset_blink (W42View *self)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+static void view_hide_tip (W42View *self);
+
 /* Moving the caret ends a run of typing for undo, drops any sticky column and
  * forgets formatting that was toggled but never used. */
 static void
 view_caret_moved (W42View *self, gboolean keep_want_x)
 {
+  if (self->tip_text != NULL)
+    view_hide_tip (self);
   W42PieceTable *pt = view_pt (self);
 
   if (pt != NULL)
@@ -250,9 +261,10 @@ view_page_origin_x (W42View *self)
   double page_w = w42_layout_page_width (self->layout) * self->zoom;
   double width  = gtk_widget_get_width (GTK_WIDGET (self));
 
-  /* Normal view has no sheet to centre: the text starts at the left, as it
-   * did in Word 6, and the window is simply a window on to the galley. */
-  if (self->mode == W42_VIEW_NORMAL)
+  /* Normal and Online Layout have no sheet to centre: the text starts at
+   * the left, as it did in Word 97, and the window is simply a window on
+   * to the galley. */
+  if (self->mode != W42_VIEW_PAGE_LAYOUT)
     return 0.0;
 
   if (width > page_w + 2 * PAGE_GAP)
@@ -266,7 +278,7 @@ view_page_origin_y (W42View *self, int page)
 {
   double page_h = w42_layout_page_height (self->layout) * self->zoom;
 
-  if (self->mode == W42_VIEW_NORMAL)
+  if (self->mode != W42_VIEW_PAGE_LAYOUT)
     return 0.0;
 
   return PAGE_GAP + page * (page_h + PAGE_GAP);
@@ -308,6 +320,7 @@ view_widget_to_page (W42View *self,
 
 static int view_insert_toc_entries (W42View *self);
 static GBytes *view_selection_as_rtf (W42View *self);
+static GBytes *view_selection_as_html (W42View *self);
 
 static void
 view_relayout (W42View *self)
@@ -424,6 +437,11 @@ w42_view_get_char_fmt (W42View *self, W42CharFmt *out)
       if (m & W42_CHAR_STRIKEOUT) out->strikeout = self->pending.strikeout;
       if (m & W42_CHAR_COLOR)     out->color     = self->pending.color;
       if (m & W42_CHAR_LANG)      out->lang      = self->pending.lang;
+      if (m & W42_CHAR_DSTRIKE)   out->dstrike   = self->pending.dstrike;
+      if (m & W42_CHAR_SHADOW)    out->shadow    = self->pending.shadow;
+      if (m & W42_CHAR_OUTLINE)   out->outline   = self->pending.outline;
+      if (m & W42_CHAR_EMBOSS)    out->emboss    = self->pending.emboss;
+      if (m & W42_CHAR_ENGRAVE)   out->engrave   = self->pending.engrave;
     }
 }
 
@@ -608,7 +626,7 @@ view_insert_toc_entries (W42View *self)
 
   /* Pages come from the layout as it stands; in Normal view everything is
    * on page 1, so the numbers are what Page Layout would show only when
-   * that is the view.  Word 6 had the same limitation in reverse. */
+   * that is the view.  Word 97 had the same limitation in reverse. */
   blocks = w42_pt_snapshot_blocks (pt);
   lines = w42_layout_lines (self->layout);
 
@@ -787,6 +805,71 @@ w42_view_insert_index (W42View *self)
       view_edited (self);
     }
   return made;
+}
+
+/* Insert > Index and Tables > Table of Figures: the captions, in order,
+ * with their pages; one already there is replaced where it stands. */
+int
+w42_view_insert_table_of_figures (W42View *self)
+{
+  W42PieceTable *pt;
+  gsize at, start, end, after = 0;
+  int made;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 0);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return 0;
+
+  w42_pt_begin_group (pt);
+  if (w42_pt_find_bookmark (pt, W42_FIGURES_BOOKMARK, &start, &end))
+    {
+      w42_pt_delete (pt, start, end - start);
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, start);
+      view_relayout (self);
+    }
+  else
+    {
+      view_delete_selection (self);
+    }
+
+  at = w42_pt_paragraph_start (pt, self->caret) + 1;
+  made = w42_figures_build (pt, self->layout, w42_document_page_setup (self->doc),
+                            at, &after);
+  w42_pt_end_group (pt);
+
+  if (made > 0)
+    {
+      self->caret = self->anchor = w42_pt_clamp_pos (pt, after);
+      view_edited (self);
+    }
+  return made;
+}
+
+/* Tools > Track Changes > Compare Documents: the differences from
+ * `original` marked as changes, as one undo step. */
+int
+w42_view_compare_with (W42View *self, W42PieceTable *original)
+{
+  W42PieceTable *pt;
+  int n;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 0);
+  g_return_val_if_fail (original != NULL, 0);
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return 0;
+
+  n = w42_pt_compare (pt, original);
+  if (n > 0)
+    {
+      self->caret = w42_pt_clamp_pos (pt, self->caret);
+      self->anchor = self->caret;
+      view_edited (self);
+    }
+  return n;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1581,6 +1664,11 @@ view_apply_char_fmt (W42View *self, W42CharMask mask, const W42CharFmt *value)
   if (mask & W42_CHAR_STRIKEOUT) self->pending.strikeout = value->strikeout;
   if (mask & W42_CHAR_COLOR)     self->pending.color     = value->color;
   if (mask & W42_CHAR_LANG)      self->pending.lang      = value->lang;
+  if (mask & W42_CHAR_DSTRIKE)   self->pending.dstrike   = value->dstrike;
+  if (mask & W42_CHAR_SHADOW)    self->pending.shadow    = value->shadow;
+  if (mask & W42_CHAR_OUTLINE)   self->pending.outline   = value->outline;
+  if (mask & W42_CHAR_EMBOSS)    self->pending.emboss    = value->emboss;
+  if (mask & W42_CHAR_ENGRAVE)   self->pending.engrave   = value->engrave;
 
   view_state_changed (self);
 }
@@ -2229,8 +2317,11 @@ view_table_tab (W42View *self, gboolean backwards)
         {
           if (row + 1 >= rows)
             {
+              /* An edit like any other: the other pane of a split window,
+               * and a preview, hear of the new row too. */
               w42_pt_table_insert_row (pt, table, row);
               w42_document_set_modified (self->doc, TRUE);
+              w42_document_touch (self->doc);
             }
           row++;
           col = 0;
@@ -2485,6 +2576,50 @@ w42_view_table_autofit_window (W42View *self)
   view_edited (self);
 }
 
+void
+w42_view_table_autofit_contents (W42View *self)
+{
+  W42PieceTable *pt;
+  int table, row, col;
+  const W42TableProps *props;
+  GArray *wants;
+  int *widths, total = 0, room;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+  pt = view_pt (self);
+  if (pt == NULL || !w42_pt_cell_at (pt, self->caret, &table, &row, &col))
+    return;
+  props = w42_pt_table_props (pt, table);
+  if (props == NULL || props->n_cols <= 0)
+    return;
+
+  wants = g_array_new (FALSE, TRUE, sizeof (int));
+  if (!w42_layout_table_content_widths (self->layout, table, wants) ||
+      (int) wants->len < props->n_cols)
+    {
+      g_array_unref (wants);
+      return;
+    }
+
+  /* Each column as wide as its widest cell wants, and the whole table no
+   * wider than the text column: when the words will not all fit on one
+   * line the columns give way in proportion, which is what Word did. */
+  for (int c = 0; c < props->n_cols; c++)
+    total += g_array_index (wants, int, c);
+  room = view_text_twips (self);
+  widths = g_new0 (int, props->n_cols);
+  for (int c = 0; c < props->n_cols; c++)
+    {
+      int w = g_array_index (wants, int, c);
+
+      widths[c] = (total > room && total > 0) ? (int) ((gint64) w * room / total) : w;
+    }
+  w42_pt_table_set_widths (pt, table, widths, props->n_cols);
+  g_free (widths);
+  g_array_unref (wants);
+  view_edited (self);
+}
+
 gboolean
 w42_view_table_cell_text (W42View *self, int row, int col, char **out)
 {
@@ -2547,7 +2682,7 @@ w42_view_table_formula (W42View *self, const char *formula)
     return FALSE;
 
   /* "=SUM(ABOVE)", "=AVERAGE(LEFT)", "=COUNT(BELOW)", "=MAX(RIGHT)",
-   * "=MIN(...)", "=PRODUCT(...)": Word XP's functions over the cells in
+   * "=MIN(...)", "=PRODUCT(...)": Word 97's functions over the cells in
    * one direction, up to the first that holds no number. */
   upper = g_ascii_strup (formula, -1);
   g_strstrip (upper);
@@ -2615,7 +2750,12 @@ w42_view_table_formula (W42View *self, const char *formula)
   /* The result goes in as a field, so Update Fields can work it out
    * again; its code is the formula as Word spelt it. */
   w42_view_get_char_fmt (self, &ch);
-  ch.field = g_intern_string (formula[0] == '=' ? formula : g_strconcat ("=", formula, NULL));
+  {
+    char *code = formula[0] == '=' ? g_strdup (formula) : g_strconcat ("=", formula, NULL);
+
+    ch.field = g_intern_string (code);
+    g_free (code);
+  }
   w42_view_insert_text (self, result);
   {
     gsize end = self->caret, start = end - strlen (result);
@@ -3409,7 +3549,8 @@ w42_view_copy (W42View *self)
   {
     GdkClipboard *clipboard = gtk_widget_get_clipboard (GTK_WIDGET (self));
     GBytes *rtf = view_selection_as_rtf (self);
-    GdkContentProvider *providers[3];
+    GBytes *html = view_selection_as_html (self);
+    GdkContentProvider *providers[4];
     guint n = 0;
     GValue value = G_VALUE_INIT;
     GdkContentProvider *all;
@@ -3419,6 +3560,8 @@ w42_view_copy (W42View *self)
         providers[n++] = gdk_content_provider_new_for_bytes ("text/rtf", rtf);
         providers[n++] = gdk_content_provider_new_for_bytes ("application/rtf", rtf);
       }
+    if (html != NULL)
+      providers[n++] = gdk_content_provider_new_for_bytes ("text/html", html);
     g_value_init (&value, G_TYPE_STRING);
     g_value_set_string (&value, text);
     providers[n++] = gdk_content_provider_new_for_value (&value);
@@ -3428,6 +3571,8 @@ w42_view_copy (W42View *self)
     g_object_unref (all);
     if (rtf != NULL)
       g_bytes_unref (rtf);
+    if (html != NULL)
+      g_bytes_unref (html);
   }
   g_free (text);
 }
@@ -3470,6 +3615,37 @@ view_selection_as_rtf (W42View *self)
       g_close (fd, NULL);
       file = g_file_new_for_path (path);
       if (w42_rtf_save (frag, w42_document_page_setup (self->doc), file, NULL))
+        bytes = g_file_load_bytes (file, NULL, NULL, NULL);
+      g_object_unref (file);
+      g_unlink (path);
+    }
+  g_free (path);
+  w42_pt_free (frag);
+  return bytes;
+}
+
+/* The same as a web page, for the programs that take HTML from the
+ * clipboard -- browsers, mail -- and not RTF. */
+static GBytes *
+view_selection_as_html (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  W42PieceTable *frag;
+  char *path;
+  int fd;
+  GFile *file;
+  GBytes *bytes = NULL;
+
+  if (pt == NULL || !w42_view_has_selection (self))
+    return NULL;
+  frag = w42_pt_extract (pt, sel_start (self), sel_end (self) - sel_start (self));
+  path = g_build_filename (g_get_tmp_dir (), "word42-clip-XXXXXX.html", NULL);
+  fd = g_mkstemp (path);
+  if (fd >= 0)
+    {
+      g_close (fd, NULL);
+      file = g_file_new_for_path (path);
+      if (w42_html_export (frag, w42_document_page_setup (self->doc), file, NULL))
         bytes = g_file_load_bytes (file, NULL, NULL, NULL);
       g_object_unref (file);
       g_unlink (path);
@@ -3630,6 +3806,30 @@ on_clipboard_text (GObject *source, GAsyncResult *result, gpointer data)
   g_object_unref (self);
 }
 
+/* A picture from the clipboard -- a screenshot, or an image copied out of
+ * a browser -- goes in as a PNG, at its pixel size. */
+static void
+on_clipboard_texture (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42View *self = data;
+  GdkTexture *texture = gdk_clipboard_read_texture_finish (GDK_CLIPBOARD (source), result, NULL);
+
+  if (texture != NULL)
+    {
+      GBytes *png = gdk_texture_save_to_png_bytes (texture);
+
+      if (png != NULL)
+        {
+          w42_view_insert_picture (self, png, g_intern_static_string ("png"),
+                                   gdk_texture_get_width (texture),
+                                   gdk_texture_get_height (texture));
+          g_bytes_unref (png);
+        }
+      g_object_unref (texture);
+    }
+  g_object_unref (self);
+}
+
 void
 w42_view_paste (W42View *self)
 {
@@ -3645,6 +3845,15 @@ w42_view_paste (W42View *self)
       {
         gdk_clipboard_read_async (clipboard, rtf_mimes, G_PRIORITY_DEFAULT, NULL,
                                   on_clipboard_rtf, g_object_ref (self));
+        return;
+      }
+    /* Rich text first, then a picture, then text: what was copied out of
+     * a browser is often all three, and a picture with a caption is a
+     * picture. */
+    if (gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE))
+      {
+        gdk_clipboard_read_texture_async (clipboard, NULL,
+                                          on_clipboard_texture, g_object_ref (self));
         return;
       }
   }
@@ -3715,6 +3924,35 @@ w42_view_select_all (W42View *self)
 /* Input                                                                   */
 /* ---------------------------------------------------------------------- */
 
+/* The caret can only sit where the layout shows a line.  The paragraphs
+ * of a cell covered by a vertical merge are kept in the document and
+ * shown nowhere, so a caret walking into one would vanish; from `pos`
+ * this goes on in `dir` until a position the layout can place. */
+static gsize
+view_shown_pos (W42View *self, gsize pos, int dir)
+{
+  W42PieceTable *pt = view_pt (self);
+  gsize length = w42_pt_length (pt);
+
+  /* Before the first pass nothing is shown yet, and there is nothing to
+   * step over. */
+  if (w42_layout_lines (self->layout)->len == 0)
+    return pos;
+
+  for (int guard = 0; guard < 100000; guard++)
+    {
+      gsize next;
+
+      if (w42_layout_pos_to_caret (self->layout, pos, NULL, NULL, NULL, NULL))
+        return pos;
+      next = dir > 0 ? w42_pt_next_pos (pt, pos) : w42_pt_prev_pos (pt, pos);
+      if (next == pos || next > length)
+        return pos;
+      pos = next;
+    }
+  return pos;
+}
+
 /* The text of the caret's paragraph up to the caret: what AutoCorrect
  * looks at.  A long paragraph is read from the end, since a correction
  * never reaches further back than a word or two. */
@@ -3782,7 +4020,7 @@ w42_view_expand_autotext (W42View *self)
   return TRUE;
 }
 
-/* Word 6 corrected as you typed, and so does this: the correction is
+/* Word 97 corrected as you typed, and so does this: the correction is
  * worked out from the text behind the caret and put in as one undo step
  * with the character that prompted it. */
 static void
@@ -3819,14 +4057,158 @@ autocorrect_after_typing (W42View *self, const char *typed)
   view_edited (self);
 }
 
+/* Word 97's AutoComplete: once four or more letters of an AutoText
+ * entry's name are typed, a tip over the caret shows what the entry
+ * says, and Enter puts it in.  Any other key takes the tip away and
+ * does what it always did. */
+static void
+view_hide_tip (W42View *self)
+{
+  if (self->tip != NULL && gtk_widget_get_visible (self->tip))
+    gtk_popover_popdown (GTK_POPOVER (self->tip));
+  g_clear_pointer (&self->tip_text, g_free);
+  self->tip_back = 0;
+}
+
+/* Word 97 offered the months and the days of the week from their first
+ * four letters, and today's date from the first letters of this month:
+ * "Sept" and Enter gave "September 16, 2026" in September. */
+static char *
+date_complete (const char *word)
+{
+  static const char *const NAMES[] = {
+    "January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December",
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+  };
+  char *want;
+  char *found = NULL;
+
+  if (g_utf8_strlen (word, -1) < 4)
+    return NULL;
+  want = g_utf8_casefold (word, -1);
+  for (guint i = 0; i < G_N_ELEMENTS (NAMES) && found == NULL; i++)
+    {
+      char *have = g_utf8_casefold (NAMES[i], -1);
+
+      if (g_str_has_prefix (have, want) && strlen (have) > strlen (want))
+        {
+          GDateTime *now = g_date_time_new_now_local ();
+
+          if (i < 12 && (int) i + 1 == g_date_time_get_month (now))
+            found = g_date_time_format (now, "%B %-d, %Y");
+          else
+            found = g_strdup (NAMES[i]);
+          g_date_time_unref (now);
+        }
+      g_free (have);
+    }
+  g_free (want);
+  return found;
+}
+
+static void
+view_offer_tip (W42View *self)
+{
+  char *before, *entry = NULL, *name = NULL;
+  const char *word;
+  GdkRectangle at = { 0, 0, 1, 1 };
+  int page = 0;
+  double x = 0, y = 0, h = 0;
+
+  if (self->tip == NULL)
+    return;
+  before = text_before_caret (self);
+  if (before == NULL)
+    return;
+
+  /* The name is what was typed since the last space. */
+  word = before + strlen (before);
+  while (word > before && !g_unichar_isspace (g_utf8_get_char (g_utf8_prev_char (word))))
+    word = g_utf8_prev_char (word);
+  if (*word != '\0')
+    entry = w42_autotext_complete (word, &name);
+  if (entry == NULL && *word != '\0')
+    entry = date_complete (word);
+  if (entry == NULL)
+    {
+      g_free (before);
+      return;
+    }
+
+  {
+    /* The first line of the entry, cut short, and the word on how to
+     * have it, as Word 97's tip said. */
+    char *first = g_strdup (entry);
+    char *nl = strchr (first, '\n');
+    char *shown;
+
+    if (nl != NULL)
+      *nl = '\0';
+    if (g_utf8_strlen (first, -1) > 40)
+      {
+        char *cut = g_utf8_offset_to_pointer (first, 40);
+        *cut = '\0';
+        shown = g_strdup_printf ("%s\u2026  (Press ENTER to Insert)", first);
+      }
+    else
+      shown = g_strdup_printf ("%s  (Press ENTER to Insert)", first);
+    gtk_label_set_text (GTK_LABEL (self->tip_label), shown);
+    g_free (shown);
+    g_free (first);
+  }
+
+  g_free (self->tip_text);
+  self->tip_text = entry;
+  self->tip_back = (gsize) g_utf8_strlen (word, -1);
+  g_free (name);
+  g_free (before);
+
+  if (w42_layout_pos_to_caret (self->layout, self->caret, &page, &x, &y, &h))
+    {
+      at.x = (int) (view_page_origin_x (self) + x * self->zoom);
+      at.y = (int) (view_page_origin_y (self, page) + y * self->zoom);
+      at.height = (int) (h * self->zoom);
+    }
+  gtk_popover_set_pointing_to (GTK_POPOVER (self->tip), &at);
+  gtk_popover_popup (GTK_POPOVER (self->tip));
+}
+
+/* Enter on a tip: the name typed goes, the entry comes, one undo step. */
+static gboolean
+view_accept_tip (W42View *self)
+{
+  W42PieceTable *pt = view_pt (self);
+  char *entry;
+  gsize back = self->tip_back;
+
+  if (pt == NULL || self->tip_text == NULL || back == 0 || back > self->caret)
+    return FALSE;
+  entry = g_steal_pointer (&self->tip_text);
+  view_hide_tip (self);
+
+  w42_pt_begin_group (pt);
+  w42_pt_delete (pt, self->caret - back, back);
+  self->caret -= back;
+  w42_pt_insert_text (pt, self->caret, entry, view_effective_ap (self));
+  self->caret += g_utf8_strlen (entry, -1);
+  self->anchor = self->caret;
+  w42_pt_end_group (pt);
+  view_edited (self);
+  g_free (entry);
+  return TRUE;
+}
+
 static void
 on_im_commit (GtkIMContext *im, const char *text, gpointer data)
 {
   W42View *self = W42_VIEW (data);
 
   (void) im;
+  view_hide_tip (self);
   w42_view_insert_text (self, text);
   autocorrect_after_typing (self, text);
+  view_offer_tip (self);
 }
 
 static gboolean
@@ -3846,6 +4228,18 @@ on_key_pressed (GtkEventControllerKey *controller,
 
   if (pt == NULL)
     return GDK_EVENT_PROPAGATE;
+
+  /* An AutoComplete tip showing: Enter takes it, Escape declines it, and
+   * any other key puts it away and goes on to what it does. */
+  if (self->tip_text != NULL)
+    {
+      if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) &&
+          !ctrl && !extend && view_accept_tip (self))
+        return GDK_EVENT_STOP;
+      view_hide_tip (self);
+      if (keyval == GDK_KEY_Escape)
+        return GDK_EVENT_STOP;
+    }
 
   if (keyval == GDK_KEY_Menu ||
       (keyval == GDK_KEY_F10 && (state & GDK_SHIFT_MASK) != 0))
@@ -3933,12 +4327,12 @@ on_key_pressed (GtkEventControllerKey *controller,
 
     case GDK_KEY_Left:
     case GDK_KEY_KP_Left:
-      view_set_caret (self, w42_pt_prev_pos (pt, self->caret), extend);
+      view_set_caret (self, view_shown_pos (self, w42_pt_prev_pos (pt, self->caret), -1), extend);
       return GDK_EVENT_STOP;
 
     case GDK_KEY_Right:
     case GDK_KEY_KP_Right:
-      view_set_caret (self, w42_pt_next_pos (pt, self->caret), extend);
+      view_set_caret (self, view_shown_pos (self, w42_pt_next_pos (pt, self->caret), +1), extend);
       return GDK_EVENT_STOP;
 
     case GDK_KEY_Up:
@@ -5092,13 +5486,51 @@ w42_view_measure (GtkWidget      *widget,
       double page_h = w42_layout_page_height (self->layout) * self->zoom;
       int n = w42_layout_n_pages (self->layout);
 
-      size = (self->mode == W42_VIEW_NORMAL)
+      size = (self->mode != W42_VIEW_PAGE_LAYOUT)
                ? page_h
                : PAGE_GAP + n * (page_h + PAGE_GAP);
     }
 
   *minimum = *natural = (int) ceil (size);
+  /* Online Layout asks for no width of its own: it takes the window's
+   * and wraps to it, so the minimum must let the window be narrow. */
+  if (orientation == GTK_ORIENTATION_HORIZONTAL && self->mode == W42_VIEW_ONLINE)
+    *minimum = 120;
   *minimum_baseline = *natural_baseline = -1;
+}
+
+/* Online Layout: the width the window gives the view is the width the
+ * text wraps to.  The re-wrap waits for an idle moment rather than
+ * happening inside the allocation, which is not a place to ask for
+ * another. */
+static gboolean
+view_online_relayout (gpointer data)
+{
+  W42View *self = data;
+  double width = gtk_widget_get_width (GTK_WIDGET (self)) / self->zoom;
+
+  self->online_relayout_id = 0;
+  if (self->mode != W42_VIEW_ONLINE || width <= 0.0)
+    return G_SOURCE_REMOVE;
+  if (fabs (w42_layout_get_galley_width (self->layout) - width) < 0.5)
+    return G_SOURCE_REMOVE;
+
+  w42_layout_set_galley_width (self->layout, width);
+  view_relayout (self);
+  view_state_changed (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+w42_view_size_allocate (GtkWidget *widget, int width, int height, int baseline)
+{
+  W42View *self = W42_VIEW (widget);
+
+  GTK_WIDGET_CLASS (w42_view_parent_class)->size_allocate (widget, width, height, baseline);
+
+  if (self->mode == W42_VIEW_ONLINE && self->online_relayout_id == 0 &&
+      fabs (w42_layout_get_galley_width (self->layout) - width / self->zoom) >= 0.5)
+    self->online_relayout_id = g_idle_add (view_online_relayout, self);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -5161,6 +5593,13 @@ w42_view_dispose (GObject *object)
   W42View *self = W42_VIEW (object);
 
   g_clear_pointer (&self->context_menu, gtk_widget_unparent);
+  g_clear_pointer (&self->tip, gtk_widget_unparent);
+  if (self->online_relayout_id != 0)
+    {
+      g_source_remove (self->online_relayout_id);
+      self->online_relayout_id = 0;
+    }
+  g_clear_pointer (&self->tip_text, g_free);
 
   if (self->blink_id != 0)
     {
@@ -5197,6 +5636,7 @@ w42_view_class_init (W42ViewClass *klass)
 
   widget_class->snapshot = w42_view_snapshot;
   widget_class->measure  = w42_view_measure;
+  widget_class->size_allocate = w42_view_size_allocate;
 
   gtk_widget_class_set_css_name (widget_class, "w42view");
 
@@ -5246,7 +5686,7 @@ w42_view_init (W42View *self)
   gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (click));
 
   {
-    /* The right button: the usual short menu, as Word 6 had from 6.0. */
+    /* The right button: the usual short menu, as Word 97 had. */
     GtkGesture *secondary = gtk_gesture_click_new ();
     GMenu *menu = g_menu_new ();
     GMenu *section;
@@ -5274,6 +5714,19 @@ w42_view_init (W42View *self)
     gtk_popover_set_has_arrow (GTK_POPOVER (self->context_menu), FALSE);
     gtk_widget_set_halign (self->context_menu, GTK_ALIGN_START);
     gtk_widget_set_parent (self->context_menu, GTK_WIDGET (self));
+
+    /* The AutoComplete tip: a popover that takes no focus, so typing
+     * goes on underneath it, above the caret's line. */
+    self->tip = gtk_popover_new ();
+    self->tip_label = gtk_label_new ("");
+    gtk_widget_add_css_class (self->tip, "w42-tip");
+    gtk_popover_set_child (GTK_POPOVER (self->tip), self->tip_label);
+    gtk_popover_set_has_arrow (GTK_POPOVER (self->tip), FALSE);
+    gtk_popover_set_autohide (GTK_POPOVER (self->tip), FALSE);
+    gtk_popover_set_position (GTK_POPOVER (self->tip), GTK_POS_TOP);
+    gtk_widget_set_can_focus (self->tip, FALSE);
+    gtk_widget_set_halign (self->tip, GTK_ALIGN_START);
+    gtk_widget_set_parent (self->tip, GTK_WIDGET (self));
 
     gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (secondary), GDK_BUTTON_SECONDARY);
     g_signal_connect (secondary, "pressed", G_CALLBACK (on_secondary_pressed), self);
@@ -5375,9 +5828,9 @@ w42_view_get_text_column (W42View *self,
   ox = view_page_origin_x (self);
   pw = w42_layout_page_width (self->layout) * zoom;
 
-  /* Normal view drops the page margins for a narrow inset, so the numbers
-   * come from the layout rather than from the page setup. */
-  if (self->mode == W42_VIEW_NORMAL)
+  /* Normal and Online Layout drop the page margins for a narrow inset, so
+   * the numbers come from the layout rather than from the page setup. */
+  if (self->mode != W42_VIEW_PAGE_LAYOUT)
     {
       margin_l = w42_twips_to_px (360) * zoom;
       margin_r = margin_l;
@@ -5416,7 +5869,11 @@ w42_view_set_mode (W42View *self, W42ViewMode mode)
     return;
 
   self->mode = mode;
-  w42_layout_set_galley (self->layout, mode == W42_VIEW_NORMAL);
+  w42_layout_set_galley (self->layout, mode != W42_VIEW_PAGE_LAYOUT);
+  w42_layout_set_galley_width (self->layout,
+                               mode == W42_VIEW_ONLINE
+                                 ? gtk_widget_get_width (GTK_WIDGET (self)) / self->zoom
+                                 : 0.0);
 
   view_relayout (self);
   view_scroll_to_caret (self);
@@ -5436,9 +5893,44 @@ w42_view_set_zoom (W42View *self, double zoom)
   g_return_if_fail (W42_IS_VIEW (self));
 
   self->zoom = CLAMP (zoom, 0.25, 5.0);
+  /* Online Layout wraps to the window: a larger zoom is fewer words to
+   * a line, not a wider galley. */
+  if (self->mode == W42_VIEW_ONLINE)
+    {
+      w42_layout_set_galley_width (self->layout,
+                                   gtk_widget_get_width (GTK_WIDGET (self)) / self->zoom);
+      view_relayout (self);
+    }
   gtk_widget_queue_resize (GTK_WIDGET (self));
   gtk_widget_queue_draw (GTK_WIDGET (self));
   view_state_changed (self);
+}
+
+double
+w42_view_fit_zoom (W42View *self, gboolean whole_page)
+{
+  double page_w, page_h, zoom;
+  double width, height;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 1.0);
+
+  page_w = w42_layout_page_width (self->layout);
+  page_h = w42_layout_page_height (self->layout);
+  width  = gtk_widget_get_width (GTK_WIDGET (self)) - 2 * PAGE_GAP;
+  height = gtk_widget_get_height (GTK_WIDGET (self)) - 2 * PAGE_GAP;
+  if (page_w <= 0.0 || width <= 0.0)
+    return self->zoom;
+
+  /* Word's Page Width was the sheet between the window's edges, and
+   * Whole Page the sheet on the desk, whichever way round is tighter;
+   * the gap the desk keeps round a sheet is kept both ways. */
+  zoom = width / page_w;
+  if (whole_page && page_h > 0.0 && height > 0.0)
+    zoom = MIN (zoom, height / page_h);
+
+  /* Rounded to a whole percent, which is what the box can show. */
+  zoom = floor (zoom * 100.0) / 100.0;
+  return CLAMP (zoom, 0.25, 5.0);
 }
 
 double

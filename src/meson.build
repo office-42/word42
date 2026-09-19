@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-w42_inc = include_directories('util', 'model', 'layout', 'io', 'ui')
+w42_inc = include_directories('util', 'model', 'layout', 'io', 'ui', 'macro')
 
 # Everything below the user interface: the document model, the layout engine
 # and the importers.  Kept as its own library so the tests can link it
@@ -32,17 +32,30 @@ w42_core_sources = files(
   'io/w42-odt.c',
   'io/w42-pptx.c',
   'model/w42-hyphenate.c',
+  'model/w42-thesaurus.c',
+  'model/w42-compare.c',
   'model/w42-autocorrect.c',
   'model/w42-tableformat.c',
   'model/w42-envelope.c',
   'model/w42-template.c',
   'model/w42-autoformat.c',
+  'macro/w42-vba.c',
+)
+
+# MY-BASIC, the interpreter behind Tools > Macro, as its own library with
+# warnings off: a third-party file the project does not police.
+w42_mybasic = static_library('mybasic',
+  files('macro/my_basic.c'),
+  c_args: ['-w'],
+  dependencies: [m_dep],
+  install: false,
 )
 
 w42_core = static_library('w42core',
   w42_core_sources,
   dependencies: core_deps,
   include_directories: w42_inc,
+  link_with: w42_mybasic,
   install: false,
 )
 
@@ -55,11 +68,14 @@ w42_core_dep = declare_dependency(
 w42_ui_sources = files(
   'ui/w42-settings.c',
   'ui/w42-autotext.c',
+  'ui/w42-macro.c',
   'ui/w42-help.c',
   'ui/w42-view.c',
   'ui/w42-ruler.c',
+  'ui/w42-docmap.c',
   'ui/w42-find-dialog.c',
   'ui/w42-spell-dialog.c',
+  'ui/w42-thesaurus-dialog.c',
   'ui/w42-dialogs.c',
   'ui/w42-print.c',
   'ui/w42-scan.c',

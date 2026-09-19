@@ -693,11 +693,12 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
           /* A placeholder now; the bytes come at the end of the file. */
           pi = g_new0 (PendingImage, 1);
           pi->name = g_strdup (dataid);
-          pi->pos = a->b.pos;
           pi->width = width;
           pi->height = height;
           g_ptr_array_add (a->pending_images, pi);
           w42_builder_text (&a->b, "\357\277\274");    /* U+FFFC, replaced later */
+          /* Where it went: the builder may have opened a paragraph first. */
+          pi->pos = a->b.pos - 1;
         }
     }
   else if (g_str_equal (name, "field"))

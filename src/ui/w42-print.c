@@ -29,7 +29,7 @@
  * points.  One scale factor reconciles them. */
 #define PX_TO_POINTS (72.0 / W42_LAYOUT_DPI)
 
-/* Word XP's Print > Options, the ones that mean something here, kept in
+/* Word 97's Print > Options, the ones that mean something here, kept in
  * the print settings under these keys. */
 #define KEY_REVERSE    "word42-reverse-order"
 #define KEY_DRAWINGS   "word42-drawing-objects"
@@ -411,7 +411,7 @@ run_print (GtkWindow *parent, W42Document *doc, W42PieceTable *selection,
     gtk_print_operation_set_export_filename (operation, export_path);
   (void) extras;
 
-  /* Word XP's "Selection" and "Current page", for the system dialogs
+  /* Word 97's "Selection" and "Current page", for the system dialogs
    * that show them. */
   gtk_print_operation_set_support_selection (operation, TRUE);
   gtk_print_operation_set_has_selection (operation, job->selection != NULL);
@@ -473,7 +473,7 @@ run_print (GtkWindow *parent, W42Document *doc, W42PieceTable *selection,
   g_object_unref (setup);
 }
 
-/* ---- Word XP's Print dialog -------------------------------------------- */
+/* ---- Word 97's Print dialog -------------------------------------------- */
 
 typedef struct {
   GtkWindow     *window;
@@ -624,7 +624,7 @@ on_print_to_file_chosen (GObject *source, GAsyncResult *result, gpointer data)
   g_object_unref (file);
 }
 
-/* Print to file: Word XP wrote the printer's language to a file; word42
+/* Print to file: Word 97 wrote the printer's language to a file; word42
  * writes the pages as a PDF, which any printer can be given, with the
  * range, the copies and the options applied. */
 static void
@@ -740,7 +740,7 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   gtk_box_append (GTK_BOX (columns), left);
   gtk_box_append (GTK_BOX (columns), right);
 
-  /* Page range, as Word XP's dialog had it. */
+  /* Page range, as Word 97's dialog had it. */
   frame_with_grid (left, "Page range", &grid);
   box->range_all = gtk_check_button_new_with_mnemonic ("_All");
   box->range_current = gtk_check_button_new_with_mnemonic ("Curr_ent page");

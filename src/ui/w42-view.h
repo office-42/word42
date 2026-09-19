@@ -15,12 +15,13 @@
 
 G_BEGIN_DECLS
 
-/* Word 6 opened in Normal view -- a plain white galley -- and kept Page
+/* Word 97 opened in Normal view -- a plain white galley -- and kept Page
  * Layout, with its grey desktop and paper edges, for when you wanted to see
  * where the pages fell. */
 typedef enum {
   W42_VIEW_NORMAL = 0,
-  W42_VIEW_PAGE_LAYOUT
+  W42_VIEW_PAGE_LAYOUT,
+  W42_VIEW_ONLINE        /* Word 97's Online Layout: a galley as wide as the window */
 } W42ViewMode;
 
 #define W42_TYPE_VIEW (w42_view_get_type ())
@@ -45,6 +46,9 @@ W42ViewMode w42_view_get_mode (W42View *self);
 
 void   w42_view_set_zoom (W42View *self, double zoom);
 double w42_view_get_zoom (W42View *self);
+/* The zoom that fits the page's width to the window, or the whole page
+ * into it: View > Zoom's Page Width and Whole Page. */
+double w42_view_fit_zoom (W42View *self, gboolean whole_page);
 
 gsize    w42_view_get_caret         (W42View *self);
 /* The selection's two ends in order; both the caret when there is none. */
@@ -82,7 +86,7 @@ void w42_view_select_word (W42View *self);
 void     w42_view_insert_table     (W42View *self, int rows, int cols);
 gboolean w42_view_in_table         (W42View *self);
 void     w42_view_table_insert_row (W42View *self);
-/* Word XP's Table menu: rows above, columns to the left, the whole table
+/* The Table menu's submenus: rows above, columns to the left, the whole table
  * gone, a column or a cell selected. */
 void     w42_view_table_insert_row_above (W42View *self);
 void     w42_view_table_insert_column_left (W42View *self);
@@ -94,6 +98,9 @@ void     w42_view_table_select_cell (W42View *self);
 void     w42_view_table_distribute_columns (W42View *self);
 void     w42_view_table_distribute_rows (W42View *self);
 void     w42_view_table_autofit_window (W42View *self);
+/* Table > AutoFit to Contents: each column as wide as its widest cell
+ * wants to be on one line, the table no wider than the text column. */
+void     w42_view_table_autofit_contents (W42View *self);
 /* Table > Formula: the result of "=SUM(ABOVE)" and its kin, put in the
  * caret's cell as a field.  FALSE when the formula makes no sense. */
 gboolean w42_view_table_formula (W42View *self, const char *formula);
@@ -257,7 +264,7 @@ gboolean    w42_view_go_to_bookmark (W42View *self, const char *name);
 
 /* Puts a table of contents at the caret: one paragraph per heading, indented
  * by level, with the page number at a right tab stop at the margin.  Plain
- * paragraphs, as Word 6's field result was: edit or delete them freely.
+ * paragraphs, as Word 97's field result was: edit or delete them freely.
  * Returns how many entries were made. */
 int  w42_view_insert_toc (W42View *self);
 
@@ -310,6 +317,13 @@ int      w42_view_autoformat (W42View *self, const W42AutoFormat *what);
 
 gboolean w42_view_mark_index_entry (W42View *self, const char *term);
 int      w42_view_insert_index     (W42View *self);
+/* The table of figures: the captions with their pages, at the caret; a
+ * table already there is replaced.  Returns how many were listed. */
+int      w42_view_insert_table_of_figures (W42View *self);
+/* The differences from `original` marked as changes: what is only here
+ * inserted, what was only there put back as deleted.  Returns how many
+ * changes were marked. */
+int      w42_view_compare_with (W42View *self, W42PieceTable *original);
 
 /* Insert > Cross-reference: the page number the bookmark is on, or the
  * bookmarked text itself, put in at the caret.  FALSE if no such

@@ -40,17 +40,24 @@ Early, but real. Word42 today is a working word processor:
   position, lists of every kind, tables with merged cells, pictures,
   footnotes and endnotes, hyperlinks, bookmarks, revision marks,
   sections with their columns, headers and footers with page-number
-  fields. The zip inside a .docx is read and written with GLib's own
-  deflate, so no new library is needed; .zabw is the gzipped .abw.
-- **Word .doc import** — File ▸ Open reads Word 97–2003 documents: text,
+  fields. A Word 2007 file is read as Word 2007 meant it: its docDefaults
+  and its theme give the document its Calibri and Cambria, the file's own
+  definitions of Normal and the headings replace Word42's, table styles
+  rule the tables that name them, and the drawings Word 2007 wrote in VML
+  — pictures in a file converted from .doc, text boxes, rectangles,
+  ovals, lines and an embedded object's preview — come in as the
+  DrawingML ones do. The zip inside a .docx is read and written with
+  GLib's own deflate, so no new library is needed; .zabw is the gzipped
+  .abw.
+- **Word .doc import** — File ▸ Open reads Word 97 documents (and the .doc files Word wrote until .docx): text,
   paragraph and character formatting, headings by their built-in identity
   (so a Norwegian "Overskrift 1" is a Heading 1), tables, PNG and JPEG
   pictures at the size Word showed them, page setup, header and footer with
-  their page-number fields, footnotes. A Word 6 or 95 file
+  their page-number fields, footnotes. A .doc from before Word 97
   yields its text and paragraphs. Saving goes to RTF or .docx, which Word opens.
   Lists are read from the list tables, so numbered lists come in
   numbered and bulleted ones bulleted.
-- **Table of Contents** — Insert ▸ Table of Contents puts one paragraph per
+- **Table of Contents** — Insert ▸ Index and Tables ▸ Table of Contents puts one paragraph per
   heading at the caret, indented by level, with the page number at a right
   tab stop at the margin — plain paragraphs, as the classic field result was,
   to edit or delete freely.
@@ -62,11 +69,19 @@ Early, but real. Word42 today is a working word processor:
   `\colsx`, and a `.doc`'s section columns are read.
 - **Web pages** — File ▸ Export as Web Page writes one self-contained
   HTML file: headings, paragraphs with their alignment and indents, runs
-  with font, size, weight, colour and links, lists, tables, pictures
-  embedded, footnotes as links to the notes at the end. File ▸ Open reads
-  HTML back — a plain reading, with no CSS engine, that brings in what
-  Word42 wrote and most pages that are text: headings, paragraphs, bold,
-  italic, links, lists, tables, embedded pictures.
+  with font, size, weight, colour, links and bookmarks, lists, tables,
+  pictures embedded, footnotes as links to the notes at the end, the
+  Summary Info as `<meta>` tags, and the document's language on `<html>`.
+  File ▸ Open reads HTML back: Lexbor parses the page by the browsers'
+  HTML5 rules, the page's own `<style>` sheet is followed as far as
+  element, class and id selectors go, and the CSS a word processor
+  writes — named and `rgb()` colours, lengths in every unit, `em` and
+  `%` and keyword sizes, the `margin` and `font` shorthands, borders,
+  `line-height`, `display:none` — lands on the paragraph or run. Word's
+  own dialect is read too: its list paragraphs become list items and its
+  tabs become tabs. The page's declared charset is honoured, and a page
+  that says nothing is Windows-1252 when it is not UTF-8, as the HTML
+  standard has it.
 - **Long documents** — a keystroke lays out only what it changed: the
   paragraph typed in is shaped again and the rest of the document is
   reused, so typing in a 173-page document costs about 12 ms a
@@ -74,8 +89,8 @@ Early, but real. Word42 today is a working word processor:
 - **AutoFormat** — Format ▸ AutoFormat the Whole Document turns typed
   text into a formatted document: headings, lists, printer's quotes, and
   runs of empty paragraphs tidied, all in one undo step.
-- **Index** — Insert ▸ Index ▸ Mark Entry marks words for the index,
-  under themselves or under a term of your own; Build the Index gathers
+- **Index** — Insert ▸ Index and Tables ▸ Mark Index Entry marks words for
+  the index, under themselves or under a term of your own; Index gathers
   them alphabetically with the pages they are on. The marks go through
   RTF, Word and OpenDocument.
 - **Templates** — File ▸ New from Template starts from a Letter, Memo,
@@ -87,6 +102,13 @@ Early, but real. Word42 today is a working word processor:
 - **Page background** — Format ▸ Background sets the colour behind the
   page, shown on the screen and in Print Preview and carried by Word,
   RTF, OpenDocument and HTML; printing leaves the paper as it is.
+- **Macros** — Tools ▸ Macro runs Word42 Basic, a dialect of VBA on the
+  MY-BASIC interpreter compiled into the program: `Sub`, `Dim`, `If`,
+  `Select Case`, `Do`, `For`, `With`, named arguments, and Word's
+  `Selection`, `ActiveDocument`, `Application`, `Documents`, `MsgBox`
+  and `InputBox`. Macros are `.bas` files in the macros folder, listed
+  and run from Word 97's Macros box (Alt+F8) or edited and run with F5
+  in the Macro Editor (Alt+F11). A macro is one undo step.
 - **Help** — the user guide travels inside the program: Help ▸ Contents
   (F1) opens a window with the guide's sections on the left and the one
   chosen on the right, Search for Help on... narrows the list to the
@@ -138,7 +160,7 @@ Early, but real. Word42 today is a working word processor:
   a PNG of it.
 - **Text wrapping** — a wrapped picture or shape can sit at the left or
   right with the text beside it, with the text above and below it only,
-  in front of the text, or behind it, as Word XP's Format ▸ Picture
+  in front of the text, or behind it, as Word 97's Format ▸ Picture
   offered; one put at a place of its own -- Word's `posOffset`, RTF's
   `\shpleft`/`\shptop`, OpenDocument's `svg:x`/`svg:y` -- keeps it,
   measured from its paragraph, and a paragraph may carry several. A
@@ -166,7 +188,7 @@ Early, but real. Word42 today is a working word processor:
 - **Change Case** — Format ▸ Change Case: Sentence case, lowercase,
   UPPERCASE, Title Case, tOGGLE cASE (Shift+F3), each character keeping
   its own formatting.
-- **Revision marks** — Tools ▸ Revisions ▸ Mark Revisions While Editing
+- **Track changes** — Tools ▸ Track Changes ▸ Highlight Changes
   (Ctrl+Shift+E): from then on typed text is underlined in red and
   deleted text is struck through in red rather than removed. Accept All
   keeps the insertions and drops the deletions; Reject All does the
@@ -178,8 +200,8 @@ Early, but real. Word42 today is a working word processor:
   each on its own page, and opens it in a new window.
 - **Captions** — Insert ▸ Caption starts a "Figure N:" paragraph in the
   Caption style, N counting on from the captions already there.
-- **Annotations** — Insert ▸ Annotation (Ctrl+Alt+A), the classic comments:
-  an annotation on the selected text, shown as a pale wash, listed in a
+- **Comments** — Insert ▸ Comment (Ctrl+Alt+A), Word 97's name for the
+  annotations: a note on the selected text, shown as a pale wash, listed in a
   modeless box that selects each one on a click and deletes them; through
   RTF as Word's `\atrfstart`/`\annotation` groups, and as tooltips in the
   web page export.
@@ -301,7 +323,7 @@ Early, but real. Word42 today is a working word processor:
   and wave, in Format ▸ Font Effects; RTF, Word and OpenDocument files
   carry every one of them, both ways.
 
-- **AutoCorrect** — Word 6's four corrections, made as you type: straight
+- **AutoCorrect** — Word 97's four corrections, made as you type: straight
   quotes become the curly ones that fit where they stand, TWo INitial
   CApitals become one, the first word of a sentence takes its capital, two
   hyphens become a dash, and a short list of misspellings — teh, adn,
@@ -345,7 +367,7 @@ Early, but real. Word42 today is a working word processor:
   paragraphs with tabs between the cells and turns tabbed paragraphs back
   into a table; and Table Gridlines, which shows the cells of an unruled
   table faintly on screen without printing them.
-- **Word XP's Table menu** — Insert (Table, Columns to the Left and
+- **The Table menu** — Insert (Table, Columns to the Left and
   Right, Rows Above and Below), Delete (Table, Columns, Rows), Select
   (Table, Column, Row, Cell), AutoFit (to Window, Distribute Rows and
   Columns Evenly), Heading Rows Repeat, and Formula: `=SUM(ABOVE)`,
@@ -391,7 +413,7 @@ Early, but real. Word42 today is a working word processor:
   heading set in tracked capitals closed back up; the pictures; and the page
   with its margins. A PDF is a picture of a document rather than the
   document, so that is what there is to recover.
-- **Printing** — File ▸ Print opens Word42's Print box, Word XP's layout:
+- **Printing** — File ▸ Print opens Word42's Print box, Word 97's layout:
   page range (All, Current page, Selection, Pages as `1,3,5-12`), copies
   and Collate, All/Odd/Even pages, and Reverse order, Drawing objects,
   Background colour and Draft output; then the printer last used, the
@@ -431,6 +453,32 @@ Early, but real. Word42 today is a working word processor:
   another. Each pane scrolls and keeps a caret of its own, and the
   toolbars, the ruler and the status bar follow the pane being edited;
   Split again is one pane again.
+- **Document Map** — View ▸ Document Map lists the headings in a pane
+  at the left, indented by level, the caret's heading selected; a click
+  goes to the heading, and the list follows the text as it changes.
+- **Word 97's font effects** — double strikethrough, shadow, outline,
+  emboss and engrave in Format ▸ Font Effects, drawn by every painter and
+  carried by RTF, Word and OpenDocument both ways.
+- **Page border** — Format ▸ Borders and Shading puts a line round every
+  page, in a style, width and colour, at a distance from the edge; RTF,
+  Word, OpenDocument and HTML carry it.
+- **Thesaurus** — Tools ▸ Language ▸ Thesaurus (Shift+F7) looks the word
+  at the caret up in a MyThes file, the ones LibreOffice uses: meanings,
+  synonyms, Replace, Look Up and Previous.
+- **AutoComplete** — the first four letters of an AutoText entry's name
+  bring up a tip with the entry over the caret, and Enter puts it in;
+  months, days of the week and today's date are offered the same way.
+- **Online Layout** — View ▸ Online Layout is the galley as wide as the
+  window, wrapping again as the window is resized, as Word 97 read on a
+  screen.
+- **Compare Documents** — Tools ▸ Track Changes ▸ Compare Documents
+  marks how the open document differs from an earlier version of it, as
+  changes: paragraphs matched first, then words; one undo step.
+- **Table of Figures** — Insert ▸ Index and Tables ▸ Table of Figures
+  lists the captions with their pages, and replaces itself when asked
+  again.
+- **Web Page Preview** — File ▸ Web Page Preview opens the document as a
+  web page in the browser.
 - **Safety** — closing a modified document asks before discarding it.
 
 What it does not do yet is listed in [Word42.md](../Word42.md), with the

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Word 6's menu bar.  Items whose actions are disabled are features word42
-     intends to have and does not have yet; they show greyed out rather than
-     being hidden, so the menus say what the program is aiming at. -->
+<!-- Word 97's menu bar.  Items whose actions are
+     disabled are features word42 intends to have and does not have yet;
+     they show greyed out rather than being hidden, so the menus say what
+     the program is aiming at. -->
 <interface>
   <menu id="menubar">
 
@@ -71,6 +72,10 @@
         <item>
           <attribute name="label" translatable="yes">Export as _Web Page...</attribute>
           <attribute name="action">win.export-html</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Web Pa_ge Preview</attribute>
+          <attribute name="action">win.web-preview</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">Export as Presen_tation...</attribute>
@@ -160,6 +165,11 @@
           <attribute name="target">normal</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">_Online Layout</attribute>
+          <attribute name="action">win.view-mode</attribute>
+          <attribute name="target">online</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">_Page Layout</attribute>
           <attribute name="action">win.view-mode</attribute>
           <attribute name="target">page-layout</attribute>
@@ -180,6 +190,10 @@
         <item>
           <attribute name="label" translatable="yes">_Ruler</attribute>
           <attribute name="action">win.ruler</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Document Map</attribute>
+          <attribute name="action">win.document-map</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">_Full Screen</attribute>
@@ -222,6 +236,20 @@
             <attribute name="label" translatable="yes">_200%</attribute>
             <attribute name="action">win.zoom</attribute>
             <attribute name="target" type="d">2.0</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Page _Width</attribute>
+            <attribute name="action">win.zoom-fit</attribute>
+            <attribute name="target">width</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">W_hole Page</attribute>
+            <attribute name="action">win.zoom-fit</attribute>
+            <attribute name="target">page</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Zoom...</attribute>
+            <attribute name="action">win.zoom-dialog</attribute>
           </item>
         </submenu>
       </section>
@@ -286,24 +314,32 @@
           <attribute name="label" translatable="yes">_Hyperlink...</attribute>
           <attribute name="action">win.hyperlink</attribute>
         </item>
-        <item>
-          <attribute name="label" translatable="yes">_Table of Contents</attribute>
-          <attribute name="action">win.insert-toc</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">Up_date Table of Contents</attribute>
-          <attribute name="action">win.update-toc</attribute>
-        </item>
         <submenu>
-          <attribute name="label" translatable="yes">Inde_x</attribute>
+          <attribute name="label" translatable="yes">Inde_x and Tables</attribute>
           <section>
             <item>
-              <attribute name="label" translatable="yes">_Mark Entry...</attribute>
+              <attribute name="label" translatable="yes">_Table of Contents</attribute>
+              <attribute name="action">win.insert-toc</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Update Table of Contents</attribute>
+              <attribute name="action">win.update-toc</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Mark Index Entry...</attribute>
               <attribute name="action">win.index-entry</attribute>
             </item>
             <item>
-              <attribute name="label" translatable="yes">_Build the Index</attribute>
+              <attribute name="label" translatable="yes">_Index</attribute>
               <attribute name="action">win.insert-index</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">Table of _Figures</attribute>
+              <attribute name="action">win.table-of-figures</attribute>
             </item>
           </section>
         </submenu>
@@ -316,7 +352,7 @@
           <attribute name="action">win.caption</attribute>
         </item>
         <item>
-          <attribute name="label" translatable="yes">A_nnotation...</attribute>
+          <attribute name="label" translatable="yes">Comme_nt...</attribute>
           <attribute name="action">win.annotation</attribute>
         </item>
         <submenu>
@@ -496,18 +532,18 @@
           <attribute name="label" translatable="yes">A_utoCorrect...</attribute>
           <attribute name="action">win.autocorrect</attribute>
         </item>
-        <item>
-          <attribute name="label" translatable="yes">_Language...</attribute>
-          <attribute name="action">win.language</attribute>
-        </item>
-        <item>
-          <attribute name="label" translatable="yes">_Word Count...</attribute>
-          <attribute name="action">win.word-count</attribute>
-        </item>
-      </section>
-      <section>
         <submenu>
-          <attribute name="label" translatable="yes">_Hyphenation</attribute>
+          <attribute name="label" translatable="yes">_Language</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Set Language...</attribute>
+              <attribute name="action">win.language</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Thesaurus...</attribute>
+              <attribute name="action">win.thesaurus</attribute>
+            </item>
+          </section>
           <section>
             <item>
               <attribute name="label" translatable="yes">_Hyphenate Document</attribute>
@@ -519,22 +555,34 @@
             </item>
           </section>
         </submenu>
+        <item>
+          <attribute name="label" translatable="yes">_Word Count...</attribute>
+          <attribute name="action">win.word-count</attribute>
+        </item>
+      </section>
+      <section>
         <submenu>
-          <attribute name="label" translatable="yes">_Revisions</attribute>
+          <attribute name="label" translatable="yes">_Track Changes</attribute>
           <section>
             <item>
-              <attribute name="label" translatable="yes">_Mark Revisions While Editing</attribute>
+              <attribute name="label" translatable="yes">_Highlight Changes</attribute>
               <attribute name="action">win.track-changes</attribute>
             </item>
           </section>
           <section>
             <item>
-              <attribute name="label" translatable="yes">Acce_pt All Revisions</attribute>
+              <attribute name="label" translatable="yes">Acce_pt All Changes</attribute>
               <attribute name="action">win.accept-revisions</attribute>
             </item>
             <item>
-              <attribute name="label" translatable="yes">Re_ject All Revisions</attribute>
+              <attribute name="label" translatable="yes">Re_ject All Changes</attribute>
               <attribute name="action">win.reject-revisions</attribute>
+            </item>
+          </section>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_Compare Documents...</attribute>
+              <attribute name="action">win.compare-documents</attribute>
             </item>
           </section>
         </submenu>
@@ -548,6 +596,19 @@
         </item>
       </section>
       <section>
+        <submenu>
+          <attribute name="label" translatable="yes">Mac_ro</attribute>
+          <item>
+            <attribute name="label" translatable="yes">_Macros...</attribute>
+            <attribute name="action">win.macros</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Macro _Editor...</attribute>
+            <attribute name="action">win.macro-editor</attribute>
+          </item>
+        </submenu>
+      </section>
+      <section>
         <item>
           <attribute name="label" translatable="yes">_Options...</attribute>
           <attribute name="action">win.options</attribute>
@@ -557,7 +618,7 @@
 
     <submenu>
       <attribute name="label" translatable="yes">T_able</attribute>
-      <!-- Word XP's Table menu: Insert, Delete and Select as submenus,
+      <!-- The Table menu: Insert, Delete and Select as submenus,
            AutoFit, Heading Rows Repeat and Formula. -->
       <section>
         <submenu>
@@ -653,6 +714,11 @@
           <attribute name="label" translatable="yes">_AutoFit</attribute>
           <section>
             <item>
+              <attribute name="label" translatable="yes">AutoFit to _Contents</attribute>
+              <attribute name="action">win.table-autofit</attribute>
+              <attribute name="target">contents</attribute>
+            </item>
+            <item>
               <attribute name="label" translatable="yes">AutoFit to _Window</attribute>
               <attribute name="action">win.table-autofit</attribute>
               <attribute name="target">window</attribute>
@@ -663,7 +729,7 @@
               <attribute name="target">rows</attribute>
             </item>
             <item>
-              <attribute name="label" translatable="yes">Distribute _Columns Evenly</attribute>
+              <attribute name="label" translatable="yes">Distribute Co_lumns Evenly</attribute>
               <attribute name="action">win.table-autofit</attribute>
               <attribute name="target">columns</attribute>
             </item>

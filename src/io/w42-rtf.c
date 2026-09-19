@@ -183,7 +183,12 @@ write_char_props (GString *out, const W42CharFmt *ch, RtfTables *tables)
     default:                   g_string_append (out, "\\ul");       break;
     }
   if (ch->strikeout) g_string_append (out, "\\strike");
+  if (ch->dstrike)   g_string_append (out, "\\striked1");
   if (ch->overline)  g_string_append (out, "\\ol");
+  if (ch->shadow)    g_string_append (out, "\\shad");
+  if (ch->outline)   g_string_append (out, "\\outl");
+  if (ch->emboss)    g_string_append (out, "\\embo");
+  if (ch->engrave)   g_string_append (out, "\\impr");
   if (ch->script > 0) g_string_append (out, "\\super");
   if (ch->script < 0) g_string_append (out, "\\sub");
   if (ch->smallcaps) g_string_append (out, "\\scaps");
@@ -452,22 +457,21 @@ write_shape (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
   if (object->text != NULL)
     {
       g_string_append (out, "{\\shptxt \\pard\\qc ");
-      for (const char *c = object->text; *c != '\0'; c++)
-        {
-          if (*c == '\n')
-            g_string_append (out, "\\par ");
-          else if (*c == '\\' || *c == '{' || *c == '}')
-            g_string_append_printf (out, "\\%c", *c);
-          else if ((guchar) *c < 0x80)
-            g_string_append_c (out, *c);
-          else
-            {
-              gunichar u = g_utf8_get_char (c);
+      {
+        /* Line by line, each escaped as the body's text is. */
+        const char *line = object->text;
 
-              g_string_append_printf (out, "\\u%d?", (int) (u > 0x7FFF ? u - 0x10000 : u));
-              c = g_utf8_next_char (c) - 1;
-            }
-        }
+        for (;;)
+          {
+            const char *nl = strchr (line, '\n');
+
+            write_text (out, line, nl != NULL ? (gsize) (nl - line) : strlen (line));
+            if (nl == NULL)
+              break;
+            g_string_append (out, "\\par ");
+            line = nl + 1;
+          }
+      }
       g_string_append (out, "\\par}");
     }
   g_string_append (out, "}{\\shprslt ");
@@ -550,6 +554,8 @@ w42_rtf_save (W42PieceTable      *pt,
   tables.fonts = g_ptr_array_new ();
   tables.colours = g_array_new (FALSE, FALSE, sizeof (guint32));
   collect_tables (pt, blocks, aps, &tables, styles);
+  if (page != NULL && page->has_border && page->border_color != 0)
+    table_intern_colour (&tables, page->border_color);
 
   out = g_string_new (NULL);
   g_string_append (out, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\n");
@@ -629,6 +635,26 @@ w42_rtf_save (W42PieceTable      *pt,
       "\\paperw%d\\paperh%d\\margl%d\\margr%d\\margt%d\\margb%d\n",
       page->width, page->height, page->margin_left, page->margin_right,
       page->margin_top, page->margin_bottom);
+  if (page != NULL && page->has_border)
+    {
+      /* Word 97's page border: a side word, then the line, for each of
+       * the four sides; \pgbrdropt32 says the distance is measured from
+       * the edge of the paper rather than from the text. */
+      static const char *const sides[4] = { "\\pgbrdrt", "\\pgbrdrl", "\\pgbrdrb", "\\pgbrdrr" };
+      W42BorderEdge edge;
+
+      edge.style = page->border_style;
+      edge.width = page->border_width;
+      edge.color = page->border_color;
+      g_string_append (out, "\\pgbrdropt32");
+      for (int i = 0; i < 4; i++)
+        {
+          g_string_append (out, sides[i]);
+          write_border_line (out, &tables, &edge);
+          g_string_append_printf (out, "\\brsp%d", page->border_space);
+        }
+      g_string_append_c (out, '\n');
+    }
   if (page != NULL && page->has_background)
     {
       /* The colour behind the page.  RTF says it with a shape that
@@ -856,8 +882,8 @@ w42_rtf_save (W42PieceTable      *pt,
       if (in_table)
         g_string_append (out, "\\intbl");
 
-      /* Lists the way Word 6 wrote them: a \pn group that says what kind of
-       * list the paragraph is in, and a \pntext group holding the marker
+      /* Lists as a \pn group that says what kind of list the paragraph is
+       * in, which every reader of RTF understands, and a \pntext group holding the marker
        * as plain text for readers that do not know \pn. */
       if (w42_list_is_numbered (para->pa.list))
         {
@@ -1181,6 +1207,7 @@ struct _RtfReader {
   gboolean       have_pending;
   gboolean       sect_pending;  /* a \\sect was read; the next paragraph starts it */
   gboolean       cell_border;   /* inside a \\clbrdr: the next \\brdr word is its style */
+  gboolean       page_border;   /* after a \\pgbrdr side word: the line words are the page's */
   guint          info_depth;    /* the group depth of an \\info group */
   const char    *info_field;    /* the field being read there, or NULL */
   GString       *info_text;
@@ -1219,6 +1246,7 @@ struct _RtfReader {
   /* Collecting the font and colour tables. */
   int            dest;       /* which destination is being collected */
   int            font_index;
+  int            codepage;      /* \ansicpg: what a \'xx byte is in */
   GString       *font_name;
   int            red, green, blue;
 
@@ -1428,9 +1456,12 @@ table_sync (RtfReader *r)
         /* The cell's place on the grid: the columns between its two
          * edges.  A row with fewer, wider cells than the first is Word's
          * way of merging across. */
-        int left = r->table_col == 0 ? r->trleft
+        /* A row that names no \cellx for the cell -- \intbl before any
+         * \trowd -- gets a column of the width Word gives a new one. */
+        int left = (r->table_col == 0 || r->table_col > (int) r->cellx->len) ? r->trleft
                  : g_array_index (r->cellx, int, r->table_col - 1);
-        int right = g_array_index (r->cellx, int, r->table_col);
+        int right = r->table_col < (int) r->cellx->len
+                  ? g_array_index (r->cellx, int, r->table_col) : left + 9360;
         int c0 = rtf_grid_column (r, left), c1 = rtf_grid_column (r, right);
         int n_cols = MAX ((int) r->grid->len - 1, 1);
 
@@ -1984,6 +2015,51 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
   if (st->skip)
     return;
 
+  if (g_str_equal (word, "ansicpg") && has_param)
+    {
+      r->codepage = param;
+      return;
+    }
+
+  /* Word 97's page border: \pgbrdrt and its three siblings name a side
+   * of the page and the line words after each are its.  The model has
+   * one line for all four sides, as Word 97's box set them, so the last
+   * side read is the line kept. */
+  if (g_str_has_prefix (word, "pgbrdr"))
+    {
+      r->page_border = r->page != NULL &&
+                       (g_str_equal (word, "pgbrdrt") || g_str_equal (word, "pgbrdrl") ||
+                        g_str_equal (word, "pgbrdrb") || g_str_equal (word, "pgbrdrr"));
+      return;
+    }
+  if (r->page_border)
+    {
+      W42BorderEdge edge;
+
+      edge.style = r->page->border_style;
+      edge.width = r->page->border_width;
+      edge.color = r->page->border_color;
+      if (g_str_equal (word, "brsp") && has_param)
+        {
+          r->page->border_space = CLAMP (param, 0, 4000);
+          return;
+        }
+      if (g_str_equal (word, "brdrnone") || g_str_equal (word, "brdrnil"))
+        {
+          r->page_border = FALSE;
+          return;
+        }
+      if (rtf_border_line (word, param, has_param, r, &edge))
+        {
+          r->page->has_border = 1;
+          r->page->border_style = edge.style;
+          r->page->border_width = edge.width;
+          r->page->border_color = edge.color;
+          return;
+        }
+      r->page_border = FALSE;
+    }
+
   /* What the document says about itself. */
   if (g_str_equal (word, "info"))
     {
@@ -2028,6 +2104,20 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
   if (g_str_equal (word, "clmrg")) { r->clpending = 2; return; }
   if (g_str_equal (word, "clvmgf")) { r->clvpending = 1; return; }
   if (g_str_equal (word, "clvmrg")) { r->clvpending = 2; return; }
+
+  /* A header's or footer's table -- a letterhead -- cannot go in the
+   * one line the model keeps for it; its cells' text goes in with a
+   * space between, and nothing opens a table in the body. */
+  if ((r->dest == DEST_HEADER || r->dest == DEST_FOOTER) &&
+      (g_str_equal (word, "cell") || g_str_equal (word, "row") ||
+       g_str_equal (word, "intbl") || g_str_equal (word, "trowd") ||
+       g_str_equal (word, "cellx") || g_str_equal (word, "nestcell") ||
+       g_str_equal (word, "nestrow")))
+    {
+      if (word[0] == 'c' && word[1] == 'e' && word[4] == '\0')
+        g_string_append_c (r->hf_text, ' ');
+      return;
+    }
 
   if (g_str_equal (word, "trowd"))
     {
@@ -2494,6 +2584,9 @@ formatting:
       if (g_str_equal (word, "sn"))
         {
           r->in_sn = TRUE;
+          /* The depth the name's group closes at: without it the first
+           * shape's name ran on into its value. */
+          r->sv_depth = r->stack->len;
           g_string_truncate (r->shp_name, 0);
           return;
         }
@@ -2568,6 +2661,16 @@ formatting:
     { flush_text (r); st->ch.overline = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "strike"))
     { flush_text (r); st->ch.strikeout = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "striked"))
+    { flush_text (r); st->ch.dstrike = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "shad"))
+    { flush_text (r); st->ch.shadow = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "outl"))
+    { flush_text (r); st->ch.outline = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "embo"))
+    { flush_text (r); st->ch.emboss = (has_param && param == 0) ? 0 : 1; }
+  else if (g_str_equal (word, "impr"))
+    { flush_text (r); st->ch.engrave = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "super"))
     { flush_text (r); st->ch.script = 1; }
   else if (g_str_equal (word, "sub"))
@@ -2876,7 +2979,7 @@ formatting:
 /* Word 97 and everything since -- LibreOffice and AbiWord included -- put
  * lists in two tables at the top of the file: {\*\listtable} says what
  * each list looks like at each level, and {\*\listoverridetable} ties the
- * \ls number a paragraph carries to one of them.  Word 6's \pn groups are
+ * \ls number a paragraph carries to one of them.  The older \pn groups are
  * still read below; this is the newer spelling of the same thing.
  *
  * The tables are self-contained, so they are scanned here, before the
@@ -3420,23 +3523,38 @@ w42_rtf_load (W42PieceTable *pt,
           /* \' introduces a byte in the document's code page. */
           if (*p == '\'' && p + 2 < end)
             {
-              char hex[3] = { p[1], p[2], '\0' };
-              int byte = (int) strtol (hex, NULL, 16);
+              GString *raw = g_string_new (NULL);
+              char cp[16];
               char *utf8;
 
               /* word42 writes \u for everything above ASCII, so a \' can only
-               * come from another program; Windows-1252 is the overwhelmingly
-               * likely code page and the one \ansicpg1252 declares. */
-              char raw[2] = { (char) byte, '\0' };
-              utf8 = g_convert (raw, 1, "UTF-8", "WINDOWS-1252",
-                                NULL, NULL, NULL);
+               * come from another program.  A run of them is converted
+               * together, since in the East Asian code pages one character
+               * is two bytes; the page is the one \ansicpg declared, and
+               * Windows-1252 when it declared none. */
+              while (*p == '\'' && p + 2 < end)
+                {
+                  char hex[3] = { p[1], p[2], '\0' };
+
+                  g_string_append_c (raw, (char) strtol (hex, NULL, 16));
+                  p += 3;
+                  if (p + 3 < end && p[0] == '\\' && p[1] == '\'')
+                    p++;
+                  else
+                    break;
+                }
+              g_snprintf (cp, sizeof cp, "CP%d", r.codepage > 0 ? r.codepage : 1252);
+              utf8 = g_convert (raw->str, (gssize) raw->len, "UTF-8", cp, NULL, NULL, NULL);
+              if (utf8 == NULL)
+                utf8 = g_convert (raw->str, (gssize) raw->len, "UTF-8", "WINDOWS-1252",
+                                  NULL, NULL, NULL);
               if (utf8 != NULL)
                 {
-                  append_char (&r, g_utf8_get_char (utf8));
+                  for (const char *c = utf8; *c != '\0'; c = g_utf8_next_char (c))
+                    append_char (&r, g_utf8_get_char (c));
                   g_free (utf8);
                 }
-
-              p += 3;
+              g_string_free (raw, TRUE);
               continue;
             }
 
@@ -3595,6 +3713,13 @@ w42_rtf_load (W42PieceTable *pt,
 
       if (r.dest == DEST_STYLESHEET)
         {
+          /* The {\*\cs} and {\*\ts} entries Word writes are skipped
+           * groups: their names are not paragraph styles. */
+          if (r.state.skip)
+            {
+              p++;
+              continue;
+            }
           if (*p == ';')
             finish_style (&r);
           else
@@ -3605,14 +3730,25 @@ w42_rtf_load (W42PieceTable *pt,
 
       if (r.dest == DEST_FONTTBL)
         {
+          /* A font's {\*\falt} alternative is not part of its name, and
+           * a name already committed when its group closed is not
+           * emptied by the semicolon that follows. */
+          if (r.state.skip)
+            {
+              p++;
+              continue;
+            }
           if (*p == ';')
             {
-              while ((guint) r.font_index >= r.fonts->len)
-                g_ptr_array_add (r.fonts, g_strdup ("Times New Roman"));
-              g_free (g_ptr_array_index (r.fonts, r.font_index));
-              g_ptr_array_index (r.fonts, r.font_index) =
-                g_strdup (r.font_name->str);
-              g_string_truncate (r.font_name, 0);
+              if (r.font_name->len > 0)
+                {
+                  while ((guint) r.font_index >= r.fonts->len)
+                    g_ptr_array_add (r.fonts, g_strdup ("Times New Roman"));
+                  g_free (g_ptr_array_index (r.fonts, r.font_index));
+                  g_ptr_array_index (r.fonts, r.font_index) =
+                    g_strdup (r.font_name->str);
+                  g_string_truncate (r.font_name, 0);
+                }
             }
           else
             {

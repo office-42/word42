@@ -357,6 +357,13 @@ w42_find_dialog_init (W42FindDialog *self)
   }
 }
 
+void
+w42_find_dialog_set_view (W42FindDialog *self, W42View *view)
+{
+  g_return_if_fail (W42_IS_FIND_DIALOG (self));
+  self->view = view;
+}
+
 GtkWidget *
 w42_find_dialog_new (GtkWindow *parent, W42View *view)
 {
@@ -367,7 +374,7 @@ w42_find_dialog_new (GtkWindow *parent, W42View *view)
   gtk_window_set_transient_for (GTK_WINDOW (self), parent);
   gtk_window_set_destroy_with_parent (GTK_WINDOW (self), TRUE);
 
-  /* Modeless, as Word 6's was: you can go on editing with it open. */
+  /* Modeless, as Word 97's was: you can go on editing with it open. */
   gtk_window_set_modal (GTK_WINDOW (self), FALSE);
 
   /* Closing it hands the keyboard back to the document. */

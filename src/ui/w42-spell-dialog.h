@@ -16,7 +16,7 @@ G_BEGIN_DECLS
 #define W42_TYPE_SPELL_DIALOG (w42_spell_dialog_get_type ())
 G_DECLARE_FINAL_TYPE (W42SpellDialog, w42_spell_dialog, W42, SPELL_DIALOG, GtkWindow)
 
-/* Word 6's Tools > Spelling: walks the document from the caret, stops on
+/* Word 97's Tools > Spelling: walks the document from the caret, stops on
  * each word the dictionary does not know, and offers Ignore, Ignore All,
  * Change, Change All and Add, with suggestions to pick from.  Modeless.
  * `spell` is borrowed and must outlive the box. */
@@ -24,5 +24,8 @@ GtkWidget *w42_spell_dialog_new (GtkWindow *parent, W42View *view, W42Spell *spe
 
 /* Begins, or begins again, from the caret. */
 void w42_spell_dialog_start (W42SpellDialog *self);
+
+/* The pane the box checks: the window's, which Window > Split changes. */
+void w42_spell_dialog_set_view (W42SpellDialog *self, W42View *view);
 
 G_END_DECLS

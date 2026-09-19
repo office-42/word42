@@ -7,7 +7,7 @@
  * resolution and hands back page-relative pixel coordinates.  Zoom is a cairo
  * scale applied at paint time, so a page breaks in the same place whatever
  * the zoom or the screen's DPI -- which is the whole point of a page-layout
- * view, and what Word 6 called Page Layout as opposed to Normal.
+ * view, and what Word 97 called Page Layout as opposed to Normal.
  */
 
 #pragma once
@@ -53,6 +53,10 @@ void       w42_layout_free (W42Layout *self);
  * keeps its width, but nothing is broken into pages.  Page Layout view is
  * the same engine with the breaks left in. */
 void       w42_layout_set_galley (W42Layout *self, gboolean galley);
+/* Online Layout view: the galley is as wide as the window rather than as
+ * the page, and the text wraps to it.  0 means the page's width. */
+void       w42_layout_set_galley_width (W42Layout *self, double px);
+double     w42_layout_get_galley_width (W42Layout *self);
 /* View > Show Formatting Marks: spaces, tabs, line and paragraph ends
  * are painted in blue over the text. */
 void       w42_layout_set_show_marks (W42Layout *self, gboolean show);
@@ -61,7 +65,7 @@ void       w42_layout_set_show_marks (W42Layout *self, gboolean show);
 void       w42_layout_set_gridlines (W42Layout *self, gboolean show);
 gboolean   w42_layout_get_galley (W42Layout *self);
 
-/* Re-formats everything.  Cheap enough for documents of the size Word 6 was
+/* Re-formats everything.  Cheap enough for documents of the size Word 97 was
  * built for; incremental reformatting is the obvious next optimisation. */
 void       w42_layout_build (W42Layout *self, W42Document *doc);
 
@@ -143,6 +147,13 @@ void  w42_layout_forget_shaping (W42Layout *self);
 /* What the last pass did: how many paragraphs it reused and how many it
  * had to shape.  For the checks, and for anyone measuring. */
 void  w42_layout_shaping_counts (W42Layout *self, guint *reused, guint *shaped);
+
+/* Table > AutoFit to Contents: the width each column of `table` wants, in
+ * twips, to set its widest cell on one line -- the widest paragraph in any
+ * of its cells unwrapped, with the cell's padding and indents.  Cells that
+ * span columns are left out.  `out` receives one int per column.  FALSE
+ * when the last pass laid out no such table. */
+gboolean w42_layout_table_content_widths (W42Layout *self, int table, GArray *out);
 
 /* ---- Mapping between document positions and the page ------------------ */
 

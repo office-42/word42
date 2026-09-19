@@ -57,6 +57,35 @@ w42_io_guess_format (GFile *file)
   return format;
 }
 
+/* Whatever a file said about its page, the page is one that can be laid
+ * out: a sheet between an inch and seventy inches a side, margins that
+ * leave at least an inch of text between them, and up to six columns.
+ * Every reader's geometry comes through here, so no format has to clamp
+ * for itself. */
+void
+w42_page_setup_sanitize (W42PageSetup *page)
+{
+  if (page == NULL)
+    return;
+  if (page->width <= 0 || page->height <= 0)
+    {
+      page->width = 12240;
+      page->height = 15840;
+    }
+  page->width  = CLAMP (page->width, 1440, 100800);
+  page->height = CLAMP (page->height, 1440, 100800);
+  page->margin_left   = CLAMP (page->margin_left, 0, page->width / 2 - 720);
+  page->margin_right  = CLAMP (page->margin_right, 0, page->width / 2 - 720);
+  page->margin_top    = CLAMP (page->margin_top, 0, page->height / 2 - 720);
+  page->margin_bottom = CLAMP (page->margin_bottom, 0, page->height / 2 - 720);
+  page->columns    = CLAMP (page->columns, 0, 6);
+  page->column_gap = CLAMP (page->column_gap, 0, page->width / 2);
+  /* The page border stays on the paper, short of the middle. */
+  page->border_space = CLAMP (page->border_space, 0, MIN (page->width, page->height) / 4);
+  if (page->border_style > 3)
+    page->border_style = 0;
+}
+
 gboolean
 w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 {
@@ -67,27 +96,42 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
   g_return_val_if_fail (pt != NULL, FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
-  switch (w42_io_guess_format (file))
+  /* A file says what colour its page is and whether it has a border, or
+   * says nothing; either way the page it is read into does not keep the
+   * last document's, since a window's document is loaded into again. */
+  if (page != NULL)
     {
-    case W42_FORMAT_RTF:
-      return w42_rtf_load (pt, page, file, error);
-    case W42_FORMAT_PDF:
-      return w42_pdf_import (pt, page, file, error);
-    case W42_FORMAT_DOC:
-      return w42_doc_load (pt, page, file, error);
-    case W42_FORMAT_HTML:
-      return w42_html_import (pt, page, file, error);
-    case W42_FORMAT_DOCX:
-      return w42_docx_load (pt, page, file, error);
-    case W42_FORMAT_ABW:
-      return w42_abw_load (pt, page, file, error);
-    case W42_FORMAT_ODT:
-      return w42_odt_load (pt, page, file, error);
-    case W42_FORMAT_PPTX:
-      return w42_pptx_load (pt, page, file, error);
-    default:
-      break;
+      page->has_background = 0;
+      page->background = 0;
+      page->has_border = 0;
+      page->border_style = 0;
+      page->border_width = 0;
+      page->border_space = 0;
+      page->border_color = 0;
     }
+
+  {
+    gboolean ok = FALSE, handled = TRUE;
+
+    switch (w42_io_guess_format (file))
+      {
+      case W42_FORMAT_RTF:  ok = w42_rtf_load (pt, page, file, error); break;
+      case W42_FORMAT_PDF:  ok = w42_pdf_import (pt, page, file, error); break;
+      case W42_FORMAT_DOC:  ok = w42_doc_load (pt, page, file, error); break;
+      case W42_FORMAT_HTML: ok = w42_html_import (pt, page, file, error); break;
+      case W42_FORMAT_DOCX: ok = w42_docx_load (pt, page, file, error); break;
+      case W42_FORMAT_ABW:  ok = w42_abw_load (pt, page, file, error); break;
+      case W42_FORMAT_ODT:  ok = w42_odt_load (pt, page, file, error); break;
+      case W42_FORMAT_PPTX: ok = w42_pptx_load (pt, page, file, error); break;
+      default: handled = FALSE; break;
+      }
+    if (handled)
+      {
+        if (ok)
+          w42_page_setup_sanitize (page);
+        return ok;
+      }
+  }
 
   if (!g_file_load_contents (file, NULL, &contents, &length, NULL, error))
     return FALSE;
@@ -98,7 +142,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
     }
   else
     {
-      /* Word 6 wrote Windows-1252, so that is the sensible fallback for a
+      /* Word 97 wrote Windows-1252, so that is the sensible fallback for a
        * text file that is not valid UTF-8. */
       utf8 = g_convert (contents, length, "UTF-8", "WINDOWS-1252",
                         NULL, NULL, NULL);
@@ -117,6 +161,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 
   w42_pt_load_text (pt, utf8);
   g_free (utf8);
+  w42_page_setup_sanitize (page);
 
   return TRUE;
 }

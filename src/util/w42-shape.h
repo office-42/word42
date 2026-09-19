@@ -3,8 +3,8 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6's Drawing toolbar put lines, rectangles and ellipses on the page,
- * and Word XP's AutoShapes gave them fills, outlines and text.  word42
+ * Word 97's Drawing toolbar put lines, rectangles and ellipses on the page,
+ * and its AutoShapes gave them fills, outlines and text.  word42
  * keeps a shape as what it is and draws it with Cairo wherever the page
  * is painted, so it stays sharp in print and in PDF; and it keeps a PNG
  * of it too, for the formats that can only say "picture".

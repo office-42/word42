@@ -21,7 +21,7 @@ struct _W42Application {
 
 G_DEFINE_FINAL_TYPE (W42Application, w42_application, GTK_TYPE_APPLICATION)
 
-/* Word 6's shortcuts, as far as they still make sense on a modern desktop. */
+/* Word 97's shortcuts, as far as they still make sense on a modern desktop. */
 static const struct {
   const char *action;
   const char *accels[3];
@@ -64,6 +64,7 @@ static const struct {
   { "win.font-grow",       { "<Control>bracketright", NULL } },
   { "win.font-shrink",     { "<Control>bracketleft", NULL } },
   { "win.spelling",        { "F7", NULL } },
+  { "win.thesaurus",       { "<Shift>F7", NULL } },
   { "win.print-preview",   { "<Control>F2", NULL } },
   { "win.update-fields",   { "F9", NULL } },
   { "win.hyperlink",  { "<Control>k", NULL } },
@@ -74,6 +75,8 @@ static const struct {
   { "win.replace",    { "<Control>h", NULL } },
   { "win.find-next",  { "F3", NULL } },
   { "win.autotext-expand", { "<Control>F3", NULL } },
+  { "win.macros",     { "<Alt>F8", NULL } },
+  { "win.macro-editor", { "<Alt>F11", NULL } },
   { "app.quit",       { "<Control>q", NULL } },
 };
 
@@ -112,7 +115,7 @@ load_css (void)
 }
 
 /* word42 draws its own toolbar icons rather than borrowing the desktop's,
- * because a Word 6 toolbar in flat monochrome symbolics would be a different
+ * because a Word 97 toolbar in flat monochrome symbolics would be a different
  * program wearing the same menus.  They live in a GResource laid out as an
  * icon theme, so gtk_icon_theme_add_resource_path() is all it takes to make
  * them resolvable by name. */
@@ -132,7 +135,7 @@ load_icons (void)
 
 /* ---- Splash screen ---------------------------------------------------- */
 
-/* The logo, shown for a moment over the first window, as Word 6 showed
+/* The logo, shown for a moment over the first window, as Word 97 showed
  * its own while it got ready.  A transient window sits centred on its
  * parent, and going away by itself it needs no button. */
 #define SPLASH_MS 600

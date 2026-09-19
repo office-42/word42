@@ -260,21 +260,309 @@ read_rels (W42Zip *zip, const char *part)
   return map;
 }
 
-/* styles.xml: styleId -> the word42 style it stands for (interned name),
- * by the style's display name. */
+/* theme1.xml: the two faces a Word 2007 document names by role rather
+ * than by name -- the major font for headings, the minor for the body;
+ * Cambria and Calibri in the theme Word 2007 shipped with.  A run or a
+ * style that says w:asciiTheme="minorHAnsi" means the minor one. */
 typedef struct {
-  GHashTable    *map;
+  const char *major, *minor;    /* interned */
+  int         which;            /* 1 inside a:majorFont, 2 inside a:minorFont */
+} Theme;
+
+static void
+theme_start (GMarkupParseContext *ctx, const char *name, const char **an,
+             const char **av, gpointer data, GError **error)
+{
+  Theme *t = data;
+  const char *tag = local (name);
+
+  (void) ctx; (void) error;
+  if (g_str_equal (tag, "majorFont"))
+    t->which = 1;
+  else if (g_str_equal (tag, "minorFont"))
+    t->which = 2;
+  else if (g_str_equal (tag, "latin") && t->which != 0)
+    {
+      const char *face = attr (an, av, "typeface");
+
+      if (face != NULL && *face != '\0')
+        {
+          if (t->which == 1)
+            t->major = g_intern_string (face);
+          else
+            t->minor = g_intern_string (face);
+        }
+    }
+}
+
+static void
+theme_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **error)
+{
+  Theme *t = data;
+  const char *tag = local (name);
+
+  (void) ctx; (void) error;
+  if (g_str_equal (tag, "majorFont") || g_str_equal (tag, "minorFont"))
+    t->which = 0;
+}
+
+static void
+read_theme (W42Zip *zip, GHashTable *rels, const char **major, const char **minor)
+{
+  const char *part = NULL;
+  char *path;
+  GBytes *xml;
+  GHashTableIter iter;
+  gpointer value;
+
+  *major = *minor = NULL;
+  /* The theme part is whatever the document's relationships call it;
+   * theme/theme1.xml, in every file seen. */
+  g_hash_table_iter_init (&iter, rels);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    if (g_str_has_prefix (value, "theme/") && g_str_has_suffix (value, ".xml"))
+      {
+        part = value;
+        break;
+      }
+  path = g_strconcat ("word/", part != NULL ? part : "theme/theme1.xml", NULL);
+  xml = w42_zip_read (zip, path);
+  g_free (path);
+  if (xml != NULL)
+    {
+      GMarkupParser parser = { theme_start, theme_end, NULL, NULL, NULL };
+      Theme t = { NULL, NULL, 0 };
+      GMarkupParseContext *ctx = g_markup_parse_context_new (&parser, 0, &t, NULL);
+
+      g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
+      g_markup_parse_context_free (ctx);
+      g_bytes_unref (xml);
+      *major = t.major;
+      *minor = t.minor;
+    }
+}
+
+/* The face a w:asciiTheme or w:hAnsiTheme value names, or NULL. */
+static const char *
+theme_font (const char *role, const char *major, const char *minor)
+{
+  if (role == NULL)
+    return NULL;
+  if (g_str_has_prefix (role, "major"))
+    return major;
+  if (g_str_has_prefix (role, "minor"))
+    return minor;
+  return NULL;
+}
+
+/* A table style: which of its six sides are ruled, and how.  Word 2007
+ * put the rules of most tables here -- Table Grid is a style -- rather
+ * than on the table itself. */
+typedef struct {
+  gboolean      any;               /* w:tblBorders was given */
+  W42BorderEdge edge[W42_N_EDGES];
+  char         *based;             /* the styleId it was made from */
+} DocxTableStyle;
+
+static void
+table_style_free (gpointer data)
+{
+  DocxTableStyle *t = data;
+
+  g_free (t->based);
+  g_free (t);
+}
+
+/* What styles.xml gave the document. */
+typedef struct {
+  GHashTable *map;         /* styleId -> the word42 style it stands for (interned name) */
+  GHashTable *tables;      /* styleId -> DocxTableStyle* */
+  const char *major_font;  /* the theme's faces, interned, or NULL */
+  const char *minor_font;
+} DocxStyles;
+
+/* styles.xml, read as Word means it: the document's defaults first, then
+ * each style over them, and each style's base filled in once every base
+ * is known.  Word42's own Normal, Heading 1 and the rest are replaced by
+ * the file's definitions of them, as the RTF and OpenDocument readers
+ * do, so that a Word 2007 file comes up in its Calibri and Cambria
+ * rather than in Word 97's Times and Arial. */
+typedef struct {
+  DocxStyles    *out;
   W42StyleSheet *sheet;
   char          *current_id;
-  /* A style of the file's own, being read: it joins the sheet when its
-   * element closes. */
-  W42Style       cur;
-  gboolean       cur_new;        /* not one of ours: to be added */
-  gboolean       cur_paragraph, cur_character;
+  W42Style       cur;            /* the style being read */
+  gboolean       cur_take;       /* it joins the sheet when it closes */
+  gboolean       cur_paragraph, cur_character, cur_table;
+  gboolean       cur_default;    /* w:default="1": the style paragraphs get unless told otherwise */
   char          *cur_based;      /* the basedOn id */
+  DocxTableStyle *cur_tbl;
+  gboolean       in_tblpr;       /* the style's own w:tblPr, not a w:tblStylePr's */
+  int            skip;           /* inside w:tblStylePr: the conditional
+                                  * parts, first row and the like, are not read */
+  int            in_defaults;    /* 1 in w:rPrDefault, 2 in w:pPrDefault */
+  gboolean       in_rpr, in_ppr;
+  W42CharFmt     def_ch;         /* what docDefaults said */
+  W42ParaFmt     def_pa;
+  gboolean       have_defaults;
+  gboolean       have_normal;    /* the file defined Normal itself */
   GHashTable    *display;        /* every style id -> its name */
   GPtrArray     *pending_based;  /* char*: "name\tbased-id", resolved at the end */
 } Styles;
+
+/* One property element -- of a style's pPr or rPr, or of docDefaults --
+ * onto `ch` and `pa`, marking in `ch_own` and `pa_own` what it sets. */
+static void
+style_property (Styles *s, const char *tag, const char **an, const char **av,
+                W42CharFmt *ch, W42ParaFmt *pa, guint32 *ch_own, guint32 *pa_own,
+                int *outline)
+{
+  if (s->in_rpr)
+    {
+      if (g_str_equal (tag, "rFonts"))
+        {
+          const char *f = attr (an, av, "ascii");
+
+          if (f == NULL)
+            f = attr (an, av, "hAnsi");
+          if (f == NULL)
+            f = theme_font (attr (an, av, "asciiTheme"), s->out->major_font, s->out->minor_font);
+          if (f == NULL)
+            f = theme_font (attr (an, av, "hAnsiTheme"), s->out->major_font, s->out->minor_font);
+          if (f != NULL && *f != '\0')
+            {
+              ch->family = g_intern_string (f);
+              *ch_own |= W42_STYLE_CH_FAMILY;
+            }
+        }
+      else if (g_str_equal (tag, "sz"))
+        {
+          ch->size = CLAMP (attr_int (an, av, "val", ch->size), 2, 3276);
+          *ch_own |= W42_STYLE_CH_SIZE;
+        }
+      else if (g_str_equal (tag, "b"))
+        {
+          ch->bold = toggle_on (an, av);
+          *ch_own |= W42_STYLE_CH_BOLD;
+        }
+      else if (g_str_equal (tag, "i"))
+        {
+          ch->italic = toggle_on (an, av);
+          *ch_own |= W42_STYLE_CH_ITALIC;
+        }
+      else if (g_str_equal (tag, "u"))
+        {
+          ch->underline = underline_from_val (attr (an, av, "val"));
+          *ch_own |= W42_STYLE_CH_UNDERLINE;
+        }
+      else if (g_str_equal (tag, "color"))
+        {
+          const char *v = attr (an, av, "val");
+
+          if (v != NULL && strlen (v) == 6 && !g_str_equal (v, "auto"))
+            {
+              ch->color = (guint32) g_ascii_strtoull (v, NULL, 16);
+              *ch_own |= W42_STYLE_CH_COLOR;
+            }
+        }
+      return;
+    }
+  if (!s->in_ppr)
+    return;
+
+  if (g_str_equal (tag, "jc"))
+    {
+      const char *v = attr (an, av, "val");
+
+      if (v == NULL) ;
+      else if (g_str_equal (v, "center")) pa->align = W42_ALIGN_CENTER;
+      else if (g_str_equal (v, "right") || g_str_equal (v, "end")) pa->align = W42_ALIGN_RIGHT;
+      else if (g_str_equal (v, "both") || g_str_equal (v, "distribute")) pa->align = W42_ALIGN_JUSTIFY;
+      else pa->align = W42_ALIGN_LEFT;
+      if (v != NULL)
+        *pa_own |= W42_STYLE_PA_ALIGN;
+    }
+  else if (g_str_equal (tag, "spacing"))
+    {
+      const char *line = attr (an, av, "line");
+      const char *rule = attr (an, av, "lineRule");
+
+      if (attr (an, av, "before") != NULL)
+        {
+          pa->space_before = CLAMP (attr_int (an, av, "before", 0), 0, 31680);
+          *pa_own |= W42_STYLE_PA_SPACE_BEFORE;
+        }
+      if (attr (an, av, "after") != NULL)
+        {
+          pa->space_after = CLAMP (attr_int (an, av, "after", 0), 0, 31680);
+          *pa_own |= W42_STYLE_PA_SPACE_AFTER;
+        }
+      if (line != NULL)
+        {
+          int l = CLAMP (atoi (line), 0, 31680);
+
+          if (rule == NULL || g_str_equal (rule, "auto"))
+            {
+              pa->line_spacing_pct = l * 100 / 240;
+              pa->line_spacing = 0;
+            }
+          else
+            {
+              pa->line_spacing = l;
+              pa->line_spacing_pct = 0;
+            }
+          *pa_own |= W42_STYLE_PA_LINE_SPACING;
+        }
+    }
+  else if (g_str_equal (tag, "outlineLvl"))
+    {
+      /* Levels 0 to 8 are headings 1 to 9; 9 is body text. */
+      int lvl = attr_int (an, av, "val", 9);
+
+      *outline = lvl >= 0 && lvl <= 8 ? lvl + 1 : 0;
+    }
+  else if (g_str_equal (tag, "ind"))
+    {
+      const char *hanging = attr (an, av, "hanging");
+      const char *first = attr (an, av, "firstLine");
+
+      if (attr (an, av, "left") != NULL || attr (an, av, "start") != NULL)
+        {
+          pa->indent_left = CLAMP (attr_int (an, av, "left", attr_int (an, av, "start", 0)), -31680, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_LEFT;
+        }
+      if (attr (an, av, "right") != NULL || attr (an, av, "end") != NULL)
+        {
+          pa->indent_right = CLAMP (attr_int (an, av, "right", attr_int (an, av, "end", 0)), -31680, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_RIGHT;
+        }
+      if (hanging != NULL)
+        {
+          pa->indent_first = -CLAMP (atoi (hanging), 0, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_FIRST;
+        }
+      else if (first != NULL)
+        {
+          pa->indent_first = CLAMP (atoi (first), -31680, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_FIRST;
+        }
+    }
+  else if (g_str_equal (tag, "keepNext"))
+    {
+      pa->keep_next = toggle_on (an, av);
+      *pa_own |= W42_STYLE_PA_FLOW;
+    }
+  else if (g_str_equal (tag, "keepLines"))
+    {
+      pa->keep_together = toggle_on (an, av);
+      *pa_own |= W42_STYLE_PA_FLOW;
+    }
+  else if (g_str_equal (tag, "widowControl"))
+    {
+      pa->widow_control = toggle_on (an, av);
+      *pa_own |= W42_STYLE_PA_FLOW;
+    }
+}
 
 static void
 styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
@@ -284,22 +572,55 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
   const char *tag = local (name);
 
   (void) ctx; (void) error;
-  if (g_str_equal (tag, "style"))
+  if (s->skip > 0)
+    {
+      s->skip++;
+      return;
+    }
+  if (g_str_equal (tag, "tblStylePr"))
+    {
+      s->skip = 1;
+      return;
+    }
+  if (g_str_equal (tag, "rPrDefault"))
+    {
+      s->in_defaults = 1;
+      s->have_defaults = TRUE;
+    }
+  else if (g_str_equal (tag, "pPrDefault"))
+    {
+      s->in_defaults = 2;
+      s->have_defaults = TRUE;
+    }
+  else if (g_str_equal (tag, "rPr"))
+    s->in_rpr = TRUE;
+  else if (g_str_equal (tag, "pPr"))
+    s->in_ppr = TRUE;
+  else if (g_str_equal (tag, "style"))
     {
       const char *type = attr (an, av, "type");
-      W42Fmt def;
+      const char *def = attr (an, av, "default");
 
       g_free (s->current_id);
       s->current_id = g_strdup (attr (an, av, "styleId"));
-      w42_fmt_init_default (&def);
       memset (&s->cur, 0, sizeof s->cur);
-      s->cur.ch = def.ch;
-      s->cur.pa = def.pa;
-      s->cur_new = FALSE;
+      /* Over the document's defaults; the base fills in the rest later. */
+      s->cur.ch = s->def_ch;
+      s->cur.pa = s->def_pa;
+      s->cur_take = FALSE;
       s->cur_paragraph = type == NULL || g_str_equal (type, "paragraph");
       s->cur_character = type != NULL && g_str_equal (type, "character");
+      s->cur_table = type != NULL && g_str_equal (type, "table");
+      s->cur_default = def != NULL && (g_str_equal (def, "1") || g_str_equal (def, "true") ||
+                                       g_str_equal (def, "on"));
       g_free (s->cur_based);
       s->cur_based = NULL;
+      s->cur_tbl = NULL;
+      if (s->cur_table && s->current_id != NULL)
+        {
+          s->cur_tbl = g_new0 (DocxTableStyle, 1);
+          g_hash_table_insert (s->out->tables, g_strdup (s->current_id), s->cur_tbl);
+        }
     }
   else if (g_str_equal (tag, "name") && s->current_id != NULL)
     {
@@ -315,12 +636,29 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
               if (g_ascii_strcasecmp (style->name, val) == 0)
                 ours = style->name;
             }
+          /* The default paragraph style is Normal, whatever it is called. */
+          if (ours == NULL && s->cur_default && s->cur_paragraph)
+            ours = g_intern_static_string ("Normal");
           g_hash_table_insert (s->display, g_strdup (s->current_id), g_strdup (val));
         }
-      if (ours != NULL)
-        g_hash_table_insert (s->map, g_strdup (s->current_id), (gpointer) ours);
+      if (ours != NULL && (s->cur_paragraph || s->cur_character))
+        {
+          const W42Style *existing = w42_stylesheet_find (s->sheet, ours);
+
+          /* One of ours: the file's definition replaces the built-in one,
+           * keeping the outline level the name implies. */
+          s->cur.name = ours;
+          s->cur.pa.style = ours;
+          s->cur.outline = existing != NULL ? existing->outline : 0;
+          s->cur.character = s->cur_character ? 1 : 0;
+          s->cur_take = TRUE;
+          if (g_ascii_strcasecmp (ours, "Normal") == 0)
+            s->have_normal = TRUE;
+          g_hash_table_insert (s->out->map, g_strdup (s->current_id), (gpointer) ours);
+        }
       else if (val != NULL && *val != '\0' && (s->cur_paragraph || s->cur_character) &&
                !g_str_has_prefix (val, "toc ") && !g_str_has_prefix (val, "TOC ") &&
+               g_ascii_strcasecmp (val, "Default Paragraph Font") != 0 &&
                strlen (val) < 64 &&
                /* Every added style is looked up by a scan of all of them,
                 * so a file of millions would cost their square. */
@@ -330,104 +668,81 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
           s->cur.name = g_intern_string (val);
           s->cur.pa.style = s->cur.name;
           s->cur.character = s->cur_character ? 1 : 0;
-          s->cur_new = TRUE;
-          g_hash_table_insert (s->map, g_strdup (s->current_id), (gpointer) s->cur.name);
+          s->cur_take = TRUE;
+          g_hash_table_insert (s->out->map, g_strdup (s->current_id), (gpointer) s->cur.name);
         }
     }
-  else if (s->cur_new && g_str_equal (tag, "basedOn"))
+  else if (g_str_equal (tag, "basedOn") && s->current_id != NULL)
     {
       g_free (s->cur_based);
       s->cur_based = g_strdup (attr (an, av, "val"));
-    }
-  else if (s->cur_new && g_str_equal (tag, "rFonts"))
-    {
-      const char *f = attr (an, av, "ascii");
-
-      if (f == NULL)
-        f = attr (an, av, "hAnsi");
-      if (f != NULL && *f != '\0')
+      if (s->cur_tbl != NULL)
         {
-          s->cur.ch.family = g_intern_string (f);
-          s->cur.ch_own |= W42_STYLE_CH_FAMILY;
+          g_free (s->cur_tbl->based);
+          s->cur_tbl->based = g_strdup (s->cur_based);
         }
     }
-  else if (s->cur_new && g_str_equal (tag, "sz"))
+  else if (s->in_defaults != 0)
     {
-      s->cur.ch.size = CLAMP (attr_int (an, av, "val", s->cur.ch.size), 2, 3276);
-      s->cur.ch_own |= W42_STYLE_CH_SIZE;
-    }
-  else if (s->cur_new && g_str_equal (tag, "b"))
-    {
-      s->cur.ch.bold = toggle_on (an, av);
-      s->cur.ch_own |= W42_STYLE_CH_BOLD;
-    }
-  else if (s->cur_new && g_str_equal (tag, "i"))
-    {
-      s->cur.ch.italic = toggle_on (an, av);
-      s->cur.ch_own |= W42_STYLE_CH_ITALIC;
-    }
-  else if (s->cur_new && g_str_equal (tag, "u"))
-    {
-      const char *v = attr (an, av, "val");
+      guint32 ch_own = 0, pa_own = 0;
+      int outline = 0;
 
-      s->cur.ch.underline = v == NULL || !g_str_equal (v, "none");
-      s->cur.ch_own |= W42_STYLE_CH_UNDERLINE;
+      style_property (s, tag, an, av, &s->def_ch, &s->def_pa, &ch_own, &pa_own, &outline);
     }
-  else if (s->cur_new && g_str_equal (tag, "color"))
+  else if (s->cur_tbl != NULL)
     {
-      const char *v = attr (an, av, "val");
-
-      if (v != NULL && strlen (v) == 6 && !g_str_equal (v, "auto"))
-        {
-          s->cur.ch.color = (guint32) g_ascii_strtoull (v, NULL, 16);
-          s->cur.ch_own |= W42_STYLE_CH_COLOR;
-        }
+      if (g_str_equal (tag, "tblPr"))
+        s->in_tblpr = TRUE;
+      else if (s->in_tblpr && g_str_equal (tag, "tblBorders"))
+        s->cur_tbl->any = TRUE;
+      else if (s->in_tblpr && s->cur_tbl->any && border_edge_index (tag) >= 0)
+        border_element (an, av, &s->cur_tbl->edge[border_edge_index (tag)]);
     }
-  else if (s->cur_new && g_str_equal (tag, "jc"))
-    {
-      const char *v = attr (an, av, "val");
-
-      if (v == NULL) ;
-      else if (g_str_equal (v, "center")) s->cur.pa.align = W42_ALIGN_CENTER;
-      else if (g_str_equal (v, "right") || g_str_equal (v, "end")) s->cur.pa.align = W42_ALIGN_RIGHT;
-      else if (g_str_equal (v, "both")) s->cur.pa.align = W42_ALIGN_JUSTIFY;
-      if (v != NULL)
-        s->cur.pa_own |= W42_STYLE_PA_ALIGN;
-    }
-  else if (s->cur_new && g_str_equal (tag, "spacing"))
-    {
-      s->cur.pa.space_before = CLAMP (attr_int (an, av, "before", s->cur.pa.space_before), 0, 31680);
-      s->cur.pa.space_after = CLAMP (attr_int (an, av, "after", s->cur.pa.space_after), 0, 31680);
-      s->cur.pa_own |= W42_STYLE_PA_SPACE_BEFORE | W42_STYLE_PA_SPACE_AFTER;
-    }
-  else if (s->cur_new && g_str_equal (tag, "outlineLvl"))
-    s->cur.outline = CLAMP (attr_int (an, av, "val", 0) + 1, 1, 9);
-  else if (s->cur_new && g_str_equal (tag, "ind"))
-    {
-      const char *hanging = attr (an, av, "hanging");
-
-      s->cur.pa.indent_left = CLAMP (attr_int (an, av, "left", s->cur.pa.indent_left), -31680, 31680);
-      s->cur.pa.indent_right = CLAMP (attr_int (an, av, "right", s->cur.pa.indent_right), -31680, 31680);
-      s->cur.pa_own |= W42_STYLE_PA_INDENT_LEFT | W42_STYLE_PA_INDENT_RIGHT | W42_STYLE_PA_INDENT_FIRST;
-      if (hanging != NULL)
-        s->cur.pa.indent_first = -CLAMP (atoi (hanging), 0, 31680);
-      else
-        s->cur.pa.indent_first = CLAMP (attr_int (an, av, "firstLine", s->cur.pa.indent_first), -31680, 31680);
-    }
+  else if (s->cur_take)
+    style_property (s, tag, an, av, &s->cur.ch, &s->cur.pa, &s->cur.ch_own, &s->cur.pa_own,
+                    &s->cur.outline);
 }
 
 static void
 styles_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **error)
 {
   Styles *s = data;
+  const char *tag = local (name);
 
   (void) ctx; (void) error;
-  if (g_str_equal (local (name), "style") && s->cur_new)
+  if (s->skip > 0)
     {
-      w42_stylesheet_set (s->sheet, &s->cur);
-      if (s->cur_based != NULL)
-        g_ptr_array_add (s->pending_based, g_strdup_printf ("%s\t%s", s->cur.name, s->cur_based));
-      s->cur_new = FALSE;
+      s->skip--;
+      return;
+    }
+  if (g_str_equal (tag, "rPrDefault") || g_str_equal (tag, "pPrDefault"))
+    s->in_defaults = 0;
+  else if (g_str_equal (tag, "rPr"))
+    s->in_rpr = FALSE;
+  else if (g_str_equal (tag, "pPr"))
+    s->in_ppr = FALSE;
+  else if (g_str_equal (tag, "tblPr"))
+    s->in_tblpr = FALSE;
+  else if (g_str_equal (tag, "style"))
+    {
+      if (s->cur_take)
+        {
+          /* Normal is the root: everything it holds is its own.  Any other
+           * style takes what it did not set from its base, once the base is
+           * known. */
+          if (g_ascii_strcasecmp (s->cur.name, "Normal") == 0)
+            {
+              s->cur.pa_own = W42_STYLE_PA_ALL;
+              s->cur.ch_own = W42_STYLE_CH_ALL;
+            }
+          w42_stylesheet_set (s->sheet, &s->cur);
+          if (s->cur_based != NULL)
+            g_ptr_array_add (s->pending_based, g_strdup_printf ("%s\t%s", s->cur.name, s->cur_based));
+          s->cur_take = FALSE;
+        }
+      s->cur_tbl = NULL;
+      g_free (s->current_id);
+      s->current_id = NULL;
     }
 }
 
@@ -513,22 +828,54 @@ read_core_props (W42Zip *zip, W42PieceTable *pt)
   g_bytes_unref (xml);
 }
 
-static GHashTable *
-read_styles (W42Zip *zip, W42StyleSheet *sheet)
+static void
+read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *out)
 {
-  GHashTable *map = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   GBytes *xml = w42_zip_read (zip, "word/styles.xml");
+
+  out->map = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  out->tables = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, table_style_free);
+  read_theme (zip, rels, &out->major_font, &out->minor_font);
 
   if (xml != NULL)
     {
       GMarkupParser parser = { styles_start, styles_end, NULL, NULL, NULL };
-      Styles s = { .map = map, .sheet = sheet };
+      Styles s = { .out = out, .sheet = sheet };
       GMarkupParseContext *ctx = g_markup_parse_context_new (&parser, 0, &s, NULL);
+      W42Fmt def;
+      GHashTableIter iter;
+      gpointer key, value;
 
+      w42_fmt_init_default (&def);
+      {
+        /* The defaults start from Word42's Normal, so a file that says
+         * nothing about a setting keeps what Word 97 would have had. */
+        const W42Style *normal = w42_stylesheet_find (sheet, "Normal");
+
+        s.def_ch = normal != NULL ? normal->ch : def.ch;
+        s.def_pa = normal != NULL ? normal->pa : def.pa;
+      }
       s.display = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
       s.pending_based = g_ptr_array_new_with_free_func (g_free);
       g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
       g_markup_parse_context_free (ctx);
+
+      if (s.have_defaults && !s.have_normal)
+        {
+          /* No Normal in the file: the document's defaults are it. */
+          const W42Style *existing = w42_stylesheet_find (sheet, "Normal");
+          W42Style normal;
+
+          memset (&normal, 0, sizeof normal);
+          normal.name = g_intern_static_string ("Normal");
+          normal.ch = s.def_ch;
+          normal.pa = s.def_pa;
+          normal.pa.style = normal.name;
+          normal.outline = existing != NULL ? existing->outline : 0;
+          normal.pa_own = W42_STYLE_PA_ALL;
+          normal.ch_own = W42_STYLE_CH_ALL;
+          w42_stylesheet_set (sheet, &normal);
+        }
 
       /* basedOn names an id, which may belong to a style read later. */
       for (guint i = 0; i < s.pending_based->len; i++)
@@ -543,7 +890,7 @@ read_styles (W42Zip *zip, W42StyleSheet *sheet)
           st = w42_stylesheet_find (sheet, entry);
           if (st != NULL)
             {
-              const char *ours = g_hash_table_lookup (map, tab + 1);
+              const char *ours = g_hash_table_lookup (out->map, tab + 1);
               const char *shown = g_hash_table_lookup (s.display, tab + 1);
               W42Style copy = *st;
 
@@ -552,7 +899,8 @@ read_styles (W42Zip *zip, W42StyleSheet *sheet)
             }
         }
       /* Now that every base is known, each style takes what it does not
-       * set from its base, as Word does. */
+       * set from its base, as Word does.  Normal first: the built-in
+       * headings that the file did not redefine are based on it. */
       for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
         {
           const W42Style *st = w42_stylesheet_get (sheet, i);
@@ -560,13 +908,35 @@ read_styles (W42Zip *zip, W42StyleSheet *sheet)
           if (st->based_on != NULL)
             w42_stylesheet_follow (sheet, st->name);
         }
+
+      /* A table style with no rules of its own has its base's. */
+      g_hash_table_iter_init (&iter, out->tables);
+      while (g_hash_table_iter_next (&iter, &key, &value))
+        {
+          DocxTableStyle *t = value;
+          const char *based = t->based;
+
+          for (int depth = 0; !t->any && based != NULL && depth < 8; depth++)
+            {
+              const DocxTableStyle *base = g_hash_table_lookup (out->tables, based);
+
+              if (base == NULL)
+                break;
+              if (base->any)
+                {
+                  memcpy (t->edge, base->edge, sizeof t->edge);
+                  t->any = TRUE;
+                }
+              based = base->based;
+            }
+        }
+
       g_ptr_array_free (s.pending_based, TRUE);
       g_hash_table_destroy (s.display);
       g_free (s.cur_based);
       g_free (s.current_id);
       g_bytes_unref (xml);
     }
-  return map;
 }
 
 /* numbering.xml: numId -> list kind, through the abstract numbering's
@@ -650,10 +1020,19 @@ numbering_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError
       if (GPOINTER_TO_INT (kind) == W42_LIST_BULLET && n->bullet_text != NULL)
         {
           gunichar c = g_utf8_get_char (n->bullet_text);
-          W42ListKind k = c == 'o' || c == 0x25E6 ? W42_LIST_BULLET_CIRCLE
-                        : c == 0x25AA || c == 0x25A0 || c == 0xA7 ? W42_LIST_BULLET_SQUARE
-                        : c == '-' || c == 0x2013 ? W42_LIST_BULLET_DASH
-                        : W42_LIST_BULLET;
+          W42ListKind k;
+
+          /* Word's bullets are Symbol and Wingdings characters, in the
+           * private range F000-F0FF or as the byte itself: Symbol's
+           * bullet is B7, Wingdings' square A7 and its letters n, q, l
+           * and o are a square, a hollow square, a circle and a ring. */
+          if (c >= 0xF000 && c <= 0xF0FF)
+            c -= 0xF000;
+          k = c == 'o' || c == 0x25E6 || c == 0x25CB ? W42_LIST_BULLET_CIRCLE
+            : c == 0x25AA || c == 0x25A0 || c == 0xA7 || c == 'n' || c == 'q' || c == 0x25A1
+                ? W42_LIST_BULLET_SQUARE
+            : c == '-' || c == 0x2013 || c == 0x2014 ? W42_LIST_BULLET_DASH
+            : W42_LIST_BULLET;
           g_hash_table_insert (n->abstract, g_strdup (n->current_abstract), GINT_TO_POINTER (k));
         }
       n->in_level0 = FALSE;
@@ -859,8 +1238,13 @@ typedef struct {
   W42PageSetup *page;
   W42Zip     *zip;
   GHashTable *rels, *styles, *numbering, *footnotes, *endnotes, *comments;
+  GHashTable *table_styles;       /* styleId -> DocxTableStyle* */
+  const char *major_font, *minor_font;   /* the theme's faces, or NULL */
+  gboolean    tbl_style_edges;    /* tbl_edge holds the table style's rules */
   GHashTable *comment_start;      /* id -> gsize position */
   gboolean    in_pbdr;
+  gboolean    in_pgborders;   /* the section's page border */
+  gboolean    pgborders_from_text;
 
   GString    *text;
   gboolean    in_t;
@@ -927,6 +1311,10 @@ typedef struct {
   guint32     fill_rgb;
   gboolean    shape_txbx;    /* the shape's text, gathered rather than laid out */
   GString    *shape_text;
+  gboolean    in_pict;       /* w:pict or w:object: a VML drawing */
+  gboolean    vml_shape;     /* one of its shape elements is open */
+  gboolean    vml_fill_given;  /* the v:shape said whether it is filled */
+  gboolean    run_hidden;    /* w:vanish: the run is not shown */
 
   gboolean    section_pending;    /* the next paragraph starts a section */
   gsize       section_first;      /* the first paragraph of the current section */
@@ -962,6 +1350,253 @@ map_style (Docx *d, const char *id)
   const char *ours = id != NULL ? g_hash_table_lookup (d->styles, id) : NULL;
 
   return ours != NULL ? ours : g_intern_static_string ("Normal");
+}
+
+/* The paragraph takes the style's formatting, under whatever its own pPr
+ * says next, and its runs the style's font under their own rPr.  Every
+ * paragraph starts from Normal: Word writes no pStyle for it, and a
+ * Word 2007 file's Normal is Calibri with air after each paragraph, not
+ * the builder's Times. */
+static void
+docx_apply_style (Docx *d, const char *name)
+{
+  W42ParaFmt *pa = &d->b.pa;
+  const W42Style *st = w42_stylesheet_find (w42_pt_stylesheet (d->pt), name);
+
+  pa->style = name;
+  if (st == NULL || st->character)
+    return;
+  pa->align = st->pa.align;
+  pa->indent_left = st->pa.indent_left;
+  pa->indent_right = st->pa.indent_right;
+  pa->indent_first = st->pa.indent_first;
+  pa->space_before = st->pa.space_before;
+  pa->space_after = st->pa.space_after;
+  pa->line_spacing = st->pa.line_spacing;
+  pa->line_spacing_pct = st->pa.line_spacing_pct;
+  pa->keep_next = st->pa.keep_next;
+  pa->keep_together = st->pa.keep_together;
+  pa->widow_control = st->pa.widow_control;
+  d->style_ch = st->ch;
+  d->have_style_ch = TRUE;
+}
+
+/* ---- VML: Word 2007's drawings ------------------------------------------ */
+
+/* Word 2007 drew every shape and text box in VML, and kept the pictures
+ * of a file converted from .doc there too: w:pict holding a v:shape, a
+ * v:rect, a v:oval, a v:roundrect or a v:line, sized and placed by a CSS
+ * style attribute.  Word 2010 moved to DrawingML and left VML in the
+ * mc:Fallback, which is skipped; so what is read here is what a Word
+ * 2007 file, or an older one saved by it, has and nothing else does. */
+
+/* A length in a VML style -- "120pt", "2in", "1.5cm", "96px" or a bare
+ * number of pixels -- in EMU. */
+static gint64
+vml_length (const char *v)
+{
+  char *end = NULL;
+  double n;
+
+  if (v == NULL)
+    return 0;
+  n = g_ascii_strtod (v, &end);
+  if (end == v)
+    return 0;
+  while (*end == ' ')
+    end++;
+  if (g_str_has_prefix (end, "pt")) return (gint64) (n * 12700.0);
+  if (g_str_has_prefix (end, "in")) return (gint64) (n * 914400.0);
+  if (g_str_has_prefix (end, "cm")) return (gint64) (n * 360000.0);
+  if (g_str_has_prefix (end, "mm")) return (gint64) (n * 36000.0);
+  if (g_str_has_prefix (end, "pc")) return (gint64) (n * 152400.0);
+  if (g_str_has_prefix (end, "em")) return (gint64) (n * 12.0 * 12700.0);
+  return (gint64) (n * 9525.0);                /* px, or nothing */
+}
+
+/* A VML colour: "#4f81bd", "#4f81bd [3204]" with the theme index Word
+ * adds, or one of the names.  FALSE for anything else. */
+static gboolean
+vml_colour (const char *v, guint32 *rgb)
+{
+  static const struct { const char *name; guint32 rgb; } names[] = {
+    { "black", 0x000000 }, { "white", 0xFFFFFF }, { "red", 0xFF0000 },
+    { "green", 0x008000 }, { "lime", 0x00FF00 }, { "blue", 0x0000FF },
+    { "yellow", 0xFFFF00 }, { "gray", 0x808080 }, { "grey", 0x808080 },
+    { "silver", 0xC0C0C0 }, { "maroon", 0x800000 }, { "navy", 0x000080 },
+    { "olive", 0x808000 }, { "purple", 0x800080 }, { "teal", 0x008080 },
+    { "aqua", 0x00FFFF }, { "cyan", 0x00FFFF }, { "fuchsia", 0xFF00FF },
+    { "magenta", 0xFF00FF }, { "orange", 0xFFA500 }, { "windowText", 0x000000 },
+    { "window", 0xFFFFFF },
+  };
+
+  if (v == NULL)
+    return FALSE;
+  if (*v == '#')
+    {
+      char *end = NULL;
+      guint32 n = (guint32) g_ascii_strtoull (v + 1, &end, 16);
+
+      if (end - (v + 1) == 6)
+        {
+          *rgb = n;
+          return TRUE;
+        }
+      if (end - (v + 1) == 3)
+        {
+          /* #rgb: each digit doubled */
+          *rgb = ((n & 0xF00) << 12) | ((n & 0xF00) << 8) |
+                 ((n & 0x0F0) << 8) | ((n & 0x0F0) << 4) |
+                 ((n & 0x00F) << 4) | (n & 0x00F);
+          return TRUE;
+        }
+      return FALSE;
+    }
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    if (g_ascii_strncasecmp (v, names[i].name, strlen (names[i].name)) == 0)
+      {
+        *rgb = names[i].rgb;
+        return TRUE;
+      }
+  return FALSE;
+}
+
+/* "t", "true" or "1" are on; "f", "false" and "0" off. */
+static gboolean
+vml_bool (const char *v, gboolean fallback)
+{
+  if (v == NULL)
+    return fallback;
+  return !(g_str_equal (v, "f") || g_str_equal (v, "false") || g_str_equal (v, "0"));
+}
+
+/* The style attribute of a VML shape: its size, and whether and where it
+ * floats.  Sets cx, cy, anchored, wrap, behind, and an offset from the
+ * column and the paragraph when the style gives one Word42 can use. */
+static void
+vml_style (Docx *d, const char *style)
+{
+  char **parts;
+  const char *h_align = NULL, *h_rel = NULL, *v_rel = NULL;
+  gint64 left = 0, top = 0;
+  gboolean have_left = FALSE, have_top = FALSE;
+
+  if (style == NULL)
+    return;
+  parts = g_strsplit (style, ";", -1);
+  for (int i = 0; parts[i] != NULL; i++)
+    {
+      char *colon = strchr (parts[i], ':');
+      const char *key, *val;
+
+      if (colon == NULL)
+        continue;
+      *colon = '\0';
+      key = g_strstrip (parts[i]);
+      val = g_strstrip (colon + 1);
+      if (g_str_equal (key, "width"))            d->cx = vml_length (val);
+      else if (g_str_equal (key, "height"))      d->cy = vml_length (val);
+      else if (g_str_equal (key, "position"))    d->anchored = g_str_equal (val, "absolute");
+      else if (g_str_equal (key, "margin-left")) { left = vml_length (val); have_left = TRUE; }
+      else if (g_str_equal (key, "margin-top"))  { top = vml_length (val); have_top = TRUE; }
+      else if (g_str_equal (key, "z-index"))     d->behind = val[0] == '-';
+      else if (g_str_equal (key, "mso-position-horizontal"))          h_align = val;
+      else if (g_str_equal (key, "mso-position-horizontal-relative")) h_rel = val;
+      else if (g_str_equal (key, "mso-position-vertical-relative"))   v_rel = val;
+    }
+  if (d->anchored)
+    {
+      /* Beside the text, at the side the style names; or where its
+       * margins put it, when they are measured from the column and the
+       * paragraph rather than the page. */
+      d->wrap = h_align != NULL && g_str_equal (h_align, "right") ? W42_WRAP_RIGHT : W42_WRAP_LEFT;
+      if (h_align == NULL || g_str_equal (h_align, "absolute"))
+        {
+          gboolean h_ok = h_rel == NULL || g_str_equal (h_rel, "text") || g_str_equal (h_rel, "margin") ||
+                          g_str_equal (h_rel, "char");
+          gboolean v_ok = v_rel == NULL || g_str_equal (v_rel, "text") || g_str_equal (v_rel, "line");
+
+          if (have_left && h_ok) { d->pos_x = left; d->pos_h_set = TRUE; }
+          if (have_top && v_ok)  { d->pos_y = top;  d->pos_v_set = TRUE; }
+        }
+    }
+  g_strfreev (parts);
+}
+
+/* A v:line's ends: "0,0" to "200pt,0". */
+static void
+vml_line_ends (Docx *d, const char *from, const char *to)
+{
+  gint64 x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  char **f = from != NULL ? g_strsplit (from, ",", 2) : NULL;
+  char **t = to != NULL ? g_strsplit (to, ",", 2) : NULL;
+
+  if (f != NULL && f[0] != NULL && f[1] != NULL)
+    {
+      x0 = vml_length (g_strstrip (f[0]));
+      y0 = vml_length (g_strstrip (f[1]));
+    }
+  if (t != NULL && t[0] != NULL && t[1] != NULL)
+    {
+      x1 = vml_length (g_strstrip (t[0]));
+      y1 = vml_length (g_strstrip (t[1]));
+    }
+  if (d->cx == 0)
+    d->cx = x1 > x0 ? x1 - x0 : x0 - x1;
+  if (d->cy == 0)
+    d->cy = y1 > y0 ? y1 - y0 : y0 - y1;
+  g_strfreev (f);
+  g_strfreev (t);
+}
+
+/* A VML shape element has opened: its geometry, its fill and its line.
+ * A v:shape is a picture or a text box until its children say; the
+ * named shapes are drawn as such. */
+static void
+vml_shape_start (Docx *d, const char *tag, const char **an, const char **av)
+{
+  guint32 rgb;
+  const char *weight = attr (an, av, "strokeweight");
+
+  d->vml_shape = TRUE;
+  d->cx = d->cy = 0;
+  d->pos_h_set = d->pos_v_set = FALSE;
+  d->pos_x = d->pos_y = 0;
+  d->anchored = FALSE;
+  d->behind = FALSE;
+  d->wrap = W42_WRAP_INLINE;
+  vml_style (d, attr (an, av, "style"));
+
+  /* VML's defaults: filled white, with a three-quarter-point black line. */
+  d->filled = vml_bool (attr (an, av, "filled"), TRUE);
+  d->fill_rgb = 0xFFFFFF;
+  if (vml_colour (attr (an, av, "fillcolor"), &rgb))
+    d->fill_rgb = rgb;
+  d->has_line = vml_bool (attr (an, av, "stroked"), TRUE);
+  d->line_rgb = 0;
+  if (vml_colour (attr (an, av, "strokecolor"), &rgb))
+    d->line_rgb = rgb;
+  d->line_pt = weight != NULL ? vml_length (weight) / 12700.0 : 0.75;
+  if (d->line_pt <= 0.0)
+    d->line_pt = 0.75;
+
+  if (g_str_equal (tag, "rect"))           d->shape = W42_SHAPE_RECTANGLE;
+  else if (g_str_equal (tag, "roundrect")) d->shape = W42_SHAPE_ROUNDED_RECTANGLE;
+  else if (g_str_equal (tag, "oval"))      d->shape = W42_SHAPE_ELLIPSE;
+  else if (g_str_equal (tag, "line"))
+    {
+      d->shape = W42_SHAPE_LINE;
+      d->filled = FALSE;
+      vml_line_ends (d, attr (an, av, "from"), attr (an, av, "to"));
+    }
+  else
+    d->shape = W42_SHAPE_RECTANGLE;
+  /* A named shape is drawn by Word42; a v:shape is nothing until an
+   * imagedata or a textbox inside it says what it is. */
+  d->in_wsp = !g_str_equal (tag, "shape");
+  d->in_ln = FALSE;
+  d->in_wsp_style = FALSE;
+  d->vml_fill_given = attr (an, av, "fillcolor") != NULL || attr (an, av, "filled") != NULL;
 }
 
 /* What a cell's w:tcPr said, onto the cell mark just made. */
@@ -1048,6 +1683,78 @@ docx_apply_field (Docx *d)
     }
 }
 
+/* A drawing has closed -- w:drawing, or a VML w:pict or w:object: the
+ * picture it held goes in, or the shape is drawn. */
+static void
+docx_finish_drawing (Docx *d)
+{
+  const char *target = d->blip != NULL ? g_hash_table_lookup (d->rels, d->blip) : NULL;
+
+  if (d->in_wsp)
+    {
+      /* A shape: drawn by word42 itself, so nothing to read but its
+       * geometry, its outline, its fill and its text. */
+      d->b.ch = d->run_ch;
+      d->b.ch.link = d->link;
+      d->b.ch.revision = (guint8) d->revision;
+      w42_builder_shape (&d->b, d->shape,
+                         (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
+                         (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
+                         d->has_line ? MAX (d->line_pt, 0.25) : 0.0, d->line_rgb,
+                         d->filled, d->fill_rgb,
+                         d->shape_text->len > 0 ? d->shape_text->str : NULL);
+      if (d->anchored)
+        {
+          w42_builder_object_wrap (&d->b, d->wrap);
+          if (d->pos_h_set || d->pos_v_set)
+            w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
+                                         (int) (d->pos_y / EMU_PER_TWIP));
+        }
+      g_string_truncate (d->shape_text, 0);
+      d->in_wsp = FALSE;
+      d->in_drawing = FALSE;
+      d->in_pict = FALSE;
+      d->vml_shape = FALSE;
+      return;
+    }
+  if (target != NULL)
+    {
+      char *part = target[0] == '/' ? g_strdup (target + 1) : g_strconcat ("word/", target, NULL);
+      GBytes *bytes = w42_zip_read (d->zip, part);
+      int pw = 0, ph = 0;
+      const char *format = NULL;
+
+      if (bytes != NULL && w42_image_probe (bytes, &pw, &ph, &format))
+        {
+          /* The picture's run carries a font and a size like any other,
+           * and the line it sits on is as tall as they make it.  Only
+           * flushing text picks the run's formatting up, and a run
+           * holding a picture has none. */
+          d->b.ch = d->run_ch;
+          d->b.ch.link = d->link;
+          d->b.ch.revision = (guint8) d->revision;
+          w42_builder_object (&d->b, bytes, format, pw, ph,
+                              (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
+                              (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
+          if (d->anchored)
+            {
+              w42_builder_object_wrap (&d->b, d->wrap);
+              if (d->pos_h_set || d->pos_v_set)
+                w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
+                                             (int) (d->pos_y / EMU_PER_TWIP));
+            }
+        }
+      if (bytes != NULL)
+        g_bytes_unref (bytes);
+      g_free (part);
+    }
+  g_free (d->blip);
+  d->blip = NULL;
+  d->in_drawing = FALSE;
+  d->in_pict = FALSE;
+  d->vml_shape = FALSE;
+}
+
 static void
 docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
             const char **av, gpointer data, GError **error)
@@ -1064,6 +1771,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "Fallback"))
     d->skip_depth = 1;
+  else if (g_str_equal (tag, "sdtPr") || g_str_equal (tag, "sdtEndPr"))
+    d->skip_depth = 1;            /* a content control's settings: not text */
+  else if (d->in_pict && g_str_equal (tag, "shapetype"))
+    d->skip_depth = 1;            /* a template for shapes, not a shape */
   else if (d->shape_txbx)
     {
       /* The text in a shape: its runs are gathered as the shape's label. */
@@ -1089,6 +1800,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         }
       w42_builder_reset_para (&d->b);
       d->have_style_ch = FALSE;
+      docx_apply_style (d, g_intern_static_string ("Normal"));
       if (d->section_pending)
         {
           d->b.pa.section_break = 1;
@@ -1109,6 +1821,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       w42_builder_reset_char (&d->b);
       d->run_ch = d->have_style_ch ? d->style_ch : d->b.ch;
       d->have_run = TRUE;
+      d->run_hidden = FALSE;
     }
   else if (g_str_equal (tag, "t") || g_str_equal (tag, "delText"))
     d->in_t = TRUE;
@@ -1144,9 +1857,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->fld_state = 2;
       d->fld_start = d->b.pos;
     }
-  else if (g_str_equal (tag, "tab") && !d->in_ppr)
+  else if ((g_str_equal (tag, "tab") || g_str_equal (tag, "ptab")) && !d->in_ppr)
     g_string_append_c (d->text, '\t');
-  else if (g_str_equal (tag, "br"))
+  else if (g_str_equal (tag, "br") || g_str_equal (tag, "cr"))
     {
       const char *type = attr (an, av, "type");
 
@@ -1184,29 +1897,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       W42ParaFmt *pa = &d->b.pa;
 
       if (g_str_equal (tag, "pStyle"))
-        {
-          const W42Style *st;
-
-          pa->style = map_style (d, attr (an, av, "val"));
-          st = w42_stylesheet_find (w42_pt_stylesheet (d->pt), pa->style);
-          if (st != NULL && !st->character)
-            {
-              /* The style's formatting under the paragraph's own, which
-               * follows in the pPr, and its font under each run's. */
-              pa->align = st->pa.align;
-              pa->indent_left = st->pa.indent_left;
-              pa->indent_right = st->pa.indent_right;
-              pa->indent_first = st->pa.indent_first;
-              pa->space_before = st->pa.space_before;
-              pa->space_after = st->pa.space_after;
-              pa->line_spacing = st->pa.line_spacing;
-              pa->line_spacing_pct = st->pa.line_spacing_pct;
-              pa->keep_next = st->pa.keep_next;
-              pa->keep_together = st->pa.keep_together;
-              d->style_ch = st->ch;
-              d->have_style_ch = TRUE;
-            }
-        }
+        docx_apply_style (d, map_style (d, attr (an, av, "val")));
       else if (g_str_equal (tag, "framePr"))
         {
           const char *drop = attr (an, av, "dropCap");
@@ -1251,6 +1942,16 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
           pa->space_before = attr_int (an, av, "before", pa->space_before);
           pa->space_after = attr_int (an, av, "after", pa->space_after);
+          /* A paragraph that came from HTML: Word spaces it as a browser
+           * would, fourteen points either side, whatever the numbers say. */
+          if (toggle_on (an, av) && attr (an, av, "beforeAutospacing") != NULL &&
+              !g_str_equal (attr (an, av, "beforeAutospacing"), "0") &&
+              !g_str_equal (attr (an, av, "beforeAutospacing"), "false"))
+            pa->space_before = 280;
+          if (attr (an, av, "afterAutospacing") != NULL &&
+              !g_str_equal (attr (an, av, "afterAutospacing"), "0") &&
+              !g_str_equal (attr (an, av, "afterAutospacing"), "false"))
+            pa->space_after = 280;
           if (line != NULL)
             {
               int l = CLAMP (atoi (line), 0, 31680);
@@ -1368,7 +2069,12 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (g_str_equal (tag, "i"))     ch->italic = toggle_on (an, av);
       else if (g_str_equal (tag, "u"))
         ch->underline = underline_from_val (attr (an, av, "val"));
-      else if (g_str_equal (tag, "strike") || g_str_equal (tag, "dstrike")) ch->strikeout = toggle_on (an, av);
+      else if (g_str_equal (tag, "strike")) ch->strikeout = toggle_on (an, av);
+      else if (g_str_equal (tag, "dstrike")) ch->dstrike = toggle_on (an, av);
+      else if (g_str_equal (tag, "shadow"))  ch->shadow = toggle_on (an, av);
+      else if (g_str_equal (tag, "outline")) ch->outline = toggle_on (an, av);
+      else if (g_str_equal (tag, "emboss"))  ch->emboss = toggle_on (an, av);
+      else if (g_str_equal (tag, "imprint")) ch->engrave = toggle_on (an, av);
       else if (g_str_equal (tag, "lang"))
         {
           const char *known = w42_lang_normalise (attr (an, av, "val"));
@@ -1378,6 +2084,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         }
       else if (g_str_equal (tag, "noProof"))
         ch->lang = toggle_on (an, av) ? g_intern_static_string (W42_LANG_NONE) : NULL;
+      else if (g_str_equal (tag, "vanish"))
+        d->run_hidden = toggle_on (an, av);   /* hidden text: Word does not show it, nor does this */
       else if (g_str_equal (tag, "caps"))  ch->allcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "smallCaps")) ch->smallcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "sz"))
@@ -1399,6 +2107,11 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           const char *f = attr (an, av, "ascii");
 
           if (f == NULL) f = attr (an, av, "hAnsi");
+          /* Word 2007 names the face by its part in the theme as often
+           * as by name: a heading's run says "majorHAnsi" and means
+           * Cambria. */
+          if (f == NULL) f = theme_font (attr (an, av, "asciiTheme"), d->major_font, d->minor_font);
+          if (f == NULL) f = theme_font (attr (an, av, "hAnsiTheme"), d->major_font, d->minor_font);
           if (f != NULL)
             ch->family = g_intern_string (f);
         }
@@ -1580,6 +2293,65 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       g_free (key);
     }
 
+  /* Word 2007's drawings: VML in w:pict, or a w:object's picture. */
+  else if (g_str_equal (tag, "pict") || g_str_equal (tag, "object"))
+    {
+      docx_flush_text (d);
+      d->in_pict = TRUE;
+      d->vml_shape = FALSE;
+      d->in_wsp = FALSE;
+      d->anchored = FALSE;
+      d->wrap = W42_WRAP_INLINE;
+      d->cx = d->cy = 0;
+      g_free (d->blip);
+      d->blip = NULL;
+    }
+  else if (d->in_pict && !d->vml_shape &&
+           (g_str_equal (tag, "shape") || g_str_equal (tag, "rect") || g_str_equal (tag, "roundrect") ||
+            g_str_equal (tag, "oval") || g_str_equal (tag, "line")))
+    vml_shape_start (d, tag, an, av);
+  else if (d->in_pict && g_str_equal (tag, "imagedata"))
+    {
+      const char *embed = attr (an, av, "id");
+
+      g_free (d->blip);
+      d->blip = g_strdup (embed);
+    }
+  else if (d->in_pict && g_str_equal (tag, "stroke"))
+    {
+      const char *arrow = attr (an, av, "endarrow");
+      const char *start = attr (an, av, "startarrow");
+
+      if (d->shape == W42_SHAPE_LINE &&
+          ((arrow != NULL && !g_str_equal (arrow, "none")) || (start != NULL && !g_str_equal (start, "none"))))
+        d->shape = W42_SHAPE_ARROW;
+    }
+  else if (d->in_pict && g_str_equal (tag, "textbox") && d->vml_shape && !d->in_wsp && d->vml_fill_given && d->filled)
+    {
+      /* A v:shape that says it is filled and holds text is a box drawn
+       * round a label, not a frame of paragraphs. */
+      d->in_wsp = TRUE;
+      d->shape = W42_SHAPE_RECTANGLE;
+    }
+  else if (d->in_pict && g_str_equal (tag, "wrap"))
+    {
+      /* w10:wrap: how the text goes round a floating VML shape. */
+      const char *type = attr (an, av, "type");
+      const char *side = attr (an, av, "side");
+
+      d->anchored = TRUE;
+      if (type != NULL && g_str_equal (type, "topAndBottom"))
+        d->wrap = W42_WRAP_TOP_BOTTOM;
+      else if (type != NULL && g_str_equal (type, "none"))
+        d->wrap = d->behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
+      else if (side != NULL && g_str_equal (side, "left"))
+        d->wrap = W42_WRAP_RIGHT;        /* the text keeps to the left: the box is at the right */
+      else if (side != NULL && g_str_equal (side, "right"))
+        d->wrap = W42_WRAP_LEFT;
+      else if (d->wrap == W42_WRAP_INLINE)
+        d->wrap = W42_WRAP_LEFT;
+    }
+
   /* Pictures. */
   else if (g_str_equal (tag, "drawing"))
     {
@@ -1709,6 +2481,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       if (d->b.in_para)
         w42_builder_end_paragraph (&d->b);
       d->in_drawing = FALSE;
+      d->in_pict = FALSE;
+      d->vml_shape = FALSE;
       d->txbx_reopened = FALSE;
     }
   else if (g_str_equal (tag, "txbxContent"))
@@ -1751,20 +2525,22 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           g_array_set_size (d->grid, 0);
           d->table_started = FALSE;
           d->tbl_borders = FALSE;
+          d->tbl_style_edges = FALSE;
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
     }
   else if (g_str_equal (tag, "tblBorders") && d->depth_tbl == 1)
     {
-      /* The sides it does not name are the table style's: the grid's
-       * hairline, or nothing. */
+      /* The sides it does not name are the table style's: its own rules
+       * when the file defines it, else the grid's hairline, or nothing. */
       d->in_tblborders = TRUE;
-      for (int e = 0; e < W42_N_EDGES; e++)
-        {
-          d->tbl_edge[e].style = d->tbl_borders ? W42_BORDER_SINGLE : W42_BORDER_NONE;
-          d->tbl_edge[e].width = 0;
-          d->tbl_edge[e].color = 0;
-        }
+      if (!d->tbl_style_edges)
+        for (int e = 0; e < W42_N_EDGES; e++)
+          {
+            d->tbl_edge[e].style = d->tbl_borders ? W42_BORDER_SINGLE : W42_BORDER_NONE;
+            d->tbl_edge[e].width = 0;
+            d->tbl_edge[e].color = 0;
+          }
     }
   else if (d->in_tblborders && border_edge_index (tag) >= 0)
     {
@@ -1777,9 +2553,23 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
   else if (g_str_equal (tag, "tblStyle") && d->depth_tbl == 1)
     {
       const char *val = attr (an, av, "val");
+      const DocxTableStyle *style = val != NULL ? g_hash_table_lookup (d->table_styles, val) : NULL;
 
-      if (val != NULL && strstr (val, "Grid") != NULL)
+      if (style != NULL && style->any)
         {
+          /* The style's own rules, side by side, as the file defines
+           * them: Word 2007's Table Grid, or one of its designs. */
+          memcpy (d->tbl_edge, style->edge, sizeof d->tbl_edge);
+          d->tbl_style_edges = TRUE;
+          d->tbl_borders = FALSE;
+          for (int e = 0; e < W42_N_EDGES; e++)
+            if (style->edge[e].style != W42_BORDER_NONE)
+              d->tbl_borders = TRUE;
+        }
+      else if (val != NULL && strstr (val, "Grid") != NULL)
+        {
+          /* A grid style the file does not define: the hairline grid
+           * everyone recognises. */
           d->tbl_borders = TRUE;
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
@@ -1919,6 +2709,31 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->page->margin_bottom = CLAMP (attr_int (an, av, "bottom", d->page->margin_bottom), 0, 31680);
           d->page->margin_left = CLAMP (attr_int (an, av, "left", d->page->margin_left), 0, 31680);
           d->page->margin_right = CLAMP (attr_int (an, av, "right", d->page->margin_right), 0, 31680);
+        }
+      else if (g_str_equal (tag, "pgBorders"))
+        {
+          d->in_pgborders = TRUE;
+          d->pgborders_from_text = g_strcmp0 (attr (an, av, "offsetFrom"), "page") != 0;
+        }
+      else if (d->in_pgborders && border_edge_index (tag) >= 0 && border_edge_index (tag) < 4)
+        {
+          /* One line serves the four sides in the model, so the last
+           * side with a line is the one kept; Word's space is in points,
+           * from the text unless the element says the page's edge. */
+          W42BorderEdge edge;
+
+          if (border_element (an, av, &edge))
+            {
+              int space = attr_int (an, av, "space", 24) * 20;
+
+              d->page->has_border = 1;
+              d->page->border_style = edge.style;
+              d->page->border_width = edge.width;
+              d->page->border_color = edge.color;
+              d->page->border_space = d->pgborders_from_text
+                                        ? MAX (d->page->margin_top - space - W42_EDGE_WIDTH (&edge), 0)
+                                        : space;
+            }
         }
       else if (g_str_equal (tag, "cols"))
         docx_apply_section_columns (d, attr_int (an, av, "num", 1), attr_int (an, av, "space", 720));
@@ -2123,67 +2938,9 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       d->revision = 0;
     }
   else if (g_str_equal (tag, "drawing"))
-    {
-      const char *target = d->blip != NULL ? g_hash_table_lookup (d->rels, d->blip) : NULL;
-
-      if (d->in_wsp)
-        {
-          /* A shape: drawn by word42 itself, so nothing to read but its
-           * geometry, its outline, its fill and its text. */
-          d->b.ch = d->run_ch;
-          d->b.ch.link = d->link;
-          d->b.ch.revision = (guint8) d->revision;
-          w42_builder_shape (&d->b, d->shape,
-                             (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
-                             (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
-                             d->has_line ? MAX (d->line_pt, 0.25) : 0.0, d->line_rgb,
-                             d->filled, d->fill_rgb,
-                             d->shape_text->len > 0 ? d->shape_text->str : NULL);
-          if (d->anchored)
-            {
-              w42_builder_object_wrap (&d->b, d->wrap);
-              if (d->pos_h_set || d->pos_v_set)
-                w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
-                                             (int) (d->pos_y / EMU_PER_TWIP));
-            }
-          g_string_truncate (d->shape_text, 0);
-          d->in_wsp = FALSE;
-          d->in_drawing = FALSE;
-          return;
-        }
-      if (target != NULL)
-        {
-          char *part = target[0] == '/' ? g_strdup (target + 1) : g_strconcat ("word/", target, NULL);
-          GBytes *bytes = w42_zip_read (d->zip, part);
-          int pw = 0, ph = 0;
-          const char *format = NULL;
-
-          if (bytes != NULL && w42_image_probe (bytes, &pw, &ph, &format))
-            {
-              /* The picture's run carries a font and a size like any other,
-               * and the line it sits on is as tall as they make it.  Only
-               * flushing text picks the run's formatting up, and a run
-               * holding a picture has none. */
-              d->b.ch = d->run_ch;
-              d->b.ch.link = d->link;
-              d->b.ch.revision = (guint8) d->revision;
-              w42_builder_object (&d->b, bytes, format, pw, ph,
-                                  (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
-                                  (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
-              if (d->anchored)
-                {
-                  w42_builder_object_wrap (&d->b, d->wrap);
-                  if (d->pos_h_set || d->pos_v_set)
-                    w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
-                                                 (int) (d->pos_y / EMU_PER_TWIP));
-                }
-            }
-          if (bytes != NULL)
-            g_bytes_unref (bytes);
-          g_free (part);
-        }
-      d->in_drawing = FALSE;
-    }
+    docx_finish_drawing (d);
+  else if (d->in_pict && (g_str_equal (tag, "pict") || g_str_equal (tag, "object")))
+    docx_finish_drawing (d);
   else if (g_str_equal (tag, "tc") && d->depth_tbl == 1)
     {
       docx_flush_text (d);
@@ -2215,6 +2972,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
         }
       d->depth_tbl--;
     }
+  else if (g_str_equal (tag, "pgBorders"))
+    d->in_pgborders = FALSE;
   else if (g_str_equal (tag, "sectPr"))
     d->in_sectpr_body = FALSE;
 }
@@ -2233,7 +2992,10 @@ docx_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data,
         g_string_append_len (d->shape_text, text, len);
     }
   else if (d->in_t)
-    g_string_append_len (d->text, text, len);
+    {
+      if (!d->run_hidden)
+        g_string_append_len (d->text, text, len);
+    }
   else if (d->in_offset)
     {
       char *copy = g_strndup (text, len);
@@ -2278,6 +3040,9 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   d.zip = zip;
   d.rels = outer->rels;
   d.styles = outer->styles;
+  d.table_styles = outer->table_styles;
+  d.major_font = outer->major_font;
+  d.minor_font = outer->minor_font;
   d.numbering = outer->numbering;
   /* A note can hold a picture, a comment or a field like any other text,
    * and the parser looks these up without asking whether they are there. */
@@ -2361,7 +3126,15 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   d.page = page;
   d.zip = zip;
   d.rels = read_rels (zip, "word/_rels/document.xml.rels");
-  d.styles = read_styles (zip, w42_pt_stylesheet (pt));
+  {
+    DocxStyles st;
+
+    read_styles (zip, d.rels, w42_pt_stylesheet (pt), &st);
+    d.styles = st.map;
+    d.table_styles = st.tables;
+    d.major_font = st.major_font;
+    d.minor_font = st.minor_font;
+  }
   read_core_props (zip, pt);
   d.numbering = read_numbering (zip);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
@@ -2401,6 +3174,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   g_hash_table_destroy (d.bookmark_start);
   g_hash_table_destroy (d.rels);
   g_hash_table_destroy (d.styles);
+  g_hash_table_destroy (d.table_styles);
   g_hash_table_destroy (d.numbering);
   g_hash_table_destroy (d.footnotes);
   g_hash_table_destroy (d.endnotes);
@@ -2551,6 +3325,11 @@ write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->allcaps)   g_string_append (rpr, "<w:caps/>");
   if (ch->smallcaps) g_string_append (rpr, "<w:smallCaps/>");
   if (ch->strikeout) g_string_append (rpr, "<w:strike/>");
+  if (ch->dstrike)   g_string_append (rpr, "<w:dstrike/>");
+  if (ch->outline)   g_string_append (rpr, "<w:outline/>");
+  if (ch->shadow)    g_string_append (rpr, "<w:shadow/>");
+  if (ch->emboss)    g_string_append (rpr, "<w:emboss/>");
+  if (ch->engrave)   g_string_append (rpr, "<w:imprint/>");
   if (ch->color != 0)
     g_string_append_printf (rpr, "<w:color w:val=\"%06X\"/>", ch->color);
   if (ch->spacing != 0)
@@ -2695,7 +3474,7 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
 
   if (object->shape != W42_SHAPE_PICTURE)
     {
-      /* A shape, as Word 2010 and later say one: its geometry, its fill,
+      /* A shape, as the newer .docx files say one: its geometry, its fill,
        * its outline and the text in it. */
       const char *prst = object->shape == W42_SHAPE_ELLIPSE ? "ellipse"
                        : object->shape == W42_SHAPE_ROUNDED_RECTANGLE ? "roundRect"
@@ -2911,6 +3690,20 @@ write_sectpr (GString *out, const W42PageSetup *page, int cols, int gap,
   g_string_append_printf (out, "<w:pgSz w:w=\"%d\" w:h=\"%d\"/>", page->width, page->height);
   g_string_append_printf (out, "<w:pgMar w:top=\"%d\" w:right=\"%d\" w:bottom=\"%d\" w:left=\"%d\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>",
                           page->margin_top, page->margin_right, page->margin_bottom, page->margin_left);
+  if (page->has_border)
+    {
+      /* Word's order of the sides, measured from the edge of the paper. */
+      static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
+      W42BorderEdge edge;
+
+      edge.style = page->border_style;
+      edge.width = page->border_width;
+      edge.color = page->border_color;
+      g_string_append (out, "<w:pgBorders w:offsetFrom=\"page\">");
+      for (int i = 0; i < 4; i++)
+        write_border_element (out, order[i], &edge, TRUE, CLAMP (page->border_space / 20, 0, 31));
+      g_string_append (out, "</w:pgBorders>");
+    }
   if (cols > 1)
     g_string_append_printf (out, "<w:cols w:num=\"%d\" w:space=\"%d\"/>", cols, gap);
   if (parts != NULL && parts->title_page)
@@ -3177,8 +3970,15 @@ styles_part (W42StyleSheet *styles)
           g_string_append (out, "<w:pPr>");
           if (s->outline > 0)
             g_string_append (out, "<w:keepNext/>");
-          if (s->pa.space_before || s->pa.space_after)
-            g_string_append_printf (out, "<w:spacing w:before=\"%d\" w:after=\"%d\"/>", s->pa.space_before, s->pa.space_after);
+          if (s->pa.space_before || s->pa.space_after || s->pa.line_spacing_pct > 0 || s->pa.line_spacing > 0)
+            {
+              g_string_append_printf (out, "<w:spacing w:before=\"%d\" w:after=\"%d\"", s->pa.space_before, s->pa.space_after);
+              if (s->pa.line_spacing_pct > 0)
+                g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"auto\"", s->pa.line_spacing_pct * 240 / 100);
+              else if (s->pa.line_spacing > 0)
+                g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"exact\"", s->pa.line_spacing);
+              g_string_append (out, "/>");
+            }
           if (s->pa.indent_left != 0 || s->pa.indent_right != 0 || s->pa.indent_first != 0)
             {
               g_string_append_printf (out, "<w:ind w:left=\"%d\" w:right=\"%d\"", s->pa.indent_left, s->pa.indent_right);

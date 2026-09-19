@@ -1,4 +1,4 @@
-/* w42-docx.h - Word 2007 and later: .docx, read and written
+/* w42-docx.h - .docx, the XML format Word has now: read and written
  *
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later

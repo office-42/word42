@@ -74,6 +74,40 @@ w42_autotext_get (const char *name)
   return found;
 }
 
+char *
+w42_autotext_complete (const char *prefix, char **name)
+{
+  char **names, **texts;
+  char *found = NULL;
+  char *want;
+
+  if (name != NULL)
+    *name = NULL;
+  if (prefix == NULL || g_utf8_strlen (prefix, -1) < 4)
+    return NULL;
+
+  want = g_utf8_casefold (prefix, -1);
+  load (&names, &texts);
+  for (guint i = 0; names[i] != NULL; i++)
+    {
+      char *have = g_utf8_casefold (names[i], -1);
+      gboolean match = g_str_has_prefix (have, want) && strlen (have) > strlen (want);
+
+      g_free (have);
+      if (match)
+        {
+          found = g_strdup (texts[i] != NULL ? texts[i] : "");
+          if (name != NULL)
+            *name = g_strdup (names[i]);
+          break;
+        }
+    }
+  g_strfreev (names);
+  g_strfreev (texts);
+  g_free (want);
+  return found;
+}
+
 void
 w42_autotext_set (const char *name, const char *text)
 {

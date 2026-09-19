@@ -386,7 +386,7 @@ w42_spell_dialog_init (W42SpellDialog *self)
   gtk_widget_add_css_class (self->status, "w42-dialog-status");
   gtk_box_append (GTK_BOX (left), self->status);
 
-  /* The column of buttons down the right, as Word 6 laid them out. */
+  /* The column of buttons down the right, as Word 97 laid them out. */
   right = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
   gtk_box_append (GTK_BOX (columns), right);
 
@@ -407,6 +407,13 @@ w42_spell_dialog_init (W42SpellDialog *self)
   gtk_window_set_default_widget (GTK_WINDOW (self), self->change_btn);
 
   set_buttons_sensitive (self, FALSE);
+}
+
+void
+w42_spell_dialog_set_view (W42SpellDialog *self, W42View *view)
+{
+  g_return_if_fail (W42_IS_SPELL_DIALOG (self));
+  self->view = view;
 }
 
 GtkWidget *

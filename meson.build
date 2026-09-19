@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 project('word42', 'c',
-  version: '1.0.1-dev',
+  version: '1.0.2-dev',
   license: 'GPL-3.0-or-later',
   meson_version: '>= 1.0',
   default_options: [
@@ -19,6 +19,10 @@ gnome = import('gnome')
 add_project_arguments(
   '-DW42_VERSION="' + meson.project_version() + '"',
   '-DG_LOG_DOMAIN="word42"',
+  # MY-BASIC's numbers are doubles.  Every file that includes its header
+  # has to agree with the library about that, since the value union's
+  # size follows from it.
+  '-DMB_DOUBLE_FLOAT',
   language: 'c',
 )
 
@@ -55,7 +59,8 @@ m_dep          = cc.find_library('m', required: false)
 # is trusted only once its headers actually compile: Lexbor before 3.0
 # installs no pkg-config file at all, and 3.0.0's says no include
 # directory -- a bare -I that swallows whatever flag follows it -- so an
-# unchecked answer can poison every compile in the build.
+# unchecked answer can poison every compile in the build.  3.0.1's file
+# is sound, and is the first way tried.
 lexbor_dep = dependency('lexbor', 'liblexbor', version: '>= 2.0',
                         method: 'pkg-config', required: false)
 lexbor_ok = lexbor_dep.found() and \
@@ -114,6 +119,12 @@ if hyphen_dep.found()
   add_project_arguments('-DW42_HYPHEN_DIR="@0@"'.format(get_option('prefix') / get_option('datadir') / 'hyphen'),
                         language: 'c')
 endif
+
+# The thesaurus reads MyThes files -- th_en_US_v2.dat and .idx, the ones
+# LibreOffice uses -- and needs no library; this is where an installed
+# copy is looked for, after the usual system folders.
+add_project_arguments('-DW42_THESAURUS_DIR="@0@"'.format(get_option('prefix') / get_option('datadir') / 'mythes'),
+                      language: 'c')
 
 core_deps = [glib_dep, gobject_dep, gio_dep, cairo_dep, pango_dep,
              pangocairo_dep, pixbuf_dep, lexbor_dep, m_dep]

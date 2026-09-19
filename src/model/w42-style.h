@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * A style is a name for a set of formatting.  Word 6 shipped with Normal,
+ * A style is a name for a set of formatting.  Word 97 shipped with Normal,
  * three headings and a handful of others, and the Style box at the left of
  * the Formatting toolbar applied them.  Headings carry an outline level,
  * which is what lets the document number its sections: a Heading 2 after
@@ -57,7 +57,7 @@ enum {
 
 typedef struct _W42StyleSheet W42StyleSheet;
 
-/* A new sheet holds Word 6's defaults: Normal, Heading 1 to 3, Title. */
+/* A new sheet holds Word 97's defaults: Normal, Heading 1 to 3, Title. */
 W42StyleSheet   *w42_stylesheet_new  (void);
 void             w42_stylesheet_free (W42StyleSheet *sheet);
 
@@ -88,8 +88,8 @@ const char     **w42_stylesheet_descendants (W42StyleSheet *sheet, const char *n
 /* The outline level of a style by name; 0 when the style is unknown. */
 int              w42_stylesheet_outline (W42StyleSheet *sheet, const char *name);
 
-/* Whether headings show their section number.  A document-wide switch,
- * since Word 6 had exactly one: Format > Heading Numbering. */
+/* Whether headings show their section number.  A document-wide switch:
+ * one scheme, 1 and 1.1, is what a report needs. */
 gboolean         w42_stylesheet_get_number_headings (W42StyleSheet *sheet);
 void             w42_stylesheet_set_number_headings (W42StyleSheet *sheet, gboolean on);
 

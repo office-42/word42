@@ -174,3 +174,102 @@ w42_index_build (W42PieceTable *pt, W42Layout *layout,
     *end = at;
   return made;
 }
+
+int
+w42_figures_build (W42PieceTable *pt, W42Layout *layout,
+                   const W42PageSetup *page, gsize at, gsize *end)
+{
+  GPtrArray *blocks;
+  const GArray *lines;
+  int text_twips = 9360;                  /* a letter page's text width */
+  int made = 0;
+
+  g_return_val_if_fail (pt != NULL, 0);
+
+  if (page != NULL)
+    {
+      text_twips = page->width - page->margin_left - page->margin_right;
+      if (w42_page_columns (page) > 1)
+        text_twips = (text_twips - (w42_page_columns (page) - 1) * w42_page_column_gap (page))
+                     / w42_page_columns (page);
+    }
+
+  blocks = w42_pt_snapshot_blocks (pt);
+  lines = layout != NULL ? w42_layout_lines (layout) : NULL;
+
+  for (guint b = 0; b < blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (blocks, b);
+      const W42Fmt *fmt = w42_ap_table_get (w42_pt_ap_table (pt), block->ap);
+      GString *line;
+      W42Fmt efmt;
+      W42ApIdx ap;
+      gsize n;
+      int page_no = 1;
+
+      /* A caption is a paragraph in the Caption style, as Insert > Caption
+       * makes one; the table's own lines are not captions, whatever they
+       * say. */
+      if (fmt->pa.style == NULL || g_ascii_strcasecmp (fmt->pa.style, "Caption") != 0)
+        continue;
+      if (block->note >= 0 || block->text->len == 0)
+        continue;
+      if (block->runs->len > 0)
+        {
+          const W42Run *run = &g_array_index (block->runs, W42Run, 0);
+          const W42CharFmt *ch = &w42_ap_table_get (w42_pt_ap_table (pt), run->ap)->ch;
+
+          if (g_strcmp0 (ch->bookmark, W42_FIGURES_BOOKMARK) == 0)
+            continue;
+        }
+
+      line = g_string_new (NULL);
+      for (const char *p = block->text->str; *p; p = g_utf8_next_char (p))
+        {
+          gunichar c = g_utf8_get_char (p);
+
+          if (c != 0xFFFC && c != '\t')
+            g_string_append_unichar (line, c);
+        }
+      g_strstrip (line->str);
+      g_string_set_size (line, strlen (line->str));
+      if (line->len == 0)
+        {
+          g_string_free (line, TRUE);
+          continue;
+        }
+
+      /* The page the caption starts on, as the layout stands. */
+      for (guint i = 0; lines != NULL && i < lines->len; i++)
+        {
+          const W42LineBox *lb = &g_array_index (lines, W42LineBox, i);
+
+          if (lb->block == (int) b)
+            {
+              page_no = lb->page + 1;
+              break;
+            }
+        }
+      g_string_append_printf (line, "\t%d", page_no);
+
+      w42_fmt_init_default (&efmt);
+      w42_para_fmt_set_tab_leader (&efmt.pa, text_twips, W42_TAB_RIGHT,
+                                   W42_TAB_LEAD_DOT);
+      efmt.ch.bookmark = g_intern_static_string (W42_FIGURES_BOOKMARK);
+      ap = w42_ap_table_intern (w42_pt_ap_table (pt), &efmt);
+
+      n = g_utf8_strlen (line->str, -1);
+      w42_pt_insert_text (pt, at, line->str, ap);
+      w42_pt_insert_block (pt, at + n, ap);
+      w42_pt_apply_para_fmt (pt, at, 0, W42_PARA_INDENT_LEFT | W42_PARA_TABS, &efmt.pa);
+      at += n + 1;
+      made++;
+      g_string_free (line, TRUE);
+    }
+
+  g_ptr_array_free (blocks, TRUE);
+  if (end != NULL)
+    *end = at;
+  return made;
+}
+

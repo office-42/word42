@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * The data source is a CSV file whose first row names the fields.  A field
- * stands in the document as its name between chevrons, «Name», which Word 6
+ * stands in the document as its name between chevrons, «Name», which Word 97
  * showed for its MERGEFIELD.  Merging makes a document with one copy of the
  * main document per row, each field replaced by the row's value, the copies
  * on pages of their own.

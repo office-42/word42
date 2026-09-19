@@ -28,22 +28,32 @@
 #include "w42-print.h"
 #include "w42-scan.h"
 #include "w42-ruler.h"
+#include "w42-docmap.h"
 #include "w42-rtf.h"
 #include "w42-settings.h"
 #include "w42-spell-dialog.h"
+#include "w42-thesaurus.h"
+#include "w42-thesaurus-dialog.h"
 #include "w42-autotext.h"
 #include "w42-template.h"
 #include "w42-help.h"
+#include "w42-macro.h"
 #include "w42-view.h"
 
 static const char *window_author_name (void);
+static void window_saved (W42Window *self, gboolean succeeded);
 
 /* The zoom steps the Standard bar offers; also what Options can make the
  * default. */
-static const double ZOOM_STEPS[] = { 0.75, 1.0, 1.5, 2.0 };
-static const char  *ZOOM_LABELS[] = { "75%", "100%", "150%", "200%" };
+static const double ZOOM_STEPS[] = { 0.5, 0.75, 1.0, 1.5, 2.0 };
+static const char  *ZOOM_LABELS[] = { "50%", "75%", "100%", "150%", "200%" };
+/* After the steps, the box offers the two fits Word 97's did; and after
+ * those, when the zoom is none of the above, one entry saying what it
+ * is, spliced in and out as the zoom changes. */
+static const char  *ZOOM_FIT_LABELS[] = { "Page Width", "Whole Page" };
+#define ZOOM_N_FIXED (G_N_ELEMENTS (ZOOM_LABELS) + G_N_ELEMENTS (ZOOM_FIT_LABELS))
 
-/* The sizes Word 6's Formatting toolbar offered. */
+/* The sizes Word 97's Formatting toolbar offered. */
 static const int FONT_SIZES[] = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 22,
                                   24, 26, 28, 36, 48, 72 };
 
@@ -60,6 +70,7 @@ struct _W42Window {
   GtkWidget   *standard_bar;
   GtkWidget   *format_bar;
   GtkWidget   *ruler;
+  GtkWidget   *doc_map;       /* View > Document Map, at the left of the page */
 
   GtkWidget   *style_drop;
   GtkStringList *style_list;
@@ -83,7 +94,7 @@ struct _W42Window {
   GtkWidget   *menubar;
   GtkWidget   *status_bar;
   /* What View > Full Screen put away, and whether each was showing. */
-  gboolean     full_screen_chrome[4];
+  gboolean     full_screen_chrome[5];
   GtkWidget   *status_page;
   GtkWidget   *status_at;
   GtkWidget   *status_ln;
@@ -113,6 +124,7 @@ struct _W42Window {
   GtkWidget   *find_dialog;   /* modeless; cleared by a weak pointer */
   GtkWidget   *spell_dialog;  /* likewise */
   W42Spell    *spell;         /* NULL when there is no dictionary */
+  W42Thesaurus *thesaurus;    /* made when first asked for; NULL until then */
   GtkWidget   *title_label;   /* word42 draws its own title bar */
 };
 
@@ -123,7 +135,7 @@ static void on_view_state_changed (W42View *view, gpointer data);
 
 /* Commands that can do nothing at all -- no fields to update, no
  * revisions to accept -- say so in the status bar rather than looking
- * broken.  Word 6 wrote its messages there too. */
+ * broken.  Word 97 wrote its messages there too. */
 static gboolean
 window_flash_done (gpointer data)
 {
@@ -159,8 +171,8 @@ static void
 window_sync_paste (W42Window *self)
 {
   GdkClipboard *clipboard = gtk_widget_get_clipboard (GTK_WIDGET (self));
-  gboolean has_text = FALSE;
-  static const char *paste_actions[] = { "paste", "paste-text" };
+  gboolean has_text = FALSE, has_picture = FALSE;
+  GAction *a;
 
   if (clipboard != NULL)
     {
@@ -168,15 +180,17 @@ window_sync_paste (W42Window *self)
 
       has_text = formats != NULL &&
                  gdk_content_formats_contain_gtype (formats, G_TYPE_STRING);
+      has_picture = formats != NULL &&
+                    gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE);
     }
 
-  for (guint i = 0; i < G_N_ELEMENTS (paste_actions); i++)
-    {
-      GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), paste_actions[i]);
-
-      if (a != NULL)
-        g_simple_action_set_enabled (G_SIMPLE_ACTION (a), has_text);
-    }
+  /* Paste takes a picture too; Paste Special is text only. */
+  a = g_action_map_lookup_action (G_ACTION_MAP (self), "paste");
+  if (a != NULL)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (a), has_text || has_picture);
+  a = g_action_map_lookup_action (G_ACTION_MAP (self), "paste-text");
+  if (a != NULL)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (a), has_text);
 }
 
 static void
@@ -262,7 +276,7 @@ file_filters (void)
                                             all_docs));
   g_list_store_append (store, named_filter ("Rich Text Format (*.rtf)", rtf));
   g_list_store_append (store, named_filter ("Word Document (*.docx)", docx));
-  g_list_store_append (store, named_filter ("Word 97-2003 (*.doc)", doc));
+  g_list_store_append (store, named_filter ("Word 97 (*.doc)", doc));
   g_list_store_append (store, named_filter ("OpenDocument Text (*.odt)", odt));
   g_list_store_append (store, named_filter ("AbiWord (*.abw, *.zabw)", abw));
   g_list_store_append (store, named_filter ("Web Pages (*.html)", web));
@@ -537,6 +551,26 @@ w42_window_open (W42Window *self, GFile *file)
   window_note_recent (self, file);
   window_update_title (self);
   window_sync_state (self);
+}
+
+void
+w42_window_flash_status (W42Window *self, const char *text)
+{
+  g_return_if_fail (W42_IS_WINDOW (self));
+  window_flash (self, "%s", text != NULL ? text : "");
+}
+
+gboolean
+w42_window_save_to (W42Window *self, GFile *file, GError **error)
+{
+  gboolean ok;
+
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  ok = w42_document_save (self->doc, file, error);
+  window_saved (self, ok);
+  return ok;
 }
 
 /* A recent file opens here if this window is untouched, else in its own. */
@@ -983,6 +1017,21 @@ action_new_window (GSimpleAction *action, GVariant *param, gpointer data)
  * its own, and the commands, the toolbars and the ruler follow the pane
  * being edited.  Split again puts the window back to one pane. */
 
+/* The ruler and the boxes that stay open -- Find, Spelling -- work on the
+ * pane being edited.  The second pane goes when the window is unsplit,
+ * so a box left pointing at it would be pointing at nothing. */
+static void
+window_pane_changed (W42Window *self)
+{
+  w42_ruler_set_view (self->ruler, self->view);
+  if (self->doc_map != NULL)
+    w42_docmap_set_view (self->doc_map, self->view);
+  if (self->find_dialog != NULL)
+    w42_find_dialog_set_view (W42_FIND_DIALOG (self->find_dialog), self->view);
+  if (self->spell_dialog != NULL)
+    w42_spell_dialog_set_view (W42_SPELL_DIALOG (self->spell_dialog), self->view);
+}
+
 static void
 on_pane_focus_enter (GtkEventControllerFocus *controller, gpointer data)
 {
@@ -992,7 +1041,7 @@ on_pane_focus_enter (GtkEventControllerFocus *controller, gpointer data)
   if (!W42_IS_VIEW (widget) || W42_VIEW (widget) == self->view)
     return;
   self->view = W42_VIEW (widget);
-  w42_ruler_set_view (self->ruler, self->view);
+  window_pane_changed (self);
   window_sync_state (self);
 }
 
@@ -1067,7 +1116,7 @@ window_set_split (W42Window *self, gboolean split)
       if (self->view == self->view2)
         {
           self->view = self->view1;
-          w42_ruler_set_view (self->ruler, self->view);
+          window_pane_changed (self);
         }
       self->view2 = NULL;
       gtk_paned_set_end_child (GTK_PANED (self->paned), NULL);
@@ -1098,6 +1147,18 @@ action_options (GSimpleAction *action, GVariant *param, gpointer data)
   w42_options_dialog_show (GTK_WINDOW (self), self->view);
 }
 
+/* The View menu's names for the three views, which the settings file and
+ * the view-mode action use too. */
+static W42ViewMode
+view_mode_from_name (const char *name)
+{
+  if (g_strcmp0 (name, "page-layout") == 0)
+    return W42_VIEW_PAGE_LAYOUT;
+  if (g_strcmp0 (name, "online") == 0)
+    return W42_VIEW_ONLINE;
+  return W42_VIEW_NORMAL;
+}
+
 /* What Tools > Options and the View menu remembered, applied to a new
  * window. */
 static void
@@ -1105,24 +1166,19 @@ window_apply_settings (W42Window *self)
 {
   char *view = w42_settings_get_string ("default-view", "page-layout");
   int zoom = w42_settings_get_int ("zoom", 100);
-  gboolean paged = g_str_equal (view, "page-layout");
+  W42ViewMode mode = view_mode_from_name (view);
   GAction *act;
 
   act = g_action_map_lookup_action (G_ACTION_MAP (self), "view-mode");
-  w42_view_set_mode (self->view, paged ? W42_VIEW_PAGE_LAYOUT : W42_VIEW_NORMAL);
+  w42_view_set_mode (self->view, mode);
   if (act != NULL)
     g_simple_action_set_state (G_SIMPLE_ACTION (act),
-                               g_variant_new_string (paged ? "page-layout" : "normal"));
+                               g_variant_new_string (mode == W42_VIEW_PAGE_LAYOUT ? "page-layout"
+                                                     : mode == W42_VIEW_ONLINE ? "online" : "normal"));
   g_free (view);
 
-  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_STEPS); i++)
-    if ((int) lround (ZOOM_STEPS[i] * 100) == zoom)
-      {
-        self->updating = TRUE;
-        w42_view_set_zoom (self->view, ZOOM_STEPS[i]);
-        gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), i);
-        self->updating = FALSE;
-      }
+  if (zoom >= 25 && zoom <= 500)
+    w42_view_set_zoom (self->view, zoom / 100.0);
 
   {
     struct { const char *key; const char *action; GtkWidget *widget; } bars[] = {
@@ -1140,6 +1196,17 @@ window_apply_settings (W42Window *self)
         if (act != NULL)
           g_simple_action_set_state (G_SIMPLE_ACTION (act), g_variant_new_boolean (visible));
       }
+  }
+
+  /* The Document Map starts out away, as Word 97's did, unless it was
+   * showing when the program was last used. */
+  {
+    gboolean visible = w42_settings_get_bool ("show-document-map", FALSE);
+
+    gtk_widget_set_visible (self->doc_map, visible);
+    act = g_action_map_lookup_action (G_ACTION_MAP (self), "document-map");
+    if (act != NULL)
+      g_simple_action_set_state (G_SIMPLE_ACTION (act), g_variant_new_boolean (visible));
   }
 }
 
@@ -1329,10 +1396,8 @@ action_view_mode (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   const char *which = g_variant_get_string (param, NULL);
-  gboolean paged = g_strcmp0 (which, "page-layout") == 0;
 
-  w42_view_set_mode (self->view,
-                     paged ? W42_VIEW_PAGE_LAYOUT : W42_VIEW_NORMAL);
+  w42_view_set_mode (self->view, view_mode_from_name (which));
   g_simple_action_set_state (action, g_variant_new_string (which));
 }
 
@@ -1344,14 +1409,26 @@ action_zoom (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action;
   w42_view_set_zoom (self->view, zoom);
-  /* The Zoom box on the toolbar shows the same. */
-  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_STEPS); i++)
-    if (ABS (ZOOM_STEPS[i] - zoom) < 0.001)
-      {
-        self->updating = TRUE;
-        gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), i);
-        self->updating = FALSE;
-      }
+}
+
+static void
+action_zoom_fit (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  const char *what = g_variant_get_string (param, NULL);
+
+  (void) action;
+  w42_view_set_zoom (self->view,
+                     w42_view_fit_zoom (self->view, g_str_equal (what, "page")));
+}
+
+static void
+action_zoom_dialog (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_zoom_dialog_show (GTK_WINDOW (self), self->view);
 }
 
 static void
@@ -1365,7 +1442,7 @@ action_show_marks (GSimpleAction *action, GVariant *param, gpointer data)
   g_variant_unref (state);
   g_simple_action_set_state (action, g_variant_new_boolean (on));
   w42_view_set_show_marks (self->view, on);
-  /* Not remembered: a document opens clean, as in Word 6; the marks are a
+  /* Not remembered: a document opens clean, as in Word 97; the marks are a
    * look under the bonnet, one keystroke away. */
 }
 
@@ -1392,6 +1469,21 @@ action_toggle_ruler (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_set_visible (self->ruler, visible);
   g_simple_action_set_state (action, g_variant_new_boolean (visible));
   w42_settings_set_bool ("show-ruler", visible);
+}
+
+/* View > Document Map */
+static void
+action_document_map (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  gboolean visible;
+
+  (void) param;
+
+  visible = !gtk_widget_get_visible (self->doc_map);
+  gtk_widget_set_visible (self->doc_map, visible);
+  g_simple_action_set_state (action, g_variant_new_boolean (visible));
+  w42_settings_set_bool ("show-document-map", visible);
 }
 
 static void
@@ -1471,7 +1563,7 @@ on_font_dialog_done (GObject *source, GAsyncResult *result, gpointer data)
   pango_font_description_free (desc);
 }
 
-/* Ctrl+] and Ctrl+[: the size a point up or down, as Word 6 stepped it. */
+/* Ctrl+] and Ctrl+[: the size a point up or down, as Word 97 stepped it. */
 /* The name from Options > User Info, or the account's. */
 static const char *
 window_author_name (void)
@@ -1530,7 +1622,7 @@ action_font_dialog (GSimpleAction *action, GVariant *param, gpointer data)
   g_object_unref (dialog);
 }
 
-/* Word 6's About box was a banner, a version line and an OK button, and so is
+/* Word 97's About box was a banner, a version line and an OK button, and so is
  * this one.  It is built by hand rather than with GtkAboutDialog because the
  * whole point of the banner is that it should not look like every other GTK
  * dialog on the desktop. */
@@ -1714,6 +1806,41 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
   g_clear_error (&error);
 }
 
+/* File > Web Page Preview: Word 97 wrote the document out as a web page
+ * and opened it in the browser, so that what a reader on the web would
+ * see could be seen.  The page goes to the cache folder, one file written
+ * over each time, so nothing is left lying about. */
+static void
+action_web_preview (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  char *dir = g_build_filename (g_get_user_cache_dir (), "word42", NULL);
+  char *path = g_build_filename (dir, "preview.html", NULL);
+  GFile *file;
+
+  (void) action; (void) param;
+
+  g_mkdir_with_parents (dir, 0700);
+  file = g_file_new_for_path (path);
+  if (w42_html_export (w42_document_pt (self->doc),
+                       w42_document_page_setup (self->doc), file, &error))
+    {
+      char *uri = g_file_get_uri (file);
+      GtkUriLauncher *launcher = gtk_uri_launcher_new (uri);
+
+      gtk_uri_launcher_launch (launcher, GTK_WINDOW (self), NULL, NULL, NULL);
+      g_object_unref (launcher);
+      g_free (uri);
+    }
+  else
+    show_error (self, "Word42 could not write the web page to preview.", error);
+  g_clear_error (&error);
+  g_object_unref (file);
+  g_free (path);
+  g_free (dir);
+}
+
 static void
 action_export_html (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -1872,8 +1999,24 @@ action_print (GSimpleAction *action, GVariant *param, gpointer data)
       if (end > start)
         extras.selection = w42_pt_extract (w42_document_pt (self->doc), start, end - start);
     }
-  w42_layout_describe_pos (w42_view_get_layout (self->view), w42_view_get_caret (self->view),
-                           &page, &line, &column);
+  {
+    /* Normal view's layout is one galley, on which every position is on
+     * page 1; the printed page comes from a paginated layout. */
+    W42Layout *layout = w42_view_get_layout (self->view);
+    W42Layout *paged = NULL;
+
+    if (w42_layout_get_galley (layout))
+      {
+        paged = w42_layout_new ();
+        w42_layout_set_galley (paged, FALSE);
+        w42_layout_build (paged, self->doc);
+        layout = paged;
+      }
+    w42_layout_describe_pos (layout, w42_view_get_caret (self->view),
+                             &page, &line, &column);
+    if (paged != NULL)
+      w42_layout_free (paged);
+  }
   extras.current_page = page;
   w42_print_document (GTK_WINDOW (self), self->doc, FALSE, &extras);
 }
@@ -1999,6 +2142,8 @@ action_table_autofit (GSimpleAction *action, GVariant *param, gpointer data)
     w42_view_table_distribute_rows (self->view);
   else if (g_str_equal (what, "columns"))
     w42_view_table_distribute_columns (self->view);
+  else if (g_str_equal (what, "contents"))
+    w42_view_table_autofit_contents (self->view);
   else
     w42_view_table_autofit_window (self->view);
 }
@@ -2116,6 +2261,26 @@ action_insert_index (GSimpleAction *action, GVariant *param, gpointer data)
     show_message (self, "There is nothing marked for the index.",
                   "Select a word and use Insert â¸ Index Entry to "
                   "mark it, then ask for the index again.");
+}
+
+static void
+action_table_of_figures (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+
+  if (w42_view_caret_in_note (self->view))
+    {
+      window_flash (self, "The caret is in a note: put it in the body of the "
+                          "document first.");
+      return;
+    }
+
+  if (w42_view_insert_table_of_figures (self->view) == 0)
+    show_message (self, "There are no captions to list.",
+                  "Insert \u25b8 Caption puts a caption under a picture, "
+                  "and the table of figures lists them.");
 }
 
 static void
@@ -2339,6 +2504,33 @@ action_background (GSimpleAction *action, GVariant *param, gpointer data)
 }
 
 static void
+action_macros (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_macros_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+/* Alt+F11: the editor on the macro last edited, or a first one. */
+static void
+action_macro_editor (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  char *name = w42_settings_get_string ("last-macro", "Macro1");
+
+  (void) action; (void) param;
+  if (!w42_macro_name_ok (name))
+    {
+      g_free (name);
+      name = g_strdup ("Macro1");
+    }
+  w42_settings_set_string ("last-macro", name);
+  w42_macro_editor_show (GTK_WINDOW (self), self->view, name);
+  g_free (name);
+}
+
+static void
 action_autotext (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
@@ -2550,6 +2742,30 @@ action_insert_symbol (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   w42_symbol_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+/* Tools > Language > Thesaurus (Shift+F7).  The thesaurus is read the
+ * first time it is asked for: its index is a few megabytes, which is
+ * not worth every window's start. */
+static void
+action_thesaurus (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+
+  if (self->thesaurus == NULL)
+    self->thesaurus = w42_thesaurus_new ();
+  if (self->thesaurus == NULL)
+    {
+      show_message (self, "No thesaurus was found.",
+                    "The thesaurus needs a MyThes file for your language -- "
+                    "th_en_US_v2.dat and its .idx, the ones LibreOffice uses -- "
+                    "in the mythes folder.");
+      return;
+    }
+  if (!w42_thesaurus_dialog_show (GTK_WINDOW (self), self->view, self->thesaurus))
+    window_flash (self, "Put the caret in a word to look it up in the thesaurus.");
 }
 
 static void
@@ -2878,7 +3094,8 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
     "option) any later version.  It comes with ABSOLUTELY NO WARRANTY.\n\n"
     "Word42 is an independent program, not affiliated with or endorsed by "
     "the makers of any other word processor.  The names of file formats "
-    "appear only to say which format is meant.");
+    "appear only to say which format is meant.\n\n"
+    "Macros run on MY-BASIC by Tony Wang, used under the MIT licence.");
   gtk_label_set_wrap (GTK_LABEL (licence), TRUE);
   gtk_label_set_max_width_chars (GTK_LABEL (licence), 52);
   gtk_label_set_xalign (GTK_LABEL (licence), 0.0);
@@ -2906,7 +3123,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
 /* Title bar                                                               */
 /* ---------------------------------------------------------------------- */
 
-/* Word 6's title bar was navy with its name centred on it in white, and the
+/* Word 97's title bar was navy with its name on it in white, and the
  * desktop's own title bar cannot be made to look like that.  So word42 draws
  * its own: a GtkWindowHandle, which keeps dragging and the double-click to
  * maximise working, wrapped round a centre box. */
@@ -3087,11 +3304,52 @@ on_zoom_selected (GtkDropDown *drop, GParamSpec *pspec, gpointer data)
     return;
 
   index = gtk_drop_down_get_selected (drop);
-  if (index == GTK_INVALID_LIST_POSITION || index >= G_N_ELEMENTS (ZOOM_STEPS))
+  if (index == GTK_INVALID_LIST_POSITION || index >= ZOOM_N_FIXED)
     return;
 
-  w42_view_set_zoom (self->view, ZOOM_STEPS[index]);
+  if (index < G_N_ELEMENTS (ZOOM_STEPS))
+    w42_view_set_zoom (self->view, ZOOM_STEPS[index]);
+  else
+    w42_view_set_zoom (self->view,
+                       w42_view_fit_zoom (self->view,
+                                          index - G_N_ELEMENTS (ZOOM_STEPS) == 1));
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+/* The Zoom box shows the zoom the pane being edited has: one of its
+ * steps, or an entry of its own for any other figure. */
+static void
+window_sync_zoom_box (W42Window *self)
+{
+  double zoom;
+  GtkStringList *list;
+  guint n;
+  guint want = GTK_INVALID_LIST_POSITION;
+
+  if (self->zoom_drop == NULL || self->view == NULL)
+    return;
+  zoom = w42_view_get_zoom (self->view);
+  list = GTK_STRING_LIST (gtk_drop_down_get_model (GTK_DROP_DOWN (self->zoom_drop)));
+  n = g_list_model_get_n_items (G_LIST_MODEL (list));
+
+  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_STEPS); i++)
+    if (ABS (ZOOM_STEPS[i] - zoom) < 0.005)
+      want = i;
+
+  if (want == GTK_INVALID_LIST_POSITION)
+    {
+      char label[16];
+      const char *labels[] = { label, NULL };
+
+      g_snprintf (label, sizeof label, "%d%%", (int) lround (zoom * 100));
+      gtk_string_list_splice (list, ZOOM_N_FIXED, n - ZOOM_N_FIXED, labels);
+      want = ZOOM_N_FIXED;
+    }
+  else if (n > ZOOM_N_FIXED)
+    gtk_string_list_splice (list, ZOOM_N_FIXED, n - ZOOM_N_FIXED, NULL);
+
+  if (gtk_drop_down_get_selected (GTK_DROP_DOWN (self->zoom_drop)) != want)
+    gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), want);
 }
 
 static GtkWidget *
@@ -3121,7 +3379,7 @@ build_standard_bar (void)
   return bar;
 }
 
-/* Word 6 kept the zoom control at the right-hand end of the Standard bar. */
+/* Word 97 kept the zoom control at the right-hand end of the Standard bar. */
 static GtkWidget *
 build_zoom_drop (W42Window *self)
 {
@@ -3129,9 +3387,11 @@ build_zoom_drop (W42Window *self)
 
   for (guint i = 0; i < G_N_ELEMENTS (ZOOM_LABELS); i++)
     gtk_string_list_append (steps, ZOOM_LABELS[i]);
+  for (guint i = 0; i < G_N_ELEMENTS (ZOOM_FIT_LABELS); i++)
+    gtk_string_list_append (steps, ZOOM_FIT_LABELS[i]);
 
   self->zoom_drop = gtk_drop_down_new (G_LIST_MODEL (steps), NULL);
-  gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), 1);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), 2);
   gtk_widget_set_size_request (self->zoom_drop, 72, -1);
   gtk_widget_set_tooltip_text (self->zoom_drop, "Zoom Control");
   g_signal_connect (self->zoom_drop, "notify::selected",
@@ -3319,7 +3579,7 @@ build_format_bar (W42Window *self)
   gtk_widget_add_css_class (bar, "w42-toolbar");
 
   {
-    /* The Style box, at the left end as Word 6 had it. */
+    /* The Style box, at the left end as Word 97 had it. */
     self->style_list = gtk_string_list_new (NULL);
     self->style_drop = gtk_drop_down_new (g_object_ref (G_LIST_MODEL (self->style_list)), NULL);
     gtk_widget_set_size_request (self->style_drop, 120, -1);
@@ -3431,7 +3691,7 @@ build_status_bar (W42Window *self)
   gtk_widget_set_hexpand (self->status_mod, TRUE);
   gtk_label_set_xalign (GTK_LABEL (self->status_mod), 0.0);
 
-  /* Each reading sits in its own sunken well, as Word 6's readings did. */
+  /* Each reading sits in its own sunken well, as Word 97's readings did. */
   {
     GtkWidget *cells[] = { self->status_page, self->status_at,
                            self->status_ln, self->status_col,
@@ -3453,7 +3713,7 @@ build_status_bar (W42Window *self)
 
 /* ---------------------------------------------------------------------- */
 /* Keeping the chrome in step with the document                            */
-/* The Window menu lists the open documents, numbered as Word 6 did. */
+/* The Window menu lists the open documents, numbered as Word 97 did. */
 static int
 window_by_serial (gconstpointer a, gconstpointer b)
 {
@@ -3641,6 +3901,57 @@ on_insert_file_response (GObject *source, GAsyncResult *result, gpointer data)
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
+/* Tools > Track Changes > Compare Documents: the file chosen is the
+ * original, and what this document has that it had not is marked
+ * inserted, what it had that this has not is put back marked deleted. */
+static void
+on_compare_response (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
+
+  if (file != NULL)
+    {
+      W42PieceTable *other = w42_pt_new ();
+
+      if (w42_io_load (other, NULL, file, &error))
+        {
+          int n = w42_view_compare_with (self->view, other);
+
+          if (n == 0)
+            window_flash (self, "The two documents are the same.");
+          else
+            window_flash (self, n == 1 ? "1 change marked."
+                                       : "%d changes marked.", n);
+        }
+      else
+        show_error (self, "Word42 could not read that file.", error);
+      w42_pt_free (other);
+      g_object_unref (file);
+    }
+  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
+                                              GTK_DIALOG_ERROR_DISMISSED))
+    show_error (self, "Word42 could not open that file.", error);
+  g_clear_error (&error);
+  gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+static void
+action_compare_documents (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
+  GListModel *filters = file_filters ();
+
+  (void) action; (void) param;
+  gtk_file_dialog_set_title (dialog, "Compare Documents: the original");
+  gtk_file_dialog_set_filters (dialog, filters);
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_compare_response, self);
+  g_object_unref (filters);
+  g_object_unref (dialog);
+}
+
 static void
 action_insert_file (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -3662,13 +3973,14 @@ action_insert_file (GSimpleAction *action, GVariant *param, gpointer data)
 static void
 window_set_full_screen (W42Window *self, gboolean on)
 {
-  GtkWidget *chrome[4];
+  GtkWidget *chrome[5];
   GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), "full-screen");
 
   chrome[0] = self->menubar;
   chrome[1] = self->standard_bar;
   chrome[2] = self->format_bar;
   chrome[3] = self->ruler;
+  chrome[4] = self->doc_map;
 
   for (guint i = 0; i < G_N_ELEMENTS (chrome); i++)
     {
@@ -3847,6 +4159,7 @@ window_sync_state (W42Window *self)
   gboolean has_sel;
 
   self->updating = TRUE;
+  window_sync_zoom_box (self);
 
   window_sync_style_list (self);
   {
@@ -3923,9 +4236,22 @@ window_sync_state (W42Window *self)
     {
       gpointer found = g_hash_table_lookup (self->family_index, fmt.family);
 
-      if (found != NULL)
-        gtk_drop_down_set_selected (GTK_DROP_DOWN (self->font_drop),
-                                    GPOINTER_TO_UINT (found) - 1);
+      if (found == NULL)
+        {
+          /* A face the machine does not have -- a Word file's Calibri on
+           * a machine without it -- is still what the document says,
+           * and the box says so, as Word's does, rather than showing
+           * whichever installed face happens to come first.  The name
+           * joins the list, at the end, so the drop-down can show it. */
+          guint n = g_list_model_get_n_items (self->families);
+
+          gtk_string_list_append (GTK_STRING_LIST (self->families), fmt.family);
+          g_hash_table_insert (self->family_index, (gpointer) fmt.family,
+                               GUINT_TO_POINTER (n + 1));
+          found = GUINT_TO_POINTER (n + 1);
+        }
+      gtk_drop_down_set_selected (GTK_DROP_DOWN (self->font_drop),
+                                  GPOINTER_TO_UINT (found) - 1);
     }
 
   w42_layout_describe_pos (layout, w42_view_get_caret (self->view),
@@ -4070,6 +4396,10 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "underline",  action_underline,  NULL, NULL,    NULL, { 0 } },
   { "align",      action_align,      "s",  NULL,    NULL, { 0 } },
   { "zoom",       action_zoom,       "d",  NULL,    NULL, { 0 } },
+  { "zoom-fit",   action_zoom_fit,   "s",  NULL,    NULL, { 0 } },
+  { "zoom-dialog", action_zoom_dialog, NULL, NULL,  NULL, { 0 } },
+  { "macros",     action_macros,     NULL, NULL,    NULL, { 0 } },
+  { "macro-editor", action_macro_editor, NULL, NULL, NULL, { 0 } },
   { "view-mode",  action_view_mode,  "s",  "'normal'", NULL, { 0 } },
   { "font",       action_font_dialog, NULL, NULL,   NULL, { 0 } },
   { "font-grow",   action_font_step, NULL, NULL, NULL, { 0 } },
@@ -4113,6 +4443,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "heading-numbering", action_heading_numbering, NULL, "false", NULL, { 0 } },
   { "list-bullets", action_list, NULL, "false", NULL, { 0 } },
   { "spelling",   action_spelling,   NULL, NULL,   NULL, { 0 } },
+  { "thesaurus",  action_thesaurus,  NULL, NULL,   NULL, { 0 } },
   { "go-to",         action_go_to,         NULL, NULL, NULL, { 0 } },
   { "new-window",    action_new_window,    NULL, NULL, NULL, { 0 } },
   { "split-window",  action_split_window,  NULL, "false", NULL, { 0 } },
@@ -4133,6 +4464,9 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "insert-index",  action_insert_index,  NULL, NULL, NULL, { 0 } },
   { "open-recent",   action_open_recent,   "s",  NULL, NULL, { 0 } },
   { "export-html",   action_export_html,   NULL, NULL, NULL, { 0 } },
+  { "web-preview",   action_web_preview,   NULL, NULL, NULL, { 0 } },
+  { "table-of-figures", action_table_of_figures, NULL, NULL, NULL, { 0 } },
+  { "compare-documents", action_compare_documents, NULL, NULL, NULL, { 0 } },
   { "bookmark",      action_bookmark,      NULL, NULL, NULL, { 0 } },
   { "annotation",    action_annotation,    NULL, NULL, NULL, { 0 } },
   { "mail-merge",    action_mail_merge,    NULL, NULL, NULL, { 0 } },
@@ -4178,6 +4512,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "word-count", action_word_count, NULL, NULL,    NULL, { 0 } },
   { "about",      action_about,      NULL, NULL,    NULL, { 0 } },
   { "ruler",       action_toggle_ruler,   NULL, "true", NULL, { 0 } },
+  { "document-map", action_document_map,  NULL, "false", NULL, { 0 } },
   { "show-marks",  action_show_marks,     NULL, "false", NULL, { 0 } },
   { "column-break", action_column_break,  NULL, NULL, NULL, { 0 } },
   { "standard-bar", action_toggle_toolbar, NULL, "true", NULL, { 0 } },
@@ -4236,6 +4571,7 @@ w42_window_dispose (GObject *object)
         w42_view_set_spell (self->view, NULL);
       g_clear_pointer (&self->spell, w42_spell_free);
     }
+  g_clear_pointer (&self->thesaurus, w42_thesaurus_free);
 
   if (self->autosave_id != 0)
     {
@@ -4264,7 +4600,7 @@ w42_window_class_init (W42WindowClass *klass)
 static void
 w42_window_init (W42Window *self)
 {
-  GtkWidget *box, *scrolled, *menubar;
+  GtkWidget *box, *right, *scrolled, *menubar;
   GtkBuilder *builder;
   GMenuModel *model;
 
@@ -4374,8 +4710,15 @@ w42_window_init (W42Window *self)
   gtk_box_append (GTK_BOX (box), self->format_bar);
 
   self->ruler = w42_ruler_new (self->view);
+  self->doc_map = w42_docmap_new (self->view);
   window_apply_settings (self);   /* now that the bars it sets exist */
-  gtk_box_append (GTK_BOX (box), self->ruler);
+
+  /* The ruler sits over the page, not over the Document Map, so the two
+   * share a box at the right of the map: the ruler's zero is then the
+   * page's, whatever the map's width. */
+  right = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_hexpand (right, TRUE);
+  gtk_box_append (GTK_BOX (right), self->ruler);
 
   scrolled = gtk_scrolled_window_new ();
   gtk_widget_set_vexpand (scrolled, TRUE);
@@ -4392,7 +4735,23 @@ w42_window_init (W42Window *self)
   gtk_paned_set_start_child (GTK_PANED (self->paned), scrolled);
   gtk_paned_set_resize_start_child (GTK_PANED (self->paned), TRUE);
   gtk_paned_set_shrink_start_child (GTK_PANED (self->paned), FALSE);
-  gtk_box_append (GTK_BOX (box), self->paned);
+  gtk_box_append (GTK_BOX (right), self->paned);
+
+  /* The Document Map at the left, with a bar to drag between it and the
+   * page; hidden, the paned is just the page. */
+  {
+    GtkWidget *hpaned = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
+
+    gtk_widget_set_vexpand (hpaned, TRUE);
+    gtk_paned_set_start_child (GTK_PANED (hpaned), self->doc_map);
+    gtk_paned_set_resize_start_child (GTK_PANED (hpaned), FALSE);
+    gtk_paned_set_shrink_start_child (GTK_PANED (hpaned), FALSE);
+    gtk_paned_set_end_child (GTK_PANED (hpaned), right);
+    gtk_paned_set_resize_end_child (GTK_PANED (hpaned), TRUE);
+    gtk_paned_set_shrink_end_child (GTK_PANED (hpaned), FALSE);
+    gtk_paned_set_position (GTK_PANED (hpaned), 200);
+    gtk_box_append (GTK_BOX (box), hpaned);
+  }
 
   {
     GtkEventController *keys = gtk_event_controller_key_new ();

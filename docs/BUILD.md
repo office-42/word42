@@ -23,6 +23,18 @@ meson configure builddir -Dprefix=$HOME/.local
 meson install -C builddir
 ```
 
+## Optional
+
+Four things are found if they are installed and done without if not:
+**poppler-glib** to read PDF, **Enchant** (with a Hunspell dictionary)
+for spelling, **libhyphen** with a `hyph_*.dic` for hyphenation, and a
+**MyThes** thesaurus -- `th_en_US_v2.dat` and `.idx`, the pair
+LibreOffice uses -- for Tools ▸ Language ▸ Thesaurus. The thesaurus
+needs no library: the files are looked for in the mythes folder
+(`/usr/share/mythes`, `$prefix/share/mythes`, or `W42_THESAURUS_DIR`).
+On Debian and Ubuntu: `libpoppler-glib-dev libenchant-2-dev
+hunspell-en-us libhyphen-dev hyphen-en-us mythes-en-us`.
+
 ## Linux
 
 ```sh
@@ -42,16 +54,17 @@ Debian, Ubuntu and Fedora do not package Lexbor yet; it builds from
 source in about a minute:
 
 ```sh
-git clone --depth 1 --branch v2.7.0 https://github.com/lexbor/lexbor.git
+git clone --depth 1 --branch v3.0.1 https://github.com/lexbor/lexbor.git
 cmake -S lexbor -B lexbor/build -DCMAKE_BUILD_TYPE=Release
 cmake --build lexbor/build -j"$(nproc)"
 sudo cmake --install lexbor/build
 sudo ldconfig
 ```
 
-(Lexbor before 3.0 installs no pkg-config file; Word42's Meson looks for
-the library directly when pkg-config comes back empty-handed, so the
-above is all that is needed.)
+(Lexbor 3.0.1 installs a pkg-config file that Meson finds on its own;
+2.x installs none, and 3.0.0's is broken, so Word42's Meson falls back to
+the CMake package and then to the bare library, and the above is all
+that is needed either way.)
 
 ## macOS
 

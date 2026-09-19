@@ -6,15 +6,21 @@
 A classic word processor, written from scratch in C on GTK 4, Pango and
 Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
 
-![Word42 in Page Layout view: the opening of Genesis — "In the beginning God created the heaven and the earth" — set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending](docs/images/screenshot.png)
+![Word42 in Page Layout view, open at the first chapter of John in the King James Bible — "In the beginning was the Word, and the Word was with God, and the Word was God" — the verses set justified with superscript numbers under the book's heading, on page 1437 of the sample document](docs/images/screenshot.png)
 
 A working word processor: typing, formatting, styles and numbered headings,
 headers and footers, footnotes and endnotes, tables, pictures, lists,
-columns, find and replace, spelling, hyphenation, mail merge, a split
-window, a page-layout view and print preview — reading and writing RTF,
-OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and plain
-text. [docs/STATUS.md](docs/STATUS.md) lists what it does,
-[Word42.md](Word42.md) what it does not do yet, and the
+columns, page borders, find and replace, spelling, a thesaurus,
+hyphenation, mail merge, macros in a dialect of VBA, a Document Map,
+Compare Documents, a split window, Normal, Online Layout and Page Layout
+views and print preview — reading and writing
+RTF, OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and
+plain text. Word 97 is the yardstick: its menus are the specification
+and [docs/PARITY.md](docs/PARITY.md) keeps the score against it.
+[docs/STATUS.md](docs/STATUS.md) lists what it does,
+[Word42.md](Word42.md) what it does not do yet,
+[docs/COMPARISON.md](docs/COMPARISON.md) sets it beside Word, AbiWord
+and LibreOffice Writer on size, speed, files and features, and the
 [user guide](docs/GUIDE.md) describes every command in the program.
 
 ## Getting it
@@ -29,9 +35,10 @@ from source; a Flatpak manifest is in `build-aux/`.
 
 Word42 needs a C11 compiler, Meson, Ninja, and GTK 4.10 or newer with
 Pango, Cairo and gdk-pixbuf, plus [Lexbor](https://lexbor.com/) for HTML.
-Reading PDF needs poppler-glib; without it Word42 still builds, writes PDF,
-and simply cannot open one. Per-platform dependency lists are in
-[docs/BUILD.md](docs/BUILD.md).
+Reading PDF needs poppler-glib, spelling needs Enchant, hyphenation
+libhyphen and the thesaurus a MyThes file; without any of them Word42
+still builds and says which is missing. Per-platform dependency lists are
+in [docs/BUILD.md](docs/BUILD.md).
 
 ```sh
 meson setup builddir

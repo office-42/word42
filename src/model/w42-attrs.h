@@ -18,9 +18,8 @@ typedef guint32 W42ApIdx;
 
 #define W42_AP_INVALID ((W42ApIdx) G_MAXUINT32)
 
-/* How a run is underlined.  Word 6 offered None, Single, Words Only and
- * Double; the others are what the file formats can say, and what other
- * programs write. */
+/* How a run is underlined.  Word 97's Font box offered these and a few
+ * more; these are the ones every file format can say. */
 typedef enum {
   W42_UNDERLINE_NONE = 0,
   W42_UNDERLINE_SINGLE,
@@ -40,6 +39,14 @@ typedef struct {
   guint       underline : 3;   /* W42Underline: 0 none, 1 single, ... */
   guint       strikeout : 1;
   guint       overline  : 1;   /* AbiWord has it; Word never did */
+  /* The rest of Word 97's Font box effects.  The shadow and
+   * the relief are drawn as offset copies of the glyphs; outline leaves
+   * them hollow; double strikethrough is two lines where one was. */
+  guint       dstrike   : 1;
+  guint       shadow    : 1;
+  guint       outline   : 1;
+  guint       emboss    : 1;   /* raised out of the page ... */
+  guint       engrave   : 1;   /* ... or pressed into it; never both */
   gint8       script;      /* -1 subscript, 0 normal, +1 superscript */
   guint8      smallcaps;
   guint8      allcaps;
@@ -92,7 +99,7 @@ typedef enum {
   W42_TAB_DECIMAL
 } W42TabKind;
 
-/* What fills the gap in front of a tab stop.  Word 6 offered these four
+/* What fills the gap in front of a tab stop.  Word 97 offered these four
  * on its Tabs dialog, and a table of contents is unreadable without the
  * dots. */
 typedef enum {
@@ -136,7 +143,7 @@ enum {
   W42_N_EDGES
 };
 
-/* How a border's line is drawn.  Word XP's Borders and Shading dialog
+/* How a border's line is drawn.  Word 97's Borders and Shading dialog
  * offered two dozen; these are the ones every file format can say, and
  * the rest come in as the nearest of them. */
 typedef enum {
@@ -240,6 +247,9 @@ void w42_roman_lower (int n, char *out, gsize size);
 
 /* Word's sixteen highlight colours, by the index RTF and .doc use. */
 guint32 w42_highlight_rgb (int index);
+/* And the index of the one nearest a colour; white, which is no
+ * highlight to look at, is 0. */
+int     w42_highlight_nearest (guint32 rgb);
 
 /* Sets a stop at `pos`, replacing one already there; clears one. */
 void w42_para_fmt_set_tab   (W42ParaFmt *pa, int pos, W42TabKind kind);

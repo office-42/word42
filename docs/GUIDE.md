@@ -82,7 +82,7 @@ throw away.
 | --- | --- | --- |
 | Rich Text Format (`.rtf`) | yes | yes |
 | Word document (`.docx`) | yes | yes |
-| Word 97–2003 (`.doc`) | yes | — (save as `.rtf` or `.docx`) |
+| Word 97 (`.doc`) | yes | — (save as `.rtf` or `.docx`) |
 | OpenDocument Text (`.odt`) | yes | yes |
 | AbiWord (`.abw`, `.zabw`) | yes | yes |
 | Web page (`.html`, `.htm`) | yes | yes |
@@ -99,7 +99,9 @@ has been changed.
 What survives a round trip depends on the format. RTF, `.docx`, `.odt` and
 `.abw` carry the whole document — styles, tables, pictures, notes, fields,
 headers and footers, revision marks. HTML carries the text and most of its
-formatting. Plain text carries the text.
+formatting, the Summary Info, bookmarks, frames and drop caps included; a
+page from Word or LibreOffice comes in with its stylesheet followed. Plain
+text carries the text.
 
 ### Summary Info
 
@@ -161,7 +163,7 @@ bookmark by name.
 | Repeat | F4 | Does the last thing again: the last run of typing goes in at the caret, or the last character or paragraph formatting, style, or change of case goes on the selection. Only the last action can be repeated — edit anything else and Repeat greys out. |
 | Cut | Ctrl+X | Removes the selection and puts it on the clipboard. |
 | Copy | Ctrl+C | Puts the selection on the clipboard. |
-| Paste | Ctrl+V | Puts the clipboard in at the caret, with its formatting. |
+| Paste | Ctrl+V | Puts the clipboard in at the caret, with its formatting. A picture on the clipboard — a screenshot, or an image copied from a browser — goes in as a picture. |
 | Paste Special | — | Puts the clipboard in as plain text, taking the formatting of the text round it. |
 | Clear | Del | Removes the selection without touching the clipboard. |
 | AutoText... | — | Keeps the selected text under a name, and puts a kept piece of text in at the caret. |
@@ -176,9 +178,19 @@ is kept: pick one and **Insert** puts it in at the caret, and **Delete**
 takes it out of the list for good.
 
 Typing the name and pressing **Ctrl+F3** puts the entry in without the box,
-the way Word 6's F3 did (F3 alone is Find Next here). Entries are kept
+the way Word 97's F3 did (F3 alone is Find Next here). Entries are kept
 between runs, in the settings file; what is kept is the text, not its
 formatting, so an entry takes the formatting of the place it lands in.
+
+**AutoComplete.** Once the first four or more letters of an entry's name
+are typed, a small tip appears over the caret with the entry's first
+line and "(Press ENTER to Insert)", as Word 97's did. Enter puts the
+whole entry in, in place of the letters typed; Escape, or going on
+typing, takes the tip away and nothing else happens. The entry and the
+letters it replaces are one undo step. The months and the days of the
+week are offered the same way from their first four letters, and the
+first letters of the current month offer today's date — "Sept" in
+September offers "September 16, 2026".
 
 ### Find and Replace
 
@@ -221,6 +233,14 @@ the effects — strikeout, superscript, subscript — with a preview.
 The rest of them: strikethrough, overline, superscript, subscript, small
 capitals, all capitals, a highlight colour, and character spacing (letters
 pushed apart or drawn together, in points).
+
+Word 97's five as well: **double strikethrough**, **shadow** (a grey copy
+of the letters below and to the right), **outline** (the letters hollow),
+**emboss** (raised out of the page: white letters lit from the top left)
+and **engrave** (pressed into it). Emboss and engrave cannot both be on.
+Every painter draws them alike, so they print and export to PDF as they
+show, and RTF, Word and OpenDocument carry all five both ways; HTML says
+what CSS can.
 
 It also carries the **underline**, which has seven kinds: single, double,
 words only (the spaces between words are left alone), dotted, dashed,
@@ -305,7 +325,7 @@ ours.
 ### Format ▸ Borders and Shading
 
 A line above, below, to the left or right of a paragraph, or round it:
-single, double, dashed or dotted, in any of Word XP's nine weights from a
+single, double, dashed or dotted, in any of Word 97's nine weights from a
 quarter point to six, in any of the sixteen colours, and a grey shading or
 a colour behind it. Everything that draws the document draws them, so they
 print and export as they appear.
@@ -315,6 +335,16 @@ sides, their line, its background -- or to the whole table, where the
 checked sides are the table's outside, "Inside" rules between its cells,
 and the line is drawn round it all. Where two cells disagree about the
 rule between them, the heavier line wins, as in Word.
+
+**Page Border.** The same box's last group puts a line round every page,
+as Word 97's Page Border tab did: its style, width and colour, and its
+distance from the edge of the paper in points (Word's 24 unless the
+document says otherwise). It is the document's, not the paragraph's: it
+shows in Page Layout view, in Print Preview, on paper and in PDF, and
+Normal view, having no pages, has no border. RTF (`\pgbrdrt` and the
+others), Word (`w:pgBorders`) and OpenDocument (`fo:border` on the page
+layout, with the margins turned into its padding as LibreOffice has
+them) carry it both ways; HTML writes it into the `@page` rule.
 
 ### Bullets and numbering
 
@@ -408,7 +438,7 @@ view.
 ## 9. Tables
 
 **Table ▸ Insert ▸ Table** puts a grid of any size after the paragraph
-you are in. The Table menu is laid out as Word XP laid it out: Insert,
+you are in. The Table menu gathers its commands as Word's later versions did: Insert,
 Delete and Select as submenus, then the cell commands, AutoFormat and
 AutoFit, and the rest.
 
@@ -433,6 +463,7 @@ header rows.
 | Split Table | Makes the caret's row the first row of a table of its own. |
 | Table AutoFormat | A list of ready-made looks -- rules, shading, a bold heading -- with a preview; the one chosen goes on the caret's table in a single undo step. |
 | Select ▸ Table / Column / Row / Cell | Selects that much of it. A column's selection runs from its first cell to its last. |
+| AutoFit ▸ AutoFit to Contents | Makes each column as wide as its widest cell wants to be on one line; a table that would then be wider than the text column is scaled down to fit it. |
 | AutoFit ▸ AutoFit to Window | Widens or narrows the table to the text column, keeping the columns' proportions. |
 | AutoFit ▸ Distribute Rows Evenly | Gives every row the tallest set height. |
 | AutoFit ▸ Distribute Columns Evenly | Gives every column an equal share of the table's width. |
@@ -500,7 +531,7 @@ keeping its proportions, a side to stretch it. A dotted outline shows the
 size it will be until you let go.
 
 **Format ▸ Picture** sets the size by number and how the text treats it,
-in Word XP's terms: in line with the text; at the left or right with the
+in Word 97's terms: in line with the text; at the left or right with the
 text running down the other side; top and bottom, with the text stopping
 above it and going on below; in front of the text, which runs on under
 it; or behind the text. A picture read from a file that was put at a
@@ -556,11 +587,14 @@ the bookmarked text itself.
 
 ### Table of contents
 
-**Insert ▸ Table of Contents** puts one paragraph per heading at the caret,
+Word 97 kept the tables a document builds from itself under one
+submenu, **Insert ▸ Index and Tables**, and so does Word42.
+
+**Insert ▸ Index and Tables ▸ Table of Contents** puts one paragraph per heading at the caret,
 indented by level, with dots running out to the page number at a right tab
 stop at the margin.
-It is ordinary text, to edit or delete freely. **Insert ▸ Update Table of
-Contents** rebuilds it in place from the headings and page numbers as they
+It is ordinary text, to edit or delete freely. **Insert ▸ Index and
+Tables ▸ Update Table of Contents** rebuilds it in place from the headings and page numbers as they
 now are.
 
 ### Index
@@ -568,12 +602,13 @@ now are.
 An index is made the way a book's is: mark the words as you write, then
 gather them.
 
-Select a word or a phrase and **Insert ▸ Index ▸ Mark Entry** marks it.
+Select a word or a phrase and **Insert ▸ Index and Tables ▸ Mark Index
+Entry** marks it.
 The box offers the words themselves as the entry; type something else to
 file it under that instead — "Cats" marked, but filed under "Animals".
 The words on the page do not change and read as they did.
 
-**Insert ▸ Index ▸ Build the Index** puts the index in at the caret: one
+**Insert ▸ Index and Tables ▸ Index** puts the index in at the caret: one
 paragraph per entry, in alphabetical order, with the page numbers at a
 right tab stop and dots leading out to them. Ask for it again and the
 index already there is replaced where it stands, so it can be brought up
@@ -584,14 +619,20 @@ The marks travel with the document: RTF and Word carry them as XE
 fields, OpenDocument as the pair of index marks it has for the purpose,
 and LibreOffice reads all three as its own index entries.
 
-### Captions and annotations
+**Insert ▸ Index and Tables ▸ Table of Figures** lists the captions —
+every paragraph in the Caption style, which is what Insert ▸ Caption
+makes — in the order they come, each with its page number at a right tab
+stop and dots leading out to it, at the caret. Ask for it again and the
+table is replaced where it stands, as the index is.
+
+### Captions and comments
 
 **Insert ▸ Caption** starts a "Figure N:" paragraph in the Caption style,
 N counting on from the captions already there.
 
-**Insert ▸ Annotation** (Ctrl+Alt+A) attaches a note to the selected text,
-shown as a pale wash. The annotations box lists them, selects each one on a
-click, and deletes them. They carry your name from Tools ▸ Options.
+**Insert ▸ Comment** (Ctrl+Alt+A) attaches a note to the selected text,
+shown as a pale wash, as Word 97 named what had been annotations. The
+comments box lists them, selects each one on a click, and deletes them. They carry your name from Tools ▸ Options.
 
 ### Fields
 
@@ -625,8 +666,12 @@ any dictionary at all, the box says so.
 
 ### Tools ▸ Language
 
-**Tools ▸ Language** marks the selected text as written in a language of
-its own: pick it from the list, and the spelling checker uses the
+Word 97 gathered the language tools under one submenu, and so does
+Word42: **Set Language**, **Thesaurus**, and the two hyphenation
+commands.
+
+**Tools ▸ Language ▸ Set Language** marks the selected text as written in
+a language of its own: pick it from the list, and the spelling checker uses the
 dictionary for it rather than the document's. A tick in the list marks the
 languages a dictionary is installed for; the first entry leaves the text
 in the document's own language, and "(no proofing)" says the text is not
@@ -638,9 +683,29 @@ bold is. The mark travels with the text: RTF carries it as `\lang`, Word
 as `w:lang`, OpenDocument as `fo:language` and `fo:country`, AbiWord as
 its `lang` property and HTML as `lang=`.
 
+**Tools ▸ Language ▸ Thesaurus** (Shift+F7) looks up the word at the
+caret, or the selection, in Word 97's box: the word under **Looked Up**,
+its **Meanings** down the left with the part of speech beside each, and
+the synonyms of the chosen meaning down the right with the one picked
+in the **Replace with Synonym** box. **Replace** puts that word in place
+of the one looked up; **Look Up** looks up whatever is in the box, so
+the thesaurus can be walked from word to word, and **Previous** goes
+back a step. A synonym double-clicked is looked up too.
+
+The thesaurus is a MyThes file -- `th_en_US_v2.dat` and its `.idx`, the
+pair LibreOffice uses -- for your language, looked for in the mythes
+folder (`/usr/share/mythes` and its like, or `W42_THESAURUS_DIR`).
+Without one the command says so. English files come with LibreOffice
+and as the `mythes-en-us` package on Debian and Ubuntu.
+
+**Hyphenate Document** puts soft hyphens into words by the language's
+patterns, so lines may break inside words; **Remove Hyphenation** takes
+them out again. The soft hyphens travel in RTF and HTML, and the spelling
+checker looks past them.
+
 ### Tools ▸ AutoCorrect
 
-What is put right as you type, as Word 6 did it:
+What is put right as you type, as Word 97 did it:
 
 - **Quotes** — a straight `"` or `'` becomes the opening or closing curly
   one, whichever fits where it stands.
@@ -678,20 +743,26 @@ The delivery address starts as whatever is selected in the document, and
 the return address as the name in Tools ▸ Options. Sizes are named by
 what they measure rather than by any maker's catalogue number.
 
-### Tools ▸ Hyphenation
+### Tools ▸ Track Changes
 
-**Hyphenate Document** puts soft hyphens into words by the language's
-patterns, so lines may break inside words; **Remove Hyphenation** takes
-them out again. The soft hyphens travel in RTF and HTML, and the spelling
-checker looks past them.
-
-### Tools ▸ Revisions
-
-**Mark Revisions While Editing** (Ctrl+Shift+E): from then on, text you
-type is underlined in red and text you delete is struck through in red
-rather than removed. **Accept All Revisions** keeps the insertions and
-drops the deletions; **Reject All Revisions** does the opposite. The marks
+**Highlight Changes** (Ctrl+Shift+E): from then on, text you type is
+underlined in red and text you delete is struck through in red rather
+than removed. **Accept All Changes** keeps the insertions and drops the
+deletions; **Reject All Changes** does the opposite. The marks
 survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
+
+**Compare Documents** asks for an earlier version of the open document
+— any file Word42 reads — and marks how the open one differs from it, as
+if every change since had been made with Highlight Changes on: words
+that are only here are underlined as insertions, and words that were
+only there are put back where they stood, struck through as deletions;
+a paragraph that was taken out comes back whole, and one that was added
+is marked whole. The paragraphs are matched first and then the words
+within the ones that changed, so a paragraph moved a little reads as
+one change rather than as a hundred. The whole comparison is one undo
+step, and Accept All Changes and Reject All Changes work on it as on any
+other: accept and the document is as it is, reject and it is the
+original again.
 
 ### Tools ▸ Mail Merge
 
@@ -699,6 +770,94 @@ survive in RTF and `.docx`, and export to HTML as `<ins>` and `<del>`.
 2. **Insert Merge Field** puts «Name» into the letter.
 3. **Merge to New Document** writes one copy of the letter per record, each
    on its own page, and opens the result in a new window.
+
+### Tools ▸ Macro
+
+Word 97 brought Visual Basic for Applications to Word; Word42 has **Word42 Basic**, a
+dialect of Visual Basic for Applications that runs on the MY-BASIC
+interpreter built into the program. A macro is a file of it in the
+`word42/macros` folder of your data directory, holding one Sub or more.
+Nothing runs on its own: there is no AutoOpen, and a document carries no
+macros. A macro runs when you run it, and everything it does to the
+document is one undo step.
+
+**Tools ▸ Macro ▸ Macros...** (Alt+F8) is Word 97's Macros box: the macros
+in the folder, listed as `File.Sub` (a file with one Sub of its own name
+is listed by the name alone), with **Run**, **Create**, **Edit** and
+**Delete**. Type a new name and press Create to start one; it opens in
+the editor as an empty Sub.
+
+**Tools ▸ Macro ▸ Macro Editor...** (Alt+F11) opens the editor on the
+macro last edited, or a first one. The editor is a window of its own
+beside the document: the text at the top, a box choosing which Sub to
+run, **Run** (F5), **Save** (Ctrl+S) and **Close**, and a pane at the
+bottom where `Debug.Print` writes and where an error is reported with
+the line it was on. Run saves first.
+
+#### The language
+
+Written the way VBA is written, and translated for the engine line by
+line:
+
+- `Sub Name()` ... `End Sub`, `Function Name(a, b)` ... `End Function`
+  with the result assigned to the function's name, `Exit Sub`, `Exit
+  Function`; `Private` and `Public` are accepted and mean nothing.
+- `Dim x As String`, `Dim n As Integer, ok As Boolean`, `Dim a(10)`
+  (eleven elements, 0 to 10; the size must be a number), `Const`,
+  `Set`, `Let`.
+- `If ... Then ... ElseIf ... Else ... End If`, and the one-line `If c
+  Then a Else b`; `Select Case` with `Case 1, 2`, `Case 3 To 9`,
+  `Case Is > 9` and `Case Else`.
+- `For i = 1 To 10 Step 2` ... `Next`; `Do While` / `Do Until` ...
+  `Loop`; `Do` ... `Loop While` / `Loop Until`; `While` ... `Wend`;
+  `Exit For`, `Exit Do`.
+- `With Selection.Font` ... `.Bold = True` ... `End With`.
+- `&` joins strings (a number joined becomes its digits), `\` divides
+  to a whole number, `Mod`, `^`, `And`, `Or`, `Not`, `<>`; `' comment`
+  and `Rem`; a line ending in ` _` continues on the next; `:` between
+  statements on one line.
+- Named arguments, `Selection.TypeText Text:="Hello"`, in any order.
+- `True`, `False`, `Nothing`, `vbCr`, `vbCrLf`, `vbTab`, the `vbOK`...
+  and `vbYes`... button values, the `vb` and `wd` colours, and the
+  `wd` constants named below.
+
+Functions: `MsgBox(prompt[, buttons[, title]])` returning `vbOK`,
+`vbYes`, `vbNo` or `vbCancel`; `InputBox(prompt[, title[, default]])`;
+`Len`, `Left`, `Right`, `Mid` (counted from 1), `UCase`, `LCase`,
+`Trim`, `LTrim`, `RTrim`, `InStr`, `Replace`, `Space`, `String`,
+`StrReverse`, `Chr`, `Asc`, `Str`, `Val`, `CStr`, `CInt`, `CDbl`,
+`Int`, `Fix`, `Abs`, `Sqr`, `Round`, `Rnd`, `IsNumeric`, `IIf`, `Hex`,
+`Format`, `Now`, `Date`, `Time`, `Year`, `Month`, `Day`, `Timer`.
+
+Not there: `For Each`, `GoTo` and labels, `On Error` (accepted and
+ignored: an error stops the macro and says where), user types and
+classes, `Optional` defaults, objects held in variables (`Set r =
+Selection` cannot be followed by `r.Text`; write `Selection.Text`).
+
+#### The object model
+
+Word's names, as far as Word42 has the thing behind them. A property
+is read in an expression and set by assignment.
+
+| Object | Members |
+| --- | --- |
+| `Selection` | `TypeText text`, `TypeParagraph`, `TypeBackspace`, `Delete [unit, count]`, `Text` (read and set), `Start`, `End` (read and set, as document positions), `MoveLeft` / `MoveRight` / `MoveUp` / `MoveDown [unit, count, extend]`, `HomeKey` / `EndKey [unit, extend]`, `Collapse [direction]`, `WholeStory`, `Copy`, `Cut`, `Paste`, `InsertBefore text`, `InsertAfter text`, `Style` (a name, or `wdStyleNormal`, `wdStyleHeading1`..`3`, `wdStyleTitle`), `Words.Count`, `Characters.Count`, `Paragraphs.Count` |
+| `Selection.Font` | `Bold`, `Italic`, `Underline` (`wdUnderlineNone`, `Single`, `Words`, `Double`), `StrikeThrough`, `Superscript`, `Subscript`, `AllCaps`, `SmallCaps`, `Size` (points), `Name`, `Color` (Word's `vb`/`wd` colours); a switch set to `wdToggle` turns over |
+| `Selection.ParagraphFormat` | `Alignment` (`wdAlignParagraphLeft`, `Center`, `Right`, `Justify`), `LeftIndent`, `RightIndent`, `FirstLineIndent`, `SpaceBefore`, `SpaceAfter` (points) |
+| `Selection.Find` | `Text`, `Replacement.Text`, `MatchCase`, `MatchWholeWord`, `Forward`, `Wrap`, `ClearFormatting`; `Execute([FindText, MatchCase, MatchWholeWord, , , , Forward, Wrap, , ReplaceWith, Replace])` selects the next match and is True when one was found; `Replace:=wdReplaceOne` or `wdReplaceAll` |
+| `ActiveDocument` | `Name`, `FullName`, `Path`, `Saved`, `Save`, `SaveAs name[, format]` (the extension decides the format; none is Rich Text), `Close [wdDoNotSaveChanges]`, `Content.Text` / `Range.Text` (the whole text, read and set), `Words.Count`, `Characters.Count`, `Paragraphs.Count`, `Pages.Count`, `Tables.Count`, `ComputeStatistics(wdStatisticWords`...`)`, `Undo`, `Redo`, `Select`, `PrintOut` |
+| `Application` | `Name`, `Version`, `StatusBar = text`, `ScreenUpdating`, `DisplayAlerts` (accepted), `ActiveWindow.Caption`, `Quit` |
+| `Documents` | `Count`, `Add`, `Open name` |
+| `Debug` | `Print a, b` to the editor's pane and the status bar |
+
+Units for moving are `wdCharacter`, `wdWord`, `wdLine`, `wdParagraph`
+and `wdStory`; `wdExtend` extends the selection instead of moving the
+caret; `wdCollapseStart` and `wdCollapseEnd` say where Collapse leaves
+it.
+
+A macro that runs longer than a few minutes of statements is stopped,
+so a loop that never ends cannot take the program with it. Three
+macros to start from are in `samples/macros`.
 
 ### Tools ▸ Options
 
@@ -718,7 +877,7 @@ with the toolbar and ruler switches from the View menu.
 
 ## 13. Views and windows
 
-### View ▸ Normal and View ▸ Page Layout
+### View ▸ Normal, Online Layout and Page Layout
 
 **Normal** is a continuous galley: one column, no page furniture, the
 fastest way to write. **Page Layout** is the printed page — sheets with
@@ -726,19 +885,43 @@ their margins, headers, footers, columns and footnotes in place, centred on
 a light grey desk. Both use the same layout engine, so what you see in one
 is what the other will print.
 
-The zoom box on the standard toolbar runs from 25% to 500%; the View menu
-has 75%, 100%, 150% and 200%.
+**Online Layout** is Word 97's third view, for reading on a screen rather
+than on paper: the galley again, but as wide as the window, with the
+text wrapping to it and wrapping again when the window is resized; zoom
+makes the words larger and fewer to a line rather than the galley wider.
+No pages, so no page border, headers or footers; Print and Print Preview
+still paginate. Tools ▸ Options can make any of the three the view a
+document opens in.
+
+The zoom box on the standard toolbar offers 50%, 75%, 100%, 150% and
+200%, Page Width and Whole Page, and shows whatever figure is in force.
+View ▸ Zoom has the same, and **View ▸ Zoom...** opens Word 97's box:
+200%, 100%, 75%, Page Width, Whole Page, or any percentage from 25 to
+500 typed in. Page Width fits the sheet between the window's edges;
+Whole Page fits the whole sheet in the window.
 
 ### View ▸ Show Formatting Marks (Ctrl+Shift+8)
 
 A dot for every space, an arrow for a tab, a bent arrow for a line break
 and a pilcrow at every paragraph end, in blue.
 
+### View ▸ Document Map
+
+Word 97's pane down the left of the window: every heading in the
+document, indented by its level, with the one the caret is under shown
+selected. Click a heading and the caret goes to it and the page scrolls
+to show it. The list follows the text as it is typed -- a heading added,
+renamed or taken out shows a moment later -- and shows the section
+numbers when Format ▸ Heading Numbering is on. The Title counts as the
+top of the outline, as it does in the slide show; headings in tables and
+notes are not listed. A bar between the map and the page drags to size
+it, and the setting is remembered between runs.
+
 ### View ▸ Full Screen
 
-Gives the page the whole screen: the menu bar, both toolbars, the ruler
-and the status bar go away. Escape brings them back, or View ▸ Full
-Screen again.
+Gives the page the whole screen: the menu bar, both toolbars, the ruler,
+the Document Map and the status bar go away. Escape brings them back, or
+View ▸ Full Screen again.
 
 ### View ▸ Slide Show
 
@@ -775,7 +958,7 @@ raise it.
 
 ## 14. Printing and exporting
 
-**File ▸ Print** (Ctrl+P) opens Word42's Print box, laid out as Word XP's
+**File ▸ Print** (Ctrl+P) opens Word42's Print box, laid out as Word 97's
 was: the printer the last job went to; a page range -- All, Current page,
 Selection, or Pages typed as `1,3,5-12`; the number of copies and Collate;
 All, Odd or Even pages in the range; and the options that mean something
@@ -789,7 +972,7 @@ printer can be given. What the box was left at is what it opens with next
 time, in this session and the next.
 
 **File ▸ Print Preview** (Ctrl+F2) opens Word42's own preview, with the
-bar Word XP's had: Print, One Page, Multiple Pages (two across, then
+bar Word 97's had: Print, One Page, Multiple Pages (two across, then
 three), Zoom Out and In, a zoom box with the percentages, Page Width, Whole
 Page and Two Pages, Previous and Next, a page counter and Close. Click a
 page and the magnifier takes it to 100% round the point clicked; click
@@ -802,10 +985,15 @@ all.
 
 **File ▸ Export as Web Page** writes one self-contained HTML file:
 headings, paragraphs with their alignment and indents, runs with their
-font, size, weight, colour and links, lists, tables, pictures embedded in
-the file itself, footnotes as links to the notes at the end, annotations as
-tooltips, and revision marks as `<ins>` and `<del>`. Nothing is left
-pointing at another file, so the page can be sent as it is.
+font, size, weight, colour, links and bookmarks, lists, tables, pictures
+embedded in the file itself, footnotes as links to the notes at the end,
+annotations as tooltips, revision marks as `<ins>` and `<del>`, and the
+Summary Info as `<meta>` tags. Nothing is left pointing at another file,
+so the page can be sent as it is.
+
+**File ▸ Web Page Preview** writes that page to the cache folder and
+opens it in the browser, so that what a reader on the web would see can
+be seen without saving anything; one file is written over each time.
 
 Fields are updated before printing and before either export.
 
@@ -914,7 +1102,7 @@ about the document is sent anywhere.
 | Ctrl+Alt+N | Go to note |
 | Ctrl+K | Hyperlink |
 | Ctrl+Shift+F5 | Bookmark |
-| Ctrl+Alt+A | Annotation |
+| Ctrl+Alt+A | Comment |
 | Alt+Shift+D | Date and time |
 | F9 | Update fields |
 
@@ -923,11 +1111,14 @@ about the document is sent anywhere.
 | Key | Command |
 | --- | --- |
 | F7 | Spelling |
+| Shift+F7 | Thesaurus |
 | Ctrl+Shift+E | Mark revisions while editing |
 | Ctrl+Shift+8 | Show formatting marks |
 | F1 | Help contents |
 | Shift+F10 | The context menu, at the caret |
 | Escape | Leave Full Screen |
+| Alt+F8 | Macros |
+| Alt+F11 | Macro Editor |
 
 ---
 
@@ -937,6 +1128,7 @@ about the document is sent anywhere.
 | --- | --- |
 | Settings — units, default view and zoom, your name, toolbar and ruler switches | The `word42` folder in your configuration directory (`%APPDATA%` on Windows, `~/.config` elsewhere) |
 | Autosave copies | The `word42/autosave` folder in your data directory |
+| Macros | The `word42/macros` folder in your data directory, one `.bas` file each |
 | Recent files | With the settings |
 
 Word42 is free software under the GNU General Public License, version 3 or

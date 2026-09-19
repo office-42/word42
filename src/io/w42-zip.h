@@ -30,6 +30,10 @@ GBytes *w42_zip_read  (W42Zip *zip, const char *name);
 W42ZipWriter *w42_zip_writer_new  (void);
 void          w42_zip_writer_add  (W42ZipWriter *writer, const char *name,
                                    const void *data, gsize length);
+/* The same, stored as it is whatever deflate would make of it: what a
+ * package's mimetype entry has to be. */
+void          w42_zip_writer_add_stored (W42ZipWriter *writer, const char *name,
+                                         const void *data, gsize length);
 gboolean      w42_zip_writer_save (W42ZipWriter *writer, GFile *file, GError **error);
 void          w42_zip_writer_free (W42ZipWriter *writer);
 

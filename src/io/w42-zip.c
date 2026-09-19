@@ -321,8 +321,9 @@ w42_zip_writer_new (void)
   return w;
 }
 
-void
-w42_zip_writer_add (W42ZipWriter *writer, const char *name, const void *data, gsize length)
+static void
+add_entry (W42ZipWriter *writer, const char *name, const void *data, gsize length,
+           gboolean store)
 {
   WriteEntry e;
   GBytes *packed;
@@ -334,7 +335,7 @@ w42_zip_writer_add (W42ZipWriter *writer, const char *name, const void *data, gs
   e.name = g_strdup (name);
   e.crc = crc32_of (data, length);
   e.size = (guint32) length;
-  packed = length > 0 ? deflate_raw (data, length) : NULL;
+  packed = length > 0 && !store ? deflate_raw (data, length) : NULL;
   if (packed != NULL && g_bytes_get_size (packed) < length)
     {
       e.data = packed;
@@ -349,6 +350,18 @@ w42_zip_writer_add (W42ZipWriter *writer, const char *name, const void *data, gs
     }
   e.offset = 0;
   g_array_append_val (writer->entries, e);
+}
+
+void
+w42_zip_writer_add (W42ZipWriter *writer, const char *name, const void *data, gsize length)
+{
+  add_entry (writer, name, data, length, FALSE);
+}
+
+void
+w42_zip_writer_add_stored (W42ZipWriter *writer, const char *name, const void *data, gsize length)
+{
+  add_entry (writer, name, data, length, TRUE);
 }
 
 static void

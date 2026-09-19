@@ -58,3 +58,33 @@ features. `-` marks what is missing, and why.
 
 Everything else — every feature in the list above, in every one of these
 files — is read.
+
+## A long document: the Bible
+
+`bible-kjv.docx` is the whole of the King James Bible -- sixty-six
+books, 31 102 verses, four million characters -- as a Word 2007
+document: Word 2007's own defaults (Calibri 11 on the theme's minor
+font, Cambria headings in Word's blues, ten points after each
+paragraph, 1.15 lines), a Title, a Heading 1 for each book, a Heading 2
+for each chapter, every verse a justified paragraph opened by its
+number in superscript, a header, a page-number field in the footer, and
+beside the opening of Genesis a picture of the first day, drawn for the
+purpose and so the project's own work like the rest of its artwork.
+
+It is here to be opened: a document of seventeen hundred pages is
+what a word processor has to take in its stride, and this one loads in
+a fifth of a second and lays out in three or four.  The text is the Authorized
+Version of 1611, which is in the public domain; it was taken from the
+plain-text King James in the scrollmapper `bible_databases` repository
+on GitHub and set into WordprocessingML by a generator in the project's
+scratchpad, the same way `feature-tour.odt` was made.
+
+## Macros
+
+`macros/` holds three macros in Word42 Basic, the VBA dialect Tools ▸
+Macro runs: `Letterhead.bas` puts a title, the date and a greeting at
+the top of a document, `WordReport.bas` has two Subs -- one reports the
+document's counts in a message box, the other puts every "teh" right --
+and `Emphasis.bas` toggles bold red on the selection. Copy them into the
+`word42/macros` folder of your data directory (Tools ▸ Macro ▸ Macros
+says where) and they appear in the Macro box.

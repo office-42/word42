@@ -15,7 +15,7 @@
 
 G_BEGIN_DECLS
 
-/* Word 6 measured everything in twips (twentieths of a point, 1/1440 inch)
+/* Word 97 measured everything in twips (twentieths of a point, 1/1440 inch)
  * and so do we.  Layout happens at a fixed 96 dpi reference resolution; the
  * zoom factor is applied as a cairo scale at paint time, so a document lays
  * out identically at every zoom level. */
@@ -30,7 +30,7 @@ static inline double w42_px_to_twips (double px)    { return px   * W42_TWIPS_PE
  * formats: 20 == 10pt.  Pango wants points. */
 static inline double w42_halfpt_to_pt (int halfpt) { return halfpt / 2.0; }
 
-/* Page geometry, in twips.  Word 6 called this Page Setup. */
+/* Page geometry, in twips.  Word 97 called this Page Setup. */
 typedef struct {
   int width;
   int height;
@@ -42,6 +42,14 @@ typedef struct {
   int column_gap;       /* twips between them; 0 means a half inch */
   guint8  has_background;  /* the page has a colour of its own */
   guint32 background;      /* 0x00RRGGBB, when it has */
+  /* Word 97's page border: one line round every page, at a distance
+   * from the paper's edge.  The style is a W42BorderStyle; the width is
+   * in twips, 0 for the hairline. */
+  guint8  has_border;
+  guint8  border_style;
+  guint8  border_width;
+  int     border_space;    /* twips from the edge of the paper to the line */
+  guint32 border_color;    /* 0x00RRGGBB */
 } W42PageSetup;
 
 static inline int w42_page_columns (const W42PageSetup *page)

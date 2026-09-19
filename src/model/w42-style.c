@@ -49,7 +49,7 @@ w42_stylesheet_new (void)
 
   sheet->styles = g_ptr_array_new_with_free_func (g_free);
 
-  /* Word 6's own definitions, near enough: Normal in 10pt Times, headings in
+  /* Word 97's own definitions, near enough: Normal in 10pt Times, headings in
    * Arial with space above, a title centred and large. */
   g_ptr_array_add (sheet->styles,
     style_new ("Normal",    "Times New Roman", 20, FALSE, FALSE,   0,   0, 0));

@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Word 6's File > New listed templates and made a document out of the
+ * Word 97's File > New listed templates and made a document out of the
  * one chosen.  These are the ones that travel with the program, built in
  * the model rather than read from a file so that they cannot go missing;
  * a document saved into the templates folder joins the same list.

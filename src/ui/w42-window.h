@@ -17,11 +17,16 @@ G_DECLARE_FINAL_TYPE (W42Window, w42_window, W42, WINDOW, GtkApplicationWindow)
 
 GtkWidget *w42_window_new  (GtkApplication *app);
 
-/* Another window on a document that is already open in one, as Word 6's
+/* Another window on a document that is already open in one, as Word 97's
  * Window > New Window gave you: both show the same text, and an edit in
  * either appears in both. */
 GtkWidget *w42_window_new_for_document (GtkApplication *app, W42Document *doc);
 void       w42_window_open (W42Window *self, GFile *file);
+/* For macros: a line in the status bar, and the document written to a
+ * file as File > Save As would, with the title and the recent list
+ * following. */
+void       w42_window_flash_status (W42Window *self, const char *text);
+gboolean   w42_window_save_to (W42Window *self, GFile *file, GError **error);
 
 /* An empty document in a new window, for the commands that make a
  * document of their own -- an envelope, a sheet of labels.  The window

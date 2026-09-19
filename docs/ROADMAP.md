@@ -1,13 +1,23 @@
 # Roadmap
 
-What Word42 does today is in the README; how it measures against AbiWord
-and Word is in docs/PARITY.md.  This is what it does not do yet, in
-roughly the order the work makes sense.
+What Word42 does today is in the README; how it measures against Word 97
+and AbiWord is in docs/PARITY.md.  Word 97 is the target now -- Word42.md
+says why -- and the work is what Word 97 has that this has not.  This is
+what it does not do yet, in roughly the order the work makes sense.
 
 The menus already name some of these and show them greyed out.  That is
 deliberate: the menu bar is the specification.
 
 ## Next
+
+**Word 97's additions**, in the order they close the most ground:
+positioned text boxes and editable drawing objects; revisions coloured
+by author; Outline view; vertical text in cells; File > Versions.  Done
+in the twelfth round: the Document Map, the page border, the Font box's
+shadow, outline, emboss, engrave and double strikethrough, the
+thesaurus, and AutoComplete tips for AutoText; in the thirteenth:
+Online Layout view, Compare Documents, the Table of Figures, Web Page
+Preview, AutoComplete for dates, and Word 97's own menu names.
 
 **Headers and footers edited in place**, with pictures and several
 paragraphs, different on the first page and on odd and even pages.
@@ -65,8 +75,8 @@ and ruler following the pane being edited.
 
 - Text boxes placed anywhere on the page, and frames with borders.
 - Pictures wrapped top-and-bottom, or set behind the text.
-- Word .doc: metafile pictures; Word 6/95 formatting (only their text
-  is read today).  Writing .doc is probably never worth doing.
+- Word .doc: metafile pictures; the formatting of files from before
+  Word 97 (only their text is read today).  Writing .doc is probably never worth doing.
 - Translations (gettext; the menus are already marked translatable).
 - Accessibility: the drawn canvas exposes no text to screen readers.
 - Publishing: the Windows Store submission itself (the MSIX is built
@@ -80,10 +90,14 @@ left of a presentation program -- pictures and shapes placed on a slide,
 speaker's notes, transitions, a slide sorter -- is not planned: this is a
 word processor that can give a talk, not a presentation program.
 
-## Not planned
+## Macros
 
-**Macros.**  Word 6 had WordBasic.  Word42 will not have a macro
-language.
+Done, after the roadmap had said never: Tools > Macro runs Word42
+Basic, a dialect of VBA on the MY-BASIC engine, with Word's Selection,
+ActiveDocument, Application and Documents as far as Word42 has the
+things behind them.  What is left of it: For Each over the paragraphs
+and tables, objects held in variables (a Range of one's own), error
+trapping, and recording a macro from what is done at the keyboard.
 
 ## Internals worth doing regardless
 
@@ -91,11 +105,17 @@ language.
   document on every keystroke.  The interface does not need to change;
   only the blocks whose text moved, and the pages after the first one
   whose height changed, need redoing.
-- **Position lookup.**  `pt_find()` now remembers the last piece it
-  found, which covers the caret and the readers; a skip list would cover
-  the rest.  Several walks are still one lookup per character
+- **Position lookup.**  `pt_find()` remembers the last piece it found,
+  and the cache now survives every edit -- each primitive that changes
+  the list's shape is told where it works and leaves the cache on a piece
+  it knows -- so a reader building a document a run at a time no longer
+  walks from the head for every run, and coalescing is done over the
+  boundaries an edit touched rather than the whole list.  Opening a
+  20 000-paragraph .docx went from 177 s to 0.23 s.  A skip list would
+  cover what remains.  Several walks are still one lookup per character
   (`next_pos`/`prev_pos`, revisions, hyphenation) and could take a piece
-  at a time.
+  at a time; the table operations still walk the whole list, once per
+  action rather than per run.
 - **Table rows across pages.**  Done: a row that cannot fit a page is
   broken between its lines, the header rows repeat at the top of each
   page it runs on to, and no rule is drawn where the row was cut.  What

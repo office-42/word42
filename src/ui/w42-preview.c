@@ -15,7 +15,7 @@
 
 static const double ZOOMS[] = { 0.25, 0.35, 0.5, 0.65, 0.8, 1.0, 1.25, 1.5, 2.0 };
 
-/* Word XP's zoom box offered these beside the percentages. */
+/* Word 97's zoom box offered these beside the percentages. */
 typedef enum {
   FIT_NONE = 0,
   FIT_PAGE_WIDTH,
@@ -283,7 +283,7 @@ on_zoom_out (GtkButton *b, gpointer data)
 }
 
 /* The zoom box: the percentages, then Page Width, Whole Page and Two
- * Pages, as Word XP's preview offered. */
+ * Pages, as Word 97's preview offered. */
 static const char *const ZOOM_CHOICES[] = {
   "25%", "35%", "50%", "65%", "80%", "100%", "125%", "150%", "200%",
   "Page Width", "Whole Page", "Two Pages", NULL
@@ -550,7 +550,7 @@ w42_preview_init (W42Preview *self)
   box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
   gtk_window_set_child (GTK_WINDOW (self), box);
 
-  /* Word XP's preview bar: Print, the magnifier (a click on the page),
+  /* Word 97's preview bar: Print, the magnifier (a click on the page),
    * One Page, Multiple Pages, the zoom box, the page count, Close. */
   bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
   gtk_widget_add_css_class (bar, "w42-toolbar");
