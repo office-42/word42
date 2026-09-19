@@ -60,7 +60,8 @@ Early, but real. Word42 today is a working word processor:
 - **Word .doc import** — File ▸ Open reads Word 97 documents (and the .doc files Word wrote until .docx): text,
   paragraph and character formatting, headings by their built-in identity
   (so a Norwegian "Overskrift 1" is a Heading 1), tables, PNG and JPEG
-  pictures at the size Word showed them, page setup, header and footer with
+  pictures at the size Word showed them — and a metafile picture as a
+  labelled box its size, its bytes kept for a save as .docx — page setup, header and footer with
   their page-number fields, footnotes. A .doc from before Word 97
   yields its text and paragraphs. Saving goes to RTF or .docx, which Word opens.
   Lists are read from the list tables, so numbered lists come in
