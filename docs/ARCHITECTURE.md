@@ -182,6 +182,14 @@ everything that went into it, and a pass reuses what has not changed:
    after:    12 ms   one paragraph shaped, 4 999 reused
 ```
 
+The headers and footers are kept the same way: a page's furniture — its
+text with the fields expanded, its alignment, the part it is — is shaped
+once and reused on every build until the column width or Normal's face
+changes. Before that, every one of the Bible sample's 1 708 pages had
+its header and footer shaped again on every keystroke, and that was half
+of the 100 ms a keystroke cost there; it is 40 ms now, the rest being the
+snapshot and the line boxes, which are still walked whole.
+
 The signature holds the paragraph's text, its formatting record, every
 run's record and byte extent, the width it is set to, the drop-cap and
 hidden ranges, and the state of the spelling checker. It deliberately
