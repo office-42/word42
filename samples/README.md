@@ -68,8 +68,12 @@ font, Cambria headings in Word's blues, ten points after each
 paragraph, 1.15 lines), a Title, a Heading 1 for each book, a Heading 2
 for each chapter, every verse a justified paragraph opened by its
 number in superscript, a header, a page-number field in the footer, and
-beside the opening of Genesis a picture of the first day, drawn for the
-purpose and so the project's own work like the rest of its artwork.
+eight pictures beside the chapters they belong to -- the first day, the
+ark under the rainbow, the burning bush, the sea parted, the green
+pastures of the twenty-third Psalm, the great fish, the star in the
+east and the empty tomb -- each anchored at the side of its column with
+the verses running down the other, drawn for the purpose and so the
+project's own work like the rest of its artwork.
 
 It is here to be opened: a document of seventeen hundred pages is
 what a word processor has to take in its stride, and this one loads in
