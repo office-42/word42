@@ -187,7 +187,7 @@ text with the fields expanded, its alignment, the part it is — is shaped
 once and reused on every build until the column width or Normal's face
 changes. Before that, every one of the Bible sample's 1 708 pages had
 its header and footer shaped again on every keystroke, and that was half
-of the 100 ms a keystroke cost there; it is 40 ms now, the rest being the
+of the 100 ms a keystroke cost there; it is 35 ms now, the rest being the
 snapshot and the line boxes, which are still walked whole.
 
 The signature holds the paragraph's text, its formatting record, every

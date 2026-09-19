@@ -1636,7 +1636,15 @@ w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool)
             g_string_set_size (current->text, room);
             out = current->text->str + byte_start;
             for (gsize i = 0; i < p->length; i++)
-              out += g_unichar_to_utf8 (buf[i], out);
+              {
+                gunichar c = buf[i];
+
+                /* Nearly every character is ASCII, and one byte. */
+                if (c < 0x80)
+                  *out++ = (char) c;
+                else
+                  out += g_unichar_to_utf8 (c, out);
+              }
             g_string_set_size (current->text, (gsize) (out - current->text->str));
           }
 
