@@ -260,21 +260,309 @@ read_rels (W42Zip *zip, const char *part)
   return map;
 }
 
-/* styles.xml: styleId -> the word42 style it stands for (interned name),
- * by the style's display name. */
+/* theme1.xml: the two faces a Word 2007 document names by role rather
+ * than by name -- the major font for headings, the minor for the body;
+ * Cambria and Calibri in the theme Word 2007 shipped with.  A run or a
+ * style that says w:asciiTheme="minorHAnsi" means the minor one. */
 typedef struct {
-  GHashTable    *map;
+  const char *major, *minor;    /* interned */
+  int         which;            /* 1 inside a:majorFont, 2 inside a:minorFont */
+} Theme;
+
+static void
+theme_start (GMarkupParseContext *ctx, const char *name, const char **an,
+             const char **av, gpointer data, GError **error)
+{
+  Theme *t = data;
+  const char *tag = local (name);
+
+  (void) ctx; (void) error;
+  if (g_str_equal (tag, "majorFont"))
+    t->which = 1;
+  else if (g_str_equal (tag, "minorFont"))
+    t->which = 2;
+  else if (g_str_equal (tag, "latin") && t->which != 0)
+    {
+      const char *face = attr (an, av, "typeface");
+
+      if (face != NULL && *face != '\0')
+        {
+          if (t->which == 1)
+            t->major = g_intern_string (face);
+          else
+            t->minor = g_intern_string (face);
+        }
+    }
+}
+
+static void
+theme_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **error)
+{
+  Theme *t = data;
+  const char *tag = local (name);
+
+  (void) ctx; (void) error;
+  if (g_str_equal (tag, "majorFont") || g_str_equal (tag, "minorFont"))
+    t->which = 0;
+}
+
+static void
+read_theme (W42Zip *zip, GHashTable *rels, const char **major, const char **minor)
+{
+  const char *part = NULL;
+  char *path;
+  GBytes *xml;
+  GHashTableIter iter;
+  gpointer value;
+
+  *major = *minor = NULL;
+  /* The theme part is whatever the document's relationships call it;
+   * theme/theme1.xml, in every file seen. */
+  g_hash_table_iter_init (&iter, rels);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    if (g_str_has_prefix (value, "theme/") && g_str_has_suffix (value, ".xml"))
+      {
+        part = value;
+        break;
+      }
+  path = g_strconcat ("word/", part != NULL ? part : "theme/theme1.xml", NULL);
+  xml = w42_zip_read (zip, path);
+  g_free (path);
+  if (xml != NULL)
+    {
+      GMarkupParser parser = { theme_start, theme_end, NULL, NULL, NULL };
+      Theme t = { NULL, NULL, 0 };
+      GMarkupParseContext *ctx = g_markup_parse_context_new (&parser, 0, &t, NULL);
+
+      g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
+      g_markup_parse_context_free (ctx);
+      g_bytes_unref (xml);
+      *major = t.major;
+      *minor = t.minor;
+    }
+}
+
+/* The face a w:asciiTheme or w:hAnsiTheme value names, or NULL. */
+static const char *
+theme_font (const char *role, const char *major, const char *minor)
+{
+  if (role == NULL)
+    return NULL;
+  if (g_str_has_prefix (role, "major"))
+    return major;
+  if (g_str_has_prefix (role, "minor"))
+    return minor;
+  return NULL;
+}
+
+/* A table style: which of its six sides are ruled, and how.  Word 2007
+ * put the rules of most tables here -- Table Grid is a style -- rather
+ * than on the table itself. */
+typedef struct {
+  gboolean      any;               /* w:tblBorders was given */
+  W42BorderEdge edge[W42_N_EDGES];
+  char         *based;             /* the styleId it was made from */
+} DocxTableStyle;
+
+static void
+table_style_free (gpointer data)
+{
+  DocxTableStyle *t = data;
+
+  g_free (t->based);
+  g_free (t);
+}
+
+/* What styles.xml gave the document. */
+typedef struct {
+  GHashTable *map;         /* styleId -> the word42 style it stands for (interned name) */
+  GHashTable *tables;      /* styleId -> DocxTableStyle* */
+  const char *major_font;  /* the theme's faces, interned, or NULL */
+  const char *minor_font;
+} DocxStyles;
+
+/* styles.xml, read as Word means it: the document's defaults first, then
+ * each style over them, and each style's base filled in once every base
+ * is known.  Word42's own Normal, Heading 1 and the rest are replaced by
+ * the file's definitions of them, as the RTF and OpenDocument readers
+ * do, so that a Word 2007 file comes up in its Calibri and Cambria
+ * rather than in Word 97's Times and Arial. */
+typedef struct {
+  DocxStyles    *out;
   W42StyleSheet *sheet;
   char          *current_id;
-  /* A style of the file's own, being read: it joins the sheet when its
-   * element closes. */
-  W42Style       cur;
-  gboolean       cur_new;        /* not one of ours: to be added */
-  gboolean       cur_paragraph, cur_character;
+  W42Style       cur;            /* the style being read */
+  gboolean       cur_take;       /* it joins the sheet when it closes */
+  gboolean       cur_paragraph, cur_character, cur_table;
+  gboolean       cur_default;    /* w:default="1": the style paragraphs get unless told otherwise */
   char          *cur_based;      /* the basedOn id */
+  DocxTableStyle *cur_tbl;
+  gboolean       in_tblpr;       /* the style's own w:tblPr, not a w:tblStylePr's */
+  int            skip;           /* inside w:tblStylePr: the conditional
+                                  * parts, first row and the like, are not read */
+  int            in_defaults;    /* 1 in w:rPrDefault, 2 in w:pPrDefault */
+  gboolean       in_rpr, in_ppr;
+  W42CharFmt     def_ch;         /* what docDefaults said */
+  W42ParaFmt     def_pa;
+  gboolean       have_defaults;
+  gboolean       have_normal;    /* the file defined Normal itself */
   GHashTable    *display;        /* every style id -> its name */
   GPtrArray     *pending_based;  /* char*: "name\tbased-id", resolved at the end */
 } Styles;
+
+/* One property element -- of a style's pPr or rPr, or of docDefaults --
+ * onto `ch` and `pa`, marking in `ch_own` and `pa_own` what it sets. */
+static void
+style_property (Styles *s, const char *tag, const char **an, const char **av,
+                W42CharFmt *ch, W42ParaFmt *pa, guint32 *ch_own, guint32 *pa_own,
+                int *outline)
+{
+  if (s->in_rpr)
+    {
+      if (g_str_equal (tag, "rFonts"))
+        {
+          const char *f = attr (an, av, "ascii");
+
+          if (f == NULL)
+            f = attr (an, av, "hAnsi");
+          if (f == NULL)
+            f = theme_font (attr (an, av, "asciiTheme"), s->out->major_font, s->out->minor_font);
+          if (f == NULL)
+            f = theme_font (attr (an, av, "hAnsiTheme"), s->out->major_font, s->out->minor_font);
+          if (f != NULL && *f != '\0')
+            {
+              ch->family = g_intern_string (f);
+              *ch_own |= W42_STYLE_CH_FAMILY;
+            }
+        }
+      else if (g_str_equal (tag, "sz"))
+        {
+          ch->size = CLAMP (attr_int (an, av, "val", ch->size), 2, 3276);
+          *ch_own |= W42_STYLE_CH_SIZE;
+        }
+      else if (g_str_equal (tag, "b"))
+        {
+          ch->bold = toggle_on (an, av);
+          *ch_own |= W42_STYLE_CH_BOLD;
+        }
+      else if (g_str_equal (tag, "i"))
+        {
+          ch->italic = toggle_on (an, av);
+          *ch_own |= W42_STYLE_CH_ITALIC;
+        }
+      else if (g_str_equal (tag, "u"))
+        {
+          ch->underline = underline_from_val (attr (an, av, "val"));
+          *ch_own |= W42_STYLE_CH_UNDERLINE;
+        }
+      else if (g_str_equal (tag, "color"))
+        {
+          const char *v = attr (an, av, "val");
+
+          if (v != NULL && strlen (v) == 6 && !g_str_equal (v, "auto"))
+            {
+              ch->color = (guint32) g_ascii_strtoull (v, NULL, 16);
+              *ch_own |= W42_STYLE_CH_COLOR;
+            }
+        }
+      return;
+    }
+  if (!s->in_ppr)
+    return;
+
+  if (g_str_equal (tag, "jc"))
+    {
+      const char *v = attr (an, av, "val");
+
+      if (v == NULL) ;
+      else if (g_str_equal (v, "center")) pa->align = W42_ALIGN_CENTER;
+      else if (g_str_equal (v, "right") || g_str_equal (v, "end")) pa->align = W42_ALIGN_RIGHT;
+      else if (g_str_equal (v, "both") || g_str_equal (v, "distribute")) pa->align = W42_ALIGN_JUSTIFY;
+      else pa->align = W42_ALIGN_LEFT;
+      if (v != NULL)
+        *pa_own |= W42_STYLE_PA_ALIGN;
+    }
+  else if (g_str_equal (tag, "spacing"))
+    {
+      const char *line = attr (an, av, "line");
+      const char *rule = attr (an, av, "lineRule");
+
+      if (attr (an, av, "before") != NULL)
+        {
+          pa->space_before = CLAMP (attr_int (an, av, "before", 0), 0, 31680);
+          *pa_own |= W42_STYLE_PA_SPACE_BEFORE;
+        }
+      if (attr (an, av, "after") != NULL)
+        {
+          pa->space_after = CLAMP (attr_int (an, av, "after", 0), 0, 31680);
+          *pa_own |= W42_STYLE_PA_SPACE_AFTER;
+        }
+      if (line != NULL)
+        {
+          int l = CLAMP (atoi (line), 0, 31680);
+
+          if (rule == NULL || g_str_equal (rule, "auto"))
+            {
+              pa->line_spacing_pct = l * 100 / 240;
+              pa->line_spacing = 0;
+            }
+          else
+            {
+              pa->line_spacing = l;
+              pa->line_spacing_pct = 0;
+            }
+          *pa_own |= W42_STYLE_PA_LINE_SPACING;
+        }
+    }
+  else if (g_str_equal (tag, "outlineLvl"))
+    {
+      /* Levels 0 to 8 are headings 1 to 9; 9 is body text. */
+      int lvl = attr_int (an, av, "val", 9);
+
+      *outline = lvl >= 0 && lvl <= 8 ? lvl + 1 : 0;
+    }
+  else if (g_str_equal (tag, "ind"))
+    {
+      const char *hanging = attr (an, av, "hanging");
+      const char *first = attr (an, av, "firstLine");
+
+      if (attr (an, av, "left") != NULL || attr (an, av, "start") != NULL)
+        {
+          pa->indent_left = CLAMP (attr_int (an, av, "left", attr_int (an, av, "start", 0)), -31680, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_LEFT;
+        }
+      if (attr (an, av, "right") != NULL || attr (an, av, "end") != NULL)
+        {
+          pa->indent_right = CLAMP (attr_int (an, av, "right", attr_int (an, av, "end", 0)), -31680, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_RIGHT;
+        }
+      if (hanging != NULL)
+        {
+          pa->indent_first = -CLAMP (atoi (hanging), 0, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_FIRST;
+        }
+      else if (first != NULL)
+        {
+          pa->indent_first = CLAMP (atoi (first), -31680, 31680);
+          *pa_own |= W42_STYLE_PA_INDENT_FIRST;
+        }
+    }
+  else if (g_str_equal (tag, "keepNext"))
+    {
+      pa->keep_next = toggle_on (an, av);
+      *pa_own |= W42_STYLE_PA_FLOW;
+    }
+  else if (g_str_equal (tag, "keepLines"))
+    {
+      pa->keep_together = toggle_on (an, av);
+      *pa_own |= W42_STYLE_PA_FLOW;
+    }
+  else if (g_str_equal (tag, "widowControl"))
+    {
+      pa->widow_control = toggle_on (an, av);
+      *pa_own |= W42_STYLE_PA_FLOW;
+    }
+}
 
 static void
 styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
@@ -284,22 +572,55 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
   const char *tag = local (name);
 
   (void) ctx; (void) error;
-  if (g_str_equal (tag, "style"))
+  if (s->skip > 0)
+    {
+      s->skip++;
+      return;
+    }
+  if (g_str_equal (tag, "tblStylePr"))
+    {
+      s->skip = 1;
+      return;
+    }
+  if (g_str_equal (tag, "rPrDefault"))
+    {
+      s->in_defaults = 1;
+      s->have_defaults = TRUE;
+    }
+  else if (g_str_equal (tag, "pPrDefault"))
+    {
+      s->in_defaults = 2;
+      s->have_defaults = TRUE;
+    }
+  else if (g_str_equal (tag, "rPr"))
+    s->in_rpr = TRUE;
+  else if (g_str_equal (tag, "pPr"))
+    s->in_ppr = TRUE;
+  else if (g_str_equal (tag, "style"))
     {
       const char *type = attr (an, av, "type");
-      W42Fmt def;
+      const char *def = attr (an, av, "default");
 
       g_free (s->current_id);
       s->current_id = g_strdup (attr (an, av, "styleId"));
-      w42_fmt_init_default (&def);
       memset (&s->cur, 0, sizeof s->cur);
-      s->cur.ch = def.ch;
-      s->cur.pa = def.pa;
-      s->cur_new = FALSE;
+      /* Over the document's defaults; the base fills in the rest later. */
+      s->cur.ch = s->def_ch;
+      s->cur.pa = s->def_pa;
+      s->cur_take = FALSE;
       s->cur_paragraph = type == NULL || g_str_equal (type, "paragraph");
       s->cur_character = type != NULL && g_str_equal (type, "character");
+      s->cur_table = type != NULL && g_str_equal (type, "table");
+      s->cur_default = def != NULL && (g_str_equal (def, "1") || g_str_equal (def, "true") ||
+                                       g_str_equal (def, "on"));
       g_free (s->cur_based);
       s->cur_based = NULL;
+      s->cur_tbl = NULL;
+      if (s->cur_table && s->current_id != NULL)
+        {
+          s->cur_tbl = g_new0 (DocxTableStyle, 1);
+          g_hash_table_insert (s->out->tables, g_strdup (s->current_id), s->cur_tbl);
+        }
     }
   else if (g_str_equal (tag, "name") && s->current_id != NULL)
     {
@@ -315,12 +636,29 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
               if (g_ascii_strcasecmp (style->name, val) == 0)
                 ours = style->name;
             }
+          /* The default paragraph style is Normal, whatever it is called. */
+          if (ours == NULL && s->cur_default && s->cur_paragraph)
+            ours = g_intern_static_string ("Normal");
           g_hash_table_insert (s->display, g_strdup (s->current_id), g_strdup (val));
         }
-      if (ours != NULL)
-        g_hash_table_insert (s->map, g_strdup (s->current_id), (gpointer) ours);
+      if (ours != NULL && (s->cur_paragraph || s->cur_character))
+        {
+          const W42Style *existing = w42_stylesheet_find (s->sheet, ours);
+
+          /* One of ours: the file's definition replaces the built-in one,
+           * keeping the outline level the name implies. */
+          s->cur.name = ours;
+          s->cur.pa.style = ours;
+          s->cur.outline = existing != NULL ? existing->outline : 0;
+          s->cur.character = s->cur_character ? 1 : 0;
+          s->cur_take = TRUE;
+          if (g_ascii_strcasecmp (ours, "Normal") == 0)
+            s->have_normal = TRUE;
+          g_hash_table_insert (s->out->map, g_strdup (s->current_id), (gpointer) ours);
+        }
       else if (val != NULL && *val != '\0' && (s->cur_paragraph || s->cur_character) &&
                !g_str_has_prefix (val, "toc ") && !g_str_has_prefix (val, "TOC ") &&
+               g_ascii_strcasecmp (val, "Default Paragraph Font") != 0 &&
                strlen (val) < 64 &&
                /* Every added style is looked up by a scan of all of them,
                 * so a file of millions would cost their square. */
@@ -330,104 +668,81 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
           s->cur.name = g_intern_string (val);
           s->cur.pa.style = s->cur.name;
           s->cur.character = s->cur_character ? 1 : 0;
-          s->cur_new = TRUE;
-          g_hash_table_insert (s->map, g_strdup (s->current_id), (gpointer) s->cur.name);
+          s->cur_take = TRUE;
+          g_hash_table_insert (s->out->map, g_strdup (s->current_id), (gpointer) s->cur.name);
         }
     }
-  else if (s->cur_new && g_str_equal (tag, "basedOn"))
+  else if (g_str_equal (tag, "basedOn") && s->current_id != NULL)
     {
       g_free (s->cur_based);
       s->cur_based = g_strdup (attr (an, av, "val"));
-    }
-  else if (s->cur_new && g_str_equal (tag, "rFonts"))
-    {
-      const char *f = attr (an, av, "ascii");
-
-      if (f == NULL)
-        f = attr (an, av, "hAnsi");
-      if (f != NULL && *f != '\0')
+      if (s->cur_tbl != NULL)
         {
-          s->cur.ch.family = g_intern_string (f);
-          s->cur.ch_own |= W42_STYLE_CH_FAMILY;
+          g_free (s->cur_tbl->based);
+          s->cur_tbl->based = g_strdup (s->cur_based);
         }
     }
-  else if (s->cur_new && g_str_equal (tag, "sz"))
+  else if (s->in_defaults != 0)
     {
-      s->cur.ch.size = CLAMP (attr_int (an, av, "val", s->cur.ch.size), 2, 3276);
-      s->cur.ch_own |= W42_STYLE_CH_SIZE;
-    }
-  else if (s->cur_new && g_str_equal (tag, "b"))
-    {
-      s->cur.ch.bold = toggle_on (an, av);
-      s->cur.ch_own |= W42_STYLE_CH_BOLD;
-    }
-  else if (s->cur_new && g_str_equal (tag, "i"))
-    {
-      s->cur.ch.italic = toggle_on (an, av);
-      s->cur.ch_own |= W42_STYLE_CH_ITALIC;
-    }
-  else if (s->cur_new && g_str_equal (tag, "u"))
-    {
-      const char *v = attr (an, av, "val");
+      guint32 ch_own = 0, pa_own = 0;
+      int outline = 0;
 
-      s->cur.ch.underline = v == NULL || !g_str_equal (v, "none");
-      s->cur.ch_own |= W42_STYLE_CH_UNDERLINE;
+      style_property (s, tag, an, av, &s->def_ch, &s->def_pa, &ch_own, &pa_own, &outline);
     }
-  else if (s->cur_new && g_str_equal (tag, "color"))
+  else if (s->cur_tbl != NULL)
     {
-      const char *v = attr (an, av, "val");
-
-      if (v != NULL && strlen (v) == 6 && !g_str_equal (v, "auto"))
-        {
-          s->cur.ch.color = (guint32) g_ascii_strtoull (v, NULL, 16);
-          s->cur.ch_own |= W42_STYLE_CH_COLOR;
-        }
+      if (g_str_equal (tag, "tblPr"))
+        s->in_tblpr = TRUE;
+      else if (s->in_tblpr && g_str_equal (tag, "tblBorders"))
+        s->cur_tbl->any = TRUE;
+      else if (s->in_tblpr && s->cur_tbl->any && border_edge_index (tag) >= 0)
+        border_element (an, av, &s->cur_tbl->edge[border_edge_index (tag)]);
     }
-  else if (s->cur_new && g_str_equal (tag, "jc"))
-    {
-      const char *v = attr (an, av, "val");
-
-      if (v == NULL) ;
-      else if (g_str_equal (v, "center")) s->cur.pa.align = W42_ALIGN_CENTER;
-      else if (g_str_equal (v, "right") || g_str_equal (v, "end")) s->cur.pa.align = W42_ALIGN_RIGHT;
-      else if (g_str_equal (v, "both")) s->cur.pa.align = W42_ALIGN_JUSTIFY;
-      if (v != NULL)
-        s->cur.pa_own |= W42_STYLE_PA_ALIGN;
-    }
-  else if (s->cur_new && g_str_equal (tag, "spacing"))
-    {
-      s->cur.pa.space_before = CLAMP (attr_int (an, av, "before", s->cur.pa.space_before), 0, 31680);
-      s->cur.pa.space_after = CLAMP (attr_int (an, av, "after", s->cur.pa.space_after), 0, 31680);
-      s->cur.pa_own |= W42_STYLE_PA_SPACE_BEFORE | W42_STYLE_PA_SPACE_AFTER;
-    }
-  else if (s->cur_new && g_str_equal (tag, "outlineLvl"))
-    s->cur.outline = CLAMP (attr_int (an, av, "val", 0) + 1, 1, 9);
-  else if (s->cur_new && g_str_equal (tag, "ind"))
-    {
-      const char *hanging = attr (an, av, "hanging");
-
-      s->cur.pa.indent_left = CLAMP (attr_int (an, av, "left", s->cur.pa.indent_left), -31680, 31680);
-      s->cur.pa.indent_right = CLAMP (attr_int (an, av, "right", s->cur.pa.indent_right), -31680, 31680);
-      s->cur.pa_own |= W42_STYLE_PA_INDENT_LEFT | W42_STYLE_PA_INDENT_RIGHT | W42_STYLE_PA_INDENT_FIRST;
-      if (hanging != NULL)
-        s->cur.pa.indent_first = -CLAMP (atoi (hanging), 0, 31680);
-      else
-        s->cur.pa.indent_first = CLAMP (attr_int (an, av, "firstLine", s->cur.pa.indent_first), -31680, 31680);
-    }
+  else if (s->cur_take)
+    style_property (s, tag, an, av, &s->cur.ch, &s->cur.pa, &s->cur.ch_own, &s->cur.pa_own,
+                    &s->cur.outline);
 }
 
 static void
 styles_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **error)
 {
   Styles *s = data;
+  const char *tag = local (name);
 
   (void) ctx; (void) error;
-  if (g_str_equal (local (name), "style") && s->cur_new)
+  if (s->skip > 0)
     {
-      w42_stylesheet_set (s->sheet, &s->cur);
-      if (s->cur_based != NULL)
-        g_ptr_array_add (s->pending_based, g_strdup_printf ("%s\t%s", s->cur.name, s->cur_based));
-      s->cur_new = FALSE;
+      s->skip--;
+      return;
+    }
+  if (g_str_equal (tag, "rPrDefault") || g_str_equal (tag, "pPrDefault"))
+    s->in_defaults = 0;
+  else if (g_str_equal (tag, "rPr"))
+    s->in_rpr = FALSE;
+  else if (g_str_equal (tag, "pPr"))
+    s->in_ppr = FALSE;
+  else if (g_str_equal (tag, "tblPr"))
+    s->in_tblpr = FALSE;
+  else if (g_str_equal (tag, "style"))
+    {
+      if (s->cur_take)
+        {
+          /* Normal is the root: everything it holds is its own.  Any other
+           * style takes what it did not set from its base, once the base is
+           * known. */
+          if (g_ascii_strcasecmp (s->cur.name, "Normal") == 0)
+            {
+              s->cur.pa_own = W42_STYLE_PA_ALL;
+              s->cur.ch_own = W42_STYLE_CH_ALL;
+            }
+          w42_stylesheet_set (s->sheet, &s->cur);
+          if (s->cur_based != NULL)
+            g_ptr_array_add (s->pending_based, g_strdup_printf ("%s\t%s", s->cur.name, s->cur_based));
+          s->cur_take = FALSE;
+        }
+      s->cur_tbl = NULL;
+      g_free (s->current_id);
+      s->current_id = NULL;
     }
 }
 
@@ -513,22 +828,54 @@ read_core_props (W42Zip *zip, W42PieceTable *pt)
   g_bytes_unref (xml);
 }
 
-static GHashTable *
-read_styles (W42Zip *zip, W42StyleSheet *sheet)
+static void
+read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *out)
 {
-  GHashTable *map = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   GBytes *xml = w42_zip_read (zip, "word/styles.xml");
+
+  out->map = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  out->tables = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, table_style_free);
+  read_theme (zip, rels, &out->major_font, &out->minor_font);
 
   if (xml != NULL)
     {
       GMarkupParser parser = { styles_start, styles_end, NULL, NULL, NULL };
-      Styles s = { .map = map, .sheet = sheet };
+      Styles s = { .out = out, .sheet = sheet };
       GMarkupParseContext *ctx = g_markup_parse_context_new (&parser, 0, &s, NULL);
+      W42Fmt def;
+      GHashTableIter iter;
+      gpointer key, value;
 
+      w42_fmt_init_default (&def);
+      {
+        /* The defaults start from Word42's Normal, so a file that says
+         * nothing about a setting keeps what Word 97 would have had. */
+        const W42Style *normal = w42_stylesheet_find (sheet, "Normal");
+
+        s.def_ch = normal != NULL ? normal->ch : def.ch;
+        s.def_pa = normal != NULL ? normal->pa : def.pa;
+      }
       s.display = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
       s.pending_based = g_ptr_array_new_with_free_func (g_free);
       g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
       g_markup_parse_context_free (ctx);
+
+      if (s.have_defaults && !s.have_normal)
+        {
+          /* No Normal in the file: the document's defaults are it. */
+          const W42Style *existing = w42_stylesheet_find (sheet, "Normal");
+          W42Style normal;
+
+          memset (&normal, 0, sizeof normal);
+          normal.name = g_intern_static_string ("Normal");
+          normal.ch = s.def_ch;
+          normal.pa = s.def_pa;
+          normal.pa.style = normal.name;
+          normal.outline = existing != NULL ? existing->outline : 0;
+          normal.pa_own = W42_STYLE_PA_ALL;
+          normal.ch_own = W42_STYLE_CH_ALL;
+          w42_stylesheet_set (sheet, &normal);
+        }
 
       /* basedOn names an id, which may belong to a style read later. */
       for (guint i = 0; i < s.pending_based->len; i++)
@@ -543,7 +890,7 @@ read_styles (W42Zip *zip, W42StyleSheet *sheet)
           st = w42_stylesheet_find (sheet, entry);
           if (st != NULL)
             {
-              const char *ours = g_hash_table_lookup (map, tab + 1);
+              const char *ours = g_hash_table_lookup (out->map, tab + 1);
               const char *shown = g_hash_table_lookup (s.display, tab + 1);
               W42Style copy = *st;
 
@@ -552,7 +899,8 @@ read_styles (W42Zip *zip, W42StyleSheet *sheet)
             }
         }
       /* Now that every base is known, each style takes what it does not
-       * set from its base, as Word does. */
+       * set from its base, as Word does.  Normal first: the built-in
+       * headings that the file did not redefine are based on it. */
       for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
         {
           const W42Style *st = w42_stylesheet_get (sheet, i);
@@ -560,13 +908,35 @@ read_styles (W42Zip *zip, W42StyleSheet *sheet)
           if (st->based_on != NULL)
             w42_stylesheet_follow (sheet, st->name);
         }
+
+      /* A table style with no rules of its own has its base's. */
+      g_hash_table_iter_init (&iter, out->tables);
+      while (g_hash_table_iter_next (&iter, &key, &value))
+        {
+          DocxTableStyle *t = value;
+          const char *based = t->based;
+
+          for (int depth = 0; !t->any && based != NULL && depth < 8; depth++)
+            {
+              const DocxTableStyle *base = g_hash_table_lookup (out->tables, based);
+
+              if (base == NULL)
+                break;
+              if (base->any)
+                {
+                  memcpy (t->edge, base->edge, sizeof t->edge);
+                  t->any = TRUE;
+                }
+              based = base->based;
+            }
+        }
+
       g_ptr_array_free (s.pending_based, TRUE);
       g_hash_table_destroy (s.display);
       g_free (s.cur_based);
       g_free (s.current_id);
       g_bytes_unref (xml);
     }
-  return map;
 }
 
 /* numbering.xml: numId -> list kind, through the abstract numbering's
@@ -859,6 +1229,9 @@ typedef struct {
   W42PageSetup *page;
   W42Zip     *zip;
   GHashTable *rels, *styles, *numbering, *footnotes, *endnotes, *comments;
+  GHashTable *table_styles;       /* styleId -> DocxTableStyle* */
+  const char *major_font, *minor_font;   /* the theme's faces, or NULL */
+  gboolean    tbl_style_edges;    /* tbl_edge holds the table style's rules */
   GHashTable *comment_start;      /* id -> gsize position */
   gboolean    in_pbdr;
   gboolean    in_pgborders;   /* the section's page border */
@@ -964,6 +1337,35 @@ map_style (Docx *d, const char *id)
   const char *ours = id != NULL ? g_hash_table_lookup (d->styles, id) : NULL;
 
   return ours != NULL ? ours : g_intern_static_string ("Normal");
+}
+
+/* The paragraph takes the style's formatting, under whatever its own pPr
+ * says next, and its runs the style's font under their own rPr.  Every
+ * paragraph starts from Normal: Word writes no pStyle for it, and a
+ * Word 2007 file's Normal is Calibri with air after each paragraph, not
+ * the builder's Times. */
+static void
+docx_apply_style (Docx *d, const char *name)
+{
+  W42ParaFmt *pa = &d->b.pa;
+  const W42Style *st = w42_stylesheet_find (w42_pt_stylesheet (d->pt), name);
+
+  pa->style = name;
+  if (st == NULL || st->character)
+    return;
+  pa->align = st->pa.align;
+  pa->indent_left = st->pa.indent_left;
+  pa->indent_right = st->pa.indent_right;
+  pa->indent_first = st->pa.indent_first;
+  pa->space_before = st->pa.space_before;
+  pa->space_after = st->pa.space_after;
+  pa->line_spacing = st->pa.line_spacing;
+  pa->line_spacing_pct = st->pa.line_spacing_pct;
+  pa->keep_next = st->pa.keep_next;
+  pa->keep_together = st->pa.keep_together;
+  pa->widow_control = st->pa.widow_control;
+  d->style_ch = st->ch;
+  d->have_style_ch = TRUE;
 }
 
 /* What a cell's w:tcPr said, onto the cell mark just made. */
@@ -1091,6 +1493,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         }
       w42_builder_reset_para (&d->b);
       d->have_style_ch = FALSE;
+      docx_apply_style (d, g_intern_static_string ("Normal"));
       if (d->section_pending)
         {
           d->b.pa.section_break = 1;
@@ -1186,29 +1589,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       W42ParaFmt *pa = &d->b.pa;
 
       if (g_str_equal (tag, "pStyle"))
-        {
-          const W42Style *st;
-
-          pa->style = map_style (d, attr (an, av, "val"));
-          st = w42_stylesheet_find (w42_pt_stylesheet (d->pt), pa->style);
-          if (st != NULL && !st->character)
-            {
-              /* The style's formatting under the paragraph's own, which
-               * follows in the pPr, and its font under each run's. */
-              pa->align = st->pa.align;
-              pa->indent_left = st->pa.indent_left;
-              pa->indent_right = st->pa.indent_right;
-              pa->indent_first = st->pa.indent_first;
-              pa->space_before = st->pa.space_before;
-              pa->space_after = st->pa.space_after;
-              pa->line_spacing = st->pa.line_spacing;
-              pa->line_spacing_pct = st->pa.line_spacing_pct;
-              pa->keep_next = st->pa.keep_next;
-              pa->keep_together = st->pa.keep_together;
-              d->style_ch = st->ch;
-              d->have_style_ch = TRUE;
-            }
-        }
+        docx_apply_style (d, map_style (d, attr (an, av, "val")));
       else if (g_str_equal (tag, "framePr"))
         {
           const char *drop = attr (an, av, "dropCap");
@@ -1406,6 +1787,11 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           const char *f = attr (an, av, "ascii");
 
           if (f == NULL) f = attr (an, av, "hAnsi");
+          /* Word 2007 names the face by its part in the theme as often
+           * as by name: a heading's run says "majorHAnsi" and means
+           * Cambria. */
+          if (f == NULL) f = theme_font (attr (an, av, "asciiTheme"), d->major_font, d->minor_font);
+          if (f == NULL) f = theme_font (attr (an, av, "hAnsiTheme"), d->major_font, d->minor_font);
           if (f != NULL)
             ch->family = g_intern_string (f);
         }
@@ -1758,20 +2144,22 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           g_array_set_size (d->grid, 0);
           d->table_started = FALSE;
           d->tbl_borders = FALSE;
+          d->tbl_style_edges = FALSE;
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
     }
   else if (g_str_equal (tag, "tblBorders") && d->depth_tbl == 1)
     {
-      /* The sides it does not name are the table style's: the grid's
-       * hairline, or nothing. */
+      /* The sides it does not name are the table style's: its own rules
+       * when the file defines it, else the grid's hairline, or nothing. */
       d->in_tblborders = TRUE;
-      for (int e = 0; e < W42_N_EDGES; e++)
-        {
-          d->tbl_edge[e].style = d->tbl_borders ? W42_BORDER_SINGLE : W42_BORDER_NONE;
-          d->tbl_edge[e].width = 0;
-          d->tbl_edge[e].color = 0;
-        }
+      if (!d->tbl_style_edges)
+        for (int e = 0; e < W42_N_EDGES; e++)
+          {
+            d->tbl_edge[e].style = d->tbl_borders ? W42_BORDER_SINGLE : W42_BORDER_NONE;
+            d->tbl_edge[e].width = 0;
+            d->tbl_edge[e].color = 0;
+          }
     }
   else if (d->in_tblborders && border_edge_index (tag) >= 0)
     {
@@ -1784,9 +2172,23 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
   else if (g_str_equal (tag, "tblStyle") && d->depth_tbl == 1)
     {
       const char *val = attr (an, av, "val");
+      const DocxTableStyle *style = val != NULL ? g_hash_table_lookup (d->table_styles, val) : NULL;
 
-      if (val != NULL && strstr (val, "Grid") != NULL)
+      if (style != NULL && style->any)
         {
+          /* The style's own rules, side by side, as the file defines
+           * them: Word 2007's Table Grid, or one of its designs. */
+          memcpy (d->tbl_edge, style->edge, sizeof d->tbl_edge);
+          d->tbl_style_edges = TRUE;
+          d->tbl_borders = FALSE;
+          for (int e = 0; e < W42_N_EDGES; e++)
+            if (style->edge[e].style != W42_BORDER_NONE)
+              d->tbl_borders = TRUE;
+        }
+      else if (val != NULL && strstr (val, "Grid") != NULL)
+        {
+          /* A grid style the file does not define: the hairline grid
+           * everyone recognises. */
           d->tbl_borders = TRUE;
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
@@ -2312,6 +2714,9 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   d.zip = zip;
   d.rels = outer->rels;
   d.styles = outer->styles;
+  d.table_styles = outer->table_styles;
+  d.major_font = outer->major_font;
+  d.minor_font = outer->minor_font;
   d.numbering = outer->numbering;
   /* A note can hold a picture, a comment or a field like any other text,
    * and the parser looks these up without asking whether they are there. */
@@ -2395,7 +2800,15 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   d.page = page;
   d.zip = zip;
   d.rels = read_rels (zip, "word/_rels/document.xml.rels");
-  d.styles = read_styles (zip, w42_pt_stylesheet (pt));
+  {
+    DocxStyles st;
+
+    read_styles (zip, d.rels, w42_pt_stylesheet (pt), &st);
+    d.styles = st.map;
+    d.table_styles = st.tables;
+    d.major_font = st.major_font;
+    d.minor_font = st.minor_font;
+  }
   read_core_props (zip, pt);
   d.numbering = read_numbering (zip);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
@@ -2435,6 +2848,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   g_hash_table_destroy (d.bookmark_start);
   g_hash_table_destroy (d.rels);
   g_hash_table_destroy (d.styles);
+  g_hash_table_destroy (d.table_styles);
   g_hash_table_destroy (d.numbering);
   g_hash_table_destroy (d.footnotes);
   g_hash_table_destroy (d.endnotes);
@@ -3230,8 +3644,15 @@ styles_part (W42StyleSheet *styles)
           g_string_append (out, "<w:pPr>");
           if (s->outline > 0)
             g_string_append (out, "<w:keepNext/>");
-          if (s->pa.space_before || s->pa.space_after)
-            g_string_append_printf (out, "<w:spacing w:before=\"%d\" w:after=\"%d\"/>", s->pa.space_before, s->pa.space_after);
+          if (s->pa.space_before || s->pa.space_after || s->pa.line_spacing_pct > 0 || s->pa.line_spacing > 0)
+            {
+              g_string_append_printf (out, "<w:spacing w:before=\"%d\" w:after=\"%d\"", s->pa.space_before, s->pa.space_after);
+              if (s->pa.line_spacing_pct > 0)
+                g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"auto\"", s->pa.line_spacing_pct * 240 / 100);
+              else if (s->pa.line_spacing > 0)
+                g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"exact\"", s->pa.line_spacing);
+              g_string_append (out, "/>");
+            }
           if (s->pa.indent_left != 0 || s->pa.indent_right != 0 || s->pa.indent_first != 0)
             {
               g_string_append_printf (out, "<w:ind w:left=\"%d\" w:right=\"%d\"", s->pa.indent_left, s->pa.indent_right);
