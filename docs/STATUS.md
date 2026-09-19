@@ -43,10 +43,14 @@ Early, but real. Word42 today is a working word processor:
   fields. A Word 2007 file is read as Word 2007 meant it: its docDefaults
   and its theme give the document its Calibri and Cambria, the file's own
   definitions of Normal and the headings replace Word42's, table styles
-  rule the tables that name them, and the drawings Word 2007 wrote in VML
+  rule the tables that name them — with their designs' header row, banded
+  rows and text colour — and the drawings Word 2007 wrote in VML
   — pictures in a file converted from .doc, text boxes, rectangles,
   ovals, lines and an embedded object's preview — come in as the
-  DrawingML ones do. The zip inside a .docx is read and written with
+  DrawingML ones do. A style's borders, shading and tab stops go with its
+  paragraphs, a blank line is as tall as its paragraph mark, a link kept
+  as a HYPERLINK field is a link, and a tracked move is a revision like
+  an insertion or a deletion. The zip inside a .docx is read and written with
   GLib's own deflate, so no new library is needed; .zabw is the gzipped
   .abw.
 - **Word .doc import** — File ▸ Open reads Word 97 documents (and the .doc files Word wrote until .docx): text,

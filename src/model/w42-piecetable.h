@@ -329,6 +329,10 @@ void w42_pt_apply_para_fmt (W42PieceTable    *pt,
                             gsize             n,
                             W42ParaMask       mask,
                             const W42ParaFmt *value);
+/* The character formatting of the paragraph mark at or before `pos`: what
+ * an empty paragraph shows, and so how tall a blank line is.  One undo
+ * step. */
+void w42_pt_set_mark_char_fmt (W42PieceTable *pt, gsize pos, const W42CharFmt *ch);
 
 /* ---- Annotations ------------------------------------------------------ */
 
