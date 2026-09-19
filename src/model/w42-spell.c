@@ -23,7 +23,36 @@ struct _W42Spell {
   GHashTable    *by_lang;    /* BCP-47 tag -> EnchantDict*, or NULL when
                               * there is no dictionary for it */
   guint          serial;     /* bumped when a word is ignored or added */
+  /* What the dictionary said of each word asked about: a long document
+   * asks about the same few thousand words hundreds of thousands of
+   * times, and asking Hunspell each time doubled the time the Bible
+   * sample took to lay out.  A word in another language is keyed with
+   * its tag in front.  Emptied when a word is ignored or added, and
+   * when it has grown past any document's vocabulary. */
+  GHashTable    *checked;    /* char* -> 1 right, 2 wrong */
 };
+
+#define CHECKED_LIMIT 200000
+
+static gboolean
+checked_lookup (W42Spell *spell, const char *key, gboolean *ok)
+{
+  gpointer v = g_hash_table_lookup (spell->checked, key);
+
+  if (v == NULL)
+    return FALSE;
+  *ok = GPOINTER_TO_INT (v) == 1;
+  return TRUE;
+}
+
+/* Takes `key`. */
+static void
+checked_store (W42Spell *spell, char *key, gboolean ok)
+{
+  if (g_hash_table_size (spell->checked) >= CHECKED_LIMIT)
+    g_hash_table_remove_all (spell->checked);
+  g_hash_table_insert (spell->checked, key, GINT_TO_POINTER (ok ? 1 : 2));
+}
 
 /* ---------------------------------------------------------------------- */
 /* Words                                                                   */
@@ -166,6 +195,7 @@ w42_spell_new (void)
 
   spell->ignored = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   spell->by_lang = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  spell->checked = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   return spell;
 #else
   return NULL;
@@ -200,6 +230,7 @@ w42_spell_free (W42Spell *spell)
   if (spell->by_lang != NULL)
     g_hash_table_destroy (spell->by_lang);
   g_hash_table_destroy (spell->ignored);
+  g_hash_table_destroy (spell->checked);
   g_free (spell->language);
   g_free (spell);
 }
@@ -357,12 +388,23 @@ w42_spell_check_lang (W42Spell *spell, const char *lang,
     if (len < 0)
       len = (gssize) strlen (word);
     copy = g_strndup (word, (gsize) len);
-    if (g_hash_table_contains (spell->ignored, copy))
-      ok = TRUE;
-    else if (!script_fits (word_script (copy, (gsize) len), dictionary_script (lang)))
-      ok = TRUE;
-    else
-      ok = enchant_dict_check (dict, copy, len) == 0;
+    {
+      char *key = g_strconcat (lang, "\037", copy, NULL);
+
+      if (checked_lookup (spell, key, &ok))
+        {
+          g_free (key);
+          g_free (copy);
+          return ok;
+        }
+      if (g_hash_table_contains (spell->ignored, copy))
+        ok = TRUE;
+      else if (!script_fits (word_script (copy, (gsize) len), dictionary_script (lang)))
+        ok = TRUE;
+      else
+        ok = enchant_dict_check (dict, copy, len) == 0;
+      checked_store (spell, key, ok);
+    }
     g_free (copy);
     return ok;
   }
@@ -438,6 +480,11 @@ w42_spell_check (W42Spell *spell, const char *word, gssize len)
       len = (gssize) strlen (copy);
     }
 
+  if (checked_lookup (spell, copy, &ok))
+    {
+      g_free (copy);
+      return ok;
+    }
   if (g_hash_table_contains (spell->ignored, copy))
     ok = TRUE;
   else if (!script_fits (word_script (copy, (gsize) len), dictionary_script (spell->language)))
@@ -447,7 +494,7 @@ w42_spell_check (W42Spell *spell, const char *word, gssize len)
     ok = enchant_dict_check (spell->dict, copy, len) == 0;
 #endif
 
-  g_free (copy);
+  checked_store (spell, copy, ok);      /* takes the copy */
   return ok;
 }
 
@@ -504,6 +551,7 @@ w42_spell_ignore (W42Spell *spell, const char *word)
   g_return_if_fail (word != NULL);
 
   g_hash_table_add (spell->ignored, plain_word (word));
+  g_hash_table_remove_all (spell->checked);
   spell->serial++;
 }
 
@@ -529,6 +577,7 @@ w42_spell_add (W42Spell *spell, const char *word)
     /* Belt and braces: Enchant's personal list is read back on the next
      * check, but the session list costs nothing. */
     g_hash_table_add (spell->ignored, plain);
+    g_hash_table_remove_all (spell->checked);
     spell->serial++;
   }
 }

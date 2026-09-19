@@ -190,6 +190,11 @@ its header and footer shaped again on every keystroke, and that was half
 of the 100 ms a keystroke cost there; it is 35 ms now, the rest being the
 snapshot and the line boxes, which are still walked whole.
 
+The spelling checker remembers what the dictionary said of every word it
+was asked about, until a word is ignored or added: a long document asks
+about the same few thousand words hundreds of thousands of times, and
+asking Hunspell each time doubled the Bible sample's first layout.
+
 The signature holds the paragraph's text, its formatting record, every
 run's record and byte extent, the width it is set to, the drop-cap and
 hidden ranges, and the state of the spelling checker. It deliberately
