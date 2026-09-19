@@ -88,8 +88,13 @@ struct _W42PieceTable {
   /* The last piece pt_find() landed on and where it starts: a caret
    * moving through a document asks for neighbouring positions over and
    * over, and walking from the head each time is what the roadmap
-   * called the first thing worth fixing.  Cleared whenever the piece
-   * list changes shape. */
+   * called the first thing worth fixing.  The primitives that change
+   * the list's shape are each told the position they work at, and
+   * leave the cache on a piece whose start they know; it is never
+   * left pointing at a piece that has gone.  Clearing it instead
+   * would be safe, but a reader building a document a run at a time
+   * would then walk from the head for every run, and loading a long
+   * file would cost the square of its length -- which it once did. */
   W42Piece   *find_cache;
   gsize       find_cache_start;
 
@@ -248,10 +253,21 @@ pt_find (W42PieceTable *pt, gsize pos, gsize *offset)
 
 #define PT_RESHAPED(pt) ((pt)->find_cache = NULL)
 
-static void
-pt_link_before (W42PieceTable *pt, W42Piece *ref, W42Piece *piece)
+/* Where pt_find() starts next time: `piece`, which begins at `start`. */
+static inline void
+pt_cache_set (W42PieceTable *pt, W42Piece *piece, gsize start)
 {
-  PT_RESHAPED (pt);
+  pt->find_cache = piece;
+  pt->find_cache_start = start;
+}
+
+/* Links `piece` in front of `ref` (at the end when ref is NULL).  `pos`
+ * is where the piece will start, which every caller knows and which is
+ * what keeps the find cache honest. */
+static void
+pt_link_before (W42PieceTable *pt, W42Piece *ref, W42Piece *piece, gsize pos)
+{
+  pt_cache_set (pt, piece, pos);
   if (ref == NULL)
     {
       piece->prev = pt->tail;
@@ -276,10 +292,18 @@ pt_link_before (W42PieceTable *pt, W42Piece *ref, W42Piece *piece)
   pt->length += piece->length;
 }
 
+/* Unlinks and frees `piece`, which starts at `start`.  The cache moves to
+ * the neighbour before it, whose start is then known, or to the one after,
+ * which now begins where the freed piece did. */
 static void
-pt_unlink (W42PieceTable *pt, W42Piece *piece)
+pt_unlink (W42PieceTable *pt, W42Piece *piece, gsize start)
 {
-  PT_RESHAPED (pt);
+  if (piece->prev != NULL)
+    pt_cache_set (pt, piece->prev, start - piece->prev->length);
+  else if (piece->next != NULL)
+    pt_cache_set (pt, piece->next, start);
+  else
+    PT_RESHAPED (pt);
   if (piece->prev != NULL)
     piece->prev->next = piece->next;
   else
@@ -299,13 +323,14 @@ pt_unlink (W42PieceTable *pt, W42Piece *piece)
 static W42Piece *
 pt_split_at (W42PieceTable *pt, gsize pos)
 {
-  PT_RESHAPED (pt);
   W42Piece *piece, *tail;
   gsize offset = 0;
 
   if (pos >= pt->length)
     return NULL;
 
+  /* pt_find leaves the cache on `piece`, which keeps its start whether
+   * or not it is split. */
   piece = pt_find (pt, pos, &offset);
   if (piece == NULL || offset == 0)
     return piece;
@@ -337,30 +362,84 @@ pt_split_at (W42PieceTable *pt, gsize pos)
 /* Fold neighbouring text pieces that came from the same run of the same
  * buffer with the same formatting back into one.  Without this, editing in
  * the middle of a paragraph would fragment it without bound. */
+static inline gboolean
+pt_can_join (const W42Piece *p, const W42Piece *n)
+{
+  return p->type == W42_PIECE_TEXT && n->type == W42_PIECE_TEXT &&
+         p->ap == n->ap && p->in_change == n->in_change &&
+         p->offset + p->length == n->offset;
+}
+
+/* Joins `n` on to the piece before it, `p`, which starts at `p_start`. */
+static void
+pt_join (W42PieceTable *pt, W42Piece *p, W42Piece *n, gsize p_start)
+{
+  gsize n_start = p_start + p->length;
+
+  p->length += n->length;
+  /* pt_unlink() subtracts n->length from the document total, but the
+   * characters have just moved into p, so put it back. */
+  pt->length += n->length;
+  pt_unlink (pt, n, n_start);
+  pt_cache_set (pt, p, p_start);
+}
+
+/* The same over the piece boundaries in [pos, pos + n]: what an edit
+ * there can have fragmented.  An insertion, a deletion or a change of
+ * formatting touches only the pieces it split, so this is what they
+ * call; a walk of the whole list after every run a reader inserts is
+ * what made loading a long document take the square of its length. */
+static void
+pt_coalesce_range (W42PieceTable *pt, gsize pos, gsize n)
+{
+  gsize from = pos > 0 ? pos - 1 : 0;
+  gsize end = pos + n;
+  gsize offset = 0, start;
+  W42Piece *p;
+
+  if (pt->head == NULL || from >= pt->length)
+    return;
+  p = pt_find (pt, from, &offset);
+  if (p == NULL)
+    return;
+  start = from - offset;
+
+  /* Each boundary at or before `end`, from the one that closes `p`. */
+  while (p->next != NULL && start + p->length <= end)
+    {
+      if (pt_can_join (p, p->next))
+        pt_join (pt, p, p->next, start);
+      else
+        {
+          start += p->length;
+          p = p->next;
+        }
+    }
+  pt_cache_set (pt, p, start);
+}
+
 static void
 pt_coalesce (W42PieceTable *pt)
 {
-  PT_RESHAPED (pt);
   W42Piece *p = pt->head;
+  gsize start = 0;
 
-  while (p != NULL && p->next != NULL)
+  if (p == NULL)
     {
-      W42Piece *n = p->next;
-
-      if (p->type == W42_PIECE_TEXT && n->type == W42_PIECE_TEXT &&
-          p->ap == n->ap && p->in_change == n->in_change &&
-          p->offset + p->length == n->offset)
-        {
-          p->length += n->length;
-          /* pt_unlink() subtracts n->length from the document total, but the
-           * characters have just moved into p, so put it back. */
-          pt->length += n->length;
-          pt_unlink (pt, n);
-          continue;
-        }
-
-      p = n;
+      PT_RESHAPED (pt);
+      return;
     }
+  while (p->next != NULL)
+    {
+      if (pt_can_join (p, p->next))
+        pt_join (pt, p, p->next, start);
+      else
+        {
+          start += p->length;
+          p = p->next;
+        }
+    }
+  pt_cache_set (pt, p, start);
 }
 
 static void
@@ -429,7 +508,7 @@ pt_do_delete (W42PieceTable *pt, gsize pos, gsize n)
 
       g_assert (remaining >= p->length);
       remaining -= p->length;
-      pt_unlink (pt, p);
+      pt_unlink (pt, p, pos);
       p = next;
     }
 
@@ -467,7 +546,7 @@ pt_do_insert_runs (W42PieceTable *pt, gsize pos, GArray *runs, GArray *chars)
                                run->n);
         }
 
-      pt_link_before (pt, ref, piece);
+      pt_link_before (pt, ref, piece, pos + total);
       total += run->n;
     }
 
@@ -648,7 +727,8 @@ pt_apply (W42PieceTable *pt, W42CR *cr)
   if (inverse != NULL)
     inverse->group = cr->group;
 
-  pt_coalesce (pt);
+  if (cr->type != CR_TABLE)
+    pt_coalesce_range (pt, cr->pos, cr->type == CR_INSERT ? 0 : cr->len);
 
   /* Rows that came or went by undo need their cells renumbered, the same
    * as when they came or went the first time. */
@@ -898,7 +978,7 @@ pt_append_strux (W42PieceTable *pt, W42StruxType strux, W42ApIdx ap)
   piece->ap     = ap;
   piece->length = 1;
 
-  pt_link_before (pt, NULL, piece);
+  pt_link_before (pt, NULL, piece, pt->length);
   return piece;
 }
 
@@ -1009,7 +1089,7 @@ w42_pt_load_text (W42PieceTable *pt, const char *utf8)
               piece->ap     = ap;
               piece->offset = offset;
               piece->length = len;
-              pt_link_before (pt, NULL, piece);
+              pt_link_before (pt, NULL, piece, pt->length);
             }
 
           pt_append_strux (pt, W42_STRUX_BLOCK, ap);
@@ -1027,7 +1107,7 @@ w42_pt_load_text (W42PieceTable *pt, const char *utf8)
       piece->ap     = ap;
       piece->offset = offset;
       piece->length = pt->initial->len - offset;
-      pt_link_before (pt, NULL, piece);
+      pt_link_before (pt, NULL, piece, pt->length);
     }
 }
 
@@ -1685,7 +1765,7 @@ w42_pt_insert_text (W42PieceTable *pt, gsize pos, const char *utf8, W42ApIdx ap)
   g_array_append_vals (pt->change, ucs4, (guint) n_chars);
   g_free (ucs4);
 
-  pt_link_before (pt, ref, piece);
+  pt_link_before (pt, ref, piece, pos);
 
   if (!pt_try_coalesce_insert (pt, pos, (gsize) n_chars))
     {
@@ -1693,7 +1773,7 @@ w42_pt_insert_text (W42PieceTable *pt, gsize pos, const char *utf8, W42ApIdx ap)
       pt->coalescing = TRUE;
     }
 
-  pt_coalesce (pt);
+  pt_coalesce_range (pt, pos, (gsize) n_chars);
 }
 
 void
@@ -1712,11 +1792,11 @@ w42_pt_insert_block (W42PieceTable *pt, gsize pos, W42ApIdx ap)
   piece->ap     = ap;
   piece->length = 1;
 
-  pt_link_before (pt, ref, piece);
+  pt_link_before (pt, ref, piece, pos);
 
   pt->coalescing = FALSE;
   pt_push (pt, cr_new (CR_INSERT, pos, 1));
-  pt_coalesce (pt);
+  pt_coalesce_range (pt, pos, 1);
 }
 
 void
@@ -1736,11 +1816,11 @@ w42_pt_insert_object (W42PieceTable *pt, gsize pos, W42ObjectIdx object, W42ApId
   piece->offset = object;
   piece->length = 1;
 
-  pt_link_before (pt, ref, piece);
+  pt_link_before (pt, ref, piece, pos);
 
   pt->coalescing = FALSE;
   pt_push (pt, cr_new (CR_INSERT, pos, 1));
-  pt_coalesce (pt);
+  pt_coalesce_range (pt, pos, 1);
 }
 
 W42ObjectIdx
@@ -2072,7 +2152,7 @@ pt_delete_range (W42PieceTable *pt, gsize pos, gsize n)
   pt->coalescing = FALSE;
   record = pt_do_delete (pt, pos, n);
   pt_push (pt, record);
-  pt_coalesce (pt);
+  pt_coalesce_range (pt, pos, 0);
 }
 
 static void
@@ -2237,7 +2317,7 @@ pt_apply_fmt (W42PieceTable *pt,
     {
       pt->coalescing = FALSE;
       pt_push (pt, pt_do_set_aps (pt, pos, end - pos, runs));
-      pt_coalesce (pt);
+      pt_coalesce_range (pt, pos, end - pos);
     }
 
   g_array_free (runs, TRUE);
@@ -2304,7 +2384,7 @@ pt_insert_strux_at (W42PieceTable *pt, gsize pos, W42StruxType strux,
   piece->offset = payload;
   piece->length = 1;
 
-  pt_link_before (pt, ref, piece);
+  pt_link_before (pt, ref, piece, pos);
 }
 
 int
@@ -2598,44 +2678,113 @@ void
 w42_pt_resolve_vmerges (W42PieceTable *pt, int table)
 {
   const W42TableProps *props = w42_pt_table_props (pt, table);
+  W42Piece *first = NULL;
+  W42Piece **grid;
   int rows = 0, cols;
+  gboolean any = FALSE, changed = FALSE;
 
   g_return_if_fail (pt != NULL);
   if (props == NULL)
     return;
   cols = props->n_cols;
-
-  /* How many rows the table has: the last one that has a first cell. */
-  while (rows < 4096 && w42_pt_cell_start (pt, table, rows, 0) != (gsize) -1)
-    rows++;
-  if (rows == 0 || cols <= 0)
+  if (cols <= 0)
     return;
+
+  /* One walk to the table's marks, rather than one from the head for
+   * every cell asked about.  A reader tidies each table as it closes it,
+   * when that table is the last one and stands at the end, so the last
+   * table is found from the tail: a long document of many tables would
+   * otherwise pay its whole length for each of them. */
+  if ((guint) table + 1 == pt->tables->len)
+    for (W42Piece *q = pt->tail; q != NULL; q = q->prev)
+      if (piece_is_strux (q, W42_STRUX_TABLE) && (int) q->offset == table)
+        {
+          first = q;
+          break;
+        }
+  if (first == NULL)
+    for (W42Piece *q = pt->head; q != NULL; q = q->next)
+      if (piece_is_strux (q, W42_STRUX_TABLE) && (int) q->offset == table)
+        {
+          first = q;
+          break;
+        }
+  if (first == NULL)
+    return;
+
+  for (W42Piece *q = first->next; q != NULL && !piece_is_strux (q, W42_STRUX_ENDTABLE); q = q->next)
+    if (piece_is_strux (q, W42_STRUX_CELL))
+      {
+        const W42Fmt *fmt = w42_ap_table_get (pt->aps, q->ap);
+
+        rows = MAX (rows, CELL_ROW (q->offset) + 1);
+        if (fmt != NULL && fmt->pa.cell_vspan > 1)
+          any = TRUE;
+      }
+  /* Most tables merge nothing, and need nothing. */
+  if (!any || rows == 0 || rows > 4096)
+    return;
+
+  /* The first mark for each row and column, as a lookup would find it. */
+  grid = g_new0 (W42Piece *, (gsize) rows * cols);
+  for (W42Piece *q = first->next; q != NULL && !piece_is_strux (q, W42_STRUX_ENDTABLE); q = q->next)
+    if (piece_is_strux (q, W42_STRUX_CELL))
+      {
+        int row = CELL_ROW (q->offset), col = CELL_COL (q->offset);
+
+        if (col < cols && grid[row * cols + col] == NULL)
+          grid[row * cols + col] = q;
+      }
 
   for (int col = 0; col < cols; col++)
     {
       for (int row = 0; row < rows; row++)
         {
-          int v = w42_pt_cell_vspan (pt, table, row, col);
+          W42Piece *cell = grid[row * cols + col];
+          const W42Fmt *fmt = cell != NULL ? w42_ap_table_get (pt->aps, cell->ap) : NULL;
+          int v = fmt == NULL ? 0 : fmt->pa.cell_vspan;
           int n = 1;
+          W42Fmt want;
 
           if (v == 0 || v == W42_CELL_COVERED)
             {
               /* Covered by nothing: an ordinary cell after all. */
               if (v == W42_CELL_COVERED)
-                cell_set_vspan (pt, table, row, col, 1);
+                {
+                  want = *fmt;
+                  want.pa.cell_vspan = 1;
+                  cell->ap = w42_ap_table_intern (pt->aps, &want);
+                  changed = TRUE;
+                }
               continue;
             }
           if (v < 2)
             continue;
 
-          while (row + n < rows &&
-                 w42_pt_cell_vspan (pt, table, row + n, col) == W42_CELL_COVERED)
-            n++;
-          cell_set_vspan (pt, table, row, col, n > 1 ? n : 1);
+          while (row + n < rows)
+            {
+              W42Piece *below = grid[(row + n) * cols + col];
+              const W42Fmt *bf = below != NULL ? w42_ap_table_get (pt->aps, below->ap) : NULL;
+
+              if (bf == NULL || bf->pa.cell_vspan != W42_CELL_COVERED)
+                break;
+              n++;
+            }
+          if (n != v)
+            {
+              want = *fmt;
+              want.pa.cell_vspan = (guint8) CLAMP (n, 1, 255);
+              cell->ap = w42_ap_table_intern (pt->aps, &want);
+              changed = TRUE;
+            }
           row += n - 1;
         }
     }
-  w42_pt_clear_undo (pt);
+  g_free (grid);
+  /* The marks were changed in place, with no record: the history that
+   * was there cannot take them back, and goes. */
+  if (changed)
+    w42_pt_clear_undo (pt);
 }
 
 int
