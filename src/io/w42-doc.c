@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "w42-image.h"
+#include "w42-shape.h"
 
 /* ---------------------------------------------------------------------- */
 /* Little-endian readers                                                   */
@@ -1919,12 +1920,53 @@ in_dt (Doc *doc, gsize off, gsize n)
   return doc->dt != NULL && off <= doc->dt_len && n <= doc->dt_len - off;
 }
 
-/* The picture at `fc` in the Data stream: a PICF header, then OfficeArt
- * records down to a blip-store entry holding the bytes of a PNG or JPEG.
- * Metafiles and DIBs are passed over.  On success the bytes and the size
- * Word showed it at, in twips. */
+/* A metafile blip's bytes are deflated in the zlib framing; the header
+ * before them says how long they were. */
 static GBytes *
-find_picture (Doc *doc, guint32 fc, int *width, int *height)
+inflate_zlib (const guint8 *in, gsize in_len, gsize expect)
+{
+  GZlibDecompressor *dec = g_zlib_decompressor_new (G_ZLIB_COMPRESSOR_FORMAT_ZLIB);
+  GByteArray *out = g_byte_array_new ();
+  guint8 buf[65536];
+  gsize in_pos = 0;
+  gsize limit = expect > 0 ? MIN (expect, 64u << 20) : 64u << 20;
+  gboolean done = FALSE, ok = TRUE;
+
+  while (!done)
+    {
+      gsize read = 0, written = 0;
+      GConverterResult res = g_converter_convert (G_CONVERTER (dec), in + in_pos, in_len - in_pos,
+                                                  buf, sizeof buf,
+                                                  in_pos >= in_len ? G_CONVERTER_INPUT_AT_END : G_CONVERTER_NO_FLAGS,
+                                                  &read, &written, NULL);
+
+      if (res == G_CONVERTER_ERROR || out->len + written > limit)
+        {
+          ok = FALSE;
+          break;
+        }
+      in_pos += read;
+      g_byte_array_append (out, buf, written);
+      if (res == G_CONVERTER_FINISHED || (read == 0 && written == 0 && in_pos >= in_len))
+        done = TRUE;
+    }
+  g_object_unref (dec);
+  if (!ok || out->len == 0)
+    {
+      g_byte_array_free (out, TRUE);
+      return NULL;
+    }
+  return g_byte_array_free_to_bytes (out);
+}
+
+/* The picture at `fc` in the Data stream: a PICF header, then OfficeArt
+ * records down to a blip-store entry holding the bytes of a PNG or JPEG,
+ * or of a Windows metafile, which comes back inflated with `ext` saying
+ * "emf" or "wmf" -- nothing here can draw one, but it keeps its place
+ * and its bytes.  DIBs are passed over.  On success the bytes and the
+ * size Word showed it at, in twips. */
+static GBytes *
+find_picture (Doc *doc, guint32 fc, int *width, int *height, const char **ext)
 {
   guint32 lcb, cb_header, p, end;
   int dxa, dya, mx, my;
@@ -1985,6 +2027,29 @@ find_picture (Doc *doc, guint32 fc, int *width, int *height)
               want = "png";
               skip = (binst == 0x6E1) ? 32 : 16;
             }
+          else if (btype == 0xF01A || btype == 0xF01B)
+            {
+              /* EMF or WMF: after the UIDs, a header of its own -- the
+               * uncompressed size first, the stored size and the
+               * compression byte at the end -- then the bytes. */
+              guint32 h, cb_size, cb_save;
+              guint8 compression;
+
+              want = btype == 0xF01A ? "emf" : "wmf";
+              skip = (binst == 0x3D5 || binst == 0x217) ? 32 : 16;
+              if (blen > end - b - 8 || blen < skip + 34)
+                return NULL;
+              h = b + 8 + skip;
+              cb_size = rd32 (doc->dt + h);
+              cb_save = rd32 (doc->dt + h + 28);
+              compression = doc->dt[h + 32];
+              if (cb_save == 0 || cb_save > blen - skip - 34)
+                return NULL;
+              *ext = want;
+              if (compression == 0xFE)
+                return g_bytes_new (doc->dt + h + 34, cb_save);
+              return inflate_zlib (doc->dt + h + 34, cb_save, cb_size);
+            }
           else
             return NULL;
 
@@ -1992,7 +2057,7 @@ find_picture (Doc *doc, guint32 fc, int *width, int *height)
           if (blen <= skip || blen > end - b - 8)
             return NULL;
 
-          (void) want;
+          *ext = want;
           return g_bytes_new (doc->dt + b + 8 + skip, blen - skip);
         }
 
@@ -2148,18 +2213,46 @@ emit_text (Builder *b, const DocPara *dp)
           if (c == 0x01 && ch.has_pic)
             {
               int width = 0, height = 0, pw = 0, ph = 0;
-              GBytes *data = find_picture (doc, ch.pic_fc, &width, &height);
+              const char *ext = NULL;
+              GBytes *data = find_picture (doc, ch.pic_fc, &width, &height, &ext);
               const char *format = NULL;
+              W42ObjectIdx idx = W42_OBJECT_NONE;
+              W42ObjectTable *objects = w42_pt_object_table (b->pt);
 
               if (data != NULL && w42_image_probe (data, &pw, &ph, &format))
                 {
-                  W42ObjectIdx idx;
-                  W42Fmt pfmt;
-
                   if (width <= 0)  width = pw * 15;
                   if (height <= 0) height = ph * 15;
-                  idx = w42_object_table_add (w42_pt_object_table (b->pt), data,
-                                              format, pw, ph, width, height);
+                  idx = w42_object_table_add (objects, data, format, pw, ph, width, height);
+                }
+              else if (data != NULL && ext != NULL &&
+                       (g_str_equal (ext, "emf") || g_str_equal (ext, "wmf")))
+                {
+                  /* A metafile: a box its size with its kind written in
+                   * it, as Word shows a picture it cannot draw, and the
+                   * bytes kept for the file the document is saved as. */
+                  char *label = g_strdup_printf ("%s picture", g_str_equal (ext, "emf") ? "EMF" : "WMF");
+                  GBytes *png;
+
+                  if (width <= 0)  width = 2880;
+                  if (height <= 0) height = 1440;
+                  pw = MAX (width / 15, 2);
+                  ph = MAX (height / 15, 2);
+                  png = w42_shape_render (W42_SHAPE_RECTANGLE, pw, ph, 0.75, 0x999999, FALSE, 0xFFFFFF, label);
+                  if (png != NULL)
+                    {
+                      idx = w42_object_table_add (objects, png, g_intern_static_string ("png"),
+                                                  pw, ph, width, height);
+                      w42_object_table_set_shape (objects, idx, W42_SHAPE_RECTANGLE, 0.75, 0x999999,
+                                                  FALSE, 0xFFFFFF, label);
+                      w42_object_table_set_original (objects, idx, data, ext);
+                      g_bytes_unref (png);
+                    }
+                  g_free (label);
+                }
+              if (idx != W42_OBJECT_NONE)
+                {
+                  W42Fmt pfmt;
 
                   w42_fmt_init_default (&pfmt);
                   fill_char_fmt (doc, &ch, &pfmt.ch);

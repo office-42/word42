@@ -39,9 +39,12 @@ See docs/PARITY.md for the full comparison with Word 97 and AbiWord.
 
 ## To do — files
 
-- Word .doc: metafile pictures; the formatting of files from before
-  Word 97 (only their text is read today). Writing .doc is probably
-  never worth doing: RTF is what Word opens.
+- Drawing Windows metafiles (EMF, WMF): a .doc's or .docx's metafile
+  picture keeps its place as a labelled box and its bytes go back into
+  a saved .docx, but nothing draws it yet.
+- Word .doc: the formatting of files from before Word 97 (only their
+  text is read today). Writing .doc is probably never worth doing: RTF
+  is what Word opens.
 
 ## To do — application
 
