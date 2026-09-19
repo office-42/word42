@@ -1906,6 +1906,27 @@ docx_apply_field (Docx *d)
   g_free (instr);
 }
 
+/* Where an anchored picture or shape goes, once it is in: at the side its
+ * wrap names, or, when the file gave an offset, at that place.  A
+ * horizontal alignment with a vertical offset -- the form Word42 itself
+ * writes, "right" and 0 -- keeps its side: an offset of nothing across
+ * is not a place at the column's left edge. */
+static void
+docx_place_anchored (Docx *d)
+{
+  int w = (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680);
+  int text_w = d->page != NULL ? d->page->width - d->page->margin_left - d->page->margin_right : 9360;
+
+  w42_builder_object_wrap (&d->b, d->wrap);
+  if (d->pos_h_set || (d->pos_v_set && d->pos_y != 0))
+    {
+      int x = d->pos_h_set ? (int) (d->pos_x / EMU_PER_TWIP)
+            : d->wrap == W42_WRAP_RIGHT ? MAX (text_w - w, 0) : 0;
+
+      w42_builder_object_position (&d->b, x, d->pos_v_set ? (int) (d->pos_y / EMU_PER_TWIP) : 0);
+    }
+}
+
 /* A drawing has closed -- w:drawing, or a VML w:pict or w:object: the
  * picture it held goes in, or the shape is drawn. */
 static void
@@ -1927,12 +1948,7 @@ docx_finish_drawing (Docx *d)
                          d->filled, d->fill_rgb,
                          d->shape_text->len > 0 ? d->shape_text->str : NULL);
       if (d->anchored)
-        {
-          w42_builder_object_wrap (&d->b, d->wrap);
-          if (d->pos_h_set || d->pos_v_set)
-            w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
-                                         (int) (d->pos_y / EMU_PER_TWIP));
-        }
+        docx_place_anchored (d);
       g_string_truncate (d->shape_text, 0);
       d->in_wsp = FALSE;
       d->in_drawing = FALSE;
@@ -1960,12 +1976,7 @@ docx_finish_drawing (Docx *d)
                               (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
                               (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
           if (d->anchored)
-            {
-              w42_builder_object_wrap (&d->b, d->wrap);
-              if (d->pos_h_set || d->pos_v_set)
-                w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
-                                             (int) (d->pos_y / EMU_PER_TWIP));
-            }
+            docx_place_anchored (d);
         }
       if (bytes != NULL)
         g_bytes_unref (bytes);
