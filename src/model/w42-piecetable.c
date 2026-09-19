@@ -2367,6 +2367,43 @@ w42_pt_apply_para_fmt (W42PieceTable    *pt,
                 FMT_PARA, mask, value);
 }
 
+void
+w42_pt_set_mark_char_fmt (W42PieceTable *pt, gsize pos, const W42CharFmt *ch)
+{
+  gsize block_pos = pos, offset = 0;
+  W42Piece *piece;
+  W42Fmt fmt;
+  W42ApRun run;
+  GArray *runs;
+
+  g_return_if_fail (pt != NULL);
+  g_return_if_fail (ch != NULL);
+
+  /* Back to the mark that opens the paragraph, as w42_pt_apply_para_fmt
+   * goes. */
+  for (;;)
+    {
+      piece = pt_find (pt, block_pos, &offset);
+      if (piece != NULL && piece_is_strux (piece, W42_STRUX_BLOCK) && offset == 0)
+        break;
+      if (block_pos == 0)
+        return;
+      block_pos--;
+    }
+
+  fmt = *w42_ap_table_get (pt->aps, piece->ap);
+  fmt.ch = *ch;
+  run.n = 1;
+  run.ap = w42_ap_table_intern (pt->aps, &fmt);
+  if (run.ap == piece->ap)
+    return;
+  runs = g_array_new (FALSE, FALSE, sizeof (W42ApRun));
+  g_array_append_val (runs, run);
+  pt->coalescing = FALSE;
+  pt_push (pt, pt_do_set_aps (pt, block_pos, 1, runs));
+  g_array_free (runs, TRUE);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Tables                                                                  */
 /* ---------------------------------------------------------------------- */

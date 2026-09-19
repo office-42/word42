@@ -241,6 +241,8 @@ style_overlay (W42Style *dst, const W42Style *own, const W42Style *base)
   pa.border            = own->pa.border;
   memcpy (pa.edge, own->pa.edge, sizeof pa.edge);
   pa.shading           = own->pa.shading;
+  pa.has_shading_color = own->pa.has_shading_color;
+  pa.shading_color     = own->pa.shading_color;
   pa.section_break     = own->pa.section_break;
   pa.columns           = own->pa.columns;
   pa.column_gap        = own->pa.column_gap;

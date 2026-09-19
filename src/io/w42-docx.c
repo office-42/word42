@@ -362,6 +362,22 @@ typedef struct {
   gboolean      any;               /* w:tblBorders was given */
   W42BorderEdge edge[W42_N_EDGES];
   char         *based;             /* the styleId it was made from */
+  /* Word 2007's table designs are mostly conditional: what the first
+   * row and every other row look like.  The parts Word42 can show. */
+  gboolean      has_fill;          /* every cell's background */
+  guint32       fill;
+  gboolean      first_has_fill;    /* the first row's */
+  guint32       first_fill;
+  gboolean      first_bold;
+  gboolean      first_has_color;
+  guint32       first_color;
+  gboolean      band_has_fill;     /* every other row's, from the second */
+  guint32       band_fill;
+  gboolean      has_color;         /* every run's colour */
+  guint32       color;
+  gboolean      has_spacing;       /* the cells' paragraph spacing: a design
+                                    * takes Word 2007's air out of its cells */
+  int           space_before, space_after, line_pct, line_exact;
 } DocxTableStyle;
 
 static void
@@ -398,8 +414,10 @@ typedef struct {
   char          *cur_based;      /* the basedOn id */
   DocxTableStyle *cur_tbl;
   gboolean       in_tblpr;       /* the style's own w:tblPr, not a w:tblStylePr's */
-  int            skip;           /* inside w:tblStylePr: the conditional
-                                  * parts, first row and the like, are not read */
+  int            cond;           /* inside w:tblStylePr: 1 firstRow, 2 band1Horz, 3 another */
+  gboolean       in_tcpr;
+  gboolean       in_pbdr;
+  int            skip;           /* inside an element with nothing to read */
   int            in_defaults;    /* 1 in w:rPrDefault, 2 in w:pPrDefault */
   gboolean       in_rpr, in_ppr;
   W42CharFmt     def_ch;         /* what docDefaults said */
@@ -547,6 +565,48 @@ style_property (Styles *s, const char *tag, const char **an, const char **av,
           *pa_own |= W42_STYLE_PA_INDENT_FIRST;
         }
     }
+  else if (g_str_equal (tag, "pBdr"))
+    s->in_pbdr = TRUE;
+  else if (s->in_pbdr && border_edge_index (tag) >= 0 && border_edge_index (tag) < 4)
+    {
+      /* The rule under Word 2007's Title, the box round its quotes. */
+      int e = border_edge_index (tag);
+      W42BorderEdge edge;
+
+      if (border_element (an, av, &edge))
+        {
+          pa->border |= (guint8) (1 << e);
+          pa->edge[e] = edge;
+        }
+    }
+  else if (g_str_equal (tag, "shd"))
+    {
+      const char *fill = attr (an, av, "fill");
+
+      if (fill != NULL && !g_str_equal (fill, "auto") && strlen (fill) == 6)
+        {
+          pa->shading_color = (guint32) g_ascii_strtoull (fill, NULL, 16);
+          pa->has_shading_color = 1;
+          pa->shading = 0;
+        }
+    }
+  else if (g_str_equal (tag, "tab"))
+    {
+      const char *val = attr (an, av, "val");
+      const char *leader = attr (an, av, "leader");
+      int pos = attr_int (an, av, "pos", -1);
+
+      if (pos >= 0 && val != NULL && !g_str_equal (val, "clear"))
+        w42_para_fmt_set_tab_leader (pa, pos,
+                                     g_str_equal (val, "center") ? W42_TAB_CENTER
+                                     : g_str_equal (val, "right") || g_str_equal (val, "end") ? W42_TAB_RIGHT
+                                     : g_str_equal (val, "decimal") ? W42_TAB_DECIMAL : W42_TAB_LEFT,
+                                     leader == NULL ? W42_TAB_LEAD_NONE
+                                     : g_str_equal (leader, "dot") || g_str_equal (leader, "middleDot") ? W42_TAB_LEAD_DOT
+                                     : g_str_equal (leader, "hyphen") ? W42_TAB_LEAD_DASH
+                                     : g_str_equal (leader, "underscore") ||
+                                       g_str_equal (leader, "heavy") ? W42_TAB_LEAD_LINE : W42_TAB_LEAD_NONE);
+    }
   else if (g_str_equal (tag, "keepNext"))
     {
       pa->keep_next = toggle_on (an, av);
@@ -579,7 +639,54 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   if (g_str_equal (tag, "tblStylePr"))
     {
-      s->skip = 1;
+      const char *type = attr (an, av, "type");
+
+      s->cond = type == NULL ? 3 : g_str_equal (type, "firstRow") ? 1
+              : g_str_equal (type, "band1Horz") ? 2 : 3;
+      return;
+    }
+  if (s->cond != 0)
+    {
+      /* A conditional part of a table style: the first row's fill, bold
+       * and colour, and the shading of every other row. */
+      DocxTableStyle *t = s->cur_tbl;
+
+      if (g_str_equal (tag, "tcPr"))
+        s->in_tcpr = TRUE;
+      else if (g_str_equal (tag, "rPr"))
+        s->in_rpr = TRUE;
+      else if (t != NULL && s->cond == 1 && s->in_tcpr && g_str_equal (tag, "shd"))
+        {
+          const char *fill = attr (an, av, "fill");
+
+          if (fill != NULL && !g_str_equal (fill, "auto") && strlen (fill) == 6)
+            {
+              t->first_fill = (guint32) g_ascii_strtoull (fill, NULL, 16);
+              t->first_has_fill = TRUE;
+            }
+        }
+      else if (t != NULL && s->cond == 2 && s->in_tcpr && g_str_equal (tag, "shd"))
+        {
+          const char *fill = attr (an, av, "fill");
+
+          if (fill != NULL && !g_str_equal (fill, "auto") && strlen (fill) == 6)
+            {
+              t->band_fill = (guint32) g_ascii_strtoull (fill, NULL, 16);
+              t->band_has_fill = TRUE;
+            }
+        }
+      else if (t != NULL && s->cond == 1 && s->in_rpr && g_str_equal (tag, "b"))
+        t->first_bold = toggle_on (an, av);
+      else if (t != NULL && s->cond == 1 && s->in_rpr && g_str_equal (tag, "color"))
+        {
+          const char *v = attr (an, av, "val");
+
+          if (v != NULL && strlen (v) == 6 && !g_str_equal (v, "auto"))
+            {
+              t->first_color = (guint32) g_ascii_strtoull (v, NULL, 16);
+              t->first_has_color = TRUE;
+            }
+        }
       return;
     }
   if (g_str_equal (tag, "rPrDefault"))
@@ -693,10 +800,59 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
     {
       if (g_str_equal (tag, "tblPr"))
         s->in_tblpr = TRUE;
+      else if (g_str_equal (tag, "tcPr"))
+        s->in_tcpr = TRUE;
       else if (s->in_tblpr && g_str_equal (tag, "tblBorders"))
         s->cur_tbl->any = TRUE;
       else if (s->in_tblpr && s->cur_tbl->any && border_edge_index (tag) >= 0)
         border_element (an, av, &s->cur_tbl->edge[border_edge_index (tag)]);
+      else if (s->in_tcpr && g_str_equal (tag, "shd"))
+        {
+          const char *fill = attr (an, av, "fill");
+
+          if (fill != NULL && !g_str_equal (fill, "auto") && strlen (fill) == 6)
+            {
+              s->cur_tbl->fill = (guint32) g_ascii_strtoull (fill, NULL, 16);
+              s->cur_tbl->has_fill = TRUE;
+            }
+        }
+      else if (s->in_rpr && g_str_equal (tag, "color"))
+        {
+          const char *v = attr (an, av, "val");
+
+          if (v != NULL && strlen (v) == 6 && !g_str_equal (v, "auto"))
+            {
+              s->cur_tbl->color = (guint32) g_ascii_strtoull (v, NULL, 16);
+              s->cur_tbl->has_color = TRUE;
+            }
+        }
+      else if (s->in_ppr && g_str_equal (tag, "spacing"))
+        {
+          const char *line = attr (an, av, "line");
+          const char *rule = attr (an, av, "lineRule");
+          DocxTableStyle *t = s->cur_tbl;
+
+          t->has_spacing = TRUE;
+          t->space_before = CLAMP (attr_int (an, av, "before", s->def_pa.space_before), 0, 31680);
+          t->space_after = CLAMP (attr_int (an, av, "after", s->def_pa.space_after), 0, 31680);
+          t->line_pct = s->def_pa.line_spacing_pct;
+          t->line_exact = s->def_pa.line_spacing;
+          if (line != NULL)
+            {
+              int l = CLAMP (atoi (line), 0, 31680);
+
+              if (rule == NULL || g_str_equal (rule, "auto"))
+                {
+                  t->line_pct = l * 100 / 240;
+                  t->line_exact = 0;
+                }
+              else
+                {
+                  t->line_exact = l;
+                  t->line_pct = 0;
+                }
+            }
+        }
     }
   else if (s->cur_take)
     style_property (s, tag, an, av, &s->cur.ch, &s->cur.pa, &s->cur.ch_own, &s->cur.pa_own,
@@ -715,14 +871,25 @@ styles_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **
       s->skip--;
       return;
     }
+  if (g_str_equal (tag, "tblStylePr"))
+    {
+      s->cond = 0;
+      s->in_tcpr = FALSE;
+      s->in_rpr = FALSE;
+      return;
+    }
   if (g_str_equal (tag, "rPrDefault") || g_str_equal (tag, "pPrDefault"))
     s->in_defaults = 0;
   else if (g_str_equal (tag, "rPr"))
     s->in_rpr = FALSE;
   else if (g_str_equal (tag, "pPr"))
     s->in_ppr = FALSE;
+  else if (g_str_equal (tag, "pBdr"))
+    s->in_pbdr = FALSE;
   else if (g_str_equal (tag, "tblPr"))
     s->in_tblpr = FALSE;
+  else if (g_str_equal (tag, "tcPr"))
+    s->in_tcpr = FALSE;
   else if (g_str_equal (tag, "style"))
     {
       if (s->cur_take)
@@ -1241,6 +1408,12 @@ typedef struct {
   GHashTable *table_styles;       /* styleId -> DocxTableStyle* */
   const char *major_font, *minor_font;   /* the theme's faces, or NULL */
   gboolean    tbl_style_edges;    /* tbl_edge holds the table style's rules */
+  const DocxTableStyle *tbl_style; /* the table's design, or NULL */
+  gboolean    look_first_row;     /* w:tblLook: the design's first row applies */
+  gboolean    look_bands;         /* and its banded rows */
+  gboolean    cell_run_bold;      /* the design's first row: onto each run */
+  gboolean    cell_run_has_color;
+  guint32     cell_run_color;
   GHashTable *comment_start;      /* id -> gsize position */
   gboolean    in_pbdr;
   gboolean    in_pgborders;   /* the section's page border */
@@ -1377,8 +1550,19 @@ docx_apply_style (Docx *d, const char *name)
   pa->keep_next = st->pa.keep_next;
   pa->keep_together = st->pa.keep_together;
   pa->widow_control = st->pa.widow_control;
+  pa->border = st->pa.border;
+  memcpy (pa->edge, st->pa.edge, sizeof pa->edge);
+  pa->shading = st->pa.shading;
+  pa->has_shading_color = st->pa.has_shading_color;
+  pa->shading_color = st->pa.shading_color;
+  pa->n_tabs = st->pa.n_tabs;
+  memcpy (pa->tab_kind, st->pa.tab_kind, sizeof pa->tab_kind);
+  memcpy (pa->tab_pos, st->pa.tab_pos, sizeof pa->tab_pos);
   d->style_ch = st->ch;
   d->have_style_ch = TRUE;
+  /* An empty paragraph is as tall as its mark, which is set in the
+   * style's face until the mark's own rPr says otherwise. */
+  d->b.ch = st->ch;
 }
 
 /* ---- VML: Word 2007's drawings ------------------------------------------ */
@@ -1671,6 +1855,7 @@ static void
 docx_apply_field (Docx *d)
 {
   const char *code = w42_field_code (d->fld_instr->str);
+  char *instr = g_strstrip (g_strdup (d->fld_instr->str));
 
   docx_flush_text (d);
   if (d->fld_state == 2 && code != NULL && d->b.pos > d->fld_start)
@@ -1681,6 +1866,44 @@ docx_apply_field (Docx *d)
       want.field = code;
       w42_pt_apply_char_fmt (d->pt, d->fld_start, d->b.pos - d->fld_start, W42_CHAR_FIELD, &want);
     }
+  else if (d->fld_state == 2 && d->b.pos > d->fld_start &&
+           g_ascii_strncasecmp (instr, "HYPERLINK", 9) == 0)
+    {
+      /* A link as a field, the way files converted from .doc carry them:
+       * HYPERLINK "http://..." or HYPERLINK \l "bookmark". */
+      const char *p = instr + 9;
+      gboolean anchor = FALSE;
+      char *target = NULL;
+
+      while (*p != '\0' && target == NULL)
+        {
+          if (*p == '\\')
+            {
+              anchor = p[1] == 'l';
+              p += 2;
+            }
+          else if (*p == '"')
+            {
+              const char *end = strchr (p + 1, '"');
+
+              target = g_strndup (p + 1, end != NULL ? (gsize) (end - p - 1) : strlen (p + 1));
+            }
+          else
+            p++;
+        }
+      if (target != NULL && *target != '\0')
+        {
+          W42CharFmt want;
+          char *link = anchor ? g_strconcat ("#", target, NULL) : g_strdup (target);
+
+          memset (&want, 0, sizeof want);
+          want.link = g_intern_string (link);
+          w42_pt_apply_char_fmt (d->pt, d->fld_start, d->b.pos - d->fld_start, W42_CHAR_LINK, &want);
+          g_free (link);
+        }
+      g_free (target);
+    }
+  g_free (instr);
 }
 
 /* A drawing has closed -- w:drawing, or a VML w:pict or w:object: the
@@ -1773,6 +1996,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     d->skip_depth = 1;
   else if (g_str_equal (tag, "sdtPr") || g_str_equal (tag, "sdtEndPr"))
     d->skip_depth = 1;            /* a content control's settings: not text */
+  else if (g_str_has_suffix (tag, "Change") && (g_str_equal (tag, "rPrChange") || g_str_equal (tag, "pPrChange") ||
+                                                 g_str_equal (tag, "sectPrChange") || g_str_equal (tag, "tblPrChange") ||
+                                                 g_str_equal (tag, "trPrChange") || g_str_equal (tag, "tcPrChange") ||
+                                                 g_str_equal (tag, "tblGridChange") || g_str_equal (tag, "numberingChange") ||
+                                                 g_str_equal (tag, "tblPrExChange")))
+    d->skip_depth = 1;            /* what the formatting was before a tracked
+                                   * change: history, not the run's own rPr */
   else if (d->in_pict && g_str_equal (tag, "shapetype"))
     d->skip_depth = 1;            /* a template for shapes, not a shape */
   else if (d->shape_txbx)
@@ -1801,6 +2031,16 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       w42_builder_reset_para (&d->b);
       d->have_style_ch = FALSE;
       docx_apply_style (d, g_intern_static_string ("Normal"));
+      if (d->depth_tbl == 1 && d->tbl_style != NULL && d->tbl_style->has_spacing)
+        {
+          /* A cell's paragraphs are spaced as the design says, under
+           * their own pPr: Word 2007's designs close up the air Normal
+           * puts after every paragraph. */
+          d->b.pa.space_before = d->tbl_style->space_before;
+          d->b.pa.space_after = d->tbl_style->space_after;
+          d->b.pa.line_spacing_pct = d->tbl_style->line_pct;
+          d->b.pa.line_spacing = d->tbl_style->line_exact;
+        }
       if (d->section_pending)
         {
           d->b.pa.section_break = 1;
@@ -1815,11 +2055,22 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
   else if (g_str_equal (tag, "pPr"))
     d->in_ppr = TRUE;
   else if (g_str_equal (tag, "rPr"))
-    d->in_rpr = TRUE;
+    {
+      d->in_rpr = TRUE;
+      /* The paragraph mark's own formatting, over the style's. */
+      if (d->in_ppr)
+        d->run_ch = d->have_style_ch ? d->style_ch : d->b.ch;
+    }
   else if (g_str_equal (tag, "r"))
     {
       w42_builder_reset_char (&d->b);
       d->run_ch = d->have_style_ch ? d->style_ch : d->b.ch;
+      /* The table design's first row: bold, or in its own colour, under
+       * whatever the run says itself. */
+      if (d->cell_run_bold)
+        d->run_ch.bold = 1;
+      if (d->cell_run_has_color)
+        d->run_ch.color = d->cell_run_color;
       d->have_run = TRUE;
       d->run_hidden = FALSE;
     }
@@ -2219,10 +2470,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
             }
         }
     }
-  else if (g_str_equal (tag, "ins"))
+  else if (g_str_equal (tag, "ins") || g_str_equal (tag, "moveTo"))
     d->revision = 1;
-  else if (g_str_equal (tag, "del"))
-    d->revision = 2;
+  else if (g_str_equal (tag, "del") || g_str_equal (tag, "moveFrom"))
+    d->revision = 2;              /* a tracked move: gone from here, put in there */
   else if (d->reading_notes &&
            (g_str_equal (tag, "footnote") || g_str_equal (tag, "endnote")))
     {
@@ -2526,6 +2777,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->table_started = FALSE;
           d->tbl_borders = FALSE;
           d->tbl_style_edges = FALSE;
+          d->tbl_style = NULL;
+          d->look_first_row = TRUE;     /* Word's defaults when tblLook is absent */
+          d->look_bands = TRUE;
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
     }
@@ -2555,6 +2809,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       const char *val = attr (an, av, "val");
       const DocxTableStyle *style = val != NULL ? g_hash_table_lookup (d->table_styles, val) : NULL;
 
+      d->tbl_style = style;
       if (style != NULL && style->any)
         {
           /* The style's own rules, side by side, as the file defines
@@ -2573,6 +2828,24 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->tbl_borders = TRUE;
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
+    }
+  else if (g_str_equal (tag, "tblLook") && d->depth_tbl == 1)
+    {
+      /* Which of the design's conditional parts the table uses: named
+       * attributes, or Word 2007's bit mask, where 0x20 is the first row
+       * and 0x200 says no banded rows. */
+      const char *val = attr (an, av, "val");
+      const char *first = attr (an, av, "firstRow");
+      const char *no_bands = attr (an, av, "noHBand");
+
+      if (first != NULL)
+        d->look_first_row = !(g_str_equal (first, "0") || g_str_equal (first, "false"));
+      else if (val != NULL)
+        d->look_first_row = (strtoul (val, NULL, 16) & 0x20) != 0;
+      if (no_bands != NULL)
+        d->look_bands = g_str_equal (no_bands, "0") || g_str_equal (no_bands, "false");
+      else if (val != NULL)
+        d->look_bands = (strtoul (val, NULL, 16) & 0x200) == 0;
     }
   else if (g_str_equal (tag, "gridCol") && d->depth_tbl == 1)
     {
@@ -2622,6 +2895,48 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->cell_edges_set = FALSE;
       d->cell_shading = 0;
       d->cell_valign = W42_CELL_VALIGN_TOP;
+      d->cell_run_bold = FALSE;
+      d->cell_run_has_color = FALSE;
+      if (d->tbl_style != NULL)
+        {
+          /* The design's fill for this row, under the cell's own w:shd,
+           * which follows in its tcPr: every cell's, then the first
+           * row's, then every other row's after it. */
+          const DocxTableStyle *t = d->tbl_style;
+          int row = d->table_started ? d->b.row : 0;
+          gboolean first = row == 0 && d->look_first_row;
+
+          if (t->has_fill)
+            {
+              d->cell_fill = t->fill;
+              d->cell_has_fill = TRUE;
+            }
+          if (first && t->first_has_fill)
+            {
+              d->cell_fill = t->first_fill;
+              d->cell_has_fill = TRUE;
+            }
+          if (t->has_color)
+            {
+              d->cell_run_has_color = TRUE;
+              d->cell_run_color = t->color;
+            }
+          if (first)
+            {
+              d->cell_run_bold = t->first_bold;
+              if (t->first_has_color)
+                {
+                  d->cell_run_has_color = TRUE;
+                  d->cell_run_color = t->first_color;
+                }
+            }
+          if (!first && d->look_bands && t->band_has_fill &&
+              ((row - (d->look_first_row ? 1 : 0)) % 2) == 0)
+            {
+              d->cell_fill = t->band_fill;
+              d->cell_has_fill = TRUE;
+            }
+        }
     }
   else if (g_str_equal (tag, "vAlign") && d->depth_tbl == 1 && d->cell_pending)
     {
@@ -2870,6 +3185,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
        * both are known only now that its properties have been read. */
       d->in_ppr = FALSE;
       d->b.pa.align = mirror_align (d->b.pa.align, d->b.pa.rtl);
+      /* The mark's formatting is the empty paragraph's height. */
+      d->b.ch = d->run_ch;
     }
   else if (g_str_equal (tag, "pBdr"))
     d->in_pbdr = FALSE;
@@ -2925,6 +3242,11 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
           d->b.pa.drop_cap = (guint8) d->drop_join;
           d->drop_join = 0;
         }
+      /* An empty paragraph is as tall as its mark: a blank line Word 2007
+       * set at 36 points stays 36 points tall.  The mark was made when
+       * the paragraph before ended, so it is told now. */
+      if (!d->b.in_para)
+        w42_pt_set_mark_char_fmt (d->pt, d->b.pos > 0 ? d->b.pos - 1 : 0, &d->b.ch);
       w42_builder_end_paragraph (&d->b);
     }
   else if (g_str_equal (tag, "hyperlink"))
@@ -2932,7 +3254,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       docx_flush_text (d);
       d->link = NULL;
     }
-  else if (g_str_equal (tag, "ins") || g_str_equal (tag, "del"))
+  else if (g_str_equal (tag, "ins") || g_str_equal (tag, "del") ||
+           g_str_equal (tag, "moveTo") || g_str_equal (tag, "moveFrom"))
     {
       docx_flush_text (d);
       d->revision = 0;
