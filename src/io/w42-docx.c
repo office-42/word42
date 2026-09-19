@@ -1978,6 +1978,35 @@ docx_finish_drawing (Docx *d)
           if (d->anchored)
             docx_place_anchored (d);
         }
+      else if (bytes != NULL && g_bytes_get_size (bytes) > 0 && d->cx > 0 && d->cy > 0)
+        {
+          /* A picture this machine cannot decode -- a Windows metafile,
+           * which is what every chart, clip-art and equation of the
+           * time is -- takes its place on the page as a box with its
+           * kind written in it, as Word shows a picture it cannot
+           * draw, and goes back into the file as it came when the
+           * document is saved. */
+          const char *dot = strrchr (part, '.');
+          char *ext = dot != NULL ? g_ascii_strdown (dot + 1, -1) : g_strdup ("picture");
+          char *label = g_strdup_printf ("%s picture", ext);
+          W42ObjectTable *objects = w42_pt_object_table (d->pt);
+
+          for (char *q = label; *q != '\0' && *q != ' '; q++)
+            *q = (char) g_ascii_toupper (*q);
+          d->b.ch = d->run_ch;
+          d->b.ch.link = d->link;
+          d->b.ch.revision = (guint8) d->revision;
+          w42_builder_shape (&d->b, W42_SHAPE_RECTANGLE,
+                             (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
+                             (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
+                             0.75, 0x999999, FALSE, 0xFFFFFF, label);
+          if (w42_object_table_size (objects) > 0)
+            w42_object_table_set_original (objects, w42_object_table_size (objects) - 1, bytes, ext);
+          if (d->anchored)
+            docx_place_anchored (d);
+          g_free (label);
+          g_free (ext);
+        }
       if (bytes != NULL)
         g_bytes_unref (bytes);
       g_free (part);
@@ -3743,7 +3772,13 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
 
   if (object == NULL)
     return;
-  if (object->shape == W42_SHAPE_PICTURE)
+  if (object->original != NULL && object->original_format != NULL)
+    {
+      /* The picture the placeholder stood in for, as it came. */
+      bytes = g_bytes_ref (object->original);
+      ext = object->original_format;
+    }
+  else if (object->shape == W42_SHAPE_PICTURE)
     {
       bytes = w42_image_for_container (object->data, &ext, NULL);
       if (bytes == NULL)
@@ -3806,7 +3841,7 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
         cx, cy, wrap, id, id);
     }
 
-  if (object->shape != W42_SHAPE_PICTURE)
+  if (object->shape != W42_SHAPE_PICTURE && bytes == NULL)
     {
       /* A shape, as the newer .docx files say one: its geometry, its fill,
        * its outline and the text in it. */
@@ -4691,6 +4726,11 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
       "<Default Extension=\"jpg\" ContentType=\"image/jpeg\"/>"
       "<Default Extension=\"gif\" ContentType=\"image/gif\"/>"
       "<Default Extension=\"bmp\" ContentType=\"image/bmp\"/>"
+      "<Default Extension=\"emf\" ContentType=\"image/x-emf\"/>"
+      "<Default Extension=\"wmf\" ContentType=\"image/x-wmf\"/>"
+      "<Default Extension=\"tif\" ContentType=\"image/tiff\"/>"
+      "<Default Extension=\"tiff\" ContentType=\"image/tiff\"/>"
+      "<Default Extension=\"svg\" ContentType=\"image/svg+xml\"/>"
       "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
       "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>");
     gboolean any_lists = FALSE;

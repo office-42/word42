@@ -18,6 +18,7 @@ object_free (gpointer data)
   W42Object *object = data;
 
   g_clear_pointer (&object->data, g_bytes_unref);
+  g_clear_pointer (&object->original, g_bytes_unref);
   g_clear_pointer (&object->surface, cairo_surface_destroy);
   g_free (object);
 }
@@ -146,6 +147,21 @@ w42_object_table_set_shape (W42ObjectTable *table, W42ObjectIdx idx,
   object->text = text != NULL && *text != '\0' ? g_intern_string (text) : NULL;
 }
 
+void
+w42_object_table_set_original (W42ObjectTable *table, W42ObjectIdx idx,
+                               GBytes *bytes, const char *format)
+{
+  W42Object *object;
+
+  g_return_if_fail (table != NULL);
+  if (idx >= table->objects->len)
+    return;
+  object = g_ptr_array_index (table->objects, idx);
+  g_clear_pointer (&object->original, g_bytes_unref);
+  object->original = bytes != NULL ? g_bytes_ref (bytes) : NULL;
+  object->original_format = format != NULL ? g_intern_string (format) : NULL;
+}
+
 W42ObjectIdx
 w42_object_table_clone (W42ObjectTable *table, W42ObjectIdx idx, int width, int height)
 {
@@ -172,5 +188,7 @@ w42_object_table_clone (W42ObjectTable *table, W42ObjectIdx idx, int width, int 
   copy->filled = object->filled;
   copy->fill_rgb = object->fill_rgb;
   copy->text = object->text;
+  copy->original = object->original != NULL ? g_bytes_ref (object->original) : NULL;
+  copy->original_format = object->original_format;
   return fresh;
 }
