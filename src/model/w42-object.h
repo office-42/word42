@@ -58,6 +58,11 @@ typedef struct {
   guint32          fill_rgb;
   const char      *text;      /* interned; the text set in the shape, or NULL */
   cairo_surface_t *surface;   /* decoded on first draw; a cache */
+  /* A picture this machine could not decode -- a metafile, mostly --
+   * kept as it came, behind a placeholder drawn as a shape, so that the
+   * file gets its picture back when it is saved. */
+  GBytes          *original;
+  const char      *original_format;   /* interned extension: "emf", "wmf" */
 } W42Object;
 
 typedef struct _W42ObjectTable W42ObjectTable;
@@ -85,6 +90,10 @@ void              w42_object_table_set_position (W42ObjectTable *table, W42Objec
 void              w42_object_table_set_shape (W42ObjectTable *table, W42ObjectIdx idx,
                                               W42ShapeKind kind, double line_pt, guint32 line_rgb,
                                               gboolean filled, guint32 fill_rgb, const char *text);
+/* The picture the object stands in for, which could not be decoded:
+ * written back as it came, under its own extension. */
+void              w42_object_table_set_original (W42ObjectTable *table, W42ObjectIdx idx,
+                                                 GBytes *bytes, const char *format);
 /* A copy of the object at another size: everything else carried over. */
 W42ObjectIdx      w42_object_table_clone (W42ObjectTable *table, W42ObjectIdx idx,
                                           int width, int height);

@@ -50,7 +50,11 @@ Early, but real. Word42 today is a working word processor:
   DrawingML ones do. A style's borders, shading and tab stops go with its
   paragraphs, a blank line is as tall as its paragraph mark, a link kept
   as a HYPERLINK field is a link, and a tracked move is a revision like
-  an insertion or a deletion. The zip inside a .docx is read and written with
+  an insertion or a deletion. A picture the machine cannot decode — a
+  Windows metafile, which is what every chart, clip-art and equation
+  of the time is — keeps its place on the page as a box with its kind
+  written in it, as Word shows a picture it cannot draw, and goes back
+  into the .docx as it came when the document is saved. The zip inside a .docx is read and written with
   GLib's own deflate, so no new library is needed; .zabw is the gzipped
   .abw.
 - **Word .doc import** — File ▸ Open reads Word 97 documents (and the .doc files Word wrote until .docx): text,
