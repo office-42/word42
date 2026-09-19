@@ -1020,10 +1020,19 @@ numbering_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError
       if (GPOINTER_TO_INT (kind) == W42_LIST_BULLET && n->bullet_text != NULL)
         {
           gunichar c = g_utf8_get_char (n->bullet_text);
-          W42ListKind k = c == 'o' || c == 0x25E6 ? W42_LIST_BULLET_CIRCLE
-                        : c == 0x25AA || c == 0x25A0 || c == 0xA7 ? W42_LIST_BULLET_SQUARE
-                        : c == '-' || c == 0x2013 ? W42_LIST_BULLET_DASH
-                        : W42_LIST_BULLET;
+          W42ListKind k;
+
+          /* Word's bullets are Symbol and Wingdings characters, in the
+           * private range F000-F0FF or as the byte itself: Symbol's
+           * bullet is B7, Wingdings' square A7 and its letters n, q, l
+           * and o are a square, a hollow square, a circle and a ring. */
+          if (c >= 0xF000 && c <= 0xF0FF)
+            c -= 0xF000;
+          k = c == 'o' || c == 0x25E6 || c == 0x25CB ? W42_LIST_BULLET_CIRCLE
+            : c == 0x25AA || c == 0x25A0 || c == 0xA7 || c == 'n' || c == 'q' || c == 0x25A1
+                ? W42_LIST_BULLET_SQUARE
+            : c == '-' || c == 0x2013 || c == 0x2014 ? W42_LIST_BULLET_DASH
+            : W42_LIST_BULLET;
           g_hash_table_insert (n->abstract, g_strdup (n->current_abstract), GINT_TO_POINTER (k));
         }
       n->in_level0 = FALSE;
@@ -1302,6 +1311,10 @@ typedef struct {
   guint32     fill_rgb;
   gboolean    shape_txbx;    /* the shape's text, gathered rather than laid out */
   GString    *shape_text;
+  gboolean    in_pict;       /* w:pict or w:object: a VML drawing */
+  gboolean    vml_shape;     /* one of its shape elements is open */
+  gboolean    vml_fill_given;  /* the v:shape said whether it is filled */
+  gboolean    run_hidden;    /* w:vanish: the run is not shown */
 
   gboolean    section_pending;    /* the next paragraph starts a section */
   gsize       section_first;      /* the first paragraph of the current section */
@@ -1366,6 +1379,224 @@ docx_apply_style (Docx *d, const char *name)
   pa->widow_control = st->pa.widow_control;
   d->style_ch = st->ch;
   d->have_style_ch = TRUE;
+}
+
+/* ---- VML: Word 2007's drawings ------------------------------------------ */
+
+/* Word 2007 drew every shape and text box in VML, and kept the pictures
+ * of a file converted from .doc there too: w:pict holding a v:shape, a
+ * v:rect, a v:oval, a v:roundrect or a v:line, sized and placed by a CSS
+ * style attribute.  Word 2010 moved to DrawingML and left VML in the
+ * mc:Fallback, which is skipped; so what is read here is what a Word
+ * 2007 file, or an older one saved by it, has and nothing else does. */
+
+/* A length in a VML style -- "120pt", "2in", "1.5cm", "96px" or a bare
+ * number of pixels -- in EMU. */
+static gint64
+vml_length (const char *v)
+{
+  char *end = NULL;
+  double n;
+
+  if (v == NULL)
+    return 0;
+  n = g_ascii_strtod (v, &end);
+  if (end == v)
+    return 0;
+  while (*end == ' ')
+    end++;
+  if (g_str_has_prefix (end, "pt")) return (gint64) (n * 12700.0);
+  if (g_str_has_prefix (end, "in")) return (gint64) (n * 914400.0);
+  if (g_str_has_prefix (end, "cm")) return (gint64) (n * 360000.0);
+  if (g_str_has_prefix (end, "mm")) return (gint64) (n * 36000.0);
+  if (g_str_has_prefix (end, "pc")) return (gint64) (n * 152400.0);
+  if (g_str_has_prefix (end, "em")) return (gint64) (n * 12.0 * 12700.0);
+  return (gint64) (n * 9525.0);                /* px, or nothing */
+}
+
+/* A VML colour: "#4f81bd", "#4f81bd [3204]" with the theme index Word
+ * adds, or one of the names.  FALSE for anything else. */
+static gboolean
+vml_colour (const char *v, guint32 *rgb)
+{
+  static const struct { const char *name; guint32 rgb; } names[] = {
+    { "black", 0x000000 }, { "white", 0xFFFFFF }, { "red", 0xFF0000 },
+    { "green", 0x008000 }, { "lime", 0x00FF00 }, { "blue", 0x0000FF },
+    { "yellow", 0xFFFF00 }, { "gray", 0x808080 }, { "grey", 0x808080 },
+    { "silver", 0xC0C0C0 }, { "maroon", 0x800000 }, { "navy", 0x000080 },
+    { "olive", 0x808000 }, { "purple", 0x800080 }, { "teal", 0x008080 },
+    { "aqua", 0x00FFFF }, { "cyan", 0x00FFFF }, { "fuchsia", 0xFF00FF },
+    { "magenta", 0xFF00FF }, { "orange", 0xFFA500 }, { "windowText", 0x000000 },
+    { "window", 0xFFFFFF },
+  };
+
+  if (v == NULL)
+    return FALSE;
+  if (*v == '#')
+    {
+      char *end = NULL;
+      guint32 n = (guint32) g_ascii_strtoull (v + 1, &end, 16);
+
+      if (end - (v + 1) == 6)
+        {
+          *rgb = n;
+          return TRUE;
+        }
+      if (end - (v + 1) == 3)
+        {
+          /* #rgb: each digit doubled */
+          *rgb = ((n & 0xF00) << 12) | ((n & 0xF00) << 8) |
+                 ((n & 0x0F0) << 8) | ((n & 0x0F0) << 4) |
+                 ((n & 0x00F) << 4) | (n & 0x00F);
+          return TRUE;
+        }
+      return FALSE;
+    }
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    if (g_ascii_strncasecmp (v, names[i].name, strlen (names[i].name)) == 0)
+      {
+        *rgb = names[i].rgb;
+        return TRUE;
+      }
+  return FALSE;
+}
+
+/* "t", "true" or "1" are on; "f", "false" and "0" off. */
+static gboolean
+vml_bool (const char *v, gboolean fallback)
+{
+  if (v == NULL)
+    return fallback;
+  return !(g_str_equal (v, "f") || g_str_equal (v, "false") || g_str_equal (v, "0"));
+}
+
+/* The style attribute of a VML shape: its size, and whether and where it
+ * floats.  Sets cx, cy, anchored, wrap, behind, and an offset from the
+ * column and the paragraph when the style gives one Word42 can use. */
+static void
+vml_style (Docx *d, const char *style)
+{
+  char **parts;
+  const char *h_align = NULL, *h_rel = NULL, *v_rel = NULL;
+  gint64 left = 0, top = 0;
+  gboolean have_left = FALSE, have_top = FALSE;
+
+  if (style == NULL)
+    return;
+  parts = g_strsplit (style, ";", -1);
+  for (int i = 0; parts[i] != NULL; i++)
+    {
+      char *colon = strchr (parts[i], ':');
+      const char *key, *val;
+
+      if (colon == NULL)
+        continue;
+      *colon = '\0';
+      key = g_strstrip (parts[i]);
+      val = g_strstrip (colon + 1);
+      if (g_str_equal (key, "width"))            d->cx = vml_length (val);
+      else if (g_str_equal (key, "height"))      d->cy = vml_length (val);
+      else if (g_str_equal (key, "position"))    d->anchored = g_str_equal (val, "absolute");
+      else if (g_str_equal (key, "margin-left")) { left = vml_length (val); have_left = TRUE; }
+      else if (g_str_equal (key, "margin-top"))  { top = vml_length (val); have_top = TRUE; }
+      else if (g_str_equal (key, "z-index"))     d->behind = val[0] == '-';
+      else if (g_str_equal (key, "mso-position-horizontal"))          h_align = val;
+      else if (g_str_equal (key, "mso-position-horizontal-relative")) h_rel = val;
+      else if (g_str_equal (key, "mso-position-vertical-relative"))   v_rel = val;
+    }
+  if (d->anchored)
+    {
+      /* Beside the text, at the side the style names; or where its
+       * margins put it, when they are measured from the column and the
+       * paragraph rather than the page. */
+      d->wrap = h_align != NULL && g_str_equal (h_align, "right") ? W42_WRAP_RIGHT : W42_WRAP_LEFT;
+      if (h_align == NULL || g_str_equal (h_align, "absolute"))
+        {
+          gboolean h_ok = h_rel == NULL || g_str_equal (h_rel, "text") || g_str_equal (h_rel, "margin") ||
+                          g_str_equal (h_rel, "char");
+          gboolean v_ok = v_rel == NULL || g_str_equal (v_rel, "text") || g_str_equal (v_rel, "line");
+
+          if (have_left && h_ok) { d->pos_x = left; d->pos_h_set = TRUE; }
+          if (have_top && v_ok)  { d->pos_y = top;  d->pos_v_set = TRUE; }
+        }
+    }
+  g_strfreev (parts);
+}
+
+/* A v:line's ends: "0,0" to "200pt,0". */
+static void
+vml_line_ends (Docx *d, const char *from, const char *to)
+{
+  gint64 x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  char **f = from != NULL ? g_strsplit (from, ",", 2) : NULL;
+  char **t = to != NULL ? g_strsplit (to, ",", 2) : NULL;
+
+  if (f != NULL && f[0] != NULL && f[1] != NULL)
+    {
+      x0 = vml_length (g_strstrip (f[0]));
+      y0 = vml_length (g_strstrip (f[1]));
+    }
+  if (t != NULL && t[0] != NULL && t[1] != NULL)
+    {
+      x1 = vml_length (g_strstrip (t[0]));
+      y1 = vml_length (g_strstrip (t[1]));
+    }
+  if (d->cx == 0)
+    d->cx = x1 > x0 ? x1 - x0 : x0 - x1;
+  if (d->cy == 0)
+    d->cy = y1 > y0 ? y1 - y0 : y0 - y1;
+  g_strfreev (f);
+  g_strfreev (t);
+}
+
+/* A VML shape element has opened: its geometry, its fill and its line.
+ * A v:shape is a picture or a text box until its children say; the
+ * named shapes are drawn as such. */
+static void
+vml_shape_start (Docx *d, const char *tag, const char **an, const char **av)
+{
+  guint32 rgb;
+  const char *weight = attr (an, av, "strokeweight");
+
+  d->vml_shape = TRUE;
+  d->cx = d->cy = 0;
+  d->pos_h_set = d->pos_v_set = FALSE;
+  d->pos_x = d->pos_y = 0;
+  d->anchored = FALSE;
+  d->behind = FALSE;
+  d->wrap = W42_WRAP_INLINE;
+  vml_style (d, attr (an, av, "style"));
+
+  /* VML's defaults: filled white, with a three-quarter-point black line. */
+  d->filled = vml_bool (attr (an, av, "filled"), TRUE);
+  d->fill_rgb = 0xFFFFFF;
+  if (vml_colour (attr (an, av, "fillcolor"), &rgb))
+    d->fill_rgb = rgb;
+  d->has_line = vml_bool (attr (an, av, "stroked"), TRUE);
+  d->line_rgb = 0;
+  if (vml_colour (attr (an, av, "strokecolor"), &rgb))
+    d->line_rgb = rgb;
+  d->line_pt = weight != NULL ? vml_length (weight) / 12700.0 : 0.75;
+  if (d->line_pt <= 0.0)
+    d->line_pt = 0.75;
+
+  if (g_str_equal (tag, "rect"))           d->shape = W42_SHAPE_RECTANGLE;
+  else if (g_str_equal (tag, "roundrect")) d->shape = W42_SHAPE_ROUNDED_RECTANGLE;
+  else if (g_str_equal (tag, "oval"))      d->shape = W42_SHAPE_ELLIPSE;
+  else if (g_str_equal (tag, "line"))
+    {
+      d->shape = W42_SHAPE_LINE;
+      d->filled = FALSE;
+      vml_line_ends (d, attr (an, av, "from"), attr (an, av, "to"));
+    }
+  else
+    d->shape = W42_SHAPE_RECTANGLE;
+  /* A named shape is drawn by Word42; a v:shape is nothing until an
+   * imagedata or a textbox inside it says what it is. */
+  d->in_wsp = !g_str_equal (tag, "shape");
+  d->in_ln = FALSE;
+  d->in_wsp_style = FALSE;
+  d->vml_fill_given = attr (an, av, "fillcolor") != NULL || attr (an, av, "filled") != NULL;
 }
 
 /* What a cell's w:tcPr said, onto the cell mark just made. */
@@ -1452,6 +1683,78 @@ docx_apply_field (Docx *d)
     }
 }
 
+/* A drawing has closed -- w:drawing, or a VML w:pict or w:object: the
+ * picture it held goes in, or the shape is drawn. */
+static void
+docx_finish_drawing (Docx *d)
+{
+  const char *target = d->blip != NULL ? g_hash_table_lookup (d->rels, d->blip) : NULL;
+
+  if (d->in_wsp)
+    {
+      /* A shape: drawn by word42 itself, so nothing to read but its
+       * geometry, its outline, its fill and its text. */
+      d->b.ch = d->run_ch;
+      d->b.ch.link = d->link;
+      d->b.ch.revision = (guint8) d->revision;
+      w42_builder_shape (&d->b, d->shape,
+                         (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
+                         (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
+                         d->has_line ? MAX (d->line_pt, 0.25) : 0.0, d->line_rgb,
+                         d->filled, d->fill_rgb,
+                         d->shape_text->len > 0 ? d->shape_text->str : NULL);
+      if (d->anchored)
+        {
+          w42_builder_object_wrap (&d->b, d->wrap);
+          if (d->pos_h_set || d->pos_v_set)
+            w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
+                                         (int) (d->pos_y / EMU_PER_TWIP));
+        }
+      g_string_truncate (d->shape_text, 0);
+      d->in_wsp = FALSE;
+      d->in_drawing = FALSE;
+      d->in_pict = FALSE;
+      d->vml_shape = FALSE;
+      return;
+    }
+  if (target != NULL)
+    {
+      char *part = target[0] == '/' ? g_strdup (target + 1) : g_strconcat ("word/", target, NULL);
+      GBytes *bytes = w42_zip_read (d->zip, part);
+      int pw = 0, ph = 0;
+      const char *format = NULL;
+
+      if (bytes != NULL && w42_image_probe (bytes, &pw, &ph, &format))
+        {
+          /* The picture's run carries a font and a size like any other,
+           * and the line it sits on is as tall as they make it.  Only
+           * flushing text picks the run's formatting up, and a run
+           * holding a picture has none. */
+          d->b.ch = d->run_ch;
+          d->b.ch.link = d->link;
+          d->b.ch.revision = (guint8) d->revision;
+          w42_builder_object (&d->b, bytes, format, pw, ph,
+                              (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
+                              (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
+          if (d->anchored)
+            {
+              w42_builder_object_wrap (&d->b, d->wrap);
+              if (d->pos_h_set || d->pos_v_set)
+                w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
+                                             (int) (d->pos_y / EMU_PER_TWIP));
+            }
+        }
+      if (bytes != NULL)
+        g_bytes_unref (bytes);
+      g_free (part);
+    }
+  g_free (d->blip);
+  d->blip = NULL;
+  d->in_drawing = FALSE;
+  d->in_pict = FALSE;
+  d->vml_shape = FALSE;
+}
+
 static void
 docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
             const char **av, gpointer data, GError **error)
@@ -1468,6 +1771,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (g_str_equal (tag, "Fallback"))
     d->skip_depth = 1;
+  else if (g_str_equal (tag, "sdtPr") || g_str_equal (tag, "sdtEndPr"))
+    d->skip_depth = 1;            /* a content control's settings: not text */
+  else if (d->in_pict && g_str_equal (tag, "shapetype"))
+    d->skip_depth = 1;            /* a template for shapes, not a shape */
   else if (d->shape_txbx)
     {
       /* The text in a shape: its runs are gathered as the shape's label. */
@@ -1514,6 +1821,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       w42_builder_reset_char (&d->b);
       d->run_ch = d->have_style_ch ? d->style_ch : d->b.ch;
       d->have_run = TRUE;
+      d->run_hidden = FALSE;
     }
   else if (g_str_equal (tag, "t") || g_str_equal (tag, "delText"))
     d->in_t = TRUE;
@@ -1549,9 +1857,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->fld_state = 2;
       d->fld_start = d->b.pos;
     }
-  else if (g_str_equal (tag, "tab") && !d->in_ppr)
+  else if ((g_str_equal (tag, "tab") || g_str_equal (tag, "ptab")) && !d->in_ppr)
     g_string_append_c (d->text, '\t');
-  else if (g_str_equal (tag, "br"))
+  else if (g_str_equal (tag, "br") || g_str_equal (tag, "cr"))
     {
       const char *type = attr (an, av, "type");
 
@@ -1634,6 +1942,16 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
           pa->space_before = attr_int (an, av, "before", pa->space_before);
           pa->space_after = attr_int (an, av, "after", pa->space_after);
+          /* A paragraph that came from HTML: Word spaces it as a browser
+           * would, fourteen points either side, whatever the numbers say. */
+          if (toggle_on (an, av) && attr (an, av, "beforeAutospacing") != NULL &&
+              !g_str_equal (attr (an, av, "beforeAutospacing"), "0") &&
+              !g_str_equal (attr (an, av, "beforeAutospacing"), "false"))
+            pa->space_before = 280;
+          if (attr (an, av, "afterAutospacing") != NULL &&
+              !g_str_equal (attr (an, av, "afterAutospacing"), "0") &&
+              !g_str_equal (attr (an, av, "afterAutospacing"), "false"))
+            pa->space_after = 280;
           if (line != NULL)
             {
               int l = CLAMP (atoi (line), 0, 31680);
@@ -1766,6 +2084,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         }
       else if (g_str_equal (tag, "noProof"))
         ch->lang = toggle_on (an, av) ? g_intern_static_string (W42_LANG_NONE) : NULL;
+      else if (g_str_equal (tag, "vanish"))
+        d->run_hidden = toggle_on (an, av);   /* hidden text: Word does not show it, nor does this */
       else if (g_str_equal (tag, "caps"))  ch->allcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "smallCaps")) ch->smallcaps = toggle_on (an, av);
       else if (g_str_equal (tag, "sz"))
@@ -1973,6 +2293,65 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       g_free (key);
     }
 
+  /* Word 2007's drawings: VML in w:pict, or a w:object's picture. */
+  else if (g_str_equal (tag, "pict") || g_str_equal (tag, "object"))
+    {
+      docx_flush_text (d);
+      d->in_pict = TRUE;
+      d->vml_shape = FALSE;
+      d->in_wsp = FALSE;
+      d->anchored = FALSE;
+      d->wrap = W42_WRAP_INLINE;
+      d->cx = d->cy = 0;
+      g_free (d->blip);
+      d->blip = NULL;
+    }
+  else if (d->in_pict && !d->vml_shape &&
+           (g_str_equal (tag, "shape") || g_str_equal (tag, "rect") || g_str_equal (tag, "roundrect") ||
+            g_str_equal (tag, "oval") || g_str_equal (tag, "line")))
+    vml_shape_start (d, tag, an, av);
+  else if (d->in_pict && g_str_equal (tag, "imagedata"))
+    {
+      const char *embed = attr (an, av, "id");
+
+      g_free (d->blip);
+      d->blip = g_strdup (embed);
+    }
+  else if (d->in_pict && g_str_equal (tag, "stroke"))
+    {
+      const char *arrow = attr (an, av, "endarrow");
+      const char *start = attr (an, av, "startarrow");
+
+      if (d->shape == W42_SHAPE_LINE &&
+          ((arrow != NULL && !g_str_equal (arrow, "none")) || (start != NULL && !g_str_equal (start, "none"))))
+        d->shape = W42_SHAPE_ARROW;
+    }
+  else if (d->in_pict && g_str_equal (tag, "textbox") && d->vml_shape && !d->in_wsp && d->vml_fill_given && d->filled)
+    {
+      /* A v:shape that says it is filled and holds text is a box drawn
+       * round a label, not a frame of paragraphs. */
+      d->in_wsp = TRUE;
+      d->shape = W42_SHAPE_RECTANGLE;
+    }
+  else if (d->in_pict && g_str_equal (tag, "wrap"))
+    {
+      /* w10:wrap: how the text goes round a floating VML shape. */
+      const char *type = attr (an, av, "type");
+      const char *side = attr (an, av, "side");
+
+      d->anchored = TRUE;
+      if (type != NULL && g_str_equal (type, "topAndBottom"))
+        d->wrap = W42_WRAP_TOP_BOTTOM;
+      else if (type != NULL && g_str_equal (type, "none"))
+        d->wrap = d->behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
+      else if (side != NULL && g_str_equal (side, "left"))
+        d->wrap = W42_WRAP_RIGHT;        /* the text keeps to the left: the box is at the right */
+      else if (side != NULL && g_str_equal (side, "right"))
+        d->wrap = W42_WRAP_LEFT;
+      else if (d->wrap == W42_WRAP_INLINE)
+        d->wrap = W42_WRAP_LEFT;
+    }
+
   /* Pictures. */
   else if (g_str_equal (tag, "drawing"))
     {
@@ -2102,6 +2481,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       if (d->b.in_para)
         w42_builder_end_paragraph (&d->b);
       d->in_drawing = FALSE;
+      d->in_pict = FALSE;
+      d->vml_shape = FALSE;
       d->txbx_reopened = FALSE;
     }
   else if (g_str_equal (tag, "txbxContent"))
@@ -2557,67 +2938,9 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       d->revision = 0;
     }
   else if (g_str_equal (tag, "drawing"))
-    {
-      const char *target = d->blip != NULL ? g_hash_table_lookup (d->rels, d->blip) : NULL;
-
-      if (d->in_wsp)
-        {
-          /* A shape: drawn by word42 itself, so nothing to read but its
-           * geometry, its outline, its fill and its text. */
-          d->b.ch = d->run_ch;
-          d->b.ch.link = d->link;
-          d->b.ch.revision = (guint8) d->revision;
-          w42_builder_shape (&d->b, d->shape,
-                             (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
-                             (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
-                             d->has_line ? MAX (d->line_pt, 0.25) : 0.0, d->line_rgb,
-                             d->filled, d->fill_rgb,
-                             d->shape_text->len > 0 ? d->shape_text->str : NULL);
-          if (d->anchored)
-            {
-              w42_builder_object_wrap (&d->b, d->wrap);
-              if (d->pos_h_set || d->pos_v_set)
-                w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
-                                             (int) (d->pos_y / EMU_PER_TWIP));
-            }
-          g_string_truncate (d->shape_text, 0);
-          d->in_wsp = FALSE;
-          d->in_drawing = FALSE;
-          return;
-        }
-      if (target != NULL)
-        {
-          char *part = target[0] == '/' ? g_strdup (target + 1) : g_strconcat ("word/", target, NULL);
-          GBytes *bytes = w42_zip_read (d->zip, part);
-          int pw = 0, ph = 0;
-          const char *format = NULL;
-
-          if (bytes != NULL && w42_image_probe (bytes, &pw, &ph, &format))
-            {
-              /* The picture's run carries a font and a size like any other,
-               * and the line it sits on is as tall as they make it.  Only
-               * flushing text picks the run's formatting up, and a run
-               * holding a picture has none. */
-              d->b.ch = d->run_ch;
-              d->b.ch.link = d->link;
-              d->b.ch.revision = (guint8) d->revision;
-              w42_builder_object (&d->b, bytes, format, pw, ph,
-                                  (int) CLAMP (d->cx / EMU_PER_TWIP, 0, 31680),
-                                  (int) CLAMP (d->cy / EMU_PER_TWIP, 0, 31680));
-              if (d->anchored)
-                {
-                  w42_builder_object_wrap (&d->b, d->wrap);
-                  if (d->pos_h_set || d->pos_v_set)
-                    w42_builder_object_position (&d->b, (int) (d->pos_x / EMU_PER_TWIP),
-                                                 (int) (d->pos_y / EMU_PER_TWIP));
-                }
-            }
-          if (bytes != NULL)
-            g_bytes_unref (bytes);
-          g_free (part);
-        }
-      d->in_drawing = FALSE;
-    }
+    docx_finish_drawing (d);
+  else if (d->in_pict && (g_str_equal (tag, "pict") || g_str_equal (tag, "object")))
+    docx_finish_drawing (d);
   else if (g_str_equal (tag, "tc") && d->depth_tbl == 1)
     {
       docx_flush_text (d);
@@ -2669,7 +2992,10 @@ docx_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data,
         g_string_append_len (d->shape_text, text, len);
     }
   else if (d->in_t)
-    g_string_append_len (d->text, text, len);
+    {
+      if (!d->run_hidden)
+        g_string_append_len (d->text, text, len);
+    }
   else if (d->in_offset)
     {
       char *copy = g_strndup (text, len);
