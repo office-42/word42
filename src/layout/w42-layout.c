@@ -44,7 +44,14 @@ struct _W42Layout {
   W42Spell     *spell;       /* not owned; NULL for no underlining */
   gsize         spell_caret;
   GArray       *furniture;   /* W42Furniture: headers and footers, per page */
-  GPtrArray    *furniture_layouts;
+  /* The header and footer layouts, by part, alignment and text with the
+   * fields expanded, kept from one build to the next: a page's furniture
+   * is the same on every keystroke, and shaping it again for each of a
+   * long document's pages was half of what a keystroke cost.  Flushed
+   * when the column width or Normal's face changes. */
+  GHashTable   *furniture_cache;   /* char* -> PangoLayout*, both owned */
+  double        furniture_cache_w;
+  char         *furniture_cache_font;
   GArray       *cell_rects;  /* W42CellRect: table cell borders */
   GPtrArray    *note_marks;  /* PangoLayout*, the footnote numbers in the text */
   GArray       *note_rules;  /* W42NoteRule: the separator above the notes */
@@ -574,7 +581,7 @@ w42_layout_new (void)
   self->floats = g_array_new (FALSE, FALSE, sizeof (W42FloatBox));
   self->caps = g_array_new (FALSE, FALSE, sizeof (CapBox));
   self->cap_layouts = g_ptr_array_new_with_free_func (g_object_unref);
-  self->furniture_layouts = g_ptr_array_new_with_free_func (g_object_unref);
+  self->furniture_cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
   self->lines   = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
   self->n_pages = 1;
   self->shaped = g_hash_table_new_full (key_hash, key_equal, key_free, shaped_free);
@@ -592,7 +599,8 @@ w42_layout_free (W42Layout *self)
   g_clear_pointer (&self->blocks, g_ptr_array_unref);
   g_ptr_array_free (self->layouts, TRUE);
   g_ptr_array_free (self->prefixes, TRUE);
-  g_ptr_array_free (self->furniture_layouts, TRUE);
+  g_hash_table_destroy (self->furniture_cache);
+  g_free (self->furniture_cache_font);
   g_array_free (self->furniture, TRUE);
   g_array_free (self->cell_rects, TRUE);
   g_ptr_array_free (self->note_marks, TRUE);
@@ -2080,7 +2088,6 @@ w42_layout_build_pt (W42Layout          *self,
   self->styles = w42_pt_stylesheet (pt);
   self->aps = w42_pt_ap_table (pt);
   g_ptr_array_set_size (self->prefixes, 0);
-  g_ptr_array_set_size (self->furniture_layouts, 0);
   g_array_set_size (self->furniture, 0);
   g_array_set_size (self->cell_rects, 0);
   g_ptr_array_set_size (self->note_marks, 0);
@@ -3166,6 +3173,26 @@ build_furniture (W42Layout *self, W42PieceTable *pt)
   const W42Style *normal = w42_stylesheet_find (self->styles, "Normal");
   double text_w = self->page_w - self->mar_l - self->mar_r;
   double edge = w42_twips_to_px (720);
+  PangoFontDescription *desc = pango_font_description_new ();
+  char *font;
+
+  if (normal != NULL)
+    apply_font_description (desc, &normal->ch);
+  else
+    pango_font_description_set_family (desc, "Serif");
+  font = pango_font_description_to_string (desc);
+
+  /* What was shaped for another width or face is no use now; nor, past
+   * a few thousand entries, is what was shaped for pages that are gone. */
+  if (text_w != self->furniture_cache_w || g_strcmp0 (font, self->furniture_cache_font) != 0 ||
+      g_hash_table_size (self->furniture_cache) > 8192)
+    {
+      g_hash_table_remove_all (self->furniture_cache);
+      self->furniture_cache_w = text_w;
+      g_free (self->furniture_cache_font);
+      self->furniture_cache_font = g_strdup (font);
+    }
+  g_free (font);
 
   for (int which = 0; which < 2; which++)
     {
@@ -3176,29 +3203,28 @@ build_furniture (W42Layout *self, W42PieceTable *pt)
                                                : w42_pt_page_footer (pt, page);
 
           PangoLayout *layout;
-          PangoFontDescription *desc;
-          char *text;
-
-          if (slot == NULL || slot->text == NULL || *slot->text == '\0')
-            continue;
-          layout = pango_layout_new (self->ctx);
-          desc = pango_font_description_new ();
-          text = expand_fields (slot->text, page, self->n_pages);
+          char *text, *key;
           W42Furniture f;
           int w, h;
 
-          if (normal != NULL)
-            apply_font_description (desc, &normal->ch);
+          if (slot == NULL || slot->text == NULL || *slot->text == '\0')
+            continue;
+          text = expand_fields (slot->text, page, self->n_pages);
+          key = g_strdup_printf ("%d\037%d\037%s", which, (int) slot->align, text);
+          layout = g_hash_table_lookup (self->furniture_cache, key);
+          if (layout == NULL)
+            {
+              layout = pango_layout_new (self->ctx);
+              pango_layout_set_font_description (layout, desc);
+              pango_layout_set_text (layout, text, -1);
+              pango_layout_set_width (layout, (int) (text_w * PANGO_SCALE));
+              pango_layout_set_alignment (layout,
+                slot->align == W42_ALIGN_CENTER ? PANGO_ALIGN_CENTER :
+                slot->align == W42_ALIGN_RIGHT  ? PANGO_ALIGN_RIGHT  : PANGO_ALIGN_LEFT);
+              g_hash_table_insert (self->furniture_cache, key, layout);
+            }
           else
-            pango_font_description_set_family (desc, "Serif");
-          pango_layout_set_font_description (layout, desc);
-          pango_font_description_free (desc);
-
-          pango_layout_set_text (layout, text, -1);
-          pango_layout_set_width (layout, (int) (text_w * PANGO_SCALE));
-          pango_layout_set_alignment (layout,
-            slot->align == W42_ALIGN_CENTER ? PANGO_ALIGN_CENTER :
-            slot->align == W42_ALIGN_RIGHT  ? PANGO_ALIGN_RIGHT  : PANGO_ALIGN_LEFT);
+            g_free (key);
           pango_layout_get_pixel_size (layout, &w, &h);
           g_free (text);
 
@@ -3207,10 +3233,10 @@ build_furniture (W42Layout *self, W42PieceTable *pt)
           f.y = (which == 0) ? edge : self->page_h - edge - h;
           f.layout = layout;
 
-          g_ptr_array_add (self->furniture_layouts, layout);
           g_array_append_val (self->furniture, f);
         }
     }
+  pango_font_description_free (desc);
 }
 
 const GArray *
