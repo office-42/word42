@@ -4236,9 +4236,22 @@ window_sync_state (W42Window *self)
     {
       gpointer found = g_hash_table_lookup (self->family_index, fmt.family);
 
-      if (found != NULL)
-        gtk_drop_down_set_selected (GTK_DROP_DOWN (self->font_drop),
-                                    GPOINTER_TO_UINT (found) - 1);
+      if (found == NULL)
+        {
+          /* A face the machine does not have -- a Word file's Calibri on
+           * a machine without it -- is still what the document says,
+           * and the box says so, as Word's does, rather than showing
+           * whichever installed face happens to come first.  The name
+           * joins the list, at the end, so the drop-down can show it. */
+          guint n = g_list_model_get_n_items (self->families);
+
+          gtk_string_list_append (GTK_STRING_LIST (self->families), fmt.family);
+          g_hash_table_insert (self->family_index, (gpointer) fmt.family,
+                               GUINT_TO_POINTER (n + 1));
+          found = GUINT_TO_POINTER (n + 1);
+        }
+      gtk_drop_down_set_selected (GTK_DROP_DOWN (self->font_drop),
+                                  GPOINTER_TO_UINT (found) - 1);
     }
 
   w42_layout_describe_pos (layout, w42_view_get_caret (self->view),
