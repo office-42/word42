@@ -6,7 +6,7 @@
 A classic word processor, written from scratch in C on GTK 4, Pango and
 Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
 
-![Word42 in Page Layout view: the opening of Genesis — "In the beginning God created the heaven and the earth" — set as justified verses with superscript numbers under a centred title and a picture of light breaking over the waters, a dove descending](docs/images/screenshot.png)
+![Word42 in Page Layout view, open at the first chapter of John in the King James Bible — "In the beginning was the Word, and the Word was with God, and the Word was God" — the verses set justified with superscript numbers under the book's heading, on page 1437 of the sample document](docs/images/screenshot.png)
 
 A working word processor: typing, formatting, styles and numbered headings,
 headers and footers, footnotes and endnotes, tables, pictures, lists,

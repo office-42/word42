@@ -61,9 +61,20 @@ struct _W42Piece {
 
 Inserting in the middle of a run splits a piece in two. Deleting a range
 splits at both ends and unlinks what is between. After every public operation
-`pt_coalesce()` merges neighbouring pieces that came from the same run of the
-same buffer with the same formatting, so ordinary editing does not fragment
-the list without bound.
+`pt_coalesce_range()` merges neighbouring pieces that came from the same run
+of the same buffer with the same formatting, over the boundaries the
+operation touched, so ordinary editing does not fragment the list without
+bound. It is a range, not the whole list, for a reason: a reader inserts a
+piece per run, and a walk of the whole list after each one cost the square
+of the document — 177 seconds to open 20 000 paragraphs, before it was made
+local. The same file opens in a quarter of a second now, and the King James
+Bible in `samples/`, 31 000 verses, in a fifth.
+
+`pt_find()` keeps a cache — the last piece it landed on and where it starts —
+and the primitives that change the list's shape are each told the position
+they work at and leave the cache on a piece whose start they know, rather
+than clearing it. That is what keeps a reader's next insertion from walking
+the list from the head.
 
 ### Positions
 
@@ -441,8 +452,9 @@ code to the few lines in `view_scroll_to_caret()`.
 
 - **`W42Fmt` must be zeroed before use** — interning compares bytes,
   padding included. Use `w42_fmt_init_default()`.
-- **Piece pointers do not survive mutation.** `pt_coalesce()` frees pieces.
-  Never hold a `W42Piece *` across a public operation.
+- **Piece pointers do not survive mutation.** `pt_coalesce_range()` frees
+  pieces. Never hold a `W42Piece *` across a public operation — the one
+  exception is the find cache, which every primitive keeps valid itself.
 - **`PangoLayoutLine` pointers in `W42LineBox` are borrowed** from the
   layouts `W42Layout` keeps alive. They die when the layout is rebuilt.
 - **Positions are characters, not bytes.** The only place bytes appear is

@@ -105,11 +105,17 @@ trapping, and recording a macro from what is done at the keyboard.
   document on every keystroke.  The interface does not need to change;
   only the blocks whose text moved, and the pages after the first one
   whose height changed, need redoing.
-- **Position lookup.**  `pt_find()` now remembers the last piece it
-  found, which covers the caret and the readers; a skip list would cover
-  the rest.  Several walks are still one lookup per character
+- **Position lookup.**  `pt_find()` remembers the last piece it found,
+  and the cache now survives every edit -- each primitive that changes
+  the list's shape is told where it works and leaves the cache on a piece
+  it knows -- so a reader building a document a run at a time no longer
+  walks from the head for every run, and coalescing is done over the
+  boundaries an edit touched rather than the whole list.  Opening a
+  20 000-paragraph .docx went from 177 s to 0.23 s.  A skip list would
+  cover what remains.  Several walks are still one lookup per character
   (`next_pos`/`prev_pos`, revisions, hyphenation) and could take a piece
-  at a time.
+  at a time; the table operations still walk the whole list, once per
+  action rather than per run.
 - **Table rows across pages.**  Done: a row that cannot fit a page is
   broken between its lines, the header rows repeat at the top of each
   page it runs on to, and no rule is drawn where the row was cut.  What

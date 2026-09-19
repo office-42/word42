@@ -40,8 +40,15 @@ Early, but real. Word42 today is a working word processor:
   position, lists of every kind, tables with merged cells, pictures,
   footnotes and endnotes, hyperlinks, bookmarks, revision marks,
   sections with their columns, headers and footers with page-number
-  fields. The zip inside a .docx is read and written with GLib's own
-  deflate, so no new library is needed; .zabw is the gzipped .abw.
+  fields. A Word 2007 file is read as Word 2007 meant it: its docDefaults
+  and its theme give the document its Calibri and Cambria, the file's own
+  definitions of Normal and the headings replace Word42's, table styles
+  rule the tables that name them, and the drawings Word 2007 wrote in VML
+  — pictures in a file converted from .doc, text boxes, rectangles,
+  ovals, lines and an embedded object's preview — come in as the
+  DrawingML ones do. The zip inside a .docx is read and written with
+  GLib's own deflate, so no new library is needed; .zabw is the gzipped
+  .abw.
 - **Word .doc import** — File ▸ Open reads Word 97 documents (and the .doc files Word wrote until .docx): text,
   paragraph and character formatting, headings by their built-in identity
   (so a Norwegian "Overskrift 1" is a Heading 1), tables, PNG and JPEG

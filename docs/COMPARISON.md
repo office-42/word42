@@ -20,6 +20,7 @@ short table.
 | Program on disk | 1.2 MB stripped binary, plus the GTK runtime | ~1–2 GB with Office (approx.) | ~30 MB (approx.) | ~800 MB installed (approx.) |
 | Start to first window | 0.5 s (measured, Xvfb) | 2–4 s cold (typical) | ~1 s (typical) | 3–6 s cold, ~1 s warm (typical) |
 | Open a 132-page, 160 000-word report | 0.35 s (.docx), 0.47 s (.rtf), then 0.3 s to lay out (measured) | a second or two (typical) | a few seconds (typical) | a few seconds (typical) |
+| Open the whole King James Bible (`samples/bible-kjv.docx`: 1 700 pages, 820 000 words, 1.6 MB) | 0.2 s to read, then 3 s to lay out (measured) | several seconds (typical) | tens of seconds (typical) | several seconds (typical) |
 | A keystroke in that report | 9 ms (measured) | instant | instant | instant |
 | Memory, empty document | 247 MB resident (measured under Xvfb's software renderer; a GPU desktop is lower) | 200–400 MB (typical) | 50–100 MB (typical) | 250–500 MB (typical) |
 | Platforms | Linux, Windows, macOS | Windows, macOS, web, iOS, Android | Linux (the Windows and macOS ports are dormant) | Linux, Windows, macOS |
