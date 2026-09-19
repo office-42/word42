@@ -2176,6 +2176,11 @@ w42_layout_build_pt (W42Layout          *self,
   GArray *page_notes = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
   double notes_h = 0.0;
   GArray *placed = g_array_new (FALSE, TRUE, sizeof (gboolean));
+  /* Scratch for each paragraph's lines and each line's notes, made once:
+   * an array made and freed for every line of a long document was a
+   * measurable part of a keystroke. */
+  GArray *blines_scratch = g_array_new (FALSE, FALSE, sizeof (BlockLine));
+  GArray *line_notes_scratch = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
 
   /* Section numbers: one counter per outline level, the deeper ones reset
    * whenever a shallower heading comes along.  Heading Numbering does
@@ -2501,7 +2506,7 @@ w42_layout_build_pt (W42Layout          *self,
       PangoRectangle cap_ink = { 0, 0, 0, 0 };
       double narrow_shift = (left_on ? float_w[0] : 0.0) +
                             ((fobj != NULL && float_side == W42_WRAP_LEFT) ? own_w : 0.0);
-      GArray *blines = g_array_new (FALSE, FALSE, sizeof (BlockLine));
+      GArray *blines = blines_scratch;
       double cap_top = -1.0;          /* where the dropped letter's lines began */
       int cap_page = -1;
 
@@ -2740,8 +2745,10 @@ w42_layout_build_pt (W42Layout          *self,
 
           /* The footnotes this line refers to are laid out now, so that
            * the line and its notes can be judged together. */
-          GArray *line_notes = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
+          GArray *line_notes = line_notes_scratch;
           double line_notes_h = 0.0;
+
+          g_array_set_size (line_notes, 0);
 
           for (guint r = 0; r < block->runs->len; r++)
             {
@@ -2782,7 +2789,6 @@ w42_layout_build_pt (W42Layout          *self,
               g_array_append_val (page_notes, nb);
             }
           notes_h += line_notes_h;
-          g_array_free (line_notes, TRUE);
 
           if (first_line && fobj != NULL)
             {
@@ -2886,7 +2892,7 @@ w42_layout_build_pt (W42Layout          *self,
 
           y += advance;
         }
-      g_array_free (blines, TRUE);
+      g_array_set_size (blines, 0);
       if (more_floats != NULL)
         g_array_free (more_floats, TRUE);
 
@@ -2994,6 +3000,8 @@ w42_layout_build_pt (W42Layout          *self,
   flush_notes (self, page_notes, &notes_h, current_page, text_h, &y);
   g_array_free (page_notes, TRUE);
   g_array_free (placed, TRUE);
+  g_array_free (blines_scratch, TRUE);
+  g_array_free (line_notes_scratch, TRUE);
   self->n_pages = current_page + 1;
 
   /* Column pages fold on to real pages a section at a time: column page
