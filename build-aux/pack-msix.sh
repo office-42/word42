@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pack-msix.sh - make a Microsoft Store MSIX package out of the Windows
-# bundle, from an MSYS2 MINGW64 shell.
+# bundle, from an MSYS2 UCRT64 shell.
 #
 # Copyright (C) 2026 Andreas Røsdal
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -63,7 +63,7 @@ stage=$root/$outdir/stage
 msix=$root/$outdir/word42-$version-win64.msix
 
 command -v rsvg-convert >/dev/null 2>&1 || {
-  echo "pack-msix: rsvg-convert not found (pacman -S mingw-w64-x86_64-librsvg)" >&2
+  echo "pack-msix: rsvg-convert not found (pacman -S mingw-w64-ucrt-x86_64-librsvg)" >&2
   exit 1
 }
 

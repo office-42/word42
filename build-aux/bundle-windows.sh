@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bundle-windows.sh - gather word42.exe and everything it needs to run on a
-# Windows machine without MSYS2, from an MSYS2 MINGW64 shell.
+# Windows machine without MSYS2, from an MSYS2 UCRT64 shell.
 #
 # Copyright (C) 2026 Andreas Røsdal
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -16,7 +16,7 @@ set -uo pipefail
 
 builddir=${1:-builddir}
 dist=${2:-dist}
-prefix=${MINGW_PREFIX:-/mingw64}
+prefix=${MINGW_PREFIX:-/ucrt64}
 
 rm -rf "$dist"
 mkdir -p "$dist/bin" "$dist/lib" "$dist/share"

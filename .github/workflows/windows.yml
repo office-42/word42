@@ -25,10 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up MSYS2 / MinGW64
+      # UCRT64, not MINGW64: MSYS2 is retiring the msvcrt environment
+      # and has stopped building for it one package at a time.  lexbor
+      # went first of the ones word42 needs -- 3.0.1 is in ucrt64,
+      # clang64 and clangarm64 only, and mingw64 no longer carries it at
+      # all, so pacboy there fails with "target not found".  Every other
+      # dependency is in both.
+      - name: Set up MSYS2 / UCRT64
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
             git

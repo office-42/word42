@@ -78,21 +78,21 @@ Homebrew builds GTK 4 against native Quartz, so no X server is involved. If
 
 ## Windows
 
-Build in the **MINGW64** shell of [MSYS2](https://www.msys2.org/) — not in
+Build in the **UCRT64** shell of [MSYS2](https://www.msys2.org/) — not in
 `cmd`, PowerShell, or the plain MSYS shell, each of which has a different
 toolchain on `PATH`.
 
 ```sh
 pacman -S --needed \
-  mingw-w64-x86_64-toolchain \
-  mingw-w64-x86_64-meson \
-  mingw-w64-x86_64-ninja \
-  mingw-w64-x86_64-pkgconf \
-  mingw-w64-x86_64-gtk4 \
-  mingw-w64-x86_64-pango \
-  mingw-w64-x86_64-cairo \
-  mingw-w64-x86_64-glib2 \
-  mingw-w64-x86_64-lexbor
+  mingw-w64-ucrt-x86_64-toolchain \
+  mingw-w64-ucrt-x86_64-meson \
+  mingw-w64-ucrt-x86_64-ninja \
+  mingw-w64-ucrt-x86_64-pkgconf \
+  mingw-w64-ucrt-x86_64-gtk4 \
+  mingw-w64-ucrt-x86_64-pango \
+  mingw-w64-ucrt-x86_64-cairo \
+  mingw-w64-ucrt-x86_64-glib2 \
+  mingw-w64-ucrt-x86_64-lexbor
 
 meson setup builddir
 meson compile -C builddir
@@ -100,10 +100,10 @@ meson compile -C builddir
 ```
 
 The executable links against MSYS2 DLLs, so it has to run with
-`C:\msys64\mingw64\bin` on `PATH`. Launching it from Explorer, or from a shell
+`C:\msys64\ucrt64\bin` on `PATH`. Launching it from Explorer, or from a shell
 without that directory, produces a Windows error dialog saying the code
 execution cannot proceed because `libglib-2.0-0.dll` was not found. Running it
-from the MINGW64 shell just works. To ship a standalone build, copy the
+from the UCRT64 shell just works. To ship a standalone build, copy the
 dependent DLLs next to the binary; `ldd builddir/src/word42.exe` lists them.
 
 Word42 is built with `win_subsystem: 'windows'`, so it does not open a console
@@ -113,13 +113,13 @@ window. To see warnings from GLib and GTK while debugging, change that to
 Two things are made out of that bundle. `build-aux/word42.iss` is the Inno
 Setup script for the installer word42.org offers. `build-aux/pack-msix.sh`
 makes the MSIX package the Microsoft Store takes; it needs
-`mingw-w64-x86_64-librsvg` for the tiles and the Windows 10/11 SDK for
+`mingw-w64-ucrt-x86_64-librsvg` for the tiles and the Windows 10/11 SDK for
 `makeappx`, and `docs/WINDOWS-STORE.md` covers the rest.
 
 ## Continuous integration
 
 Every push and pull request builds on Linux (`ubuntu-24.04`, GCC), macOS
-(`macos-14`, clang) and Windows (`windows-2025`, MSYS2/MinGW64 GCC).
+(`macos-14`, clang) and Windows (`windows-2025`, MSYS2/UCRT64 GCC).
 Linux additionally runs the built binary under Xvfb to prove it links and
 finds its resources. Linux and Windows build with `--werror`; macOS does
 not, because Apple clang warns about a different set of things and a warning

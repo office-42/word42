@@ -12,7 +12,7 @@ without noticing each other.
 
 ## Building the package
 
-From an MSYS2 **MINGW64** shell, with the build already done
+From an MSYS2 **UCRT64** shell, with the build already done
 (`docs/BUILD.md`):
 
 ```sh
@@ -43,7 +43,7 @@ once:
   its own `createconfig` writes is stripped first, because that block
   splits the scales into separate resource packs and this is one package.
 - The SDK tools are native Windows programs. Run them from the MSYS2
-  MINGW64 shell, not from a shell whose `bash` comes from a different
+  UCRT64 shell, not from a shell whose `bash` comes from a different
   MSYS runtime (Git for Windows', say, with MSYS2 ahead of it on `PATH`):
   a child process across two runtimes gets `ERROR_ACCESS_DENIED` from
   `makepri` with nothing printed to say why.
