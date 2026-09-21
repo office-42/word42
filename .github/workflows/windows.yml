@@ -9,6 +9,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true
@@ -36,6 +39,10 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          # The upgrade and the package installs are most of this
+          # job's setup; the action keys the cache on the package
+          # list, so a changed list still gets a fresh environment.
+          cache: true
           install: >-
             git
           pacboy: >-
