@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The three build workflows pin their actions by major version, which
+# picks up patches on its own but never a new major.  Dependabot watches
+# for those and opens one pull request when there is something to move
+# to; the workflows themselves then run on the pull request and say
+# whether the new version works.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: 'CI: '

@@ -40,7 +40,8 @@ hunspell-en-us libhyphen-dev hyphen-en-us mythes-en-us`.
 ```sh
 # Debian / Ubuntu
 sudo apt install build-essential meson ninja-build pkg-config \
-     libgtk-4-dev libpango1.0-dev libcairo2-dev libglib2.0-dev
+     libgtk-4-dev libpango1.0-dev libcairo2-dev libglib2.0-dev \
+     liblexbor-dev      # 26.04 and newer; older releases build it below
 
 # Fedora
 sudo dnf install gcc meson ninja-build pkgconf-pkg-config \
@@ -50,8 +51,9 @@ sudo dnf install gcc meson ninja-build pkgconf-pkg-config \
 sudo pacman -S base-devel meson ninja pkgconf gtk4 pango cairo glib2
 ```
 
-Debian, Ubuntu and Fedora do not package Lexbor yet; it builds from
-source in about a minute:
+Ubuntu packages Lexbor from 26.04 (`liblexbor-dev`, 2.6.0) and Debian
+from trixie's successor; on an older release, or on Fedora, it builds
+from source in about a minute:
 
 ```sh
 git clone --depth 1 --branch v3.0.1 https://github.com/lexbor/lexbor.git
@@ -118,8 +120,8 @@ makes the MSIX package the Microsoft Store takes; it needs
 
 ## Continuous integration
 
-Every push and pull request builds on Linux (`ubuntu-24.04`, GCC), macOS
-(`macos-14`, clang) and Windows (`windows-2025`, MSYS2/UCRT64 GCC).
+Every push and pull request builds on Linux (`ubuntu-26.04`, GCC), macOS
+(`macos-15`, clang) and Windows (`windows-2025`, MSYS2/UCRT64 GCC).
 Linux additionally runs the built binary under Xvfb to prove it links and
 finds its resources. Linux and Windows build with `--werror`; macOS does
 not, because Apple clang warns about a different set of things and a warning
