@@ -149,7 +149,22 @@ typedef struct {
   int        outline;
   gboolean   resolved;
   gboolean   has_pa, has_ch;
+  guint      pa_set;       /* PA_SET_*: what the style says for itself */
 } OdtStyle;
+
+/* The paragraph settings a style gave, as against those it left to its
+ * parent.  Nought is what an unsaid length reads as, and it is also a
+ * length a style can say over a parent's: a heading with no space after
+ * it under a Standard with six points. */
+enum {
+  PA_SET_ALIGN  = 1 << 0,
+  PA_SET_LEFT   = 1 << 1,
+  PA_SET_RIGHT  = 1 << 2,
+  PA_SET_FIRST  = 1 << 3,
+  PA_SET_BEFORE = 1 << 4,
+  PA_SET_AFTER  = 1 << 5,
+  PA_SET_LINE   = 1 << 6
+};
 
 /* What a graphic style says about a shape: its fill, its outline, and
  * whether it sits behind the text. */
@@ -274,30 +289,43 @@ style_free (gpointer data)
 
 /* ---- properties into formats -------------------------------------------- */
 
-static void
+/* Returns the PA_SET_* bits of what it read. */
+static guint
 para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
 {
+  guint set = 0;
+
   for (int i = 0; an != NULL && an[i] != NULL; i++)
     {
       const char *k = an[i], *v = av[i];
 
       if (g_str_equal (k, "fo:text-align"))
-        pa->align = g_str_equal (v, "center") ? W42_ALIGN_CENTER
-                  : g_str_equal (v, "end") || g_str_equal (v, "right") ? W42_ALIGN_RIGHT
-                  : g_str_equal (v, "justify") ? W42_ALIGN_JUSTIFY : W42_ALIGN_LEFT;
+        {
+          pa->align = g_str_equal (v, "center") ? W42_ALIGN_CENTER
+                    : g_str_equal (v, "end") || g_str_equal (v, "right") ? W42_ALIGN_RIGHT
+                    : g_str_equal (v, "justify") ? W42_ALIGN_JUSTIFY : W42_ALIGN_LEFT;
+          set |= PA_SET_ALIGN;
+        }
       else if (g_str_equal (k, "fo:margin"))
-        margin_shorthand (v, &pa->space_before, &pa->indent_right, &pa->space_after, &pa->indent_left);
-      else if (g_str_equal (k, "fo:margin-left"))   pa->indent_left = length_twips (v);
-      else if (g_str_equal (k, "fo:margin-right"))  pa->indent_right = length_twips (v);
-      else if (g_str_equal (k, "fo:text-indent"))   pa->indent_first = length_twips (v);
-      else if (g_str_equal (k, "fo:margin-top"))    pa->space_before = length_twips (v);
-      else if (g_str_equal (k, "fo:margin-bottom")) pa->space_after = length_twips (v);
+        {
+          margin_shorthand (v, &pa->space_before, &pa->indent_right, &pa->space_after, &pa->indent_left);
+          set |= PA_SET_BEFORE | PA_SET_RIGHT | PA_SET_AFTER | PA_SET_LEFT;
+        }
+      else if (g_str_equal (k, "fo:margin-left"))   { pa->indent_left = length_twips (v); set |= PA_SET_LEFT; }
+      else if (g_str_equal (k, "fo:margin-right"))  { pa->indent_right = length_twips (v); set |= PA_SET_RIGHT; }
+      else if (g_str_equal (k, "fo:text-indent"))   { pa->indent_first = length_twips (v); set |= PA_SET_FIRST; }
+      else if (g_str_equal (k, "fo:margin-top"))    { pa->space_before = length_twips (v); set |= PA_SET_BEFORE; }
+      else if (g_str_equal (k, "fo:margin-bottom")) { pa->space_after = length_twips (v); set |= PA_SET_AFTER; }
       else if (g_str_equal (k, "fo:line-height"))
         {
+          /* One of the two, or neither for "normal": single spacing. */
+          pa->line_spacing_pct = 0;
+          pa->line_spacing = 0;
           if (strchr (v, '%') != NULL)
             pa->line_spacing_pct = CLAMP (atoi (v), 0, 10000);
           else if (!g_str_equal (v, "normal"))
             pa->line_spacing = length_twips (v);
+          set |= PA_SET_LINE;
         }
       else if (g_str_equal (k, "fo:break-before"))  pa->page_break_before = g_str_equal (v, "page");
       else if (g_str_equal (k, "fo:keep-with-next")) pa->keep_next = g_str_equal (v, "always");
@@ -340,6 +368,7 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
         }
     }
   (void) o;
+  return set;
 }
 
 static void
@@ -484,18 +513,18 @@ resolve_style (Odt *o, const char *name, int depth)
 
           if (s->has_pa)
             {
-              /* keep the style's own paragraph values where they differ from the default */
-              W42Fmt def;
-
-              w42_fmt_init_default (&def);
-              if (s->pa.align != def.pa.align) pa.align = s->pa.align;
-              if (s->pa.indent_left != def.pa.indent_left) pa.indent_left = s->pa.indent_left;
-              if (s->pa.indent_right != def.pa.indent_right) pa.indent_right = s->pa.indent_right;
-              if (s->pa.indent_first != def.pa.indent_first) pa.indent_first = s->pa.indent_first;
-              if (s->pa.space_before != def.pa.space_before) pa.space_before = s->pa.space_before;
-              if (s->pa.space_after != def.pa.space_after) pa.space_after = s->pa.space_after;
-              if (s->pa.line_spacing_pct != def.pa.line_spacing_pct) pa.line_spacing_pct = s->pa.line_spacing_pct;
-              if (s->pa.line_spacing != def.pa.line_spacing) pa.line_spacing = s->pa.line_spacing;
+              /* The style's own paragraph values, where it gave them. */
+              if (s->pa_set & PA_SET_ALIGN) pa.align = s->pa.align;
+              if (s->pa_set & PA_SET_LEFT) pa.indent_left = s->pa.indent_left;
+              if (s->pa_set & PA_SET_RIGHT) pa.indent_right = s->pa.indent_right;
+              if (s->pa_set & PA_SET_FIRST) pa.indent_first = s->pa.indent_first;
+              if (s->pa_set & PA_SET_BEFORE) pa.space_before = s->pa.space_before;
+              if (s->pa_set & PA_SET_AFTER) pa.space_after = s->pa.space_after;
+              if (s->pa_set & PA_SET_LINE)
+                {
+                  pa.line_spacing_pct = s->pa.line_spacing_pct;
+                  pa.line_spacing = s->pa.line_spacing;
+                }
               if (s->pa.page_break_before) pa.page_break_before = 1;
               if (s->pa.keep_next) pa.keep_next = 1;
               if (s->pa.keep_together) pa.keep_together = 1;
@@ -728,7 +757,7 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
     }
   else if (g_str_equal (tag, "paragraph-properties") && o->cur_style != NULL)
     {
-      para_props (o, &o->cur_style->pa, an, av);
+      o->cur_style->pa_set |= para_props (o, &o->cur_style->pa, an, av);
       o->cur_style->has_pa = TRUE;
     }
   else if (g_str_equal (tag, "tab-stop") && o->cur_style != NULL)
@@ -1051,6 +1080,33 @@ styles_end (Odt *o, const char *tag)
 {
   if (g_str_equal (tag, "styles"))
     o->in_named_styles = FALSE;
+
+  /* The file's Standard is its Normal.  It is OpenDocument's root
+   * paragraph style, the one Word42 writes Normal as, and the one
+   * LibreOffice makes Word's Normal of and makes of Word's Normal; so
+   * Normal takes its look from it, the default style's included.  The
+   * other names our_style_name takes for Normal -- Text body and the
+   * rest -- are styles of their own under Standard and say nothing of
+   * how Normal looks. */
+  if (g_str_equal (tag, "style") && o->in_named_styles && o->cur_style != NULL &&
+      !o->cur_style_text && o->cur_style_name != NULL &&
+      g_str_equal (o->cur_style_name, "Standard"))
+    {
+      W42StyleSheet *sheet = w42_pt_stylesheet (o->pt);
+      const W42Style *normal = w42_stylesheet_find (sheet, "Normal");
+      OdtStyle *standard = resolve_style (o, o->cur_style_name, 0);
+
+      if (normal != NULL && standard != NULL)
+        {
+          W42Style st = *normal;
+
+          st.ch = standard->ch;
+          st.pa = standard->pa;
+          st.pa_own = W42_STYLE_PA_ALL;
+          st.ch_own = W42_STYLE_CH_ALL;
+          w42_stylesheet_set (sheet, &st);
+        }
+    }
   if (g_str_equal (tag, "style") && o->cur_style != NULL && o->in_named_styles &&
       o->cur_style->display != NULL && strlen (o->cur_style->display) < 64 &&
       (sheet_style_named (o, o->cur_style->display) != NULL ||
@@ -2264,25 +2320,42 @@ style_id_for (const char *name)
   return buf;
 }
 
+/* `base` is what the properties are set over: a paragraph's style, or
+ * a named style's parent.  With `whole`, for a named style, every
+ * setting it has is said as well, since Word42 reads a named style as
+ * it stands rather than through its parents. */
 static void
-write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
+write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base,
+                      gboolean whole)
 {
   g_string_append (s, "<style:paragraph-properties");
-  if (base == NULL || pa->align != base->align)
+  if (base == NULL || whole || pa->align != base->align)
     g_string_append_printf (s, " fo:text-align=\"%s\"",
                             pa->align == W42_ALIGN_CENTER ? "center" : pa->align == W42_ALIGN_RIGHT ? "end"
                             : pa->align == W42_ALIGN_JUSTIFY ? "justify" : "start");
   /* A length is written where it differs from the style the paragraph
    * is based on, nought included: a paragraph indented 0 in a style
    * indented an inch would otherwise inherit the inch. */
-#define DIFFERS(field) (base == NULL ? pa->field != 0 : pa->field != base->field)
+#define DIFFERS(field) (base == NULL || whole ? pa->field != 0 || (base != NULL && pa->field != base->field) \
+                                             : pa->field != base->field)
   if (DIFFERS (indent_left))  { g_string_append (s, " fo:margin-left=\""); twips_out (s, pa->indent_left); g_string_append_c (s, '"'); }
   if (DIFFERS (indent_right)) { g_string_append (s, " fo:margin-right=\""); twips_out (s, pa->indent_right); g_string_append_c (s, '"'); }
   if (DIFFERS (indent_first)) { g_string_append (s, " fo:text-indent=\""); twips_out (s, pa->indent_first); g_string_append_c (s, '"'); }
   if (DIFFERS (space_before)) { g_string_append (s, " fo:margin-top=\""); twips_out (s, pa->space_before); g_string_append_c (s, '"'); }
   if (DIFFERS (space_after))  { g_string_append (s, " fo:margin-bottom=\""); twips_out (s, pa->space_after); g_string_append_c (s, '"'); }
 #undef DIFFERS
-  if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
+  /* The spacing likewise: said where it differs from the base's, single
+   * included, which with no base is what saying nothing means. */
+  gboolean same_line = base != NULL && pa->line_spacing_pct == base->line_spacing_pct &&
+                       pa->line_spacing == base->line_spacing;
+
+  if (same_line && !whole)
+    ;
+  else if (base != NULL && !same_line &&
+           (pa->line_spacing_pct == 100 ||
+            (pa->line_spacing_pct <= 0 && pa->line_spacing <= 0)))
+    g_string_append (s, " fo:line-height=\"100%\"");
+  else if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     g_string_append_printf (s, " fo:line-height=\"%d%%\"", pa->line_spacing_pct);
   else if (pa->line_spacing > 0)
     {
@@ -3197,7 +3270,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
           w.list_style_used[pa->list] = 1;     /* named here, so declared below */
         }
       g_string_append (content, ">");
-      write_para_props_xml (content, pa, style != NULL ? &style->pa : NULL);
+      write_para_props_xml (content, pa, style != NULL ? &style->pa : NULL, FALSE);
       g_string_append (content, "</style:style>");
     }
   for (guint i = 0; i < w.ch_keys->len; i++)
@@ -3268,13 +3341,25 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   stylesxml = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles " ODT_NS ">");
   g_string_append (stylesxml, "<office:styles>");
   g_string_append (stylesxml, "<style:default-style style:family=\"paragraph\">");
-  write_para_props_xml (stylesxml, &((const W42Style *) w42_stylesheet_get (styles, 0))->pa, NULL);
+  write_para_props_xml (stylesxml, &((const W42Style *) w42_stylesheet_get (styles, 0))->pa, NULL, FALSE);
   write_text_props_xml (stylesxml, &w.base_ch, NULL);
   g_string_append (stylesxml, "</style:default-style>");
   for (guint i = 0; i < w42_stylesheet_size (styles); i++)
     {
       const W42Style *s = w42_stylesheet_get (styles, i);
       gboolean is_normal = g_ascii_strcasecmp (s->name, "Normal") == 0;
+      const W42Style *parent = NULL;
+
+      /* What the style inherits in the file: its base's settings, else
+       * Standard's -- which is Normal -- else, for Standard itself, the
+       * default style's, which are Normal's again.  A paragraph setting
+       * that differs from those is written even when it is nought or
+       * single spacing, or the style would inherit its parent's. */
+      if (s->based_on != NULL)
+        parent = w42_stylesheet_find (styles, s->based_on);
+      if (parent == NULL)
+        parent = is_normal ? w42_stylesheet_get (styles, 0)
+                           : w42_stylesheet_find (styles, "Normal");
 
       g_string_append_printf (stylesxml, "<style:style style:name=\"%s\" style:display-name=\"", style_id_for (s->name));
       xml_escape (stylesxml, is_normal ? "Standard" : s->name, strlen (is_normal ? "Standard" : s->name));
@@ -3290,7 +3375,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         g_string_append_printf (stylesxml, " style:default-outline-level=\"%d\"", s->outline);
       g_string_append (stylesxml, ">");
       if (!s->character)
-        write_para_props_xml (stylesxml, &s->pa, NULL);
+        write_para_props_xml (stylesxml, &s->pa,
+                              parent != NULL && !parent->character ? &parent->pa : NULL, TRUE);
       write_text_props_xml (stylesxml, &s->ch, NULL);
       g_string_append (stylesxml, "</style:style>");
     }
