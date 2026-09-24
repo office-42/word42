@@ -86,9 +86,14 @@ append_family (GString *css, const char *family)
 }
 
 /* A paragraph's style attribute, with `extra` declarations first when
- * there are any. */
+ * there are any.  `style` is the paragraph's style when its tag stands
+ * for one -- a heading's, which a reader applies whole and the page's
+ * stylesheet gives margins of its own -- so that what the paragraph has
+ * and the style does not is said as well: its left alignment, its
+ * nought indents, and its margins always. */
 static void
-write_para_style (GString *out, const W42ParaFmt *pa, const char *extra)
+write_para_style (GString *out, const W42ParaFmt *pa, const W42ParaFmt *style,
+                  const char *extra)
 {
   GString *css = g_string_new (extra);
 
@@ -97,18 +102,23 @@ write_para_style (GString *out, const W42ParaFmt *pa, const char *extra)
     case W42_ALIGN_CENTER:  g_string_append (css, "text-align:center;"); break;
     case W42_ALIGN_RIGHT:   g_string_append (css, "text-align:right;"); break;
     case W42_ALIGN_JUSTIFY: g_string_append (css, "text-align:justify;"); break;
-    default: break;
+    default:
+      if (style != NULL && style->align != W42_ALIGN_LEFT)
+        g_string_append (css, "text-align:left;");
+      break;
     }
-  if (pa->indent_left)
+#define SAY(field) (pa->field != 0 || (style != NULL && style->field != 0))
+  if (SAY (indent_left))
     css_num (css, "margin-left", pa->indent_left / 1440.0, "in");
-  if (pa->indent_right)
+  if (SAY (indent_right))
     css_num (css, "margin-right", pa->indent_right / 1440.0, "in");
-  if (pa->indent_first && pa->list == W42_LIST_NONE)
+  if (SAY (indent_first) && pa->list == W42_LIST_NONE)
     css_num (css, "text-indent", pa->indent_first / 1440.0, "in");
-  if (pa->space_before)
+  if (pa->space_before || style != NULL)
     css_num (css, "margin-top", pa->space_before / 20.0, "pt");
-  if (pa->space_after)
+  if (pa->space_after || style != NULL)
     css_num (css, "margin-bottom", pa->space_after / 20.0, "pt");
+#undef SAY
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     {
       /* A browser's line-height is a multiple of the type size; Word's is a
@@ -122,6 +132,9 @@ write_para_style (GString *out, const W42ParaFmt *pa, const char *extra)
     }
   else if (pa->line_spacing > 0)
     css_num (css, "line-height", pa->line_spacing / 20.0, "pt");
+  else if (style != NULL && ((style->line_spacing_pct > 0 && style->line_spacing_pct != 100) ||
+                             style->line_spacing > 0))
+    g_string_append (css, "line-height:normal;");
   if (pa->border != 0)
     {
       static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
@@ -155,10 +168,14 @@ write_para_style (GString *out, const W42ParaFmt *pa, const char *extra)
   g_string_free (css, TRUE);
 }
 
+/* `base` is the body's type, which the page's stylesheet sets and the
+ * run's font and size are measured against; `style` is the heading's
+ * formatting when the run is in one, which a reader gives it whole, so
+ * what the heading has and the run does not is said too. */
 static void
 write_run (GString *out, W42PieceTable *pt, const W42Block *block,
            const W42Run *run, const W42CharFmt *ch, const W42CharFmt *base,
-           const char **bookmark_open)
+           const W42CharFmt *style, const char **bookmark_open)
 {
   GString *css = g_string_new (NULL);
   gboolean span;
@@ -222,14 +239,28 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
     append_family (css, ch->family);
   if (ch->size != base->size)
     css_num (css, "font-size", ch->size / 2.0, "pt");
-  if (ch->color != 0 && ch->link == NULL)
-    g_string_append_printf (css, "color:#%06x;", ch->color);
+  if ((ch->color != 0 || (style != NULL && style->color != 0)) && ch->link == NULL)
+    g_string_append_printf (css, "color:#%06x;", ch->color & 0xFFFFFF);
   if (ch->highlight)
     g_string_append_printf (css, "background:#%06x;", w42_highlight_rgb (ch->highlight));
   if (ch->smallcaps)
     g_string_append (css, "font-variant:small-caps;");
+  else if (style != NULL && style->smallcaps)
+    g_string_append (css, "font-variant:normal;");
   if (ch->allcaps)
     g_string_append (css, "text-transform:uppercase;");
+  else if (style != NULL && style->allcaps)
+    g_string_append (css, "text-transform:none;");
+  if (style != NULL)
+    {
+      /* A heading is bold to a browser as well as to its style. */
+      if (!ch->bold)
+        g_string_append (css, "font-weight:normal;");
+      if (style->italic && !ch->italic)
+        g_string_append (css, "font-style:normal;");
+      if ((style->underline || style->strikeout) && !ch->underline && ch->link == NULL)
+        g_string_append (css, "text-decoration:none;");
+    }
   if (ch->spacing)
     css_num (css, "letter-spacing", ch->spacing / 20.0, "pt");
   /* Word 97's effects, as far as CSS can say them: a shadow is one, the
@@ -333,7 +364,8 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
 
 static void
 write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
-                  const W42Block *block, const W42CharFmt *base)
+                  const W42Block *block, const W42CharFmt *base,
+                  const W42CharFmt *style)
 {
   const char *bookmark_open = NULL;
 
@@ -345,7 +377,7 @@ write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
       const W42Run *run = &g_array_index (block->runs, W42Run, r);
       const W42Fmt *fmt = w42_ap_table_get (aps, run->ap);
 
-      write_run (out, pt, block, run, &fmt->ch, base, &bookmark_open);
+      write_run (out, pt, block, run, &fmt->ch, base, style, &bookmark_open);
     }
 }
 
@@ -669,9 +701,9 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
           g_string_append (out, "<p");
           if (pa->rtl)
             g_string_append (out, " dir=\"rtl\"");
-          write_para_style (out, pa, NULL);
+          write_para_style (out, pa, NULL, NULL);
           g_string_append (out, ">");
-          write_block_body (out, pt, aps, block, &base.ch);
+          write_block_body (out, pt, aps, block, &base.ch, NULL);
           g_string_append (out, "</p>");
           if (cell_end)
             g_string_append (out, "</td>");
@@ -679,14 +711,15 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       else if (pa->list != W42_LIST_NONE)
         {
           g_string_append (out, "<li");
-          write_para_style (out, pa, NULL);
+          write_para_style (out, pa, NULL, NULL);
           g_string_append (out, ">");
-          write_block_body (out, pt, aps, block, &base.ch);
+          write_block_body (out, pt, aps, block, &base.ch, NULL);
           g_string_append (out, "</li>\n");
         }
       else
         {
           const char *tag = tag_for (styles, pa->style);
+          const W42Style *hstyle = tag[0] == 'h' ? w42_stylesheet_find (styles, pa->style) : NULL;
           char frame[128] = "";
 
           /* A framed paragraph floats at its side of the column, the
@@ -710,9 +743,11 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                                     pa->drop_cap > 0 ? "dropcap" : "",
                                     pa->drop_cap > 0 && pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0 ? " " : "",
                                     pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0 ? "title" : "");
-          write_para_style (out, pa, *frame != '\0' ? frame : NULL);
+          write_para_style (out, pa, hstyle != NULL ? &hstyle->pa : NULL,
+                            *frame != '\0' ? frame : NULL);
           g_string_append (out, ">");
-          write_block_body (out, pt, aps, block, &base.ch);
+          write_block_body (out, pt, aps, block, &base.ch,
+                            hstyle != NULL ? &hstyle->ch : NULL);
           g_string_append_printf (out, "</%s>\n", tag);
         }
 
@@ -763,7 +798,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
             g_string_append_printf (out, "<sup><a href=\"#ref%s%d\">%s</a></sup> ",
                                     block->note_end ? "e" : "", block->note_number, label);
           }
-        write_block_body (out, pt, aps, block, &base.ch);
+        write_block_body (out, pt, aps, block, &base.ch, NULL);
         g_string_append (out, "</p>\n");
         last_note = block->note;
       }

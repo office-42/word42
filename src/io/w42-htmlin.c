@@ -1633,6 +1633,50 @@ harvest_notes (Html *h, lxb_dom_node_t *root)
     }
 }
 
+/* Whether an element holds the page's copies of its notes and nothing
+ * else: Word42's <div class="notes">, a rule over the notes drawn by its
+ * stylesheet.  Its notes are in the document already, and the box they
+ * came in is not a paragraph of it. */
+static gboolean
+holds_only_notes (Html *h, lxb_dom_node_t *node)
+{
+  gboolean any = FALSE;
+
+  if (h->notes == NULL || g_hash_table_size (h->notes) == 0)
+    return FALSE;
+  for (lxb_dom_node_t *c = lxb_dom_node_first_child (node); c != NULL; c = c->next)
+    {
+      if (c->type == LXB_DOM_NODE_TYPE_ELEMENT)
+        {
+          char *id = elem_attr (lxb_dom_interface_element (c), "id");
+          gboolean note = id != NULL && g_hash_table_contains (h->notes, id);
+
+          g_free (id);
+          if (!note)
+            {
+              /* A note's second paragraph has no id of its own. */
+              char *cls = elem_attr (lxb_dom_interface_element (c), "class");
+              gboolean part = cls != NULL && g_str_equal (cls, "note");
+
+              g_free (cls);
+              if (!part)
+                return FALSE;
+            }
+          any = TRUE;
+        }
+      else if (c->type == LXB_DOM_NODE_TYPE_TEXT)
+        {
+          char *text = node_text (c);
+          gboolean blank = *text == '\0';
+
+          g_free (text);
+          if (!blank)
+            return FALSE;
+        }
+    }
+  return any;
+}
+
 /* The id a reference points at: "#sdfootnote1sym" is the note
  * "sdfootnote1", and "#note1" is the note "note1". */
 static char *
@@ -1941,7 +1985,8 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
     {
       char *id = elem_attr (el, "id");
 
-      if (id != NULL && g_hash_table_contains (h->notes, id))
+      if ((id != NULL && g_hash_table_contains (h->notes, id)) ||
+          holds_only_notes (h, lxb_dom_interface_node (el)))
         {
           end_paragraph (h);
           g_free (id);
