@@ -447,6 +447,7 @@ typedef struct {
   guint32   fc_min, fc_mac;
   gint32    ccp_text;
   gint32    ccp_ftn;
+  gint32    ccp_hdd, ccp_atn, ccp_edn;   /* the stories between, and the endnotes */
   guint32   cp_max;      /* one past the last cp the pieces cover */
   GArray   *pieces;       /* Piece */
   guint     piece_cursor; /* where the last cp lookup landed */
@@ -2087,6 +2088,8 @@ typedef struct {
   GString       *run;
   W42ApIdx       run_ap;
   GArray        *note_ids;    /* the footnotes made, in reference order */
+  GArray        *end_ids;     /* the endnotes made, likewise */
+  GArray        *end_refs;    /* guint32: the cps of the endnotes' marks, sorted */
 } Builder;
 
 static void
@@ -2098,6 +2101,14 @@ flush_run (Builder *b)
       b->pos += g_utf8_strlen (b->run->str, -1);
       g_string_truncate (b->run, 0);
     }
+}
+
+static int
+cmp_cp (const void *a, const void *b)
+{
+  guint32 x = *(const guint32 *) a, y = *(const guint32 *) b;
+
+  return x < y ? -1 : x > y;
 }
 
 /* The text of one paragraph, run by run of character formatting. */
@@ -2191,19 +2202,29 @@ emit_text (Builder *b, const DocPara *dp)
 
       if (ch.spec && c == 0x02 && b->note_ids != NULL)
         {
-          /* A footnote reference: the note's text comes later, from the
-           * footnote story; the mark and an empty note go in now. */
+          /* A note's reference: the note's text comes later, from the
+           * footnote story or the endnote one; the mark and an empty
+           * note go in now.  The marks look the same, and PlcfendRef
+           * says which are the endnotes'. */
           W42Fmt pfmt;
-          int id = (int) b->note_ids->len;
+          W42ApIdx mark;
+          gboolean end = b->end_refs->len > 0 &&
+                         bsearch (&cp, b->end_refs->data, b->end_refs->len,
+                                  sizeof (guint32), cmp_cp) != NULL;
+          int id;
 
           w42_fmt_init_default (&pfmt);
           fill_char_fmt (doc, &ch, &pfmt.ch);
           flush_run (b);
-          w42_pt_insert_footnote (b->pt, b->pos,
-                                  w42_ap_table_intern (w42_pt_ap_table (b->pt), &pfmt));
+          mark = w42_ap_table_intern (w42_pt_ap_table (b->pt), &pfmt);
+          if (end)
+            w42_pt_insert_endnote (b->pt, b->pos, mark);
+          else
+            w42_pt_insert_footnote (b->pt, b->pos, mark);
+          id = w42_pt_footnote_at (b->pt, b->pos);
           b->pos += 1;
           current = ((W42ApIdx) G_MAXUINT32);
-          g_array_append_val (b->note_ids, id);
+          g_array_append_val (end ? b->end_ids : b->note_ids, id);
           continue;
         }
 
@@ -2545,6 +2566,77 @@ close_table (Builder *b, W42ApIdx ap)
   b->table = -1;
 }
 
+/* The notes `ids` names, in the order of their marks, filled from the
+ * story of `ccp` characters at cp `story`: the PLC in FIB pair `plc` --
+ * PlcffndTxt for the footnotes, PlcfendTxt for the endnotes -- says
+ * where each note's paragraphs are in it. */
+static void
+read_notes (Doc *doc, W42PieceTable *pt, GArray *ids, guint plc,
+            guint64 story, guint32 ccp)
+{
+  guint32 fc, lcb, base;
+
+  /* The story can reach no further than the pieces do. */
+  if (ids->len == 0 || story >= doc->cp_max)
+    return;
+  base = (guint32) story;
+  ccp = MIN (ccp, doc->cp_max - base);
+  fib_fclcb (doc, plc, &fc, &lcb);
+  if (lcb < 8 || !in_tb (doc, fc, lcb))
+    return;
+
+  guint n = lcb / 4 - 1;
+
+  for (guint i = 0; i < n && i < ids->len; i++)
+    {
+      guint32 a = rd32 (doc->tb + fc + 4 * i);
+      guint32 e = rd32 (doc->tb + fc + 4 * (i + 1));
+      gsize pos = w42_pt_note_body (pt, g_array_index (ids, int, i));
+      W42ApIdx ap = w42_ap_table_default (w42_pt_ap_table (pt));
+      GString *text;
+      gboolean first = TRUE;
+
+      if (pos == (gsize) -1)
+        continue;
+      if (e <= a || e > ccp)
+        continue;               /* a note the file does not really have */
+
+      text = g_string_new (NULL);
+
+      /* Word's note text starts with the mark and a space; the
+       * space goes with the mark. */
+#define NOTE_INSERT() G_STMT_START { \
+        if (first) { g_strchug (text->str); g_string_set_size (text, strlen (text->str)); first = FALSE; } \
+        if (text->len > 0) { w42_pt_insert_text (pt, pos, text->str, ap); pos += g_utf8_strlen (text->str, -1); } \
+        g_string_truncate (text, 0); } G_STMT_END
+
+      for (guint32 cp = base + a; cp < base + e; cp++)
+        {
+          gunichar c = char_at (doc, cp);
+
+          if (c == 0x0D)
+            {
+              /* A paragraph of the note ends: put what we have,
+               * then a new paragraph, unless this is the story's
+               * final mark. */
+              NOTE_INSERT ();
+              if (cp + 1 < base + e)
+                {
+                  w42_pt_insert_block (pt, pos, ap);
+                  pos += 1;
+                }
+            }
+          else if (c == 0x02 || c == 0x13 || c == 0x14 || c == 0x15)
+            continue;      /* the note's own mark and fields */
+          else if (c == '\t' || c >= 0x20)
+            g_string_append_unichar (text, c);
+        }
+      NOTE_INSERT ();
+#undef NOTE_INSERT
+      g_string_free (text, TRUE);
+    }
+}
+
 static void
 build_document (Doc *doc, W42PieceTable *pt)
 {
@@ -2560,6 +2652,28 @@ build_document (Doc *doc, W42PieceTable *pt)
   b.run = g_string_new (NULL);
   b.run_ap = w42_ap_table_default (w42_pt_ap_table (pt));
   b.note_ids = g_array_new (FALSE, FALSE, sizeof (int));
+  b.end_ids = g_array_new (FALSE, FALSE, sizeof (int));
+  b.end_refs = g_array_new (FALSE, FALSE, sizeof (guint32));
+  {
+    /* PlcfendRef: a cp for each endnote's mark and one more, then two
+     * bytes for each mark.  The cps are in order; a file whose are not
+     * has them sorted for it. */
+    guint32 fc, lcb;
+
+    fib_fclcb (doc, 46, &fc, &lcb);
+    if (lcb >= 10 && in_tb (doc, fc, lcb))
+      {
+        guint n = (lcb - 4) / 6;
+
+        for (guint i = 0; i < n; i++)
+          {
+            guint32 cp = rd32 (doc->tb + fc + 4 * i);
+
+            g_array_append_val (b.end_refs, cp);
+          }
+        g_array_sort (b.end_refs, cmp_cp);
+      }
+  }
 
   for (guint i = 0; i < paras->len; i++)
     {
@@ -2677,68 +2791,17 @@ build_document (Doc *doc, W42PieceTable *pt)
   if (b.table >= 0)
     close_table (&b, w42_ap_table_default (w42_pt_ap_table (pt)));
 
-  /* The footnotes' text: the footnote story follows the main text, and
-   * PlcffndTxt says where each note's paragraphs are in it. */
-  if (b.note_ids->len > 0)
-    {
-      guint32 fc, lcb;
-
-      fib_fclcb (doc, 3, &fc, &lcb);
-      if (lcb >= 8 && in_tb (doc, fc, lcb))
-        {
-          guint n = lcb / 4 - 1;
-          guint32 base = (guint32) doc->ccp_text;
-
-          for (guint i = 0; i < n && i < b.note_ids->len; i++)
-            {
-              guint32 a = rd32 (doc->tb + fc + 4 * i);
-              guint32 e = rd32 (doc->tb + fc + 4 * (i + 1));
-              gsize pos = w42_pt_note_body (pt, g_array_index (b.note_ids, int, i));
-              W42ApIdx ap = w42_ap_table_default (w42_pt_ap_table (pt));
-              GString *text = g_string_new (NULL);
-              gboolean first = TRUE;
-
-              if (pos == (gsize) -1)
-                continue;
-
-              /* Word's note text starts with the mark and a space; the
-               * space goes with the mark. */
-#define NOTE_INSERT() G_STMT_START { \
-                if (first) { g_strchug (text->str); g_string_set_size (text, strlen (text->str)); first = FALSE; } \
-                if (text->len > 0) { w42_pt_insert_text (pt, pos, text->str, ap); pos += g_utf8_strlen (text->str, -1); } \
-                g_string_truncate (text, 0); } G_STMT_END
-
-              if (e <= a || e > (guint32) doc->ccp_ftn)
-                continue;               /* a note the file does not really have */
-              for (guint32 cp = base + a; cp < base + e; cp++)
-                {
-                  gunichar c = char_at (doc, cp);
-
-                  if (c == 0x0D)
-                    {
-                      /* A paragraph of the note ends: put what we have,
-                       * then a new paragraph, unless this is the story's
-                       * final mark. */
-                      NOTE_INSERT ();
-                      if (cp + 1 < base + e)
-                        {
-                          w42_pt_insert_block (pt, pos, ap);
-                          pos += 1;
-                        }
-                    }
-                  else if (c == 0x02 || c == 0x13 || c == 0x14 || c == 0x15)
-                    continue;      /* the note's own mark and fields */
-                  else if (c == '\t' || c >= 0x20)
-                    g_string_append_unichar (text, c);
-                }
-              NOTE_INSERT ();
-#undef NOTE_INSERT
-              g_string_free (text, TRUE);
-            }
-        }
-    }
+  /* The notes' text.  The footnote story follows the main text and the
+   * endnote story comes after the headers' and the comments'. */
+  read_notes (doc, pt, b.note_ids, 3, (guint64) doc->ccp_text, (guint32) doc->ccp_ftn);
+  read_notes (doc, pt, b.end_ids, 47,
+              (guint64) doc->ccp_text + (guint64) doc->ccp_ftn +
+              (guint64) doc->ccp_hdd + (guint64) doc->ccp_atn,
+              (guint32) doc->ccp_edn);
 
   g_array_free (b.note_ids, TRUE);
+  g_array_free (b.end_ids, TRUE);
+  g_array_free (b.end_refs, TRUE);
   g_string_free (b.run, TRUE);
   g_array_free (paras, TRUE);
 }
@@ -2971,10 +3034,16 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
   doc.ccp_text = (gint32) rd32 (doc.wd + 0x4C);
   doc.ccp_ftn  = (gint32) rd32 (doc.wd + 0x50);
+  doc.ccp_hdd  = (gint32) rd32 (doc.wd + 0x54);
+  doc.ccp_atn  = (gint32) rd32 (doc.wd + 0x5C);
+  doc.ccp_edn  = (gint32) rd32 (doc.wd + 0x60);
   if (doc.ccp_text < 0)
     doc.ccp_text = 0;
   if (doc.ccp_ftn < 0)
     doc.ccp_ftn = 0;
+  doc.ccp_hdd = MAX (doc.ccp_hdd, 0);
+  doc.ccp_atn = MAX (doc.ccp_atn, 0);
+  doc.ccp_edn = MAX (doc.ccp_edn, 0);
 
   /* The Data stream holds the pictures; a document without one is fine. */
   dt = ole_stream (&ole, "Data", NULL);
