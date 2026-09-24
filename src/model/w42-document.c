@@ -192,11 +192,30 @@ w42_document_get_title (W42Document *self)
 gboolean
 w42_document_load (W42Document *self, GFile *file, GError **error)
 {
+  W42PieceTable *fresh;
+  W42PageSetup page;
+
   g_return_val_if_fail (W42_IS_DOCUMENT (self), FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
-  if (!w42_io_load (self->pt, &self->page, file, error))
-    return FALSE;
+  /* Into a table and a page of their own, swapped in only once the file
+   * has been read: most readers empty the table they are given before
+   * they can know the file is bad, and one that failed half way would
+   * leave the document as a fragment still named after the old file,
+   * for the next Save to write over it. */
+  fresh = w42_pt_new ();
+  page = self->page;
+  if (!w42_io_load (fresh, &page, file, error))
+    {
+      w42_pt_free (fresh);
+      return FALSE;
+    }
+
+  /* The author is the person editing, not something the file says. */
+  w42_pt_set_author (fresh, w42_pt_get_author (self->pt));
+  w42_pt_free (self->pt);
+  self->pt = fresh;
+  self->page = page;
 
   g_set_object (&self->file, file);
   w42_document_set_modified (self, FALSE);

@@ -256,11 +256,22 @@ named_filter (const char *name, const char * const *patterns)
   return filter;
 }
 
+/* The store takes a reference of its own. */
+static void
+append_filter (GListStore *store, GtkFileFilter *filter)
+{
+  g_list_store_append (store, filter);
+  g_object_unref (filter);
+}
+
+/* What Open lists, or, with `saving`, what Save As offers: only what
+ * Word42 writes, so no Word 97, whose .doc it reads and cannot write. */
 static GListModel *
-file_filters (void)
+file_filters (gboolean saving)
 {
   GListStore *store = g_list_store_new (GTK_TYPE_FILE_FILTER);
   static const char * const all_docs[] = { "*.rtf", "*.docx", "*.doc", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
+  static const char * const all_written[] = { "*.rtf", "*.docx", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
   static const char * const odt[] = { "*.odt", NULL };
   static const char * const pptx[] = { "*.pptx", NULL };
   static const char * const docx[] = { "*.docx", NULL };
@@ -272,21 +283,102 @@ file_filters (void)
   static const char * const pdf[] = { "*.pdf", NULL };
   static const char * const any[] = { "*", NULL };
 
-  g_list_store_append (store, named_filter ("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)",
-                                            all_docs));
-  g_list_store_append (store, named_filter ("Rich Text Format (*.rtf)", rtf));
-  g_list_store_append (store, named_filter ("Word Document (*.docx)", docx));
-  g_list_store_append (store, named_filter ("Word 97 (*.doc)", doc));
-  g_list_store_append (store, named_filter ("OpenDocument Text (*.odt)", odt));
-  g_list_store_append (store, named_filter ("AbiWord (*.abw, *.zabw)", abw));
-  g_list_store_append (store, named_filter ("Web Pages (*.html)", web));
-  g_list_store_append (store, named_filter ("Presentations (*.pptx)", pptx));
-  g_list_store_append (store, named_filter ("Text Documents (*.txt)", text));
-  if (w42_pdf_import_available ())
-    g_list_store_append (store, named_filter ("PDF Documents (*.pdf)", pdf));
-  g_list_store_append (store, named_filter ("All Files", any));
+  if (saving)
+    append_filter (store, named_filter ("All Documents (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)",
+                                        all_written));
+  else
+    append_filter (store, named_filter ("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)",
+                                        all_docs));
+  append_filter (store, named_filter ("Rich Text Format (*.rtf)", rtf));
+  append_filter (store, named_filter ("Word Document (*.docx)", docx));
+  if (!saving)
+    append_filter (store, named_filter ("Word 97 (*.doc)", doc));
+  append_filter (store, named_filter ("OpenDocument Text (*.odt)", odt));
+  append_filter (store, named_filter ("AbiWord (*.abw, *.zabw)", abw));
+  append_filter (store, named_filter ("Web Pages (*.html)", web));
+  append_filter (store, named_filter ("Presentations (*.pptx)", pptx));
+  append_filter (store, named_filter ("Text Documents (*.txt)", text));
+  if (saving || w42_pdf_import_available ())
+    append_filter (store, named_filter ("PDF Documents (*.pdf)", pdf));
+  append_filter (store, named_filter ("All Files", any));
 
   return G_LIST_MODEL (store);
+}
+
+gboolean
+w42_window_name_has_extension (const char *name)
+{
+  static const char * const known[] = { ".rtf", ".docx", ".doc", ".odt", ".abw",
+                                        ".zabw", ".txt", ".text", ".html", ".htm",
+                                        ".pdf", ".pptx", ".ppsx", NULL };
+  char *lower;
+  gboolean yes = FALSE;
+
+  g_return_val_if_fail (name != NULL, FALSE);
+
+  lower = g_ascii_strdown (name, -1);
+  for (guint i = 0; known[i] != NULL && !yes; i++)
+    yes = g_str_has_suffix (lower, known[i]) && strlen (lower) > strlen (known[i]);
+  g_free (lower);
+  return yes;
+}
+
+/* A label for a menu, where an underscore marks the mnemonic: a file
+ * called my_report.rtf is not "myreport.rtf" with the R underlined. */
+static char *
+mnemonic_escape (const char *text)
+{
+  GString *out = g_string_new (NULL);
+
+  for (const char *p = text; *p != '\0'; p++)
+    {
+      if (*p == '_')
+        g_string_append_c (out, '_');
+      g_string_append_c (out, *p);
+    }
+  return g_string_free (out, FALSE);
+}
+
+/* A file box answers whenever it is closed, and the window it was opened
+ * for may have been closed in the meantime -- from another window, or
+ * behind a file chooser the desktop runs outside the program.  Each box
+ * holds a reference to its window, so the memory is still there; but a
+ * closed window has left its application at once, and been disposed,
+ * letting its document go, as soon as nothing held it.  Either way there
+ * is nothing left to do the work in. */
+static gboolean
+window_gone (W42Window *self)
+{
+  return self->doc == NULL || gtk_window_get_application (GTK_WINDOW (self)) == NULL;
+}
+
+/* A choice box goes with its window, and answers Cancel as it goes, which
+ * is while the window is being disposed.  So it is given a weak reference
+ * rather than a strong one: a strong one would keep the window from being
+ * disposed, and so the box from going, and it would sit on the screen
+ * over a window that had been closed. */
+static gpointer
+window_weak_ref (W42Window *self)
+{
+  GWeakRef *ref = g_new0 (GWeakRef, 1);
+
+  g_weak_ref_init (ref, self);
+  return ref;
+}
+
+/* The window again, as a strong reference, or NULL if it has gone; the
+ * weak reference is used up. */
+static W42Window *
+window_from_weak_ref (gpointer data)
+{
+  GWeakRef *ref = data;
+  W42Window *self = g_weak_ref_get (ref);
+
+  g_weak_ref_clear (ref);
+  g_free (ref);
+  if (self != NULL && window_gone (self))
+    g_clear_object (&self);
+  return self;
 }
 
 #define RECENT_MAX 8
@@ -389,11 +481,23 @@ on_autosave (gpointer data)
 int
 w42_window_recover_all (GtkApplication *app)
 {
-  char *dir = autosave_dir ();
-  GDir *d = g_dir_open (dir, 0, NULL);
+  static gboolean done;
+  char *dir;
+  GDir *d;
   const char *name;
-  int recovered = 0;
+  int recovered = 0, unreadable = 0;
+  W42Window *first = NULL;
 
+  /* Only what an earlier run left behind.  The application is single
+   * instance, so starting Word42 again, or opening a file from the file
+   * manager, lands here in the running one -- whose autosave folder holds
+   * the live copies of the documents open in it now. */
+  if (done)
+    return 0;
+  done = TRUE;
+
+  dir = autosave_dir ();
+  d = g_dir_open (dir, 0, NULL);
   while (d != NULL && (name = g_dir_read_name (d)) != NULL)
     {
       char *path, *meta, *orig = NULL;
@@ -437,17 +541,30 @@ w42_window_recover_all (GtkApplication *app)
             g_free (heading);
             g_free (title);
           }
+          if (first == NULL)
+            first = window;
           recovered++;
+
+          /* Recovered, the copy has done what it can. */
+          g_unlink (path);
+          g_unlink (meta);
         }
       else
         {
+          /* Not deleted: it may be the only copy of someone's work, and
+           * a later Word42 may read what this one cannot.  Renamed, so
+           * that the next start does not stumble over it again. */
+          char *bad = g_strconcat (path, ".bad", NULL);
+          char *bad_meta = g_strconcat (bad, ".txt", NULL);
+
           g_clear_error (&error);
           gtk_window_destroy (GTK_WINDOW (window));
+          g_rename (path, bad);
+          g_rename (meta, bad_meta);
+          g_free (bad_meta);
+          g_free (bad);
+          unreadable++;
         }
-
-      /* Recovered or unreadable, the copy has done what it can. */
-      g_unlink (path);
-      g_unlink (meta);
 
       g_object_unref (file);
       g_free (orig);
@@ -457,6 +574,22 @@ w42_window_recover_all (GtkApplication *app)
 
   if (d != NULL)
     g_dir_close (d);
+
+  if (unreadable > 0)
+    {
+      char *detail = g_strdup_printf ("%d %s left when Word42 last stopped "
+                                      "could not be read. %s kept in %s, with "
+                                      "names ending .bad.",
+                                      unreadable,
+                                      unreadable == 1 ? "document" : "documents",
+                                      unreadable == 1 ? "It is" : "They are",
+                                      dir);
+
+      w42_message_show (first != NULL ? GTK_WINDOW (first) : NULL,
+                        "Word42 could not recover everything.", detail);
+      g_free (detail);
+    }
+
   g_free (dir);
   return recovered;
 }
@@ -475,13 +608,15 @@ window_refresh_recent (W42Window *self)
   for (guint i = 0; paths[i] != NULL && i < RECENT_MAX; i++)
     {
       char *base = g_path_get_basename (paths[i]);
-      char *label = g_strdup_printf ("_%u %s", i + 1, base);
+      char *shown = mnemonic_escape (base);
+      char *label = g_strdup_printf ("_%u %s", i + 1, shown);
       GMenuItem *item = g_menu_item_new (label, NULL);
 
       g_menu_item_set_action_and_target (item, "win.open-recent", "s", paths[i]);
       g_menu_append_item (self->recent_menu, item);
       g_object_unref (item);
       g_free (label);
+      g_free (shown);
       g_free (base);
     }
   g_strfreev (paths);
@@ -532,25 +667,79 @@ w42_window_new_document (GtkWindow *from)
   return W42_WINDOW (window)->doc;
 }
 
-void
-w42_window_open (W42Window *self, GFile *file)
+/* Reads `file` into the window's document, and says nothing if it cannot:
+ * the caller knows which window should carry the message. */
+gboolean
+w42_window_load (W42Window *self, GFile *file, GError **error)
 {
-  GError *error = NULL;
+  W42View *views[2];
+  gsize first;
 
-  g_return_if_fail (W42_IS_WINDOW (self));
-  g_return_if_fail (G_IS_FILE (file));
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
-  if (!w42_document_load (self->doc, file, &error))
-    {
-      show_error (self, "Word42 could not open that file.", error);
-      g_clear_error (&error);
-      return;
-    }
+  if (!w42_document_load (self->doc, file, error))
+    return FALSE;
   w42_pt_set_author (w42_document_pt (self->doc), window_author_name ());
+
+  /* A caret and a selection belong to the text they were made in; kept
+   * across a load, or a Revert, they would select something arbitrary
+   * in the new one. */
+  first = w42_pt_first_caret_pos (w42_document_pt (self->doc));
+  views[0] = self->view1;
+  views[1] = self->view2;
+  for (guint i = 0; i < G_N_ELEMENTS (views); i++)
+    if (views[i] != NULL)
+      w42_view_select_range (views[i], first, first);
 
   window_note_recent (self, file);
   window_update_title (self);
   window_sync_state (self);
+  return TRUE;
+}
+
+gboolean
+w42_window_open (W42Window *self, GFile *file)
+{
+  GError *error = NULL;
+
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  if (!w42_window_load (self, file, &error))
+    {
+      show_error (self, "Word42 could not open that file.", error);
+      g_clear_error (&error);
+      return FALSE;
+    }
+  return TRUE;
+}
+
+/* File > Open and Open Recent never throw work away: a document with
+ * changes, or one already on disk, keeps its window, and the file opens
+ * in a new one.  That window is shown only once the file is in it, and
+ * goes again if the file cannot be read -- the message goes on the
+ * window the command came from, since a message on the new one would go
+ * with it. */
+static void
+window_open_file (W42Window *self, GFile *file)
+{
+  W42Window *target = self;
+  GError *error = NULL;
+
+  if (w42_document_get_modified (self->doc) || w42_document_get_file (self->doc) != NULL)
+    target = W42_WINDOW (w42_window_new (gtk_window_get_application (GTK_WINDOW (self))));
+
+  if (!w42_window_load (target, file, &error))
+    {
+      if (target != self)
+        gtk_window_destroy (GTK_WINDOW (target));
+      show_error (self, "Word42 could not open that file.", error);
+      g_clear_error (&error);
+      return;
+    }
+  if (target != self)
+    gtk_window_present (GTK_WINDOW (target));
 }
 
 void
@@ -560,6 +749,26 @@ w42_window_flash_status (W42Window *self, const char *text)
   window_flash (self, "%s", text != NULL ? text : "");
 }
 
+/* A PDF, a web page or a presentation made from the document.  The file
+ * is written, and the document stays what it was and where it was: made
+ * the document's own file, it would be marked saved, and closing would
+ * lose everything that format cannot hold without a word. */
+static gboolean
+window_export (W42Window *self, GFile *file, GError **error)
+{
+  char *base;
+
+  if (!w42_io_save (w42_document_pt (self->doc),
+                    w42_document_page_setup (self->doc), file, error))
+    return FALSE;
+
+  base = g_file_get_basename (file);
+  window_flash (self, "Exported as %s. The document itself is not saved there: "
+                      "Word42 cannot read that format back as it was.", base);
+  g_free (base);
+  return TRUE;
+}
+
 gboolean
 w42_window_save_to (W42Window *self, GFile *file, GError **error)
 {
@@ -567,6 +776,9 @@ w42_window_save_to (W42Window *self, GFile *file, GError **error)
 
   g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  if (!w42_io_format_round_trips (file))
+    return window_export (self, file, error);
 
   ok = w42_document_save (self->doc, file, error);
   window_saved (self, ok);
@@ -579,17 +791,10 @@ action_open_recent (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   GFile *file = g_file_new_for_path (g_variant_get_string (param, NULL));
-  W42Window *target = self;
 
   (void) action;
 
-  if (w42_document_get_modified (self->doc) || w42_document_get_file (self->doc) != NULL)
-    {
-      target = W42_WINDOW (w42_window_new (gtk_window_get_application (GTK_WINDOW (self))));
-      gtk_window_present (GTK_WINDOW (target));
-    }
-
-  w42_window_open (target, file);
+  window_open_file (self, file);
   g_object_unref (file);
 }
 
@@ -602,43 +807,38 @@ on_open_response (GObject *source, GAsyncResult *result, gpointer data)
 
   file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
 
-  if (file != NULL)
+  if (!window_gone (self))
     {
-      {
-        /* File > Open never throws work away: a document with changes,
-         * or one already on disk, keeps its window and the file opens in
-         * a new one, as Open Recent does. */
-        W42Window *target = self;
-
-        if (w42_document_get_modified (self->doc) || w42_document_get_file (self->doc) != NULL)
-          {
-            target = W42_WINDOW (w42_window_new (gtk_window_get_application (GTK_WINDOW (self))));
-            gtk_window_present (GTK_WINDOW (target));
-          }
-        w42_window_open (target, file);
-      }
-      g_object_unref (file);
-    }
-  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
-                                              GTK_DIALOG_ERROR_DISMISSED))
-    {
-      show_error (self, "Word42 could not open that file.", error);
+      if (file != NULL)
+        window_open_file (self, file);
+      else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
+                                                  GTK_DIALOG_ERROR_DISMISSED))
+        show_error (self, "Word42 could not open that file.", error);
     }
 
+  g_clear_object (&file);
   g_clear_error (&error);
+  g_object_unref (self);
 }
 
 /* File > Revert: the document as it was when it was last saved.  The
- * answer comes back here. */
+ * answer comes back here -- as Cancel, when the window is closing and
+ * takes the box with it, by which time the document has gone. */
 static void
 on_revert_choice (int choice, gpointer data)
 {
-  W42Window *self = data;
-  GFile *file = w42_document_get_file (self->doc);
+  W42Window *self = window_from_weak_ref (data);
 
-  if (choice != 0 || file == NULL)
+  if (self == NULL)
     return;
-  w42_window_open (self, file);
+  if (choice == 0 && w42_document_get_file (self->doc) != NULL)
+    {
+      GFile *file = g_object_ref (w42_document_get_file (self->doc));
+
+      w42_window_open (self, file);
+      g_object_unref (file);
+    }
+  g_object_unref (self);
 }
 
 static void
@@ -668,7 +868,7 @@ action_revert (GSimpleAction *action, GVariant *param, gpointer data)
   w42_choice_show (GTK_WINDOW (self), heading,
                    "The changes made since the document was last saved "
                    "will be lost.",
-                   buttons, 1, 1, on_revert_choice, self);
+                   buttons, 1, 1, on_revert_choice, window_weak_ref (self));
   g_free (heading);
   g_free (name);
 }
@@ -678,13 +878,14 @@ action_open (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   GtkFileDialog *dialog = gtk_file_dialog_new ();
-  GListModel *filters = file_filters ();
+  GListModel *filters = file_filters (FALSE);
 
   (void) action; (void) param;
 
   gtk_file_dialog_set_title (dialog, "Open");
   gtk_file_dialog_set_filters (dialog, filters);
-  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_open_response, self);
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_open_response,
+                        g_object_ref (self));
 
   g_object_unref (filters);
   g_object_unref (dialog);
@@ -715,46 +916,98 @@ window_saved (W42Window *self, gboolean succeeded)
   self->close_after_save = FALSE;
 }
 
+/* What a save box's answer comes to, once the name has its extension:
+ * `finish` writes the file, or, given NULL, learns that nothing is to
+ * be written after all. */
+typedef void (*SaveFinish) (W42Window *self, GFile *file);
+
+typedef struct {
+  gpointer    self;             /* window_weak_ref() */
+  GFile      *file;
+  SaveFinish  finish;
+} Replacing;
+
 static void
-on_save_response (GObject *source, GAsyncResult *result, gpointer data)
+on_replace_choice (int choice, gpointer data)
 {
-  W42Window *self = data;
+  Replacing *r = data;
+  W42Window *self = window_from_weak_ref (r->self);
+
+  if (self != NULL)
+    {
+      r->finish (self, choice == 0 ? r->file : NULL);
+      g_object_unref (self);
+    }
+  g_object_unref (r->file);
+  g_free (r);
+}
+
+/* A name typed with no extension Word42 knows is saved as Rich Text,
+ * which keeps everything, rather than as the plain text an unknown
+ * extension would make of it -- and a dot does not make an extension:
+ * "Mr. Smith" is a letter, not a file of type " Smith".  The box asked
+ * about replacing the name as it was typed, though, not the name with
+ * .rtf on the end, so a file already there under that name is asked
+ * about here before anything is written over it. */
+static void
+window_save_chosen (W42Window *self, GFile *chosen, SaveFinish finish)
+{
+  char *base = g_file_get_basename (chosen);
+  GFile *parent, *file;
+  char *named;
+
+  if (base == NULL || w42_window_name_has_extension (base))
+    {
+      g_free (base);
+      finish (self, chosen);
+      return;
+    }
+
+  parent = g_file_get_parent (chosen);
+  named = g_strconcat (base, ".rtf", NULL);
+  file = parent != NULL ? g_file_get_child (parent, named) : g_file_new_for_path (named);
+  g_clear_object (&parent);
+  g_free (base);
+
+  if (g_file_query_exists (file, NULL))
+    {
+      static const char *const buttons[] = { "_Replace", "Cancel", NULL };
+      Replacing *r = g_new0 (Replacing, 1);
+      char *heading = g_strdup_printf ("\342\200\234%s\342\200\235 already exists. "
+                                       "Replace it?", named);
+
+      r->self = window_weak_ref (self);
+      r->file = file;
+      r->finish = finish;
+      w42_choice_show (GTK_WINDOW (self), heading,
+                       "The file that is there now will be lost.",
+                       buttons, 1, 1, on_replace_choice, r);
+      g_free (heading);
+      g_free (named);
+      return;
+    }
+
+  finish (self, file);
+  g_object_unref (file);
+  g_free (named);
+}
+
+static void
+save_as_finish (W42Window *self, GFile *file)
+{
   GError *error = NULL;
-  GFile *file;
   gboolean saved = FALSE;
 
-  file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
-
-  if (file != NULL)
+  if (file != NULL && !w42_io_format_round_trips (file))
     {
-      /* A name typed without an extension is saved as Rich Text, which
-       * keeps everything, rather than silently as plain text. */
-      {
-        char *base = g_file_get_basename (file);
-
-        if (base != NULL && strchr (base, '.') == NULL)
-          {
-            GFile *parent = g_file_get_parent (file);
-            char *named = g_strconcat (base, ".rtf", NULL);
-            GFile *fixed = parent != NULL ? g_file_get_child (parent, named) : g_file_new_for_path (named);
-
-            g_object_unref (file);
-            file = fixed;
-            g_free (named);
-            g_clear_object (&parent);
-          }
-        g_free (base);
-      }
+      if (!window_export (self, file, &error))
+        show_error (self, "Word42 could not save that file.", error);
+    }
+  else if (file != NULL)
+    {
       saved = w42_document_save (self->doc, file, &error);
       if (!saved)
         show_error (self, "Word42 could not save that file.", error);
-
-      g_object_unref (file);
-    }
-  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
-                                              GTK_DIALOG_ERROR_DISMISSED))
-    {
-      show_error (self, "Word42 could not save that file.", error);
     }
 
   g_clear_error (&error);
@@ -762,39 +1015,72 @@ on_save_response (GObject *source, GAsyncResult *result, gpointer data)
 }
 
 static void
+on_save_response (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  GFile *file;
+
+  file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
+
+  if (!window_gone (self) && file != NULL)
+    window_save_chosen (self, file, save_as_finish);
+  else if (!window_gone (self))
+    {
+      if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
+                                             GTK_DIALOG_ERROR_DISMISSED))
+        show_error (self, "Word42 could not save that file.", error);
+      window_saved (self, FALSE);
+    }
+
+  g_clear_object (&file);
+  g_clear_error (&error);
+  g_object_unref (self);
+}
+
+static void
 window_save_as (W42Window *self)
 {
   GtkFileDialog *dialog = gtk_file_dialog_new ();
-  GListModel *filters = file_filters ();
+  GListModel *filters = file_filters (TRUE);
+  GFile *file = w42_document_get_file (self->doc);
   char *name = w42_document_get_title (self->doc);
 
   gtk_file_dialog_set_title (dialog, "Save As");
   gtk_file_dialog_set_filters (dialog, filters);
 
-  /* RTF is what word42 saves by default now: it is the only format it writes
-   * that keeps the formatting the document actually has. */
-  if (!g_str_has_suffix (name, ".rtf") && !g_str_has_suffix (name, ".txt") &&
-      !g_str_has_suffix (name, ".docx") && !g_str_has_suffix (name, ".abw") &&
-      !g_str_has_suffix (name, ".zabw") && !g_str_has_suffix (name, ".odt"))
-    {
-      char *stem = g_strdup (name);
-      char *dot = strrchr (stem, '.');
-      char *suggested;
-
-      /* "letter.doc" becomes "letter.rtf", not "letter.doc.rtf". */
-      if (dot != NULL && (g_str_equal (dot, ".doc") || g_str_equal (dot, ".pdf")))
-        *dot = '\0';
-      suggested = g_strconcat (stem, ".rtf", NULL);
-      gtk_file_dialog_set_initial_name (dialog, suggested);
-      g_free (suggested);
-      g_free (stem);
-    }
+  /* A document read from a format Word42 writes back is offered under
+   * its own name.  Anything else -- never saved, or read from a file that
+   * does not round trip -- is offered as Rich Text, the one format Word42
+   * writes that keeps all the document has: "letter.doc" becomes
+   * "letter.rtf", not "letter.doc.rtf". */
+  if (file != NULL && w42_io_format_round_trips (file))
+    gtk_file_dialog_set_initial_name (dialog, name);
   else
     {
-      gtk_file_dialog_set_initial_name (dialog, name);
+      char *dot = strrchr (name, '.');
+      char *suggested;
+
+      if (file != NULL && dot != NULL && dot != name)
+        *dot = '\0';
+      suggested = g_strconcat (name, ".rtf", NULL);
+      gtk_file_dialog_set_initial_name (dialog, suggested);
+      g_free (suggested);
     }
 
-  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, on_save_response, self);
+  /* In the folder the document came from, not wherever the program was
+   * started. */
+  if (file != NULL)
+    {
+      GFile *folder = g_file_get_parent (file);
+
+      if (folder != NULL)
+        gtk_file_dialog_set_initial_folder (dialog, folder);
+      g_clear_object (&folder);
+    }
+
+  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, on_save_response,
+                        g_object_ref (self));
 
   g_free (name);
   g_object_unref (filters);
@@ -811,13 +1097,11 @@ action_save (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
 
-  if (file == NULL || w42_io_guess_format (file) == W42_FORMAT_DOC ||
-      w42_io_guess_format (file) == W42_FORMAT_PDF ||
-      w42_io_guess_format (file) == W42_FORMAT_HTML)
+  if (file == NULL || !w42_io_format_round_trips (file))
     {
-      /* Never saved, or read from a format word42 does not write: Save
-       * turns into Save As, and window_saved() runs when that dialog comes
-       * back rather than now. */
+      /* Never saved, or read from a format that Word42 does not write
+       * back as it read it: Save turns into Save As, and window_saved()
+       * runs when that dialog comes back rather than now. */
       window_save_as (self);
       return;
     }
@@ -850,7 +1134,29 @@ action_new_from_template (GSimpleAction *action, GVariant *param, gpointer data)
 }
 
 /* File > Save as Template: a copy in the templates folder, which
- * New from Template then lists.  The document keeps the file it had. */
+ * New from Template then lists.  The document keeps the file it had.
+ * The copy is written past the document rather than through it: a save
+ * through the document takes the template for its file and the undo
+ * history's present state for the saved one, and putting the file back
+ * afterwards does not put that back, so an Undo would later mark edits
+ * that were never saved as saved. */
+static void
+template_finish (W42Window *self, GFile *file)
+{
+  GError *error = NULL;
+
+  if (file == NULL)
+    return;
+
+  if (!w42_io_save (w42_document_pt (self->doc),
+                    w42_document_page_setup (self->doc), file, &error))
+    show_error (self, "Word42 could not save that template.", error);
+  else
+    window_flash (self, "Saved as a template.  File > New from Template "
+                        "lists it.");
+  g_clear_error (&error);
+}
+
 static void
 on_template_saved (GObject *source, GAsyncResult *result, gpointer data)
 {
@@ -858,31 +1164,15 @@ on_template_saved (GObject *source, GAsyncResult *result, gpointer data)
   GError *error = NULL;
   GFile *file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
 
-  if (file != NULL)
-    {
-      GFile *had = w42_document_get_file (self->doc);
-      gboolean was_modified = w42_document_get_modified (self->doc);
+  if (!window_gone (self) && file != NULL)
+    window_save_chosen (self, file, template_finish);
+  else if (!window_gone (self) && error != NULL &&
+           !g_error_matches (error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED))
+    show_error (self, "Word42 could not save that template.", error);
 
-      if (had != NULL)
-        g_object_ref (had);
-      if (!w42_document_save (self->doc, file, &error))
-        show_error (self, "Word42 could not save that template.", error);
-      else
-        window_flash (self, "Saved as a template.  File > New from Template "
-                            "lists it.");
-      /* The document is what it was: the template is a copy. */
-      w42_document_set_file (self->doc, had);
-      w42_document_set_modified (self->doc, was_modified);
-      if (had != NULL)
-        g_object_unref (had);
-      g_object_unref (file);
-    }
-  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
-                                              GTK_DIALOG_ERROR_DISMISSED))
-    {
-      show_error (self, "Word42 could not save that template.", error);
-    }
+  g_clear_object (&file);
   g_clear_error (&error);
+  g_object_unref (self);
 }
 
 static void
@@ -906,7 +1196,8 @@ action_save_as_template (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_file_dialog_set_title (dialog, "Save as Template");
   gtk_file_dialog_set_initial_folder (dialog, folder);
   gtk_file_dialog_set_initial_name (dialog, suggested);
-  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, on_template_saved, self);
+  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, on_template_saved,
+                        g_object_ref (self));
 
   g_free (suggested);
   g_free (stem);
@@ -926,13 +1217,14 @@ enum {
 
 /* Dismissing the box -- Escape, or its own close button -- means cancel:
  * losing the document to a stray keypress would be exactly the accident
- * this box exists to prevent. */
+ * this box exists to prevent.  The window may have been closed some
+ * other way while the box was up, and then there is nothing to do. */
 static void
 on_close_choice (int choice, gpointer data)
 {
-  W42Window *self = data;
+  W42Window *self = window_from_weak_ref (data);
 
-  if (!W42_IS_WINDOW (self))
+  if (self == NULL)
     return;
 
   switch (choice)
@@ -951,6 +1243,7 @@ on_close_choice (int choice, gpointer data)
     default:
       break;
     }
+  g_object_unref (self);
 }
 
 static gboolean window_document_shared (W42Window *self);
@@ -976,7 +1269,8 @@ on_close_request (GtkWindow *window, gpointer data)
   w42_choice_show (GTK_WINDOW (self), heading,
                    "If you close without saving, the changes you have made "
                    "will be lost.",
-                   buttons, CLOSE_SAVE, CLOSE_CANCEL, on_close_choice, self);
+                   buttons, CLOSE_SAVE, CLOSE_CANCEL, on_close_choice,
+                   window_weak_ref (self));
 
   g_free (heading);
   g_free (name);
@@ -997,6 +1291,19 @@ window_document_shared (W42Window *self)
       return TRUE;
 
   return FALSE;
+}
+
+void
+w42_window_close_discarding (W42Window *self)
+{
+  g_return_if_fail (W42_IS_WINDOW (self));
+
+  if (window_gone (self))
+    return;
+  /* The window goes without asking; the document is not marked clean,
+   * since another window on it would then close without asking too. */
+  self->force_close = TRUE;
+  gtk_window_close (GTK_WINDOW (self));
 }
 
 static void
@@ -1527,9 +1834,18 @@ on_font_dialog_done (GObject *source, GAsyncResult *result, gpointer data)
 
   desc = gtk_font_dialog_choose_font_finish (GTK_FONT_DIALOG (source),
                                              result, NULL);
+  if (window_gone (self))
+    {
+      g_clear_pointer (&desc, pango_font_description_free);
+      g_object_unref (self);
+      return;
+    }
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
   if (desc == NULL)
-    return;
+    {
+      g_object_unref (self);
+      return;
+    }
 
   if (pango_font_description_get_set_fields (desc) & PANGO_FONT_MASK_FAMILY)
     w42_view_set_font_family (self->view, pango_font_description_get_family (desc));
@@ -1561,6 +1877,7 @@ on_font_dialog_done (GObject *source, GAsyncResult *result, gpointer data)
   }
 
   pango_font_description_free (desc);
+  g_object_unref (self);
 }
 
 /* Ctrl+] and Ctrl+[: the size a point up or down, as Word 97 stepped it. */
@@ -1616,7 +1933,7 @@ action_font_dialog (GSimpleAction *action, GVariant *param, gpointer data)
 
   gtk_font_dialog_set_title (dialog, "Font");
   gtk_font_dialog_choose_font (dialog, GTK_WINDOW (self), desc, NULL,
-                               on_font_dialog_done, self);
+                               on_font_dialog_done, g_object_ref (self));
 
   pango_font_description_free (desc);
   g_object_unref (dialog);
@@ -1662,6 +1979,14 @@ on_picture_response (GObject *source, GAsyncResult *result, gpointer data)
 
   file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
 
+  if (window_gone (self))
+    {
+      g_clear_object (&file);
+      g_clear_error (&error);
+      g_object_unref (self);
+      return;
+    }
+
   if (file != NULL)
     {
       int width = 0, height = 0;
@@ -1689,6 +2014,7 @@ on_picture_response (GObject *source, GAsyncResult *result, gpointer data)
 
   g_clear_error (&error);
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
+  g_object_unref (self);
 }
 
 static void
@@ -1705,12 +2031,12 @@ action_insert_picture (GSimpleAction *action, GVariant *param, gpointer data)
    * word42 can show. */
   gtk_file_filter_set_name (pictures, "Pictures");
   add_picture_patterns (pictures);
-  g_list_store_append (filters, pictures);
+  append_filter (filters, pictures);
 
   gtk_file_dialog_set_title (dialog, "Insert Picture");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL,
-                        on_picture_response, self);
+                        on_picture_response, g_object_ref (self));
 
   g_object_unref (filters);
   g_object_unref (dialog);
@@ -1762,7 +2088,9 @@ on_export_pdf_response (GObject *source, GAsyncResult *result, gpointer data)
 
   file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
 
-  if (file != NULL)
+  if (window_gone (self))
+    g_clear_object (&file);
+  else if (file != NULL)
     {
       /* Export does not make the PDF the document's file: the document is
        * still the RTF or text it came from, and Save keeps going there. */
@@ -1779,6 +2107,7 @@ on_export_pdf_response (GObject *source, GAsyncResult *result, gpointer data)
     }
 
   g_clear_error (&error);
+  g_object_unref (self);
 }
 
 /* ---- Export as web page ----------------------------------------------- */
@@ -1792,7 +2121,9 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
 
   file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
 
-  if (file != NULL)
+  if (window_gone (self))
+    g_clear_object (&file);
+  else if (file != NULL)
     {
       if (!w42_html_export (w42_document_pt (self->doc),
                             w42_document_page_setup (self->doc), file, &error))
@@ -1804,6 +2135,7 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
     show_error (self, "Word42 could not export the web page.", error);
 
   g_clear_error (&error);
+  g_object_unref (self);
 }
 
 /* File > Web Page Preview: Word 97 wrote the document out as a web page
@@ -1858,12 +2190,12 @@ action_export_html (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".html", NULL);
 
-  g_list_store_append (filters, named_filter ("Web Pages (*.html)", html));
+  append_filter (filters, named_filter ("Web Pages (*.html)", html));
   gtk_file_dialog_set_title (dialog, "Export as Web Page");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
-                        on_export_html_response, self);
+                        on_export_html_response, g_object_ref (self));
 
   g_free (suggested);
   g_free (name);
@@ -1881,7 +2213,9 @@ on_export_pptx_response (GObject *source, GAsyncResult *result, gpointer data)
 
   file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
 
-  if (file != NULL)
+  if (window_gone (self))
+    g_clear_object (&file);
+  else if (file != NULL)
     {
       if (!w42_pptx_save (w42_document_pt (self->doc),
                           w42_document_page_setup (self->doc), file, &error))
@@ -1893,6 +2227,7 @@ on_export_pptx_response (GObject *source, GAsyncResult *result, gpointer data)
     show_error (self, "Word42 could not export the presentation.", error);
 
   g_clear_error (&error);
+  g_object_unref (self);
 }
 
 static void
@@ -1933,12 +2268,12 @@ action_export_pptx (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".pptx", NULL);
 
-  g_list_store_append (filters, named_filter ("Presentations (*.pptx)", pptx));
+  append_filter (filters, named_filter ("Presentations (*.pptx)", pptx));
   gtk_file_dialog_set_title (dialog, "Export as Presentation");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
-                        on_export_pptx_response, self);
+                        on_export_pptx_response, g_object_ref (self));
 
   g_free (suggested);
   g_free (name);
@@ -1965,12 +2300,12 @@ action_export_pdf (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".pdf", NULL);
 
-  g_list_store_append (filters, named_filter ("PDF Documents (*.pdf)", pdf));
+  append_filter (filters, named_filter ("PDF Documents (*.pdf)", pdf));
   gtk_file_dialog_set_title (dialog, "Export as PDF");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
-                        on_export_pdf_response, self);
+                        on_export_pdf_response, g_object_ref (self));
 
   g_free (suggested);
   g_free (name);
@@ -2259,7 +2594,7 @@ action_insert_index (GSimpleAction *action, GVariant *param, gpointer data)
 
   if (w42_view_insert_index (self->view) == 0)
     show_message (self, "There is nothing marked for the index.",
-                  "Select a word and use Insert â¸ Index Entry to "
+                  "Select a word and use Insert \u25b8 Index Entry to "
                   "mark it, then ask for the index again.");
 }
 
@@ -2677,6 +3012,13 @@ action_insert_footnote (GSimpleAction *action, GVariant *param, gpointer data)
   W42Window *self = data;
 
   (void) action; (void) param;
+  /* A note inside a note has nowhere to be numbered from. */
+  if (w42_view_caret_in_note (self->view))
+    {
+      window_flash (self, "The caret is in a note: put it in the body of the "
+                          "document first.");
+      return;
+    }
   w42_view_insert_footnote (self->view);
 }
 
@@ -2686,6 +3028,13 @@ action_insert_endnote (GSimpleAction *action, GVariant *param, gpointer data)
   W42Window *self = data;
 
   (void) action; (void) param;
+  /* As Insert Footnote. */
+  if (w42_view_caret_in_note (self->view))
+    {
+      window_flash (self, "The caret is in a note: put it in the body of the "
+                          "document first.");
+      return;
+    }
   w42_view_insert_endnote (self->view);
 }
 
@@ -2881,6 +3230,14 @@ action_table_insert (GSimpleAction *action, GVariant *param, gpointer data)
   W42Window *self = data;
 
   (void) action; (void) param;
+  /* Refused in the text of a note, as the other commands that put
+   * structure into the document are. */
+  if (w42_view_caret_in_note (self->view))
+    {
+      window_flash (self, "The caret is in a note: put it in the body of the "
+                          "document first.");
+      return;
+    }
   w42_insert_table_dialog_show (GTK_WINDOW (self), self->view);
 }
 
@@ -3766,9 +4123,12 @@ window_refresh_window_list (W42Window *self)
     {
       W42Window *w = l->data;
       char *name = w42_document_get_title (w->doc);
-      char *label = g_strdup_printf ("_%d %s%s", index + 1, name,
+      char *shown = mnemonic_escape (name);
+      char *label = g_strdup_printf ("_%d %s%s", index + 1, shown,
                                      w42_document_get_modified (w->doc) ? "*" : "");
       GMenuItem *item = g_menu_item_new (label, NULL);
+
+      g_free (shown);
 
       /* The target is the window's own number, not its place in the
        * list: opening the menu raises this window and reorders the
@@ -3835,10 +4195,7 @@ action_save_all (GSimpleAction *action, GVariant *param, gpointer data)
       if (w == NULL || !w42_document_get_modified (w->doc))
         continue;
       file = w42_document_get_file (w->doc);
-      if (file == NULL ||
-          w42_io_guess_format (file) == W42_FORMAT_DOC ||
-          w42_io_guess_format (file) == W42_FORMAT_PDF ||
-          w42_io_guess_format (file) == W42_FORMAT_HTML)
+      if (file == NULL || !w42_io_format_round_trips (file))
         {
           /* Never saved, or read from a format Save turns into Save As
            * for: either way it needs a name of its own. */
@@ -3877,6 +4234,14 @@ on_insert_file_response (GObject *source, GAsyncResult *result, gpointer data)
   GError *error = NULL;
   GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
 
+  if (window_gone (self))
+    {
+      g_clear_object (&file);
+      g_clear_error (&error);
+      g_object_unref (self);
+      return;
+    }
+
   if (file != NULL)
     {
       W42PieceTable *other = w42_pt_new ();
@@ -3899,6 +4264,7 @@ on_insert_file_response (GObject *source, GAsyncResult *result, gpointer data)
     }
   g_clear_error (&error);
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
+  g_object_unref (self);
 }
 
 /* Tools > Track Changes > Compare Documents: the file chosen is the
@@ -3910,6 +4276,14 @@ on_compare_response (GObject *source, GAsyncResult *result, gpointer data)
   W42Window *self = data;
   GError *error = NULL;
   GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
+
+  if (window_gone (self))
+    {
+      g_clear_object (&file);
+      g_clear_error (&error);
+      g_object_unref (self);
+      return;
+    }
 
   if (file != NULL)
     {
@@ -3935,6 +4309,7 @@ on_compare_response (GObject *source, GAsyncResult *result, gpointer data)
     show_error (self, "Word42 could not open that file.", error);
   g_clear_error (&error);
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
+  g_object_unref (self);
 }
 
 static void
@@ -3942,12 +4317,13 @@ action_compare_documents (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   GtkFileDialog *dialog = gtk_file_dialog_new ();
-  GListModel *filters = file_filters ();
+  GListModel *filters = file_filters (FALSE);
 
   (void) action; (void) param;
   gtk_file_dialog_set_title (dialog, "Compare Documents: the original");
   gtk_file_dialog_set_filters (dialog, filters);
-  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_compare_response, self);
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_compare_response,
+                        g_object_ref (self));
   g_object_unref (filters);
   g_object_unref (dialog);
 }
@@ -3957,12 +4333,13 @@ action_insert_file (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   GtkFileDialog *dialog = gtk_file_dialog_new ();
-  GListModel *filters = file_filters ();
+  GListModel *filters = file_filters (FALSE);
 
   (void) action; (void) param;
   gtk_file_dialog_set_title (dialog, "Insert File");
   gtk_file_dialog_set_filters (dialog, filters);
-  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_insert_file_response, self);
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_insert_file_response,
+                        g_object_ref (self));
   g_object_unref (filters);
   g_object_unref (dialog);
 }

@@ -641,9 +641,12 @@ is_boundary (const char *a, gboolean arithmetic_too)
   for (int i = 0; words[i] != NULL; i++)
     if (g_ascii_strcasecmp (a, words[i]) == 0)
       return TRUE;
+  /* Only what binds more loosely than the operator ends an operand: ^
+   * binds more tightly than \, so 4 ^ 2 \ 3 is (4 ^ 2) \ 3, as it is
+   * with * and /. */
   if (arithmetic_too)
     return g_str_equal (a, "+") || g_str_equal (a, "-") || g_ascii_strcasecmp (a, "mod") == 0
-        || g_str_equal (a, "&") || g_str_equal (a, "\\") || g_str_equal (a, "^");
+        || g_str_equal (a, "&") || g_str_equal (a, "\\");
   return g_str_equal (a, "&");
 }
 
@@ -681,9 +684,14 @@ rewrite_binary (GPtrArray *atoms, const char *op, const char *fn, gboolean arith
             break;
           l--;
         }
-      /* Forward to the operand's end. */
+      /* Forward to the operand's end.  A sign right after the operator
+       * belongs to the operand: 10 \ -3 is 10 \ (-3), not (10 \ ) - 3. */
       depth = 0;
       r = i + 1;
+      if (r < atoms->len &&
+          (g_str_equal (g_ptr_array_index (atoms, r), "-") ||
+           g_str_equal (g_ptr_array_index (atoms, r), "+")))
+        r++;
       while (r < atoms->len)
         {
           const char *a = g_ptr_array_index (atoms, r);
@@ -698,7 +706,6 @@ rewrite_binary (GPtrArray *atoms, const char *op, const char *fn, gboolean arith
             }
           else if (depth == 0 && is_boundary (a, arithmetic_bounds))
             break;
-          /* A unary minus right after the operator belongs to the operand. */
           r++;
         }
 

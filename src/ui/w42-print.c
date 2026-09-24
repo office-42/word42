@@ -274,7 +274,6 @@ on_done (GtkPrintOperation       *operation,
 {
   PrintJob *job = data;
 
-  g_printerr ("w42: print done result %d\n", (int) result);
   /* What the dialog was left at is what the next one opens with. */
   if (result == GTK_PRINT_OPERATION_RESULT_APPLY && job->export_path == NULL)
     remember_settings (gtk_print_operation_get_print_settings (operation));
@@ -291,6 +290,8 @@ on_done (GtkPrintOperation       *operation,
   g_clear_pointer (&job->layout, w42_layout_free);
   g_clear_pointer (&job->selection, w42_pt_free);
   g_clear_object (&job->doc);
+  if (job->parent != NULL)
+    g_object_remove_weak_pointer (G_OBJECT (job->parent), (gpointer *) &job->parent);
   g_free (job->export_path);
   g_free (job);
   g_object_unref (operation);
@@ -322,10 +323,18 @@ on_fallback_save (GObject *source, GAsyncResult *result, gpointer data)
 }
 
 static void
+weak_ref_free (gpointer data)
+{
+  g_weak_ref_clear (data);
+  g_free (data);
+}
+
+static void
 on_fallback_choice (GObject *source, GAsyncResult *result, gpointer data)
 {
   W42Document *doc = data;
-  GtkWindow *parent = g_object_get_data (G_OBJECT (source), "parent");
+  GWeakRef *parent_ref = g_object_get_data (G_OBJECT (source), "parent");
+  GtkWindow *parent = parent_ref != NULL ? g_weak_ref_get (parent_ref) : NULL;
   int choice;
 
   choice = gtk_alert_dialog_choose_finish (GTK_ALERT_DIALOG (source), result, NULL);
@@ -341,6 +350,7 @@ on_fallback_choice (GObject *source, GAsyncResult *result, gpointer data)
       gtk_file_filter_set_name (pdf, "PDF Documents (*.pdf)");
       gtk_file_filter_add_pattern (pdf, "*.pdf");
       g_list_store_append (filters, pdf);
+      g_object_unref (pdf);
 
       gtk_file_dialog_set_title (dialog, "Print to PDF");
       gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
@@ -351,9 +361,11 @@ on_fallback_choice (GObject *source, GAsyncResult *result, gpointer data)
       g_free (name);
       g_object_unref (filters);
       g_object_unref (dialog);
+      g_clear_object (&parent);
       return;
     }
 
+  g_clear_object (&parent);
   g_object_unref (doc);
 }
 
@@ -365,6 +377,7 @@ offer_pdf_fallback (GtkWindow *parent, W42Document *doc, const char *why)
   GtkAlertDialog *dialog;
   static const char *buttons[] = { "Cancel", "Print to PDF...", NULL };
   char *detail;
+  GWeakRef *parent_ref;
 
   detail = g_strdup_printf ("%s\n\nword42 can write the document to a PDF "
                             "instead, which you can print from any PDF "
@@ -375,7 +388,11 @@ offer_pdf_fallback (GtkWindow *parent, W42Document *doc, const char *why)
   gtk_alert_dialog_set_buttons (dialog, buttons);
   gtk_alert_dialog_set_cancel_button (dialog, 0);
   gtk_alert_dialog_set_default_button (dialog, 1);
-  g_object_set_data (G_OBJECT (dialog), "parent", parent);
+  /* The answer comes whenever it comes, and the window may have gone by
+   * then. */
+  parent_ref = g_new0 (GWeakRef, 1);
+  g_weak_ref_init (parent_ref, parent);
+  g_object_set_data_full (G_OBJECT (dialog), "parent", parent_ref, weak_ref_free);
   gtk_alert_dialog_choose (dialog, parent, NULL, on_fallback_choice,
                            g_object_ref (doc));
 
@@ -401,7 +418,11 @@ run_print (GtkWindow *parent, W42Document *doc, W42PieceTable *selection,
 
   job = g_new0 (PrintJob, 1);
   job->doc = g_object_ref (doc);
+  /* Weak: the job reports its end after the dialog has let the window
+   * be closed. */
   job->parent = parent;
+  if (parent != NULL)
+    g_object_add_weak_pointer (G_OBJECT (parent), (gpointer *) &job->parent);
   job->selection = selection;
   job->export_path = g_strdup (export_path);
 
@@ -456,13 +477,11 @@ run_print (GtkWindow *parent, W42Document *doc, W42PieceTable *selection,
   g_signal_connect (operation, "custom-widget-apply", G_CALLBACK (on_custom_widget_apply), job);
   g_signal_connect (operation, "done", G_CALLBACK (on_done), job);
 
-  g_printerr ("w42: print run starting\n");
   result = gtk_print_operation_run (operation,
                                     export_path != NULL ? GTK_PRINT_OPERATION_ACTION_EXPORT
                                     : system_dialog ? GTK_PRINT_OPERATION_ACTION_PRINT_DIALOG
                                                     : GTK_PRINT_OPERATION_ACTION_PRINT,
                                     parent, &error);
-  g_printerr ("w42: print run result %d error %s\n", (int) result, error != NULL ? error->message : "none");
 
   /* on_done has already reported an error with the operation's own
    * message; one that stopped the run before it began is reported here. */
@@ -485,7 +504,17 @@ typedef struct {
   GtkWidget     *copies, *collate, *odd_even;
   GtkWidget     *reverse, *drawings, *background, *draft;
   GtkWidget     *printer;
+  gboolean       closed;        /* the box has gone, with a file box open:
+                                 * held by that, it is unrealized when it
+                                 * is closed rather than destroyed */
 } PrintBox;
+
+static void
+on_print_box_closed (GtkWidget *window, gpointer data)
+{
+  (void) window;
+  ((PrintBox *) data)->closed = TRUE;
+}
 
 static void
 print_box_free (gpointer data)
@@ -604,12 +633,19 @@ static void
 on_print_to_file_chosen (GObject *source, GAsyncResult *result, gpointer data)
 {
   PrintBox *box = data;
+  GtkWindow *window = box->window;
   GFile *file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, NULL);
   GtkPrintSettings *settings = w42_print_settings ();
   W42PieceTable *selection;
 
-  if (file == NULL)
-    return;
+  /* The box went with its document's window while the file box was up:
+   * the window it would print for has gone. */
+  if (file == NULL || box->closed)
+    {
+      g_clear_object (&file);
+      g_object_unref (window);
+      return;
+    }
   if (print_box_apply (box, settings))
     {
       char *path = g_file_get_path (file);
@@ -622,6 +658,7 @@ on_print_to_file_chosen (GObject *source, GAsyncResult *result, gpointer data)
       gtk_window_destroy (box->window);
     }
   g_object_unref (file);
+  g_object_unref (window);
 }
 
 /* Print to file: Word 97 wrote the printer's language to a file; word42
@@ -646,9 +683,11 @@ on_print_to_file (GtkButton *button, gpointer data)
   gtk_file_filter_set_name (pdf, "PDF Documents (*.pdf)");
   gtk_file_filter_add_pattern (pdf, "*.pdf");
   g_list_store_append (filters, pdf);
+  g_object_unref (pdf);
   gtk_file_dialog_set_title (dialog, "Print to File");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
+  g_object_ref (box->window);
   gtk_file_dialog_save (dialog, box->window, NULL, on_print_to_file_chosen, box);
   g_free (suggested);
   g_free (name);
@@ -710,11 +749,14 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   box->window = GTK_WINDOW (gtk_window_new ());
   gtk_window_set_title (box->window, "Print");
   gtk_window_set_transient_for (box->window, parent);
+  /* The box prints for its window, and must not outlive it. */
+  gtk_window_set_destroy_with_parent (box->window, TRUE);
   gtk_window_set_modal (box->window, TRUE);
   gtk_window_set_resizable (box->window, FALSE);
   gtk_widget_add_css_class (GTK_WIDGET (box->window), "w42");
   gtk_widget_add_css_class (GTK_WIDGET (box->window), "w42-dialog");
   g_object_set_data_full (G_OBJECT (box->window), "w42-print-box", box, print_box_free);
+  g_signal_connect (box->window, "unrealize", G_CALLBACK (on_print_box_closed), box);
 
   content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_set_margin_top (content, 10);

@@ -2237,12 +2237,15 @@ w42_view_insert_table (W42View *self, int rows, int cols)
   if (pt == NULL || rows < 1 || cols < 1)
     return;
 
-  /* No tables inside tables. */
-  if (w42_pt_cell_at (pt, self->caret, NULL, NULL, NULL))
+  /* No tables inside tables, nor in the text of a note. */
+  if (w42_pt_cell_at (pt, self->caret, NULL, NULL, NULL) ||
+      w42_view_caret_in_note (self))
     return;
 
+  /* After the caret's paragraph -- which, for a caret at the end of one,
+   * is not the paragraph of the mark the caret sits on. */
   ap = w42_pt_block_ap_at (pt, para_pos (self, self->caret));
-  at = w42_pt_paragraph_end (pt, self->caret);
+  at = w42_pt_paragraph_end (pt, para_pos (self, self->caret));
 
   w42_pt_insert_table (pt, at, rows, cols, ap);
 
@@ -2915,9 +2918,12 @@ w42_view_insert_page_break (W42View *self)
   memset (&want, 0, sizeof want);
   want.page_break_before = 1;
 
+  /* The break goes on the new paragraph.  When the caret was at the end
+   * of one, the new paragraph is empty and the caret sits on the next
+   * one's mark, so the position asked about is the new mark itself. */
   w42_pt_begin_group (pt);
   view_insert_paragraph (self);
-  w42_pt_apply_para_fmt (pt, self->caret, 0, W42_PARA_PAGE_BREAK, &want);
+  w42_pt_apply_para_fmt (pt, para_pos (self, self->caret), 0, W42_PARA_PAGE_BREAK, &want);
   w42_pt_end_group (pt);
 
   view_edited (self);
@@ -6370,9 +6376,19 @@ w42_view_text_to_table (W42View *self)
   if (pt == NULL)
     return FALSE;
 
-  /* The paragraphs the selection touches, or the caret's own. */
-  start = w42_pt_paragraph_start (pt, sel_start (self));
-  end = w42_pt_paragraph_end (pt, w42_view_has_selection (self) ? sel_end (self) - 1 : self->caret);
+  /* The paragraphs the selection touches, or the caret's own -- which,
+   * for a caret at the end of a paragraph, is not the one whose mark the
+   * caret sits on. */
+  if (w42_view_has_selection (self))
+    {
+      start = w42_pt_paragraph_start (pt, sel_start (self));
+      end = w42_pt_paragraph_end (pt, sel_end (self) - 1);
+    }
+  else
+    {
+      start = w42_pt_paragraph_start (pt, para_pos (self, self->caret));
+      end = w42_pt_paragraph_end (pt, para_pos (self, self->caret));
+    }
   at = w42_pt_text_to_table (pt, start, end);
   if (at == (gsize) -1)
     return FALSE;

@@ -108,6 +108,7 @@ typedef struct {
   gsize    pos;
   gsize    n;
   char    *text;
+  guint    seq;       /* the order the edits were found in */
 } Edit;
 
 static void
@@ -120,6 +121,20 @@ edit_clear (gpointer data)
 
 /* Later edits first; at one position the marking goes before the putting
  * back, so that what was deleted reads before what replaced it. */
+/* At one position: the marking first; then the paragraphs put back,
+ * so that words put back there after them land at the end of the
+ * paragraph before and not in the first of them. */
+static int
+edit_rank (EditKind kind)
+{
+  switch (kind)
+    {
+    case EDIT_MARK_INSERTED:      return 0;
+    case EDIT_PUT_BACK_PARAGRAPH: return 1;
+    default:                      return 2;
+    }
+}
+
 static int
 edit_cmp (gconstpointer pa, gconstpointer pb)
 {
@@ -127,9 +142,11 @@ edit_cmp (gconstpointer pa, gconstpointer pb)
 
   if (a->pos != b->pos)
     return a->pos > b->pos ? -1 : 1;
-  if (a->kind != b->kind)
-    return a->kind == EDIT_MARK_INSERTED ? -1 : 1;
-  return 0;
+  if (edit_rank (a->kind) != edit_rank (b->kind))
+    return edit_rank (a->kind) < edit_rank (b->kind) ? -1 : 1;
+  /* Each thing put in at a place goes in front of the one put there
+   * before it, so the ones found later are put in first. */
+  return a->seq > b->seq ? -1 : a->seq < b->seq ? 1 : 0;
 }
 
 /* The differences between one paragraph here and one in the original,
@@ -162,12 +179,12 @@ compare_paragraphs (GArray *edits, const W42Block *here, const W42Block *there)
         }
       if (here_n > 0)
         {
-          Edit e = { EDIT_MARK_INSERTED, pos, here_n, NULL };
+          Edit e = { EDIT_MARK_INSERTED, pos, here_n, NULL, edits->len };
           g_array_append_val (edits, e);
         }
       if (gone != NULL)
         {
-          Edit e = { EDIT_PUT_BACK, pos, 0, g_string_free (gone, FALSE) };
+          Edit e = { EDIT_PUT_BACK, pos, 0, g_string_free (gone, FALSE), edits->len };
           g_array_append_val (edits, e);
         }
       pos += here_n;
@@ -187,7 +204,8 @@ compare_paragraphs (GArray *edits, const W42Block *here, const W42Block *there)
 int
 w42_pt_compare (W42PieceTable *pt, W42PieceTable *original)
 {
-  GPtrArray *here, *there, *here_text, *there_text;
+  GPtrArray *here_all, *there_all, *here, *there, *here_text, *there_text;
+  gsize body_end;
   GArray *pairs, *edits;
   guint ih = 0, it = 0;
   int made = 0;
@@ -195,8 +213,23 @@ w42_pt_compare (W42PieceTable *pt, W42PieceTable *original)
   g_return_val_if_fail (pt != NULL, 0);
   g_return_val_if_fail (original != NULL, 0);
 
-  here = w42_pt_snapshot_blocks (pt);
-  there = w42_pt_snapshot_blocks (original);
+  here_all = w42_pt_snapshot_blocks (pt);
+  there_all = w42_pt_snapshot_blocks (original);
+  /* The body's paragraphs only: matched against a note's, the body's
+   * text would be put back inside the note.  The notes section is the
+   * last thing in a document, so what goes back at the end of the body
+   * goes in front of it. */
+  here = g_ptr_array_new ();
+  there = g_ptr_array_new ();
+  for (guint i = 0; i < here_all->len; i++)
+    if (((W42Block *) g_ptr_array_index (here_all, i))->note < 0)
+      g_ptr_array_add (here, g_ptr_array_index (here_all, i));
+  for (guint i = 0; i < there_all->len; i++)
+    if (((W42Block *) g_ptr_array_index (there_all, i))->note < 0)
+      g_ptr_array_add (there, g_ptr_array_index (there_all, i));
+  body_end = w42_pt_notes_start (pt);
+  if (body_end == (gsize) -1)
+    body_end = w42_pt_length (pt);
   here_text = g_ptr_array_new ();
   there_text = g_ptr_array_new ();
   for (guint i = 0; i < here->len; i++)
@@ -227,7 +260,7 @@ w42_pt_compare (W42PieceTable *pt, W42PieceTable *original)
           gsize n = g_utf8_strlen (block->text->str, -1);
           gboolean first = block->start_pos + 1 == w42_pt_first_caret_pos (pt);
           Edit e = { EDIT_MARK_INSERTED, first ? block->start_pos + 1 : block->start_pos,
-                     first ? n : n + 1, NULL };
+                     first ? n : n + 1, NULL, edits->len };
 
           /* The document's first mark is never inserted: a document has
            * one whatever was done to it. */
@@ -241,8 +274,9 @@ w42_pt_compare (W42PieceTable *pt, W42PieceTable *original)
            * end of the document. */
           gsize before = mh < here->len
                            ? ((W42Block *) g_ptr_array_index (here, mh))->start_pos
-                           : w42_pt_length (pt);
-          Edit e = { EDIT_PUT_BACK_PARAGRAPH, before, 0, g_strdup (block->text->str) };
+                           : body_end;
+          Edit e = { EDIT_PUT_BACK_PARAGRAPH, before, 0, g_strdup (block->text->str),
+                     edits->len };
           g_array_append_val (edits, e);
         }
       if (k < pairs->len)
@@ -309,5 +343,7 @@ w42_pt_compare (W42PieceTable *pt, W42PieceTable *original)
   g_ptr_array_free (there_text, TRUE);
   g_ptr_array_free (here, TRUE);
   g_ptr_array_free (there, TRUE);
+  g_ptr_array_free (here_all, TRUE);
+  g_ptr_array_free (there_all, TRUE);
   return made;
 }

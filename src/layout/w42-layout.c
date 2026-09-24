@@ -807,6 +807,10 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
 
           w = w42_twips_to_px (object->width);
           h = w42_twips_to_px (object->height);
+          /* Pango counts in ints of 1/1024 px: a size a file made up must
+           * not overflow them.  No page is taller than 70 inches. */
+          w = CLAMP (w, 1.0, 6720.0);
+          h = CLAMP (h, 1.0, 6720.0);
 
           /* A picture wider than the column is shown scaled to fit it.  The
            * document keeps the size that was asked for; only the display
@@ -1383,10 +1387,13 @@ layout_header_rows (W42Layout *self, W42PieceTable *pt, W42ApTable *aps, guint f
                 break;
               cell_last++;
             }
-          row_h = MAX (row_h, layout_cell (self, aps, c, cell_last,
-                                           col_x[col] + CELL_PAD, y + CELL_PAD,
-                                           MAX (col_x[col + span] - col_x[col] - 2 * CELL_PAD, 8.0),
-                                           page));
+          /* Not inside MAX: the macro would lay the cell out twice. */
+          double h = layout_cell (self, aps, c, cell_last,
+                                  col_x[col] + CELL_PAD, y + CELL_PAD,
+                                  MAX (col_x[col + span] - col_x[col] - 2 * CELL_PAD, 8.0),
+                                  page);
+
+          row_h = MAX (row_h, h);
           c = cell_last + 1;
         }
       row_h += 2 * CELL_PAD;
@@ -1708,6 +1715,18 @@ layout_table (W42Layout      *self,
           span = CLAMP (blk->span, 1, n_cols - col0);
           spans[col0] = span;
           vspans[col0] = cell_vspan (aps, blk);
+          /* Covered, but by no merge that reaches this row: the text in
+           * it would never be seen, so it is a cell of its own. */
+          if (vspans[col0] == W42_CELL_COVERED)
+            {
+              gboolean open = FALSE;
+
+              for (guint m = 0; m < merges->len && !open; m++)
+                open = g_array_index (merges, Merge, m).col == col0 &&
+                       g_array_index (merges, Merge, m).rows_left > 0;
+              if (!open)
+                vspans[col0] = 1;
+            }
           sides[col0] = cell_sides (aps, blk, props == NULL || props->borders);
           {
             const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk->cell_ap)->pa;

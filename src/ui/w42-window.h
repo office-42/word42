@@ -21,12 +21,25 @@ GtkWidget *w42_window_new  (GtkApplication *app);
  * Window > New Window gave you: both show the same text, and an edit in
  * either appears in both. */
 GtkWidget *w42_window_new_for_document (GtkApplication *app, W42Document *doc);
-void       w42_window_open (W42Window *self, GFile *file);
+/* Reads `file` into the window's document.  w42_window_load says nothing
+ * when the file cannot be read, and the document is left as it was;
+ * w42_window_open says so in a message on the window. */
+gboolean   w42_window_load (W42Window *self, GFile *file, GError **error);
+gboolean   w42_window_open (W42Window *self, GFile *file);
 /* For macros: a line in the status bar, and the document written to a
  * file as File > Save As would, with the title and the recent list
- * following. */
+ * following -- or, to a format that does not round trip, exported
+ * there, with the document left as it was. */
 void       w42_window_flash_status (W42Window *self, const char *text);
 gboolean   w42_window_save_to (W42Window *self, GFile *file, GError **error);
+/* Whether a file name ends in an extension Word42 knows.  One that does
+ * not is saved as Rich Text, with .rtf added: a dot in "Mr. Smith" does
+ * not make it a text file. */
+gboolean   w42_window_name_has_extension (const char *name);
+/* Closes the window without asking about unsaved changes, as a macro's
+ * ActiveDocument.Close wdDoNotSaveChanges does.  A document still open in
+ * another window keeps its changes there. */
+void       w42_window_close_discarding (W42Window *self);
 
 /* An empty document in a new window, for the commands that make a
  * document of their own -- an envelope, a sheet of labels.  The window

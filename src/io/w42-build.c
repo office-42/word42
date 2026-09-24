@@ -28,6 +28,7 @@ w42_builder_init (W42Builder *b, W42PieceTable *pt)
   b->pos = w42_pt_first_caret_pos (pt);
   b->table = -1;
   b->note_return = (gsize) -1;
+  b->last_object = W42_OBJECT_NONE;
   w42_builder_reset_char (b);
   w42_builder_reset_para (b);
 }
@@ -66,11 +67,18 @@ cell_break (W42Builder *b)
 void
 w42_builder_text (W42Builder *b, const char *utf8)
 {
+  gsize before;
+
   if (utf8 == NULL || *utf8 == '\0')
     return;
   cell_break (b);
+  /* The piece table drops control characters and makes one break of a
+   * CR LF, so what went in is what its length grew by, not what was
+   * offered.  Counting the offer let a stray DEL push everything after it
+   * one place on -- past the body's end and into the notes. */
+  before = w42_pt_length (b->pt);
   w42_pt_insert_text (b->pt, b->pos, utf8, builder_ap (b));
-  b->pos += g_utf8_strlen (utf8, -1);
+  b->pos += w42_pt_length (b->pt) - before;
   b->in_para = TRUE;
 }
 
@@ -80,6 +88,7 @@ w42_builder_object (W42Builder *b, GBytes *data, const char *format,
 {
   W42ObjectIdx idx;
 
+  b->last_object = W42_OBJECT_NONE;
   if (data == NULL || pixel_w <= 0 || pixel_h <= 0)
     return;
   cell_break (b);
@@ -90,6 +99,7 @@ w42_builder_object (W42Builder *b, GBytes *data, const char *format,
   w42_pt_insert_object (b->pt, b->pos, idx, builder_ap (b));
   b->pos += 1;
   b->in_para = TRUE;
+  b->last_object = idx;
 }
 
 /* A paragraph's properties are known only once it ends, and they belong to
@@ -187,13 +197,23 @@ w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths)
    * follows the table; otherwise every table would arrive with a blank line
    * above it. */
   b->table_before_block = FALSE;
-  if (b->pos >= 2 && b->pos == w42_pt_length (b->pt))
-    {
-      char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
+  {
+    /* The body ends where the notes begin, once there are any, as
+     * w42_builder_finish knows too: measured against the document's own
+     * end, every table after the first note came with a blank line above
+     * it, and another each time the file was saved. */
+    gsize body_end = w42_pt_length (b->pt);
 
-      b->table_before_block = (tail != NULL && *tail == '\n');
-      g_free (tail);
-    }
+    if (b->pos != body_end)
+      body_end = w42_pt_notes_start (b->pt);    /* a walk: only when needed */
+    if (b->pos >= 2 && b->pos == body_end)
+      {
+        char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
+
+        b->table_before_block = (tail != NULL && *tail == '\n');
+        g_free (tail);
+      }
+  }
   if (b->table_before_block)
     b->pos -= 1;
 
@@ -322,21 +342,18 @@ w42_builder_finish (W42Builder *b)
 void
 w42_builder_object_wrap (W42Builder *b, W42Wrap wrap)
 {
-  W42ObjectTable *table = w42_pt_object_table (b->pt);
-  guint n = w42_object_table_size (table);
-
-  if (n > 0 && wrap != W42_WRAP_INLINE)
-    w42_object_table_set_wrap (table, n - 1, wrap);
+  /* The object the last call made, not the table's last: when that call
+   * put nothing in, the last in the table is an earlier picture, and it is
+   * not the one being told where to go. */
+  if (b->last_object != W42_OBJECT_NONE && wrap != W42_WRAP_INLINE)
+    w42_object_table_set_wrap (w42_pt_object_table (b->pt), b->last_object, wrap);
 }
 
 void
 w42_builder_object_position (W42Builder *b, int x, int y)
 {
-  W42ObjectTable *table = w42_pt_object_table (b->pt);
-  guint n = w42_object_table_size (table);
-
-  if (n > 0)
-    w42_object_table_set_position (table, n - 1, TRUE,
+  if (b->last_object != W42_OBJECT_NONE)
+    w42_object_table_set_position (w42_pt_object_table (b->pt), b->last_object, TRUE,
                                    CLAMP (x, -31680, 31680), CLAMP (y, -31680, 31680));
 }
 
@@ -349,10 +366,22 @@ w42_builder_shape (W42Builder *b, W42ShapeKind kind, int width, int height,
   int w_px, h_px;
   GBytes *png;
 
+  b->last_object = W42_OBJECT_NONE;
   width = MAX (width, 15);
   height = MAX (height, 15);
   w_px = MAX (width / 15, 2);
   h_px = MAX (height / 15, 2);
+  /* The picture is only a stand-in until the shape is drawn at its size,
+   * so it need not be big: a few thousand-inch shapes rendered at full
+   * size made a small file take seconds to open.  Both sides shrink by
+   * the one factor, so the stand-in keeps the shape's proportions. */
+  if (w_px > 2048 || h_px > 2048)
+    {
+      double k = 2048.0 / MAX (w_px, h_px);
+
+      w_px = MAX ((int) (w_px * k), 2);
+      h_px = MAX ((int) (h_px * k), 2);
+    }
   png = w42_shape_render (kind, w_px, h_px, line_pt, line_rgb, filled, fill_rgb, text);
   if (png == NULL)
     return;
@@ -365,4 +394,5 @@ w42_builder_shape (W42Builder *b, W42ShapeKind kind, int width, int height,
   w42_pt_insert_object (b->pt, b->pos, idx, builder_ap (b));
   b->pos += 1;
   b->in_para = TRUE;
+  b->last_object = idx;
 }

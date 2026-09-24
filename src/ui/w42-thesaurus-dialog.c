@@ -286,11 +286,18 @@ w42_thesaurus_dialog_show (GtkWindow *parent, W42View *view, W42Thesaurus *thesa
   gtk_window_set_title (GTK_WINDOW (box->window), title);
   g_free (title);
   gtk_window_set_transient_for (GTK_WINDOW (box->window), parent);
+  /* The box works on the window's view with the window's thesaurus, and
+   * the window frees both when it goes: the box goes with it, and with
+   * the view, should Window > Split take that away. */
+  gtk_window_set_destroy_with_parent (GTK_WINDOW (box->window), TRUE);
+  g_signal_connect_object (view, "destroy", G_CALLBACK (gtk_window_destroy),
+                           box->window, G_CONNECT_SWAPPED);
   gtk_window_set_modal (GTK_WINDOW (box->window), TRUE);
   gtk_window_set_resizable (GTK_WINDOW (box->window), FALSE);
   gtk_widget_add_css_class (box->window, "w42");
   g_object_weak_ref (G_OBJECT (box->window), box_free, box);
-  g_signal_connect_swapped (box->window, "destroy", G_CALLBACK (gtk_widget_grab_focus), view);
+  g_signal_connect_object (box->window, "destroy", G_CALLBACK (gtk_widget_grab_focus),
+                           view, G_CONNECT_SWAPPED);
 
   key = gtk_event_controller_key_new ();
   g_signal_connect (key, "key-pressed", G_CALLBACK (on_key), box);

@@ -701,6 +701,25 @@ pt_do_set_widths (W42PieceTable *pt, int table, GArray *widths)
   return inverse;
 }
 
+/* Whether the content a record holds includes a table's marks: only a
+ * record that does can add or take away a table's cells. */
+static gboolean
+cr_has_table_marks (const W42CR *cr)
+{
+  if (cr == NULL || cr->type != CR_DELETE)
+    return FALSE;
+  for (guint i = 0; i < cr->runs->len; i++)
+    {
+      const W42SavedRun *run = &g_array_index (cr->runs, W42SavedRun, i);
+
+      if (run->type == W42_PIECE_STRUX &&
+          (run->strux == W42_STRUX_CELL || run->strux == W42_STRUX_TABLE ||
+           run->strux == W42_STRUX_ENDTABLE))
+        return TRUE;
+    }
+  return FALSE;
+}
+
 static W42CR *
 pt_apply (W42PieceTable *pt, W42CR *cr)
 {
@@ -731,9 +750,11 @@ pt_apply (W42PieceTable *pt, W42CR *cr)
     pt_coalesce_range (pt, cr->pos, cr->type == CR_INSERT ? 0 : cr->len);
 
   /* Rows that came or went by undo need their cells renumbered, the same
-   * as when they came or went the first time. */
-  for (guint t = 0; t < pt->tables->len; t++)
-    pt_table_renumber (pt, (int) t);
+   * as when they came or went the first time -- but only then: it walks
+   * the whole document once for every table. */
+  if (cr_has_table_marks (cr) || cr_has_table_marks (inverse))
+    for (guint t = 0; t < pt->tables->len; t++)
+      pt_table_renumber (pt, (int) t);
 
   return inverse;
 }
@@ -2011,9 +2032,13 @@ w42_pt_delete (W42PieceTable *pt, gsize pos, gsize n)
   /* Reference marks in the range: their notes go too, as one step. */
   end = MIN (pos + n, pt->length);
   {
-    gsize p = 0;
+    /* From the piece at `pos`, not from the head: a Replace All deletes
+     * once for every hit. */
+    gsize off = 0;
+    W42Piece *q = pos < pt->length ? pt_find (pt, pos, &off) : NULL;
+    gsize p = pos - off;
 
-    for (W42Piece *q = pt->head; q != NULL && p < end; q = q->next)
+    for (; q != NULL && p < end; q = q->next)
       {
         if (piece_is_strux (q, W42_STRUX_FOOTNOTE) && p >= pos)
           {
@@ -2071,12 +2096,21 @@ pt_delete_notes (W42PieceTable *pt, GArray *ids)
 {
   if (ids == NULL)
     return;
+  /* `ids` grows as this goes: a note referred to from inside a note
+   * that is going goes too, or nothing would refer to it again. */
   for (guint i = 0; i < ids->len; i++)
     {
       gsize start = 0, stop = 0;
 
       if (pt_note_span (pt, g_array_index (ids, int, i), &start, &stop) && stop > start)
         {
+          GArray *inner = pt_note_ids_in (pt, start, stop - start);
+
+          if (inner != NULL)
+            {
+              g_array_append_vals (ids, inner->data, inner->len);
+              g_array_free (inner, TRUE);
+            }
           pt->coalescing = FALSE;
           pt_push (pt, pt_do_delete (pt, start, stop - start));
         }
@@ -2653,6 +2687,41 @@ w42_pt_set_cell_vspan (W42PieceTable *pt, gsize cell_pos, int vspan)
   piece->ap = w42_ap_table_intern (pt->aps, &fmt);
 }
 
+
+/* A table's merges down its columns made whole again after rows or
+ * columns came or went: a covered cell with no merge above it is a cell
+ * of its own, and a merge covers the covered cells that follow it and
+ * no more.  Recorded, into the caller's group. */
+static void
+pt_table_fix_vmerges (W42PieceTable *pt, int table)
+{
+  const W42TableProps *props = w42_pt_table_props (pt, table);
+  int rows = w42_pt_table_rows (pt, table);
+
+  if (props == NULL)
+    return;
+  for (int col = 0; col < props->n_cols; col++)
+    for (int row = 0; row < rows; row++)
+      {
+        int v = w42_pt_cell_vspan (pt, table, row, col);
+        int n = 1;
+
+        if (v == W42_CELL_COVERED)
+          {
+            cell_set_vspan (pt, table, row, col, 1);
+            continue;
+          }
+        if (v < 2)
+          continue;
+        while (row + n < rows &&
+               w42_pt_cell_vspan (pt, table, row + n, col) == W42_CELL_COVERED)
+          n++;
+        if (n != v)
+          cell_set_vspan (pt, table, row, col, n);
+        row += n - 1;
+      }
+}
+
 gboolean
 w42_pt_merge_cells_down (W42PieceTable *pt, int table, int row, int col, int rows)
 {
@@ -2674,11 +2743,32 @@ w42_pt_merge_cells_down (W42PieceTable *pt, int table, int row, int col, int row
 
       if (v == 0)
         return FALSE;
+      if (r == row && v == W42_CELL_COVERED)
+        return FALSE;               /* part of a merge from above already */
       if (r > row && v != 1)
         return FALSE;
     }
 
   w42_pt_begin_group (pt);
+  /* What the covered cells hold goes into the merged cell, a paragraph
+   * at a time, as Word does it: a covered cell is not drawn, and text
+   * left in one could be neither seen nor reached. */
+  for (int r = row + 1; r < row + rows; r++)
+    {
+      gsize s = 0, e = 0, os = 0, oe = 0;
+      W42PieceTable *frag;
+
+      if (!w42_pt_cell_range (pt, table, r, col, &s, &e) || e <= s)
+        continue;
+      frag = w42_pt_extract (pt, s, e - s);
+      w42_pt_delete (pt, s, e - s);
+      if (w42_pt_cell_range (pt, table, row, col, &os, &oe))
+        {
+          w42_pt_insert_block (pt, oe, w42_pt_block_ap_at (pt, oe - 1));
+          w42_pt_insert_fragment (pt, oe + 1, frag);
+        }
+      w42_pt_free (frag);
+    }
   /* The covered cells first: setting the owner's span would otherwise
    * change what w42_pt_cell_start finds under it. */
   for (int r = row + rows - 1; r > row; r--)
@@ -2941,10 +3031,11 @@ w42_pt_table_merge_cells (W42PieceTable *pt, int table, int row,
                         CELL_PAYLOAD (row, col_from, total), first_ap);
   }
   pt_push (pt, cr_new (CR_INSERT, first_start - 2, 1));
+  pt_table_renumber (pt, table);
+  pt_table_fix_vmerges (pt, table);
 
   w42_pt_end_group (pt);
   pt->coalescing = FALSE;
-  pt_table_renumber (pt, table);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -3411,6 +3502,26 @@ w42_pt_table_insert_row (W42PieceTable *pt, int table, int row)
       g_array_free (snap, TRUE);
     }
   pt_table_renumber (pt, table);
+  /* A row put in under a merge down a column is covered by it too. */
+  for (int c = 0; c < props->n_cols; c++)
+    {
+      int owner = row;
+
+      while (owner >= 0 && w42_pt_cell_vspan (pt, table, owner, c) == W42_CELL_COVERED)
+        owner--;
+      if (owner >= 0 && owner <= row)
+        {
+          int span = w42_pt_cell_vspan (pt, table, owner, c);
+
+          if (span > 1 && span != W42_CELL_COVERED && owner + span - 1 > row &&
+              w42_pt_cell_vspan (pt, table, row + 1, c) != 0)
+            {
+              cell_set_vspan (pt, table, row + 1, c, W42_CELL_COVERED);
+              cell_set_vspan (pt, table, owner, c, span + 1);
+            }
+        }
+    }
+  pt_table_fix_vmerges (pt, table);
   w42_pt_end_group (pt);
 
   g_array_free (rows, TRUE);
@@ -3507,6 +3618,7 @@ w42_pt_table_delete_row (W42PieceTable *pt, int table, int row)
       }
   }
   pt_table_renumber (pt, table);
+  pt_table_fix_vmerges (pt, table);
   w42_pt_end_group (pt);
 
   g_array_free (rows, TRUE);
@@ -4559,6 +4671,7 @@ w42_pt_table_delete_column (W42PieceTable *pt, int table, int col)
       }
     }
   pt_table_renumber (pt, table);
+  pt_table_fix_vmerges (pt, table);
   pt->coalescing = FALSE;
   pt_push (pt, pt_do_set_widths (pt, table, widths));
   g_array_free (widths, TRUE);
@@ -4790,6 +4903,8 @@ w42_pt_table_split (W42PieceTable *pt, int table, int row)
     w42_pt_table_set_edge (pt, new_table, e, &edges[e]);
   pt_table_renumber (pt, table);
   pt_table_renumber (pt, new_table);
+  pt_table_fix_vmerges (pt, table);
+  pt_table_fix_vmerges (pt, new_table);
   /* The rows that moved keep the heights they were set to. */
   for (int r = row; r < n_rows; r++)
     {
