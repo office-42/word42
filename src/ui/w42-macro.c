@@ -36,6 +36,8 @@
  * macro is stopped. */
 #define STEP_LIMIT 20000000
 
+typedef struct _Modal Modal;
+
 typedef struct {
   GtkWindow     *parent;
   W42View       *view;
@@ -44,6 +46,12 @@ typedef struct {
   int            error_row;
   guint64        steps;
   gboolean       runaway;
+  /* The window or the view went while the macro ran: closed, or the pane
+   * unsplit, from the main loop a MsgBox runs.  Both are held until the
+   * macro ends, so nothing is freed under it, but they are off the
+   * screen, and a macro carrying on in them works where nobody sees. */
+  gboolean       gone;
+  Modal         *modal;         /* the box being answered, if any */
   /* Selection.Find's properties, for an Execute with no arguments. */
   char          *find_text;
   char          *replace_text;
@@ -174,13 +182,13 @@ fail (struct mb_interpreter_t *s, void **l, const char *message)
 /* Message and input boxes, run to completion on a loop of their own       */
 /* ---------------------------------------------------------------------- */
 
-typedef struct {
+struct _Modal {
   GMainLoop *loop;
   GtkWidget *window;
   GtkWidget *entry;
   int        result;
   char      *text;
-} Modal;
+};
 
 static void
 on_modal_button (GtkButton *button, gpointer data)
@@ -219,10 +227,11 @@ on_modal_activate (GtkEntry *entry, gpointer data)
  * before the next one runs, which no callback can do: the box gets a main
  * loop of its own, as dialogs had before GTK 4. */
 static void
-modal_run (Modal *m, GtkWindow *parent, const char *title, const char *prompt,
+modal_run (Ctx *c, Modal *m, const char *title, const char *prompt,
            const char *const *buttons, const int *results, int n_buttons,
            const char *entry_text)
 {
+  GtkWindow *parent = c->parent;
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
   GtkWidget *label = gtk_label_new (prompt);
   GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
@@ -272,7 +281,9 @@ modal_run (Modal *m, GtkWindow *parent, const char *title, const char *prompt,
   gtk_window_present (GTK_WINDOW (m->window));
   if (m->entry != NULL)
     gtk_widget_grab_focus (m->entry);
+  c->modal = m;
   g_main_loop_run (m->loop);
+  c->modal = NULL;
   gtk_window_destroy (GTK_WINDOW (m->window));
   g_main_loop_unref (m->loop);
   m->loop = NULL;
@@ -304,10 +315,13 @@ NATIVE (n_msgbox)
   n = sets[set][2] != NULL ? 3 : (sets[set][1] != NULL ? 2 : 1);
   /* With no Cancel to press, closing the box is OK, as Word had it. */
   m.result = set == 0 ? 1 : (set == 4 ? 7 : 2);
-  modal_run (&m, c->parent, *title != '\0' ? title : "Word42", prompt,
-             sets[set], codes[set], n, NULL);
+  if (!c->gone)
+    modal_run (c, &m, *title != '\0' ? title : "Word42", prompt,
+               sets[set], codes[set], n, NULL);
   g_free (prompt);
   g_free (title);
+  if (c->gone)
+    return fail (s, l, "The document was closed while the macro ran");
   return mb_push_int (s, l, m.result);
 }
 
@@ -327,9 +341,13 @@ NATIVE (n_inputbox)
   mb_check (arg_string (s, l, &initial));
   CLOSE ();
 
-  modal_run (&m, c->parent, *title != '\0' ? title : "Word42", prompt,
-             buttons, codes, 2, initial);
-  rc = push_string (s, l, m.result == 1 && m.text != NULL ? m.text : "");
+  if (!c->gone)
+    modal_run (c, &m, *title != '\0' ? title : "Word42", prompt,
+               buttons, codes, 2, initial);
+  if (c->gone)
+    rc = fail (s, l, "The document was closed while the macro ran");
+  else
+    rc = push_string (s, l, m.result == 1 && m.text != NULL ? m.text : "");
   g_free (m.text);
   g_free (prompt);
   g_free (title);
@@ -395,6 +413,9 @@ NATIVE (n_idiv)
   CLOSE ();
   if (b == 0)
     return fail (s, l, "Division by zero");
+  /* The one quotient an int cannot hold, and the processor traps on it. */
+  if (a == G_MININT && b == -1)
+    return fail (s, l, "Overflow");
   return mb_push_int (s, l, a / b);
 }
 
@@ -1758,6 +1779,12 @@ NATIVE (n_doc_save)
   file = doc_file (c);
   if (file == NULL || !W42_IS_WINDOW (c->parent))
     return fail (s, l, "The document has never been saved: use ActiveDocument.SaveAs \"name\"");
+  /* As File > Save: written back to a .doc, a PDF, a web page or a
+   * presentation, the file it was read from would be replaced by
+   * Word42's rendering of it. */
+  if (!w42_io_format_round_trips (file))
+    return fail (s, l, "The document came from a format Word42 does not write "
+                       "back as it was: use ActiveDocument.SaveAs \"name\"");
   if (!w42_window_save_to (W42_WINDOW (c->parent), file, &error))
     {
       int rc = fail (s, l, error != NULL ? error->message : "The document could not be saved");
@@ -1788,15 +1815,21 @@ NATIVE (n_doc_saveas)
       g_free (name);
       return fail (s, l, "SaveAs needs a file name");
     }
-  if (strrchr (name, '.') == NULL || strrchr (name, '.') < strrchr (name, G_DIR_SEPARATOR))
-    {
-      const char *ext = format == 16 || format == 12 ? ".docx" : format == 23 ? ".odt"
-                      : format == 8 ? ".html" : format == 17 ? ".pdf" : format == 2 ? ".txt" : ".rtf";
-      char *with = g_strconcat (name, ext, NULL);
+  {
+    char *base = g_path_get_basename (name);
 
-      g_free (name);
-      name = with;
-    }
+    /* A dot does not make an extension: "Mr. Smith" is a name. */
+    if (!w42_window_name_has_extension (base))
+      {
+        const char *ext = format == 16 || format == 12 ? ".docx" : format == 23 ? ".odt"
+                        : format == 8 ? ".html" : format == 17 ? ".pdf" : format == 2 ? ".txt" : ".rtf";
+        char *with = g_strconcat (name, ext, NULL);
+
+        g_free (name);
+        name = with;
+      }
+    g_free (base);
+  }
   file = g_path_is_absolute (name) ? g_file_new_for_path (name)
        : g_file_new_build_filename (g_get_home_dir (), name, NULL);
   ok = w42_window_save_to (W42_WINDOW (c->parent), file, &error);
@@ -1812,6 +1845,23 @@ NATIVE (n_doc_saveas)
   return MB_FUNC_OK;
 }
 
+/* Closing a window frees its view and its document, and the macro is
+ * still running on them, so the window goes once the macro has
+ * finished: from the main loop, a moment later. */
+static gboolean
+close_later (gpointer data)
+{
+  GtkWindow *window = data;
+
+  if (W42_IS_WINDOW (window) && g_object_get_data (G_OBJECT (window), "w42-discard") != NULL)
+    w42_window_close_discarding (W42_WINDOW (window));
+  else
+    gtk_window_close (window);
+  return G_SOURCE_REMOVE;
+}
+
+/* Close([SaveChanges]): wdSaveChanges saves first, and fails if it
+ * cannot; wdDoNotSaveChanges closes without asking; the default asks. */
 NATIVE (n_doc_close)
 {
   Ctx *c = ctx_of (s);
@@ -1820,10 +1870,29 @@ NATIVE (n_doc_close)
   OPEN ();
   mb_check (arg_int (s, l, &save, -2));
   CLOSE ();
+  if (!GTK_IS_WINDOW (c->parent))
+    return MB_FUNC_OK;
+
+  if (save == -1)
+    {
+      GFile *file = doc_file (c);
+      GError *error = NULL;
+
+      if (file == NULL || !W42_IS_WINDOW (c->parent) || !w42_io_format_round_trips (file))
+        return fail (s, l, "The document has no file to be saved to: use "
+                           "ActiveDocument.SaveAs \"name\" first");
+      if (!w42_window_save_to (W42_WINDOW (c->parent), file, &error))
+        {
+          int rc = fail (s, l, error != NULL ? error->message : "The document could not be saved");
+
+          g_clear_error (&error);
+          return rc;
+        }
+    }
   if (save == 0)
-    w42_document_set_modified (w42_view_get_document (c->view), FALSE);
-  if (GTK_IS_WINDOW (c->parent))
-    gtk_window_close (c->parent);
+    g_object_set_data (G_OBJECT (c->parent), "w42-discard", GINT_TO_POINTER (1));
+  g_idle_add_full (G_PRIORITY_DEFAULT, close_later, g_object_ref (c->parent),
+                   g_object_unref);
   return MB_FUNC_OK;
 }
 
@@ -1972,6 +2041,13 @@ NATIVE (n_app_statusbar_set)
   return MB_FUNC_OK;
 }
 
+static gboolean
+quit_later (gpointer data)
+{
+  g_action_group_activate_action (G_ACTION_GROUP (data), "quit", NULL);
+  return G_SOURCE_REMOVE;
+}
+
 NATIVE (n_app_quit)
 {
   Ctx *c = ctx_of (s);
@@ -1985,9 +2061,11 @@ NATIVE (n_app_quit)
       mb_check (arg_value (s, l, &v));
     }
   CLOSE ();
+  /* Once the macro has finished, as ActiveDocument.Close does. */
   app = GTK_IS_WINDOW (c->parent) ? gtk_window_get_application (c->parent) : NULL;
   if (app != NULL)
-    g_action_group_activate_action (G_ACTION_GROUP (app), "quit", NULL);
+    g_idle_add_full (G_PRIORITY_DEFAULT, quit_later, g_object_ref (app),
+                     g_object_unref);
   return MB_FUNC_OK;
 }
 
@@ -2037,6 +2115,7 @@ NATIVE (n_documents_open)
   GtkApplication *app;
   GFile *file;
   GtkWidget *window;
+  GError *error = NULL;
 
   OPEN ();
   mb_check (arg_string (s, l, &name));
@@ -2060,7 +2139,16 @@ NATIVE (n_documents_open)
       return rc;
     }
   window = w42_window_new (app);
-  w42_window_open (W42_WINDOW (window), file);
+  if (!w42_window_load (W42_WINDOW (window), file, &error))
+    {
+      int rc = fail (s, l, error != NULL ? error->message : "The file could not be opened");
+
+      gtk_window_destroy (GTK_WINDOW (window));
+      g_clear_error (&error);
+      g_object_unref (file);
+      g_free (name);
+      return rc;
+    }
   gtk_window_present (GTK_WINDOW (window));
   g_object_unref (file);
   g_free (name);
@@ -2226,24 +2314,51 @@ on_step (struct mb_interpreter_t *s, void **l, const char *f, int p,
       c->runaway = TRUE;
       return fail (s, l, "The macro ran too long and was stopped");
     }
+  if (c->gone)
+    return fail (s, l, "The document was closed while the macro ran");
   return MB_FUNC_OK;
+}
+
+static void
+on_gone (GtkWidget *widget, gpointer data)
+{
+  Ctx *c = data;
+
+  (void) widget;
+  c->gone = TRUE;
+  /* A box being answered is answered: nobody is left to answer it. */
+  if (c->modal != NULL && c->modal->loop != NULL)
+    g_main_loop_quit (c->modal->loop);
 }
 
 gboolean
 w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
                const char *entry, GString *output, char **error)
 {
+  /* MY-BASIC keeps some of its state in globals that mb_dispose() frees,
+   * and a MsgBox runs the main loop: a second macro started from it --
+   * F5 in the editor, or Tools > Macro in another window -- would free
+   * them under the first. */
+  static gboolean running;
   W42VbaProgram *prog;
   struct mb_interpreter_t *bas = NULL;
   Ctx ctx;
   int rc;
   gboolean ok = TRUE;
-  W42PieceTable *pt;
+  W42Document *doc;
+  gulong view_gone = 0, parent_gone = 0;
 
   g_return_val_if_fail (W42_IS_VIEW (view), FALSE);
   g_return_val_if_fail (source != NULL, FALSE);
   if (error != NULL)
     *error = NULL;
+
+  if (running)
+    {
+      if (error != NULL)
+        *error = g_strdup ("A macro is running already: answer its box first.");
+      return FALSE;
+    }
 
   prog = w42_vba_translate (source, entry != NULL ? entry : "Main");
   if (prog->error != NULL)
@@ -2261,6 +2376,21 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
   ctx.forward = TRUE;
   ctx.wrap = TRUE;
 
+  /* Held until the macro ends, since every native reaches through them
+   * and a MsgBox runs the main loop, from which they can be closed.  Held,
+   * a closed window is not disposed until it is let go, so "destroy" does
+   * not come in time; what does come at once, to a window closed and to
+   * a pane taken away, is "unrealize". */
+  running = TRUE;
+  g_object_ref (view);
+  view_gone = g_signal_connect (view, "unrealize", G_CALLBACK (on_gone), &ctx);
+  if (parent != NULL)
+    {
+      g_object_ref (parent);
+      parent_gone = g_signal_connect (parent, "unrealize", G_CALLBACK (on_gone), &ctx);
+    }
+  doc = g_object_ref (w42_view_get_document (view));
+
   mb_init ();
   mb_open (&bas);
   mb_set_userdata (bas, &ctx);
@@ -2275,15 +2405,16 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
       mb_register_func (bas, NATIVES[i].name, NATIVES[i].func);
     }
 
-  pt = w42_document_pt (w42_view_get_document (view));
-  w42_pt_break_undo_coalesce (pt);
+  w42_pt_break_undo_coalesce (w42_document_pt (doc));
   rc = mb_load_string (bas, prog->program, true);
   if (rc == MB_FUNC_OK)
     {
-      /* Everything the macro does is one undo step. */
-      w42_pt_begin_group (pt);
+      /* Everything the macro does is one undo step.  The table is asked
+       * for again at the end: a Revert while the macro waited on a box
+       * gives the document another. */
+      w42_pt_begin_group (w42_document_pt (doc));
       rc = mb_run (bas, true);
-      w42_pt_end_group (pt);
+      w42_pt_end_group (w42_document_pt (doc));
     }
 
   if (rc != MB_FUNC_OK || ctx.error != NULL)
@@ -2305,12 +2436,17 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
   w42_vba_program_free (prog);
 
   /* Whatever was changed, every view on the document sees it. */
-  {
-    W42Document *doc = w42_view_get_document (view);
+  w42_document_touch (doc);
 
-    if (W42_IS_DOCUMENT (doc))
-      w42_document_touch (doc);
-  }
+  if (g_signal_handler_is_connected (view, view_gone))
+    g_signal_handler_disconnect (view, view_gone);
+  if (parent != NULL && g_signal_handler_is_connected (parent, parent_gone))
+    g_signal_handler_disconnect (parent, parent_gone);
+  g_object_unref (doc);
+  if (parent != NULL)
+    g_object_unref (parent);
+  g_object_unref (view);
+  running = FALSE;
   return ok;
 }
 

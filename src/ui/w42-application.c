@@ -6,6 +6,7 @@
 
 #include "w42-application.h"
 
+#include "w42-dialogs.h"
 #include "w42-settings.h"
 
 #include "w42-window.h"
@@ -299,11 +300,41 @@ w42_application_open (GApplication  *app,
   for (int i = 0; i < n_files; i++)
     {
       GtkWidget *window = w42_window_new (GTK_APPLICATION (app));
+      GError *error = NULL;
+      GtkWindow *other = NULL;
+      char *name, *heading;
 
-      w42_window_open (W42_WINDOW (window), files[i]);
-      gtk_window_present (GTK_WINDOW (window));
-      if (i == 0)
-        show_splash (GTK_WINDOW (window));
+      if (w42_window_load (W42_WINDOW (window), files[i], &error))
+        {
+          gtk_window_present (GTK_WINDOW (window));
+          show_splash (GTK_WINDOW (window));
+          continue;
+        }
+
+      /* A window whose file could not be read is let go when another
+       * window can carry the message.  The only window stays, empty, to
+       * carry it: without it the program would end without a word. */
+      for (GList *l = gtk_application_get_windows (GTK_APPLICATION (app)); l != NULL; l = l->next)
+        if (l->data != window && W42_IS_WINDOW (l->data))
+          {
+            other = l->data;
+            break;
+          }
+      if (other != NULL)
+        gtk_window_destroy (GTK_WINDOW (window));
+      else
+        {
+          other = GTK_WINDOW (window);
+          gtk_window_present (other);
+          show_splash (other);
+        }
+
+      name = g_file_get_parse_name (files[i]);
+      heading = g_strdup_printf ("Word42 could not open \342\200\234%s\342\200\235.", name);
+      w42_message_show (other, heading, error != NULL ? error->message : NULL);
+      g_free (heading);
+      g_free (name);
+      g_clear_error (&error);
     }
 }
 

@@ -3252,7 +3252,19 @@ typedef struct {
   GtkWidget      *list;
   GtkWidget      *status;
   W42MergeSource *source;
+  gboolean        closed;   /* the box has gone: a file box still open on
+                             * it holds its window, and so this, but
+                             * there is nothing left to show things in --
+                             * and held, the window is unrealized when it
+                             * is closed rather than destroyed */
 } MergeBox;
+
+static void
+on_merge_closed (GtkWidget *window, gpointer data)
+{
+  (void) window;
+  ((MergeBox *) data)->closed = TRUE;
+}
 
 static void
 merge_free (gpointer data, GObject *where)
@@ -3312,13 +3324,16 @@ static void
 on_merge_source_chosen (GObject *object, GAsyncResult *result, gpointer data)
 {
   MergeBox *box = data;
+  GtkWidget *window = box->window;
   GError *error = NULL;
   GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (object), result, &error);
   W42MergeSource *source;
 
-  if (file == NULL)
+  if (file == NULL || box->closed)
     {
+      g_clear_object (&file);
       g_clear_error (&error);
+      g_object_unref (window);
       return;
     }
 
@@ -3339,6 +3354,7 @@ on_merge_source_chosen (GObject *object, GAsyncResult *result, gpointer data)
       merge_show_source (box);
     }
   g_object_unref (file);
+  g_object_unref (window);
 }
 
 static void
@@ -3356,6 +3372,7 @@ on_merge_open_source (GtkButton *button, gpointer data)
   g_list_store_append (filters, csv);
   gtk_file_dialog_set_title (dialog, "Open Data Source");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
+  g_object_ref (box->window);
   gtk_file_dialog_open (dialog, GTK_WINDOW (box->window), NULL,
                         on_merge_source_chosen, box);
   g_object_unref (csv);
@@ -3381,27 +3398,86 @@ on_merge_insert_field (GtkButton *button, gpointer data)
   g_free (text);
 }
 
+/* The merge is written as Rich Text whatever the name, and the result
+ * is opened again by its name, so the name has to say so: a name with no
+ * extension gets .rtf, and one with another extension is refused rather
+ * than written as RTF under a name that would be read as something else. */
+static GFile *
+merge_output_file (MergeBox *box, GFile *chosen)
+{
+  char *base = g_file_get_basename (chosen);
+  GFile *file = NULL;
+
+  if (base == NULL || w42_window_name_has_extension (base))
+    {
+      char *lower = g_ascii_strdown (base != NULL ? base : "", -1);
+
+      if (g_str_has_suffix (lower, ".rtf"))
+        file = g_object_ref (chosen);
+      else
+        gtk_label_set_text (GTK_LABEL (box->status),
+                            "A merge is written as Rich Text: give the file a "
+                            "name ending .rtf.");
+      g_free (lower);
+    }
+  else
+    {
+      GFile *parent = g_file_get_parent (chosen);
+      char *named = g_strconcat (base, ".rtf", NULL);
+
+      file = parent != NULL ? g_file_get_child (parent, named) : g_file_new_for_path (named);
+      g_clear_object (&parent);
+      /* The file box asked about the name as it was typed, not this one. */
+      if (g_file_query_exists (file, NULL))
+        {
+          char *text = g_strdup_printf ("%s is there already: choose it by that "
+                                        "name to replace it, or another name.",
+                                        named);
+
+          gtk_label_set_text (GTK_LABEL (box->status), text);
+          g_free (text);
+          g_clear_object (&file);
+        }
+      g_free (named);
+    }
+  g_free (base);
+  return file;
+}
+
 static void
 on_merge_output_chosen (GObject *object, GAsyncResult *result, gpointer data)
 {
   MergeBox *box = data;
+  GtkWidget *window = box->window;
   GError *error = NULL;
-  GFile *file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (object), result, &error);
-  W42Document *doc = w42_view_get_document (box->view);
+  GFile *chosen = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (object), result, &error);
+  W42Document *doc;
   GtkWindow *parent;
+  GFile *file;
 
+  if (chosen == NULL || box->closed)
+    {
+      g_clear_object (&chosen);
+      g_clear_error (&error);
+      g_object_unref (window);
+      return;
+    }
+  file = merge_output_file (box, chosen);
+  g_object_unref (chosen);
   if (file == NULL)
     {
-      g_clear_error (&error);
+      g_object_unref (window);
       return;
     }
 
+  doc = w42_view_get_document (box->view);
   if (!w42_merge_to_file (w42_document_pt (doc), w42_document_page_setup (doc),
                           box->source, file, &error))
     {
       gtk_label_set_text (GTK_LABEL (box->status), error->message);
       g_error_free (error);
       g_object_unref (file);
+      g_object_unref (window);
       return;
     }
 
@@ -3411,13 +3487,21 @@ on_merge_output_chosen (GObject *object, GAsyncResult *result, gpointer data)
   if (parent != NULL)
     {
       GtkApplication *app = gtk_window_get_application (parent);
-      GtkWidget *window = w42_window_new (app);
+      GtkWidget *merged = w42_window_new (app);
 
-      w42_window_open (W42_WINDOW (window), file);
-      gtk_window_present (GTK_WINDOW (window));
+      if (w42_window_load (W42_WINDOW (merged), file, &error))
+        gtk_window_present (GTK_WINDOW (merged));
+      else
+        {
+          gtk_window_destroy (GTK_WINDOW (merged));
+          w42_message_show (parent, "Word42 could not open the merged document.",
+                            error != NULL ? error->message : NULL);
+          g_clear_error (&error);
+        }
     }
   gtk_window_destroy (GTK_WINDOW (box->window));
   g_object_unref (file);
+  g_object_unref (window);
 }
 
 static void
@@ -3449,6 +3533,7 @@ on_merge_run (GtkButton *button, gpointer data)
   gtk_file_dialog_set_title (dialog, "Merge to New Document");
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, "Merged.rtf");
+  g_object_ref (box->window);
   gtk_file_dialog_save (dialog, GTK_WINDOW (box->window), NULL,
                         on_merge_output_chosen, box);
   g_object_unref (rtf);
@@ -3472,6 +3557,7 @@ w42_mail_merge_dialog_show (GtkWindow *parent, W42View *view)
   box->window = dialog_shell (parent, "Mail Merge", &content, view);
   gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
   g_object_weak_ref (G_OBJECT (box->window), merge_free, box);
+  g_signal_connect (box->window, "unrealize", G_CALLBACK (on_merge_closed), box);
 
   grid = group (content, "Data Source");
 
@@ -6026,15 +6112,39 @@ on_macro_editor_save (GtkButton *button, gpointer data)
     macro_editor_say (ed, "Saved.");
 }
 
+/* A macro runs to its end on the main loop, and a MsgBox in it runs the
+ * loop meanwhile: the document's window, and a box that goes with it,
+ * can be closed before the macro returns.  Held, a closed window is not
+ * disposed until it is let go, but it is unrealized at once, and that is
+ * what this notes. */
+static void
+on_gone (GtkWidget *widget, gpointer data)
+{
+  (void) widget;
+  *(gboolean *) data = TRUE;
+}
+
+static void
+disconnect_gone (gpointer instance, gulong id)
+{
+  if (g_signal_handler_is_connected (instance, id))
+    g_signal_handler_disconnect (instance, id);
+}
+
 static void
 on_macro_editor_run (GtkButton *button, gpointer data)
 {
   MacroEditor *ed = data;
+  GtkWidget *window = ed->window;
+  gboolean gone = FALSE;
+  gulong gone_id;
   char *source;
-  GString *output = g_string_new (NULL);
+  GString *output;
   char *error = NULL;
   const char *sub = NULL;
+  char *sub_name;
   GObject *item;
+  gboolean ok;
 
   (void) button;
   if (!macro_editor_save (ed))
@@ -6045,30 +6155,38 @@ on_macro_editor_run (GtkButton *button, gpointer data)
   if (sub == NULL)
     {
       macro_editor_say (ed, "There is no Sub to run: write one, Sub Main() ... End Sub.");
-      g_string_free (output, TRUE);
       return;
     }
+  /* The list of Subs is the editor's, and goes with it. */
+  sub_name = g_strdup (sub);
   source = macro_editor_source (ed);
   {
-    char *line = g_strdup_printf ("Running %s...", sub);
+    char *line = g_strdup_printf ("Running %s...", sub_name);
 
     macro_editor_say (ed, line);
     g_free (line);
   }
-  if (w42_macro_run (ed->parent, ed->view, source, sub, output, &error))
+
+  /* The editor goes with the document's view, and `ed` with the editor;
+   * held, it is still there to be asked whether it has gone. */
+  g_object_ref (window);
+  gone_id = g_signal_connect (window, "unrealize", G_CALLBACK (on_gone), &gone);
+  output = g_string_new (NULL);
+  ok = w42_macro_run (ed->parent, ed->view, source, sub_name, output, &error);
+  disconnect_gone (window, gone_id);
+  if (!gone)
     {
       if (output->len > 0)
         macro_editor_say (ed, output->str);
-      macro_editor_say (ed, "Done.");
+      if (ok)
+        macro_editor_say (ed, "Done.");
+      else
+        macro_editor_say (ed, error != NULL ? error : "The macro stopped.");
     }
-  else
-    {
-      if (output->len > 0)
-        macro_editor_say (ed, output->str);
-      macro_editor_say (ed, error != NULL ? error : "The macro stopped.");
-    }
+  g_object_unref (window);
   g_free (error);
   g_free (source);
+  g_free (sub_name);
   g_string_free (output, TRUE);
 }
 
@@ -6322,6 +6440,8 @@ on_macros_run (GtkButton *button, gpointer data)
   char *file, *sub, *source, *error = NULL;
   W42View *view = box->view;
   GtkWindow *parent = box->parent;
+  gboolean gone = FALSE, ok;
+  gulong gone_id;
 
   (void) button;
   if (!macros_named (box, &file, &sub))
@@ -6342,20 +6462,31 @@ on_macros_run (GtkButton *button, gpointer data)
     }
   /* The box goes first: the macro's own boxes belong to the document. */
   gtk_window_close (GTK_WINDOW (box->window));
-  if (!w42_macro_run (parent, view, source, sub, NULL, &error))
-    {
-      char *heading = g_strdup_printf ("The macro %s stopped.", file);
 
-      w42_message_show (parent, heading, error);
-      g_free (heading);
-    }
-  else if (W42_IS_WINDOW (parent))
+  /* The document's window can go while the macro runs -- closed from a
+   * MsgBox's main loop -- and then there is nowhere to report to. */
+  g_object_ref (parent);
+  gone_id = g_signal_connect (parent, "unrealize", G_CALLBACK (on_gone), &gone);
+  ok = w42_macro_run (parent, view, source, sub, NULL, &error);
+  disconnect_gone (parent, gone_id);
+  if (!gone)
     {
-      char *line = g_strdup_printf ("Macro %s ran.", file);
+      if (!ok)
+        {
+          char *heading = g_strdup_printf ("The macro %s stopped.", file);
 
-      w42_window_flash_status (W42_WINDOW (parent), line);
-      g_free (line);
+          w42_message_show (parent, heading, error);
+          g_free (heading);
+        }
+      else if (W42_IS_WINDOW (parent))
+        {
+          char *line = g_strdup_printf ("Macro %s ran.", file);
+
+          w42_window_flash_status (W42_WINDOW (parent), line);
+          g_free (line);
+        }
     }
+  g_object_unref (parent);
   g_free (error);
   g_free (source);
   g_free (file);

@@ -57,6 +57,23 @@ w42_io_guess_format (GFile *file)
   return format;
 }
 
+gboolean
+w42_io_format_round_trips (GFile *file)
+{
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  switch (w42_io_guess_format (file))
+    {
+    case W42_FORMAT_DOC:
+    case W42_FORMAT_PDF:
+    case W42_FORMAT_HTML:
+    case W42_FORMAT_PPTX:
+      return FALSE;
+    default:
+      return TRUE;
+    }
+}
+
 /* Whatever a file said about its page, the page is one that can be laid
  * out: a sheet between an inch and seventy inches a side, margins that
  * leave at least an inch of text between them, and up to six columns.
