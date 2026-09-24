@@ -95,7 +95,12 @@ w42_merge_source_load (GFile *file, GError **error)
 
   if (!g_utf8_validate (contents, length, NULL))
     {
-      char *conv = g_convert (contents, length, "UTF-8", "WINDOWS-1252", NULL, &length, NULL);
+      /* Windows-1252 leaves five bytes undefined, which iconv refuses;
+       * Latin-1 defines every byte, so a file is always something. */
+      char *conv = g_convert (contents, length, "UTF-8", "WINDOWS-1252", NULL, NULL, NULL);
+
+      if (conv == NULL)
+        conv = g_convert (contents, length, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);
       g_free (contents);
       contents = conv != NULL ? conv : g_strdup ("");
       length = strlen (contents);

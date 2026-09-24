@@ -46,6 +46,48 @@ append_escaped (GString *out, const char *text, gsize len)
     }
 }
 
+/* Text for an attribute's value or the <title>, where markup is not
+ * markup: a tab or a line break is a character reference, not the span
+ * or the <br> the body gets, whose quotes would end the attribute. */
+static void
+append_attr (GString *out, const char *text)
+{
+  for (const char *p = text; *p != '\0'; p++)
+    switch (*p)
+      {
+      case '<':  g_string_append (out, "&lt;"); break;
+      case '>':  g_string_append (out, "&gt;"); break;
+      case '&':  g_string_append (out, "&amp;"); break;
+      case '"':  g_string_append (out, "&quot;"); break;
+      case '\t': g_string_append (out, "&#9;"); break;
+      case '\n': g_string_append (out, "&#10;"); break;
+      case '\r': g_string_append (out, "&#13;"); break;
+      default:   g_string_append_c (out, *p);
+      }
+}
+
+gboolean
+w42_html_link_is_script (const char *href)
+{
+  char scheme[16];
+  gsize n = 0;
+
+  g_return_val_if_fail (href != NULL, FALSE);
+
+  /* A browser skips the spaces and control characters before a URL and
+   * the tabs and line breaks inside one, so "java\tscript:" is what it
+   * runs; the scheme is read the way it reads it. */
+  while (*href != '\0' && (guchar) *href <= ' ')
+    href++;
+  for (; *href != '\0' && *href != ':' && n < sizeof scheme - 1; href++)
+    if (*href != '\t' && *href != '\n' && *href != '\r')
+      scheme[n++] = g_ascii_tolower (*href);
+  scheme[n] = '\0';
+  return *href == ':' && (g_str_equal (scheme, "javascript") ||
+                          g_str_equal (scheme, "vbscript") ||
+                          g_str_equal (scheme, "data"));
+}
+
 /* The tag a paragraph's style calls for, and its outline level. */
 static const char *
 tag_for (W42StyleSheet *styles, const char *style)
@@ -73,24 +115,37 @@ css_num (GString *css, const char *name, double value, const char *unit)
 
 /* The name goes inside quotes inside an attribute or a stylesheet: no
  * quotes of either kind, and the markup characters escaped, or a font
- * called "</style><script>" would be exactly that in the output. */
+ * called "</style><script>" would be exactly that in the output.  In a
+ * <style> element nothing is unescaped, so there a "<" is left out
+ * rather than written as "&lt;", which would be read back as its name. */
 static void
-append_family (GString *css, const char *family)
+append_family (GString *css, const char *family, gboolean in_sheet)
 {
   g_string_append (css, "font-family:'");
   for (const char *p = family; *p; p++)
-    if (*p == '&') g_string_append (css, "&amp;");
+    if (*p == '<' && in_sheet) continue;
+    else if (*p == '&' && !in_sheet) g_string_append (css, "&amp;");
     else if (*p == '<') g_string_append (css, "&lt;");
     else if (*p != '\'' && *p != '"') g_string_append_c (css, *p);
   g_string_append (css, "';");
 }
 
+/* Whether white space may go after a list tag at `depth` lists deep:
+ * not inside an item of the list round it, where it would be the item's
+ * text, since that keeps its white space. */
+static gboolean
+list_breaks (const gboolean *li_open, int depth)
+{
+  return depth == 0 || !li_open[depth - 1];
+}
+
 /* A paragraph's style attribute, with `extra` declarations first when
  * there are any.  `style` is the paragraph's style when its tag stands
  * for one -- a heading's, which a reader applies whole and the page's
- * stylesheet gives margins of its own -- so that what the paragraph has
- * and the style does not is said as well: its left alignment, its
- * nought indents, and its margins always. */
+ * stylesheet gives margins of its own -- so that what the paragraph is
+ * is said in full: its left alignment, its nought indents, its single
+ * spacing and its margins.  The reader's heading need not be this
+ * document's, so nothing can be left to it. */
 static void
 write_para_style (GString *out, const W42ParaFmt *pa, const W42ParaFmt *style,
                   const char *extra)
@@ -103,17 +158,19 @@ write_para_style (GString *out, const W42ParaFmt *pa, const W42ParaFmt *style,
     case W42_ALIGN_RIGHT:   g_string_append (css, "text-align:right;"); break;
     case W42_ALIGN_JUSTIFY: g_string_append (css, "text-align:justify;"); break;
     default:
-      if (style != NULL && style->align != W42_ALIGN_LEFT)
+      if (style != NULL)
         g_string_append (css, "text-align:left;");
       break;
     }
-#define SAY(field) (pa->field != 0 || (style != NULL && style->field != 0))
+#define SAY(field) (pa->field != 0 || style != NULL)
+  /* In points, which hold a twip to two places; an inch to two places
+   * is fourteen twips out. */
   if (SAY (indent_left))
-    css_num (css, "margin-left", pa->indent_left / 1440.0, "in");
+    css_num (css, "margin-left", pa->indent_left / 20.0, "pt");
   if (SAY (indent_right))
-    css_num (css, "margin-right", pa->indent_right / 1440.0, "in");
+    css_num (css, "margin-right", pa->indent_right / 20.0, "pt");
   if (SAY (indent_first) && pa->list == W42_LIST_NONE)
-    css_num (css, "text-indent", pa->indent_first / 1440.0, "in");
+    css_num (css, "text-indent", pa->indent_first / 20.0, "pt");
   if (pa->space_before || style != NULL)
     css_num (css, "margin-top", pa->space_before / 20.0, "pt");
   if (pa->space_after || style != NULL)
@@ -127,13 +184,14 @@ write_para_style (GString *out, const W42ParaFmt *pa, const W42ParaFmt *style,
        * document actually holds rides along in a custom property, which
        * browsers ignore and this reader does not -- otherwise a document
        * saved twice would grow a fifth taller each time. */
-      g_string_append_printf (css, "line-height:%d%%;", pa->line_spacing_pct + 20);
-      g_string_append_printf (css, "--w42-line-height:%d%%;", pa->line_spacing_pct);
+      int pct = MIN (pa->line_spacing_pct, 10000);
+
+      g_string_append_printf (css, "line-height:%d%%;", pct + 20);
+      g_string_append_printf (css, "--w42-line-height:%d%%;", pct);
     }
   else if (pa->line_spacing > 0)
     css_num (css, "line-height", pa->line_spacing / 20.0, "pt");
-  else if (style != NULL && ((style->line_spacing_pct > 0 && style->line_spacing_pct != 100) ||
-                             style->line_spacing > 0))
+  else if (style != NULL)
     g_string_append (css, "line-height:normal;");
   if (pa->border != 0)
     {
@@ -155,7 +213,7 @@ write_para_style (GString *out, const W42ParaFmt *pa, const W42ParaFmt *style,
     g_string_append_printf (css, "background:#%06x;", pa->shading_color & 0xFFFFFF);
   else if (pa->shading > 0)
     {
-      int g = 255 - pa->shading * 255 / 100;
+      int g = 255 - MIN (pa->shading, 100) * 255 / 100;
       g_string_append_printf (css, "background:rgb(%d,%d,%d);", g, g, g);
     }
   if (pa->page_break_before)
@@ -171,14 +229,18 @@ write_para_style (GString *out, const W42ParaFmt *pa, const W42ParaFmt *style,
 /* `base` is the body's type, which the page's stylesheet sets and the
  * run's font and size are measured against; `style` is the heading's
  * formatting when the run is in one, which a reader gives it whole, so
- * what the heading has and the run does not is said too. */
+ * the run says all it is.  `bookmarks` holds the bookmarks whose id the
+ * page has already given. */
 static void
 write_run (GString *out, W42PieceTable *pt, const W42Block *block,
            const W42Run *run, const W42CharFmt *ch, const W42CharFmt *base,
-           const W42CharFmt *style, const char **bookmark_open)
+           const W42CharFmt *style, GHashTable *bookmarks)
 {
   GString *css = g_string_new (NULL);
   gboolean span;
+  /* A link that would run a script when the page is opened is not
+   * written as one: a document from anywhere can carry one. */
+  const char *link = ch->link != NULL && !w42_html_link_is_script (ch->link) ? ch->link : NULL;
 
   if (run->object != W42_OBJECT_NONE)
     {
@@ -188,20 +250,33 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
 
       if (object == NULL)
         return;
-      if (ch->family != base->family && ch->family != NULL)
-        append_family (css, ch->family);
-      if (ch->size != base->size)
+      if (ch->family != NULL && (ch->family != base->family || style != NULL))
+        append_family (css, ch->family, FALSE);
+      if (ch->size != base->size || style != NULL)
         css_num (css, "font-size", ch->size / 2.0, "pt");
       if (ch->color != 0)
-        g_string_append_printf (css, "color:#%06x;", ch->color);
+        g_string_append_printf (css, "color:#%06x;", ch->color & 0xFFFFFF);
       png = w42_image_for_container (object->data, NULL, &mime);
       if (png != NULL)
         {
           char *b64 = g_base64_encode (g_bytes_get_data (png, NULL), g_bytes_get_size (png));
 
-          if (css->len > 0)
-            g_string_append_printf (out, "<span style=\"%s\">", css->str);
           char iw[G_ASCII_DTOSTR_BUF_SIZE], ih[G_ASCII_DTOSTR_BUF_SIZE];
+
+          span = css->len > 0 || ch->lang != NULL;
+          if (span)
+            {
+              g_string_append (out, "<span");
+              if (ch->lang != NULL)
+                {
+                  g_string_append (out, " lang=\"");
+                  append_attr (out, ch->lang);
+                  g_string_append_c (out, '"');
+                }
+              if (css->len > 0)
+                g_string_append_printf (out, " style=\"%s\"", css->str);
+              g_string_append_c (out, '>');
+            }
 
           g_string_append_printf (out, "<img src=\"data:%s;base64,%s\" "
                                   "width=\"%d\" height=\"%d\" alt=\"\""
@@ -211,7 +286,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
                                   g_ascii_formatd (ih, sizeof ih, "%.5f", object->height / 1440.0),
                                   object->wrap == W42_WRAP_LEFT ? "float:left;margin:0 0.125in 0.125in 0"
                                   : object->wrap == W42_WRAP_RIGHT ? "float:right;margin:0 0 0.125in 0.125in" : "");
-          if (css->len > 0)
+          if (span)
             g_string_append (out, "</span>");
           g_free (b64);
           g_bytes_unref (png);
@@ -228,37 +303,45 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
         w42_roman_lower (run->footnote, label, sizeof label);
       else
         g_snprintf (label, sizeof label, "%d", run->footnote);
-      g_string_append_printf (out, "<sup id=\"ref%s%d\"><a href=\"#note%s%d\">%s</a></sup>",
-                              run->endnote ? "e" : "", run->footnote,
+      g_string_append_printf (out, "<sup id=\"ref%s%d\"", run->endnote ? "e" : "", run->footnote);
+      if (ch->lang != NULL)
+        {
+          g_string_append (out, " lang=\"");
+          append_attr (out, ch->lang);
+          g_string_append_c (out, '"');
+        }
+      g_string_append_printf (out, "><a href=\"#note%s%d\">%s</a></sup>",
                               run->endnote ? "e" : "", run->footnote, label);
       g_string_free (css, TRUE);
       return;
     }
 
-  if (ch->family != base->family && ch->family != NULL)
-    append_family (css, ch->family);
-  if (ch->size != base->size)
+  if (ch->family != NULL && (ch->family != base->family || style != NULL))
+    append_family (css, ch->family, FALSE);
+  if (ch->size != base->size || style != NULL)
     css_num (css, "font-size", ch->size / 2.0, "pt");
-  if ((ch->color != 0 || (style != NULL && style->color != 0)) && ch->link == NULL)
+  if ((ch->color != 0 || style != NULL) && link == NULL)
     g_string_append_printf (css, "color:#%06x;", ch->color & 0xFFFFFF);
   if (ch->highlight)
     g_string_append_printf (css, "background:#%06x;", w42_highlight_rgb (ch->highlight));
   if (ch->smallcaps)
     g_string_append (css, "font-variant:small-caps;");
-  else if (style != NULL && style->smallcaps)
+  else if (style != NULL)
     g_string_append (css, "font-variant:normal;");
   if (ch->allcaps)
     g_string_append (css, "text-transform:uppercase;");
-  else if (style != NULL && style->allcaps)
+  else if (style != NULL)
     g_string_append (css, "text-transform:none;");
   if (style != NULL)
     {
-      /* A heading is bold to a browser as well as to its style. */
+      /* A heading is bold to a browser as well as to its style, and to a
+       * reader it is its style as the reader's own sheet has it, which
+       * need not be this document's: so a run in one says all it is. */
       if (!ch->bold)
         g_string_append (css, "font-weight:normal;");
-      if (style->italic && !ch->italic)
+      if (!ch->italic)
         g_string_append (css, "font-style:normal;");
-      if ((style->underline || style->strikeout) && !ch->underline && ch->link == NULL)
+      if (!ch->underline && link == NULL)
         g_string_append (css, "text-decoration:none;");
     }
   if (ch->spacing)
@@ -273,42 +356,54 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
     g_string_append (css, "text-shadow:1px 1px #808080;");
   if (ch->outline)
     g_string_append_printf (css, "-webkit-text-stroke:0.5px #%06x;-webkit-text-fill-color:transparent;",
-                            ch->color);
+                            ch->color & 0xFFFFFF);
 
   if (ch->comment != NULL)
     {
-      g_string_append (css, "background:#fff5b0;");
-      g_string_append (out, "<span title=\"");
-      append_escaped (out, ch->comment, strlen (ch->comment));
+      /* An annotation is shown by its class's colour, which the run's own
+       * highlight inside it wins over; its text is the span's title. */
+      g_string_append (out, "<span class=\"comment\" title=\"");
+      append_attr (out, ch->comment);
       g_string_append (out, "\">");
     }
   span = css->len > 0 || ch->lang != NULL;
-  if (ch->link != NULL || ch->bookmark != NULL)
+  if (link != NULL || ch->bookmark != NULL)
     {
-      /* A bookmark is an anchor with an id, as HTML has it; the id goes
-       * on the first run of the bookmark only, since an id is one place. */
+      /* A bookmark is an anchor with an id, as HTML has it.  An id is one
+       * place, so it goes on the bookmark's first run only, and its later
+       * runs -- in this paragraph or another -- say whose they are. */
       g_string_append (out, "<a");
-      if (ch->bookmark != NULL && ch->bookmark != *bookmark_open)
+      if (ch->bookmark != NULL && !g_hash_table_contains (bookmarks, ch->bookmark))
         {
           g_string_append (out, " id=\"");
-          append_escaped (out, ch->bookmark, strlen (ch->bookmark));
+          append_attr (out, ch->bookmark);
+          g_string_append_c (out, '"');
+          g_hash_table_add (bookmarks, (gpointer) ch->bookmark);
+        }
+      else if (ch->bookmark != NULL)
+        {
+          g_string_append (out, " data-w42-bookmark=\"");
+          append_attr (out, ch->bookmark);
           g_string_append_c (out, '"');
         }
-      if (ch->link != NULL)
+      if (link != NULL)
         {
           g_string_append (out, " href=\"");
-          append_escaped (out, ch->link, strlen (ch->link));
+          append_attr (out, link);
           g_string_append_c (out, '"');
         }
       g_string_append_c (out, '>');
     }
-  *bookmark_open = ch->bookmark;
   if (span)
     {
       /* The language of the run, where HTML puts it. */
       g_string_append (out, "<span");
       if (ch->lang != NULL)
-        g_string_append_printf (out, " lang=\"%s\"", ch->lang);
+        {
+          g_string_append (out, " lang=\"");
+          append_attr (out, ch->lang);
+          g_string_append_c (out, '"');
+        }
       if (css->len > 0)
         g_string_append_printf (out, " style=\"%s\"", css->str);
       g_string_append_c (out, '>');
@@ -319,7 +414,7 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
   if (ch->script < 0) g_string_append (out, "<sub>");
   if (ch->bold)      g_string_append (out, "<b>");
   if (ch->italic)    g_string_append (out, "<i>");
-  if (ch->underline && ch->link == NULL)
+  if (ch->underline && link == NULL)
     {
       static const char *const CSS[] = {
         "", "", "double", "", "dotted", "dashed", "solid", "wavy"
@@ -330,6 +425,8 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
         g_string_append_printf (out, "<u style=\"text-decoration-style:%s%s\">", CSS[kind],
                                 ch->underline == W42_UNDERLINE_THICK
                                   ? ";text-decoration-thickness:2px" : "");
+      else if (ch->underline == W42_UNDERLINE_WORDS)
+        g_string_append (out, "<u style=\"text-decoration-skip:spaces\">");
       else
         g_string_append (out, "<u>");
     }
@@ -347,14 +444,14 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
   if (ch->revision == 1) g_string_append (out, "</ins>");
   if (ch->overline)  g_string_append (out, "</span>");
   if (ch->strikeout || ch->dstrike) g_string_append (out, "</s>");
-  if (ch->underline && ch->link == NULL) g_string_append (out, "</u>");
+  if (ch->underline && link == NULL) g_string_append (out, "</u>");
   if (ch->italic)    g_string_append (out, "</i>");
   if (ch->bold)      g_string_append (out, "</b>");
   if (ch->script < 0) g_string_append (out, "</sub>");
   if (ch->script > 0) g_string_append (out, "</sup>");
   if (span)
     g_string_append (out, "</span>");
-  if (ch->link != NULL || ch->bookmark != NULL)
+  if (link != NULL || ch->bookmark != NULL)
     g_string_append (out, "</a>");
   if (ch->comment != NULL)
     g_string_append (out, "</span>");
@@ -365,10 +462,8 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
 static void
 write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
                   const W42Block *block, const W42CharFmt *base,
-                  const W42CharFmt *style)
+                  const W42CharFmt *style, GHashTable *bookmarks)
 {
-  const char *bookmark_open = NULL;
-
   if (block->runs->len == 0)
     g_string_append (out, "&nbsp;");
 
@@ -377,7 +472,7 @@ write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
       const W42Run *run = &g_array_index (block->runs, W42Run, r);
       const W42Fmt *fmt = w42_ap_table_get (aps, run->ap);
 
-      write_run (out, pt, block, run, &fmt->ch, base, style, &bookmark_open);
+      write_run (out, pt, block, run, &fmt->ch, base, style, bookmarks);
     }
 }
 
@@ -391,8 +486,10 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
   W42Fmt base;
   const W42ParaFmt *prev_pa = NULL;
   int list_stack[9];
+  gboolean li_open[9] = { FALSE };  /* the list at that depth has an item open */
   int list_depth = 0;
   int table_open = -1, row_open = -1;
+  GHashTable *bookmarks = g_hash_table_new (g_direct_hash, g_direct_equal);
   gboolean ok;
   char *title;
 
@@ -426,8 +523,17 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
      * the browser too, and comes back as it went. */
     const char *lang = base.ch.lang;
 
-    title = info != NULL && info->title != NULL && *info->title != '\0'
-              ? g_strdup (info->title) : g_file_get_basename (file);
+    if (info != NULL && info->title != NULL && *info->title != '\0')
+      title = g_strdup (info->title);
+    else
+      {
+        /* A page must have a title, and the file's name is the one it
+         * has; in UTF-8, whatever the file system's names are in. */
+        char *name = g_file_get_basename (file);
+
+        title = g_filename_display_name (name != NULL ? name : "");
+        g_free (name);
+      }
     values[0] = info != NULL ? info->subject : NULL;
     values[1] = info != NULL ? info->author : NULL;
     values[2] = info != NULL ? info->keywords : NULL;
@@ -437,7 +543,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
     if (lang != NULL && !g_str_equal (lang, W42_LANG_NONE))
       {
         g_string_append (out, " lang=\"");
-        append_escaped (out, lang, strlen (lang));
+        append_attr (out, lang);
         g_string_append_c (out, '"');
       }
     g_string_append (out, ">\n<head>\n<meta charset=\"utf-8\">\n");
@@ -447,17 +553,17 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       if (values[i] != NULL && *values[i] != '\0')
         {
           g_string_append_printf (out, "<meta name=\"%s\" content=\"", META[i]);
-          append_escaped (out, values[i], strlen (values[i]));
+          append_attr (out, values[i]);
           g_string_append (out, "\">\n");
         }
     g_string_append (out, "<title>");
-    append_escaped (out, title, strlen (title));
+    append_attr (out, title);
     g_string_append (out, "</title>\n");
   }
   g_string_append (out, "<style>\n.dropcap::first-letter{float:left;font-size:3em;line-height:0.8;margin:0.05em 0.05em 0 0}\n"
                         ".tab{white-space:pre}\n");
   g_string_append (out, "body { ");
-  append_family (out, base.ch.family != NULL ? base.ch.family : "Times New Roman");
+  append_family (out, base.ch.family != NULL ? base.ch.family : "Times New Roman", TRUE);
   {
     /* Lengths with the C locale's full stop, whatever the user's: "6,50in"
      * is not a length to a browser. */
@@ -494,12 +600,19 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
         g_string_append (out, " }\n");
       }
   }
+  /* The spaces a document has are its own: a browser keeps them, and so
+   * does the reader, rather than folding a run of them into one.  The
+   * rules only the browser should follow -- a link's colour, the notes'
+   * smaller type -- have selectors the reader passes over, which it would
+   * otherwise take for the text's own formatting. */
   g_string_append (out,
     "p { margin: 0; }\nh1, h2, h3, h4, h5, h6 { margin: 0.5em 0 0.25em; }\n"
+    "p, li, h1, h2, h3, h4, h5, h6 { white-space: pre-wrap; }\n"
     "table { border-collapse: collapse; }\ntd { padding: 2pt 4pt; vertical-align: top; }\n"
     "table.ruled td { border: 1px solid #000; }\n"
-    "a { color: #000080; }\n.notes { margin-top: 1em; border-top: 1px solid #000; width: 33%; padding-top: 0.5em; }\n"
-    ".note { font-size: smaller; }\n");
+    "a[href] { color: #000080; }\n.comment { background: #fff5b0; }\n"
+    ".notes { margin-top: 1em; border-top: 1px solid #000; width: 33%; padding-top: 0.5em; }\n"
+    ".notes p { font-size: smaller; }\n");
   g_string_append (out, "</style>\n</head>\n");
   if (page != NULL && page->has_background)
     g_string_append_printf (out, "<body style=\"background: #%06x\">\n",
@@ -519,9 +632,10 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
       if (block->note >= 0)
         continue;
 
-      /* Lists: <ul> and <ol> nested by level, one open list per level.
-       * This comes before the table below, so a list that a table
-       * follows is closed while we are still outside the table. */
+      /* Lists: <ul> and <ol> nested by level, one open list per level,
+       * a deeper list inside the item before it as HTML has it.  This
+       * comes before the table below, so a list that a table follows is
+       * closed while we are still outside the table. */
       {
         int want = pa->list != W42_LIST_NONE && block->table < 0 && block->note < 0
                      ? MIN (pa->list_level, 8) + 1 : 0;
@@ -532,7 +646,20 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                  (pa->list_start > 0 && w42_list_is_numbered (pa->list)))))
           {
             list_depth--;
-            g_string_append (out, w42_list_is_bullet (list_stack[list_depth]) ? "</ul>\n" : "</ol>\n");
+            if (li_open[list_depth])
+              g_string_append (out, "</li>");
+            li_open[list_depth] = FALSE;
+            g_string_append (out, w42_list_is_bullet (list_stack[list_depth]) ? "</ul>" : "</ol>");
+            if (list_breaks (li_open, list_depth))
+              g_string_append_c (out, '\n');
+          }
+        /* The item before, at this one's level, ends here. */
+        if (want > 0 && list_depth == want && li_open[want - 1])
+          {
+            g_string_append (out, "</li>");
+            li_open[want - 1] = FALSE;
+            if (list_breaks (li_open, want - 1))
+              g_string_append_c (out, '\n');
           }
         while (list_depth < want)
           {
@@ -543,9 +670,9 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                                   : pa->list == W42_LIST_BULLET_DASH ? "'\\2013  '" : NULL;
 
                 if (style != NULL)
-                  g_string_append_printf (out, "<ul style=\"list-style-type:%s\">\n", style);
+                  g_string_append_printf (out, "<ul style=\"list-style-type:%s\">", style);
                 else
-                  g_string_append (out, "<ul>\n");
+                  g_string_append (out, "<ul>");
               }
             else
               {
@@ -559,8 +686,11 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                   g_string_append_printf (out, " type=\"%s\"", type);
                 if (pa->list_start > 0 && list_depth + 1 == want)
                   g_string_append_printf (out, " start=\"%d\"", pa->list_start);
-                g_string_append (out, ">\n");
+                g_string_append (out, ">");
               }
+            if (list_breaks (li_open, list_depth))
+              g_string_append_c (out, '\n');
+            li_open[list_depth] = FALSE;
             list_stack[list_depth++] = pa->list;
           }
       }
@@ -669,7 +799,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                 g_string_append_printf (css, "background:#%06x;", cpa->shading_color & 0xFFFFFF);
               else if (cpa->shading > 0)
                 {
-                  int grey = 255 - (int) cpa->shading * 255 / 100;
+                  int grey = 255 - (int) MIN (cpa->shading, 100) * 255 / 100;
 
                   g_string_append_printf (css, "background:rgb(%d,%d,%d);", grey, grey, grey);
                 }
@@ -681,7 +811,15 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
               if (block->span > 1)
                 g_string_append_printf (out, " colspan=\"%d\"", block->span);
               if (cpa->cell_vspan > 1 && cpa->cell_vspan != W42_CELL_COVERED)
-                g_string_append_printf (out, " rowspan=\"%d\"", (int) cpa->cell_vspan);
+                {
+                  /* No further than the table goes, whatever the mark
+                   * says: a browser would make rows for the rest. */
+                  int rows = w42_pt_table_rows (pt, block->table) - block->row;
+                  int vspan = MIN ((int) cpa->cell_vspan, MAX (rows, 1));
+
+                  if (vspan > 1)
+                    g_string_append_printf (out, " rowspan=\"%d\"", vspan);
+                }
               if (css->len > 0)
                 g_string_append_printf (out, " style=\"%s\"", css->str);
               g_string_append (out, ">");
@@ -703,18 +841,22 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
             g_string_append (out, " dir=\"rtl\"");
           write_para_style (out, pa, NULL, NULL);
           g_string_append (out, ">");
-          write_block_body (out, pt, aps, block, &base.ch, NULL);
+          write_block_body (out, pt, aps, block, &base.ch, NULL, bookmarks);
           g_string_append (out, "</p>");
           if (cell_end)
             g_string_append (out, "</td>");
         }
       else if (pa->list != W42_LIST_NONE)
         {
+          /* The item stays open, for a deeper list to go in; the next
+           * item, or the list's end, closes it. */
           g_string_append (out, "<li");
+          if (pa->rtl)
+            g_string_append (out, " dir=\"rtl\"");
           write_para_style (out, pa, NULL, NULL);
           g_string_append (out, ">");
-          write_block_body (out, pt, aps, block, &base.ch, NULL);
-          g_string_append (out, "</li>\n");
+          write_block_body (out, pt, aps, block, &base.ch, NULL, bookmarks);
+          li_open[list_depth - 1] = TRUE;
         }
       else
         {
@@ -747,7 +889,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                             *frame != '\0' ? frame : NULL);
           g_string_append (out, ">");
           write_block_body (out, pt, aps, block, &base.ch,
-                            hstyle != NULL ? &hstyle->ch : NULL);
+                            hstyle != NULL ? &hstyle->ch : NULL, bookmarks);
           g_string_append_printf (out, "</%s>\n", tag);
         }
 
@@ -763,7 +905,12 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
   while (list_depth > 0)
     {
       list_depth--;
-      g_string_append (out, w42_list_is_bullet (list_stack[list_depth]) ? "</ul>\n" : "</ol>\n");
+      if (li_open[list_depth])
+        g_string_append (out, "</li>");
+      li_open[list_depth] = FALSE;
+      g_string_append (out, w42_list_is_bullet (list_stack[list_depth]) ? "</ul>" : "</ol>");
+      if (list_breaks (li_open, list_depth))
+        g_string_append_c (out, '\n');
     }
 
   /* The footnotes, in order, at the end. */
@@ -786,6 +933,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
         if (block->note != last_note)
           g_string_append_printf (out, " id=\"note%s%d\"", block->note_end ? "e" : "",
                                   block->note_number);
+        write_para_style (out, &w42_ap_table_get (aps, block->ap)->pa, NULL, NULL);
         g_string_append (out, ">");
         if (block->note != last_note)
           {
@@ -798,7 +946,7 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
             g_string_append_printf (out, "<sup><a href=\"#ref%s%d\">%s</a></sup> ",
                                     block->note_end ? "e" : "", block->note_number, label);
           }
-        write_block_body (out, pt, aps, block, &base.ch, NULL);
+        write_block_body (out, pt, aps, block, &base.ch, NULL, bookmarks);
         g_string_append (out, "</p>\n");
         last_note = block->note;
       }
@@ -813,5 +961,6 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
 
   g_string_free (out, TRUE);
   g_ptr_array_free (blocks, TRUE);
+  g_hash_table_destroy (bookmarks);
   return ok;
 }

@@ -25,4 +25,9 @@ gboolean w42_html_export (W42PieceTable      *pt,
                           GFile              *file,
                           GError            **error);
 
+/* Whether a link's target would run a script when followed -- javascript:,
+ * vbscript: or data:, spelt as loosely as a browser reads them -- which
+ * neither a page read in nor a page written out should carry. */
+gboolean w42_html_link_is_script (const char *href);
+
 G_END_DECLS
