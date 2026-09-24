@@ -447,6 +447,8 @@ typedef struct {
   guint32   fc_min, fc_mac;
   gint32    ccp_text;
   gint32    ccp_ftn;
+  gint32    ccp_hdd, ccp_mcr, ccp_atn, ccp_edn;   /* the stories after them */
+  GArray   *edn_refs;     /* guint32: the cps of the endnote references */
   guint32   cp_max;      /* one past the last cp the pieces cover */
   GArray   *pieces;       /* Piece */
   guint     piece_cursor; /* where the last cp lookup landed */
@@ -494,6 +496,7 @@ read_pieces (Doc *doc, GError **error)
 {
   guint32 fc, lcb, p, lcb_pcd;
   guint n;
+  guint64 total = 0;
 
   doc->pieces = g_array_new (FALSE, FALSE, sizeof (Piece));
 
@@ -552,6 +555,13 @@ read_pieces (Doc *doc, GError **error)
         if (piece.cp_end - piece.cp_start > room)
           piece.cp_end = piece.cp_start + room;
       }
+      /* Each character of a Word file is stored once, so the pieces
+       * together hold no more than the stream has bytes: pieces that all
+       * point at the same text made a 260 KB file a document of a hundred
+       * million characters. */
+      total += piece.cp_end - piece.cp_start;
+      if (total > MAX ((guint64) doc->wd_len * 2, (guint64) 1 << 20))
+        break;
       g_array_append_val (doc->pieces, piece);
     }
 
@@ -690,11 +700,11 @@ fkp_page (Doc *doc, GArray *fcs, GArray *pns, guint32 fc, guint *cursor)
 
 /* The run of the FKP page that contains `fc`: its index, or -1. */
 static int
-fkp_run (const guint8 *page, guint32 fc, guint32 *run_end)
+fkp_run (const guint8 *page, guint32 fc, guint32 *run_end, guint max_runs)
 {
   guint crun = page[511];
 
-  if (crun == 0 || crun > 100)
+  if (crun == 0 || crun > max_runs)
     return -1;
 
   for (guint i = 0; i < crun; i++)
@@ -723,7 +733,8 @@ chpx_at (Doc *doc, guint32 fc, guint *len, guint32 *run_end)
   if (page == NULL)
     return NULL;
 
-  i = fkp_run (page, fc, run_end);
+  /* A full CHPX page has 0x65 runs, which is more than a PAPX page can. */
+  i = fkp_run (page, fc, run_end, 0x65);
   if (i < 0)
     return NULL;
 
@@ -755,7 +766,7 @@ papx_at (Doc *doc, guint32 fc, guint *len)
   if (page == NULL)
     return NULL;
 
-  i = fkp_run (page, fc, &end);
+  i = fkp_run (page, fc, &end, 100);
   if (i < 0)
     return NULL;
 
@@ -1028,8 +1039,6 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
       if (olen > avail)
         break;
 
-      if (g_getenv ("W42SPRM"))
-        g_printerr ("sprm %04X len %u\n", sprm, olen);
       switch (sprm)
         {
         case 0x2403: case 0x2461: pa->jc = op[0]; break;
@@ -1069,14 +1078,33 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                   guint pos_at = add_at + 1;
                   guint tbd_at = pos_at + add * 2;
 
-                  pa->n_tabs = 0;
-                  for (guint i = 0; i < add && i < W42_MAX_TABS &&
+                  /* A change to the stops there are -- the style's --
+                   * not a list of its own: the deleted ones go, then the
+                   * added ones go in where they sort, a stop at the same
+                   * place replaced. */
+                  for (guint d = 0; d < del && 2 + d * 2 + 1 < olen; d++)
+                    {
+                      int gone = rd16s (op + 2 + d * 2);
+
+                      for (guint t = 0; t < pa->n_tabs; t++)
+                        if (pa->tab_pos[t] == gone)
+                          {
+                            memmove (pa->tab_pos + t, pa->tab_pos + t + 1,
+                                     (pa->n_tabs - t - 1) * sizeof pa->tab_pos[0]);
+                            memmove (pa->tab_kind + t, pa->tab_kind + t + 1,
+                                     (pa->n_tabs - t - 1) * sizeof pa->tab_kind[0]);
+                            pa->n_tabs--;
+                            break;
+                          }
+                    }
+                  for (guint i = 0; i < add &&
                                     tbd_at + i < olen && pos_at + i * 2 + 1 < olen; i++)
                     {
                       int at = rd16s (op + pos_at + i * 2);
                       guint8 tbd = op[tbd_at + i];
                       W42TabKind kind;
                       W42TabLeader leader;
+                      guint t;
 
                       switch (tbd & 0x07)
                         {
@@ -1094,8 +1122,21 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                         }
                       if (at <= 0)
                         continue;
-                      pa->tab_pos[pa->n_tabs] = at;
-                      pa->tab_kind[pa->n_tabs] = W42_TAB_BYTE (kind, leader);
+                      for (t = 0; t < pa->n_tabs && pa->tab_pos[t] < at; t++)
+                        ;
+                      if (t < pa->n_tabs && pa->tab_pos[t] == at)
+                        {
+                          pa->tab_kind[t] = W42_TAB_BYTE (kind, leader);
+                          continue;
+                        }
+                      if (pa->n_tabs >= W42_MAX_TABS)
+                        continue;
+                      memmove (pa->tab_pos + t + 1, pa->tab_pos + t,
+                               (pa->n_tabs - t) * sizeof pa->tab_pos[0]);
+                      memmove (pa->tab_kind + t + 1, pa->tab_kind + t,
+                               (pa->n_tabs - t) * sizeof pa->tab_kind[0]);
+                      pa->tab_pos[t] = at;
+                      pa->tab_kind[t] = W42_TAB_BYTE (kind, leader);
                       pa->n_tabs++;
                     }
                 }
@@ -1159,8 +1200,6 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
           break;
         case 0xD613:
           /* sprmTTableBorders: the same, as the later eight-byte BRC. */
-          if (g_getenv ("W42_DEBUG_TC") != NULL)
-            g_printerr ("TTableBorders olen=%u\n", olen);
           if (olen >= 49)
             {
               static const int EDGES[6] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
@@ -1218,9 +1257,21 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
             }
           else if (olen >= 2)
             {
-              guint ipat = (guint) (rd16 (op) >> 10);
+              /* The SHD80: a pattern, which for Word's plain shades is
+               * a percentage by this table, and a background colour
+               * index for the clear pattern.  ipat / 50 made every one
+               * of them nought. */
+              static const guint8 PCT[14] = { 0, 100, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90 };
+              guint shd = rd16 (op);
+              guint ipat = shd >> 10, back = (shd >> 5) & 0x1F;
 
-              pa->shading = (guint8) CLAMP ((int) ipat / 50, 0, 100);
+              if (ipat < G_N_ELEMENTS (PCT))
+                pa->shading = PCT[ipat];
+              if (ipat == 0 && back > 0 && back <= 16)
+                {
+                  pa->shading_color = w42_highlight_rgb ((int) back);
+                  pa->has_shading_color = 1;
+                }
             }
           break;
         case 0xD608:
@@ -1247,9 +1298,6 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                   const guint8 *tc = op + edges + 20 * c;
 
                   pa->cell_flags[c] = rd16 (tc);
-                  if (g_getenv ("W42_DEBUG_TC") != NULL)
-                    g_printerr ("TC80 c=%d flags=%04x brc: %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x cellx=%d..%d\n", c, pa->cell_flags[c],
-                                tc[4],tc[5],tc[6],tc[7], tc[8],tc[9],tc[10],tc[11], tc[12],tc[13],tc[14],tc[15], tc[16],tc[17],tc[18],tc[19], pa->cellx[c], pa->cellx[c+1]);
                   for (int side = 0; side < 4; side++)
                     {
                       const guint8 *brc = tc + 4 + 4 * side;
@@ -1331,7 +1379,8 @@ apply_chpx (Doc *doc, const guint8 *grpprl, guint len, Char *ch, int depth)
           /* sprmCIstd: the run wears a character style -- Emphasis,
            * Strong, Hyperlink -- and the sprms after this one are its
            * differences from it. */
-          resolve_style (doc, rd16 (op), NULL, ch, depth + 1);
+          if (depth == 0)
+            resolve_style (doc, rd16 (op), NULL, ch, 1);
           break;
         case 0xCA71:
           /* sprmCShd: a run's background as a colour, which is what a
@@ -1357,6 +1406,11 @@ apply_chpx (Doc *doc, const guint8 *grpprl, guint len, Char *ch, int depth)
                 ch->highlight = ico;
             }
           break;
+        case 0x2A0C:
+          /* sprmCHighlight: Word's highlighter, one of its sixteen by
+           * index; a shading read into the highlight gives way to it. */
+          ch->highlight = op[0] <= 16 ? op[0] : 0;
+          break;
         case 0x8840: ch->dxa_space = rd16s (op); break;
         case 0x2A3E: ch->kul = op[0]; break;
         case 0x2A42: ch->ico = op[0]; ch->has_rgb = FALSE; break;
@@ -1375,8 +1429,6 @@ apply_chpx (Doc *doc, const guint8 *grpprl, guint len, Char *ch, int depth)
         case 0x0855: ch->spec = op[0] != 0; break;
         case 0x6A03: ch->pic_fc = rd32 (op); ch->has_pic = TRUE; break;
         default:
-          if (g_getenv ("W42_DEBUG_TC") != NULL && (sprm & 0x1C00) == 0x1400)
-            g_printerr ("table sprm %04x olen=%u\n", sprm, olen);
           break;
         }
 
@@ -1490,7 +1542,7 @@ resolve_style (Doc *doc, int istd, Para *pa, Char *ch, int depth)
   if (pa != NULL && style->papx != NULL)
     apply_papx (style->papx, style->papx_len, pa);
   if (ch != NULL && style->chpx != NULL)
-    apply_chpx (doc, style->chpx, style->chpx_len, ch, depth);
+    apply_chpx (doc, style->chpx, style->chpx_len, ch, depth + 1);
 }
 
 static const char *
@@ -1670,7 +1722,7 @@ fill_char_fmt (Doc *doc, const Char *ch, W42CharFmt *out)
     }
 
   out->family    = g_intern_string (family);
-  out->size      = ch->hps > 0 ? ch->hps : 20;
+  out->size      = ch->hps > 0 ? CLAMP (ch->hps, 2, 3276) : 20;
   out->bold      = ch->bold ? 1 : 0;
   out->italic    = ch->italic ? 1 : 0;
   /* Word's kul: 1 single, 2 words only, 3 double, 4 dotted, 6 thick,
@@ -1856,18 +1908,71 @@ fill_para_fmt (Doc *doc, const DocPara *dp, W42ParaFmt *out)
     }
 }
 
+static gboolean in_dt (Doc *doc, gsize off, gsize n);
+
+/* sprmPHugePapx: a PAPX too big for its FKP -- a row end with many cells
+ * -- keeps its sprms in the Data stream, and the FKP only says where. */
+static void
+apply_huge_papx (Doc *doc, const guint8 *grpprl, guint len, Para *pa)
+{
+  guint p = 0;
+
+  while (p + 2 <= len)
+    {
+      guint16 sprm = rd16 (grpprl + p);
+      guint avail = len - p - 2;
+      guint olen = sprm_operand_len (sprm, grpprl + p + 2, avail);
+
+      if (olen > avail)
+        break;
+      if ((sprm == 0x6646 || sprm == 0x6645) && olen == 4)
+        {
+          guint32 at = rd32 (grpprl + p + 2);
+
+          if (in_dt (doc, at, 2) && in_dt (doc, (gsize) at + 2, rd16 (doc->dt + at)))
+            apply_papx (doc->dt + at + 2, rd16 (doc->dt + at), pa);
+        }
+      p += 2 + olen;
+    }
+}
+
 /* The paragraphs of the main text, with their properties resolved. */
 static GArray *
 collect_paragraphs (Doc *doc)
 {
   GArray *paras = g_array_new (FALSE, FALSE, sizeof (DocPara));
   guint32 start = 0;
+  gboolean break_here = FALSE;    /* the paragraph being read starts a page */
+  gboolean break_next = FALSE;    /* and the one after it will */
 
   for (guint32 cp = 0; (gint32) cp < doc->ccp_text; cp++)
     {
       gunichar c = char_at (doc, cp);
+      gboolean ends = c == 0x0D || c == 0x07 || (gint32) cp == doc->ccp_text - 1;
 
-      if (c == 0x0D || c == 0x07 || (gint32) cp == doc->ccp_text - 1)
+      /* A section mark or a page break, 0x0C, ends its paragraph as a
+       * paragraph mark does, and what follows starts a new page: two
+       * sections' text was run together into one paragraph.  At the
+       * start of a paragraph it is that paragraph's break; before a
+       * paragraph mark, the mark ends the paragraph. */
+      if (c == 0x0C)
+        {
+          if (cp == start)
+            {
+              break_here = TRUE;
+              if (!ends)
+                continue;
+            }
+          else
+            {
+              break_next = TRUE;
+              if ((gint32) cp + 1 < doc->ccp_text && char_at (doc, cp + 1) == 0x0D)
+                continue;
+              ends = TRUE;
+            }
+        }
+
+      if (ends)
         {
           DocPara dp;
           guint32 fc = 0;
@@ -1889,10 +1994,15 @@ collect_paragraphs (Doc *doc)
                   resolve_style (doc, dp.istd, &dp.pa, NULL, 0);
                   dp.pa.istd = dp.istd;
                   apply_papx (papx + 2, len - 2, &dp.pa);
+                  apply_huge_papx (doc, papx + 2, len - 2, &dp.pa);
                 }
               else
                 resolve_style (doc, 0, &dp.pa, NULL, 0);
             }
+          if (break_here)
+            dp.pa.page_break = TRUE;
+          break_here = break_next;
+          break_next = FALSE;
 
           g_array_append_val (paras, dp);
           start = cp + 1;
@@ -2087,6 +2197,7 @@ typedef struct {
   GString       *run;
   W42ApIdx       run_ap;
   GArray        *note_ids;    /* the footnotes made, in reference order */
+  GArray        *end_ids;     /* and the endnotes */
 } Builder;
 
 static void
@@ -2191,19 +2302,29 @@ emit_text (Builder *b, const DocPara *dp)
 
       if (ch.spec && c == 0x02 && b->note_ids != NULL)
         {
-          /* A footnote reference: the note's text comes later, from the
-           * footnote story; the mark and an empty note go in now. */
+          /* A note's reference: the note's text comes later, from the
+           * footnote story or the endnote story, which PlcfendRef tells
+           * apart; the mark and an empty note go in now.  Notes are
+           * numbered by the piece table as they are made, both kinds
+           * together. */
           W42Fmt pfmt;
-          int id = (int) b->note_ids->len;
+          int id = (int) (b->note_ids->len + b->end_ids->len);
+          gboolean endnote = FALSE;
+          W42ApIdx mark_ap;
 
+          for (guint k = 0; doc->edn_refs != NULL && k < doc->edn_refs->len && !endnote; k++)
+            endnote = g_array_index (doc->edn_refs, guint32, k) == cp;
           w42_fmt_init_default (&pfmt);
           fill_char_fmt (doc, &ch, &pfmt.ch);
           flush_run (b);
-          w42_pt_insert_footnote (b->pt, b->pos,
-                                  w42_ap_table_intern (w42_pt_ap_table (b->pt), &pfmt));
+          mark_ap = w42_ap_table_intern (w42_pt_ap_table (b->pt), &pfmt);
+          if (endnote)
+            w42_pt_insert_endnote (b->pt, b->pos, mark_ap);
+          else
+            w42_pt_insert_footnote (b->pt, b->pos, mark_ap);
           b->pos += 1;
           current = ((W42ApIdx) G_MAXUINT32);
-          g_array_append_val (b->note_ids, id);
+          g_array_append_val (endnote ? b->end_ids : b->note_ids, id);
           continue;
         }
 
@@ -2223,6 +2344,10 @@ emit_text (Builder *b, const DocPara *dp)
                 {
                   if (width <= 0)  width = pw * 15;
                   if (height <= 0) height = ph * 15;
+                  /* No bigger than the largest page, whatever the PICF
+                   * says. */
+                  width = CLAMP (width, 15, 31680);
+                  height = CLAMP (height, 15, 31680);
                   idx = w42_object_table_add (objects, data, format, pw, ph, width, height);
                 }
               else if (data != NULL && ext != NULL &&
@@ -2236,6 +2361,10 @@ emit_text (Builder *b, const DocPara *dp)
 
                   if (width <= 0)  width = 2880;
                   if (height <= 0) height = 1440;
+                  /* The box is drawn at its size: a PICF's word for a
+                   * size of forty feet was a 400 MB bitmap. */
+                  width = CLAMP (width, 15, 31680);
+                  height = CLAMP (height, 15, 31680);
                   pw = MAX (width / 15, 2);
                   ph = MAX (height / 15, 2);
                   png = w42_shape_render (W42_SHAPE_RECTANGLE, pw, ph, 0.75, 0x999999, FALSE, 0xFFFFFF, label);
@@ -2413,7 +2542,7 @@ open_table (Builder *b, GArray *paras, guint index)
       for (int c = 0; c < n_cols; c++)
         widths[c] = b->grid[c + 1] - b->grid[c];
     }
-  else if (shape != NULL)
+  else if (shape != NULL && shape->itc_mac > 0)
     {
       n_cols = MIN (shape->itc_mac, 64);
       for (int c = 0; c < n_cols; c++)
@@ -2422,9 +2551,34 @@ open_table (Builder *b, GArray *paras, guint index)
       for (int c = 0; c <= n_cols; c++)
         b->grid[c] = shape->cellx[c];
     }
+  else
+    {
+      /* No row says what shape it is: a column for each cell of the first
+       * row, sharing the width, rather than no columns and every cell's
+       * text dropped. */
+      int cells = 0;
 
+      for (guint k = index; k < paras->len; k++)
+        {
+          const DocPara *q = &g_array_index (paras, DocPara, k);
+
+          if (!q->pa.in_table || q->pa.ttp)
+            break;
+          if (char_at (b->doc, q->cp_end) == 0x07)
+            cells++;
+        }
+      n_cols = CLAMP (cells, 1, 64);
+      b->n_cols = n_cols;
+      for (int c = 0; c <= n_cols; c++)
+        b->grid[c] = c;
+    }
+
+  /* The body ends where the notes begin, once there are notes: the
+   * document's length would make every table after the first footnote
+   * gain an empty paragraph before it. */
   b->table_before_block = FALSE;
-  if (b->pos >= 2 && b->pos == w42_pt_length (b->pt))
+  if (b->pos >= 2 && b->pos == (w42_pt_notes_start (b->pt) != (gsize) -1
+                                ? w42_pt_notes_start (b->pt) : w42_pt_length (b->pt)))
     {
       char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
       b->table_before_block = (tail != NULL && *tail == '\n');
@@ -2545,6 +2699,90 @@ close_table (Builder *b, W42ApIdx ap)
   b->table = -1;
 }
 
+/* The text of one kind of note, from its story: the PLC at FIB entry
+ * `plc` holds each note's start in the story that begins at `base` and
+ * runs `ccp`, and `ids` the notes made for the references, in order.
+ * The notes' own marks are left out, and so is a field's code, as in the
+ * body. */
+static void
+fill_notes (Doc *doc, W42PieceTable *pt, GArray *ids, guint plc, guint32 base, guint32 ccp)
+{
+  guint32 fc, lcb;
+
+  if (ids->len == 0)
+    return;
+  fib_fclcb (doc, plc, &fc, &lcb);
+  if (lcb < 8 || !in_tb (doc, fc, lcb))
+    return;
+
+  for (guint i = 0, n = lcb / 4 - 1; i < n && i < ids->len; i++)
+    {
+      guint32 a = rd32 (doc->tb + fc + 4 * i);
+      guint32 e = rd32 (doc->tb + fc + 4 * (i + 1));
+      gsize pos = w42_pt_note_body (pt, g_array_index (ids, int, i));
+      W42ApIdx ap = w42_ap_table_default (w42_pt_ap_table (pt));
+      GString *text;
+      gboolean first = TRUE;
+      int field_depth = 0, code_depth = 0;
+
+      if (pos == (gsize) -1 || e <= a || e > ccp)
+        continue;               /* a note the file does not really have */
+      text = g_string_new (NULL);
+
+      /* Word's note text starts with the mark and a space; the space
+       * goes with the mark. */
+#define NOTE_INSERT() G_STMT_START { \
+        if (first) { g_strchug (text->str); g_string_set_size (text, strlen (text->str)); first = FALSE; } \
+        if (text->len > 0) { w42_pt_insert_text (pt, pos, text->str, ap); pos += g_utf8_strlen (text->str, -1); } \
+        g_string_truncate (text, 0); } G_STMT_END
+
+      for (guint32 cp = base + a; cp < base + e; cp++)
+        {
+          gunichar c = char_at (doc, cp);
+
+          if (c == 0x13)
+            {
+              field_depth++;
+              if (code_depth == 0)
+                code_depth = field_depth;
+              continue;
+            }
+          if (c == 0x14)
+            {
+              if (code_depth == field_depth && field_depth > 0)
+                code_depth = 0;
+              continue;
+            }
+          if (c == 0x15)
+            {
+              if (field_depth > 0)
+                field_depth--;
+              if (code_depth > field_depth)
+                code_depth = 0;
+              continue;
+            }
+          if (code_depth > 0 || c == 0x02)
+            continue;
+          if (c == 0x0D)
+            {
+              /* A paragraph of the note ends: put what we have, then a
+               * new paragraph, unless this is the story's final mark. */
+              NOTE_INSERT ();
+              if (cp + 1 < base + e)
+                {
+                  w42_pt_insert_block (pt, pos, ap);
+                  pos += 1;
+                }
+            }
+          else if (c == '\t' || c >= 0x20)
+            g_string_append_unichar (text, c);
+        }
+      NOTE_INSERT ();
+#undef NOTE_INSERT
+      g_string_free (text, TRUE);
+    }
+}
+
 static void
 build_document (Doc *doc, W42PieceTable *pt)
 {
@@ -2560,6 +2798,7 @@ build_document (Doc *doc, W42PieceTable *pt)
   b.run = g_string_new (NULL);
   b.run_ap = w42_ap_table_default (w42_pt_ap_table (pt));
   b.note_ids = g_array_new (FALSE, FALSE, sizeof (int));
+  b.end_ids = g_array_new (FALSE, FALSE, sizeof (int));
 
   for (guint i = 0; i < paras->len; i++)
     {
@@ -2600,10 +2839,11 @@ build_document (Doc *doc, W42PieceTable *pt)
                   b.in_cell = TRUE;
                   b.skip_cell = TRUE;
                 }
-              else if (b.col >= b.n_cols || b.col > 1023)
+              else if (b.col >= b.n_cols || b.col > 1023 || b.row >= W42_TABLE_MAX_ROWS)
                 {
-                  /* More cells than the grid has columns: dropped, as
-                   * the other readers drop them. */
+                  /* More cells than the grid has columns, or rows than a
+                   * table can number: dropped, as the other readers drop
+                   * them. */
                   b.in_cell = TRUE;
                   b.skip_cell = TRUE;
                 }
@@ -2677,68 +2917,17 @@ build_document (Doc *doc, W42PieceTable *pt)
   if (b.table >= 0)
     close_table (&b, w42_ap_table_default (w42_pt_ap_table (pt)));
 
-  /* The footnotes' text: the footnote story follows the main text, and
-   * PlcffndTxt says where each note's paragraphs are in it. */
-  if (b.note_ids->len > 0)
-    {
-      guint32 fc, lcb;
-
-      fib_fclcb (doc, 3, &fc, &lcb);
-      if (lcb >= 8 && in_tb (doc, fc, lcb))
-        {
-          guint n = lcb / 4 - 1;
-          guint32 base = (guint32) doc->ccp_text;
-
-          for (guint i = 0; i < n && i < b.note_ids->len; i++)
-            {
-              guint32 a = rd32 (doc->tb + fc + 4 * i);
-              guint32 e = rd32 (doc->tb + fc + 4 * (i + 1));
-              gsize pos = w42_pt_note_body (pt, g_array_index (b.note_ids, int, i));
-              W42ApIdx ap = w42_ap_table_default (w42_pt_ap_table (pt));
-              GString *text = g_string_new (NULL);
-              gboolean first = TRUE;
-
-              if (pos == (gsize) -1)
-                continue;
-
-              /* Word's note text starts with the mark and a space; the
-               * space goes with the mark. */
-#define NOTE_INSERT() G_STMT_START { \
-                if (first) { g_strchug (text->str); g_string_set_size (text, strlen (text->str)); first = FALSE; } \
-                if (text->len > 0) { w42_pt_insert_text (pt, pos, text->str, ap); pos += g_utf8_strlen (text->str, -1); } \
-                g_string_truncate (text, 0); } G_STMT_END
-
-              if (e <= a || e > (guint32) doc->ccp_ftn)
-                continue;               /* a note the file does not really have */
-              for (guint32 cp = base + a; cp < base + e; cp++)
-                {
-                  gunichar c = char_at (doc, cp);
-
-                  if (c == 0x0D)
-                    {
-                      /* A paragraph of the note ends: put what we have,
-                       * then a new paragraph, unless this is the story's
-                       * final mark. */
-                      NOTE_INSERT ();
-                      if (cp + 1 < base + e)
-                        {
-                          w42_pt_insert_block (pt, pos, ap);
-                          pos += 1;
-                        }
-                    }
-                  else if (c == 0x02 || c == 0x13 || c == 0x14 || c == 0x15)
-                    continue;      /* the note's own mark and fields */
-                  else if (c == '\t' || c >= 0x20)
-                    g_string_append_unichar (text, c);
-                }
-              NOTE_INSERT ();
-#undef NOTE_INSERT
-              g_string_free (text, TRUE);
-            }
-        }
-    }
+  /* The notes' text: the footnote story follows the main text, the
+   * endnote story comes after the headers' and the comments', and
+   * PlcffndTxt and PlcfendTxt say where each note's paragraphs are. */
+  fill_notes (doc, pt, b.note_ids, 3, (guint32) doc->ccp_text, (guint32) doc->ccp_ftn);
+  fill_notes (doc, pt, b.end_ids, 47,
+              (guint32) doc->ccp_text + (guint32) doc->ccp_ftn + (guint32) doc->ccp_hdd +
+              (guint32) doc->ccp_mcr + (guint32) doc->ccp_atn,
+              (guint32) doc->ccp_edn);
 
   g_array_free (b.note_ids, TRUE);
+  g_array_free (b.end_ids, TRUE);
   g_string_free (b.run, TRUE);
   g_array_free (paras, TRUE);
 }
@@ -2809,6 +2998,32 @@ story_text (Doc *doc, guint32 cp_start, guint32 cp_end)
   return g_strstrip (g_string_free (text, FALSE));
 }
 
+/* How a header or footer story's first paragraph is aligned: its PAPX,
+ * over its style, as a body paragraph's would be. */
+static W42Align
+story_align (Doc *doc, guint32 cp)
+{
+  Para pa;
+  guint32 fc = 0;
+  gboolean compressed = FALSE;
+  const guint8 *papx;
+  guint len = 0;
+
+  para_defaults (&pa);
+  if (cp_to_fc (doc, cp, &fc, &compressed) &&
+      (papx = papx_at (doc, fc, &len)) != NULL && len >= 2)
+    {
+      resolve_style (doc, rd16 (papx), &pa, NULL, 0);
+      apply_papx (papx + 2, len - 2, &pa);
+    }
+  switch (pa.jc)
+    {
+    case 1:  return W42_ALIGN_CENTER;
+    case 2:  return W42_ALIGN_RIGHT;
+    default: return W42_ALIGN_LEFT;
+    }
+}
+
 static void
 read_headers (Doc *doc, W42PieceTable *pt)
 {
@@ -2847,10 +3062,12 @@ read_headers (Doc *doc, W42PieceTable *pt)
           text = story_text (doc, base + a, base + b);
           if (*text != '\0')
             {
+              W42Align align = story_align (doc, base + a);
+
               if (which == 0)
-                w42_pt_set_header (pt, text, W42_ALIGN_LEFT);
+                w42_pt_set_header (pt, text, align);
               else
-                w42_pt_set_footer (pt, text, W42_ALIGN_LEFT);
+                w42_pt_set_footer (pt, text, align);
               g_free (text);
               break;
             }
@@ -2874,6 +3091,15 @@ load_word6_text (Doc *doc, W42PieceTable *pt, GError **error)
       FAIL (error, "The document's text is out of reach.");
     }
 
+  {
+    /* The main text is ccpText characters, one byte each: what follows
+     * up to fcMac is the footnotes' and the headers' stories, which ran
+     * on into the body. */
+    guint32 ccp_text = in_wd (doc, 0x34, 4) ? rd32 (doc->wd + 0x34) : 0;
+
+    if (ccp_text > 0 && ccp_text < doc->fc_mac - doc->fc_min)
+      doc->fc_mac = doc->fc_min + ccp_text;
+  }
   for (guint32 fc = doc->fc_min; fc < doc->fc_mac; fc++)
     {
       guint8 c = doc->wd[fc];
@@ -2971,6 +3197,10 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
   doc.ccp_text = (gint32) rd32 (doc.wd + 0x4C);
   doc.ccp_ftn  = (gint32) rd32 (doc.wd + 0x50);
+  doc.ccp_hdd  = (gint32) rd32 (doc.wd + 0x54);
+  doc.ccp_mcr  = (gint32) rd32 (doc.wd + 0x58);
+  doc.ccp_atn  = (gint32) rd32 (doc.wd + 0x5C);
+  doc.ccp_edn  = (gint32) rd32 (doc.wd + 0x60);
   if (doc.ccp_text < 0)
     doc.ccp_text = 0;
   if (doc.ccp_ftn < 0)
@@ -2998,6 +3228,20 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
       doc.ccp_text = (gint32) cp_max;
     if ((guint32) doc.ccp_ftn > cp_max - (guint32) doc.ccp_text)
       doc.ccp_ftn = (gint32) (cp_max - (guint32) doc.ccp_text);
+    /* The stories that follow, each within what is left. */
+    {
+      gint32 *later[] = { &doc.ccp_hdd, &doc.ccp_mcr, &doc.ccp_atn, &doc.ccp_edn };
+      guint32 used = (guint32) doc.ccp_text + (guint32) doc.ccp_ftn;
+
+      for (guint i = 0; i < G_N_ELEMENTS (later); i++)
+        {
+          if (*later[i] < 0)
+            *later[i] = 0;
+          if ((guint32) *later[i] > cp_max - used)
+            *later[i] = (gint32) (cp_max - used);
+          used += (guint32) *later[i];
+        }
+    }
   }
 
   read_bins (&doc, 12, &doc.chpx_fc, &doc.chpx_pn);
@@ -3006,6 +3250,21 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   read_fonts (&doc);
   read_lists (&doc);
   read_page_setup (&doc, page);
+  {
+    /* The endnote references' cps, first in PlcfendRef; the references
+     * themselves are 0x02 marks in the text like a footnote's. */
+    guint32 fc, lcb;
+
+    doc.edn_refs = g_array_new (FALSE, FALSE, sizeof (guint32));
+    fib_fclcb (&doc, 46, &fc, &lcb);
+    if (lcb >= 10 && in_tb (&doc, fc, lcb))
+      for (guint i = 0, n = (lcb - 4) / 6; i < n; i++)
+        {
+          guint32 cp = rd32 (doc.tb + fc + 4 * i);
+
+          g_array_append_val (doc.edn_refs, cp);
+        }
+  }
 
   build_document (&doc, pt);
   read_headers (&doc, pt);
@@ -3013,6 +3272,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
 out:
   if (doc.pieces) g_array_free (doc.pieces, TRUE);
+  if (doc.edn_refs) g_array_free (doc.edn_refs, TRUE);
   if (doc.chpx_fc) g_array_free (doc.chpx_fc, TRUE);
   if (doc.chpx_pn) g_array_free (doc.chpx_pn, TRUE);
   if (doc.papx_fc) g_array_free (doc.papx_fc, TRUE);

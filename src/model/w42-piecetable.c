@@ -145,11 +145,7 @@ piece_is_strux (const W42Piece *p, W42StruxType which)
  * rest of the word above the column: in twelve bits a long table's rows
  * wrapped round to row 0, and the caret in row 4097 was said to be in
  * row 1, which Delete Row then took out. */
-#if GLIB_SIZEOF_SIZE_T >= 8
-#define CELL_ROW_MAX    0xfffff
-#else
-#define CELL_ROW_MAX    0xfff
-#endif
+#define CELL_ROW_MAX    (W42_TABLE_MAX_ROWS - 1)
 #define CELL_ROW(o)     ((int) (((o) >> 20) & CELL_ROW_MAX))
 #define CELL_COL(o)     ((int) (((o) >> 10) & 0x3ff))
 #define CELL_SPAN(o)    (MAX ((int) ((o) & 0x3ff), 1))
