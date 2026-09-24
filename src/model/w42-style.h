@@ -60,6 +60,10 @@ typedef struct _W42StyleSheet W42StyleSheet;
 /* A new sheet holds Word 97's defaults: Normal, Heading 1 to 3, Title. */
 W42StyleSheet   *w42_stylesheet_new  (void);
 void             w42_stylesheet_free (W42StyleSheet *sheet);
+/* Back to what a new sheet holds, heading numbers off: for a document
+ * read into a table that held another.  Styles found before this are
+ * gone after it. */
+void             w42_stylesheet_reset (W42StyleSheet *sheet);
 
 guint            w42_stylesheet_size (W42StyleSheet *sheet);
 const W42Style  *w42_stylesheet_get  (W42StyleSheet *sheet, guint index);

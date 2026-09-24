@@ -159,9 +159,15 @@ w42_autocorrect (const char *before, gunichar typed)
     for (guint i = 0; REPLACEMENTS[i] != NULL; i += 2)
       {
         gsize wrong_len = strlen (REPLACEMENTS[i]);
-        const char *at = before + len - 1 - wrong_len;   /* the typed character is last */
+        /* The typed character is last, and may be more than a byte: a
+         * closing quote is three. */
+        const char *typed_at = g_utf8_prev_char (before + len);
+        const char *at;
 
-        if (at < word || at < before)
+        if ((gsize) (typed_at - before) < wrong_len)
+          continue;
+        at = typed_at - wrong_len;
+        if (at < word)
           continue;
         if (g_ascii_strncasecmp (at, REPLACEMENTS[i], wrong_len) != 0)
           continue;

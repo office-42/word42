@@ -303,6 +303,8 @@ w42_highlight_nearest (guint32 rgb)
       long db = (long) (c & 0xFF) - (long) (rgb & 0xFF);
       long away = dr * dr + dg * dg + db * db;
 
+      if (i == 8)
+        continue;       /* white again, which is no highlight to look at */
       if (best == 0 || away < best_away)
         {
           best = i;

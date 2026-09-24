@@ -61,8 +61,8 @@ w42_object_table_add (W42ObjectTable *table,
   object->format  = g_intern_string (format != NULL ? format : "unknown");
   object->pixel_w = pixel_w;
   object->pixel_h = pixel_h;
-  object->width   = width;
-  object->height  = height;
+  object->width   = CLAMP (width, 15, W42_OBJECT_MAX_TWIPS);
+  object->height  = CLAMP (height, 15, W42_OBJECT_MAX_TWIPS);
 
   g_ptr_array_add (table->objects, object);
   return (W42ObjectIdx) (table->objects->len - 1);

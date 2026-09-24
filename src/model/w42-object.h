@@ -22,6 +22,11 @@ typedef guint32 W42ObjectIdx;
 
 #define W42_OBJECT_NONE ((W42ObjectIdx) G_MAXUINT32)
 
+/* The largest a picture is shown, in twips: seventy inches, the largest
+ * page there is.  A file can ask for any size, and the layout counts in
+ * Pango's ints of 1/1024 pixel, which a size much past this overflows. */
+#define W42_OBJECT_MAX_TWIPS 100800
+
 /* How the text treats a picture: as a character in the line, or as a
  * frame at the left or right of its paragraph with the text beside it,
  * or -- Word 97's other wrapping styles -- with the text above and below

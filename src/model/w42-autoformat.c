@@ -236,7 +236,9 @@ w42_pt_autoformat (W42PieceTable *pt, const W42AutoFormat *what)
           pa.list = (guint8) kind;
           pa.indent_left = MAX (pa.indent_left, 360);
           pa.indent_first = -360;
-          w42_pt_apply_para_fmt (pt, start, 0,
+          /* By the paragraph's own mark: a line that was the marker and
+           * nothing else is empty now, and `start` is the next one's. */
+          w42_pt_apply_para_fmt (pt, block->start_pos, 0,
                                  W42_PARA_LIST | W42_PARA_INDENT_LEFT | W42_PARA_INDENT_FIRST,
                                  &pa);
           changed++;
