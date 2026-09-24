@@ -303,6 +303,26 @@ static const char *LAYOUT_XML = XML_HEAD
   "<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang=\"en-US\"/></a:p></p:txBody></p:sp>"
   "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>";
 
+/* The packages' fixed relationships.  Their lengths are strlen's to
+ * work out: a count kept by hand goes stale the first time the text
+ * changes, and then the zip writer reads past the string's end. */
+static const char *ROOT_RELS = XML_HEAD
+  "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+  "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\""
+  " Target=\"ppt/presentation.xml\"/></Relationships>";
+
+static const char *MASTER_RELS = XML_HEAD
+  "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+  "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\""
+  " Target=\"../slideLayouts/slideLayout1.xml\"/>"
+  "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\""
+  " Target=\"../theme/theme1.xml\"/></Relationships>";
+
+static const char *LAYOUT_RELS = XML_HEAD
+  "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+  "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\""
+  " Target=\"../slideMasters/slideMaster1.xml\"/></Relationships>";
+
 gboolean
 w42_pptx_save (W42PieceTable      *pt,
                const W42PageSetup *page,
@@ -344,11 +364,7 @@ w42_pptx_save (W42PieceTable      *pt,
   g_string_free (s, TRUE);
 
   /* _rels/.rels */
-  w42_zip_writer_add (zip, "_rels/.rels", XML_HEAD
-    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\""
-    " Target=\"ppt/presentation.xml\"/></Relationships>",
-    strlen (XML_HEAD) + 245);
+  w42_zip_writer_add (zip, "_rels/.rels", ROOT_RELS, strlen (ROOT_RELS));
 
   /* ppt/presentation.xml */
   s = g_string_new (XML_HEAD);
@@ -385,19 +401,11 @@ w42_pptx_save (W42PieceTable      *pt,
 
   /* The master, its layout and the theme. */
   w42_zip_writer_add (zip, "ppt/slideMasters/slideMaster1.xml", MASTER_XML, strlen (MASTER_XML));
-  w42_zip_writer_add (zip, "ppt/slideMasters/_rels/slideMaster1.xml.rels", XML_HEAD
-    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\""
-    " Target=\"../slideLayouts/slideLayout1.xml\"/>"
-    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\""
-    " Target=\"../theme/theme1.xml\"/></Relationships>",
-    strlen (XML_HEAD) + 424);
+  w42_zip_writer_add (zip, "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+                      MASTER_RELS, strlen (MASTER_RELS));
   w42_zip_writer_add (zip, "ppt/slideLayouts/slideLayout1.xml", LAYOUT_XML, strlen (LAYOUT_XML));
-  w42_zip_writer_add (zip, "ppt/slideLayouts/_rels/slideLayout1.xml.rels", XML_HEAD
-    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\""
-    " Target=\"../slideMasters/slideMaster1.xml\"/></Relationships>",
-    strlen (XML_HEAD) + 253);
+  w42_zip_writer_add (zip, "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+                      LAYOUT_RELS, strlen (LAYOUT_RELS));
   w42_zip_writer_add (zip, "ppt/theme/theme1.xml", THEME_XML, strlen (THEME_XML));
 
   /* The slides. */
