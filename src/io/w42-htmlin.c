@@ -1133,6 +1133,27 @@ apply_style (Html *h, const char *style, gboolean para)
                                      g_ascii_strcasecmp (value, "right") == 0);
           h->pa_dirty = TRUE;
         }
+      else if (para && (g_ascii_strcasecmp (key, "page-break-after") == 0 ||
+                        g_ascii_strcasecmp (key, "break-after") == 0))
+        {
+          h->pa.keep_next = g_ascii_strcasecmp (value, "avoid") == 0 ||
+                            g_ascii_strcasecmp (value, "avoid-page") == 0;
+          h->pa_dirty = TRUE;
+        }
+      else if (para && (g_ascii_strcasecmp (key, "page-break-inside") == 0 ||
+                        g_ascii_strcasecmp (key, "break-inside") == 0))
+        {
+          h->pa.keep_together = g_ascii_strcasecmp (value, "avoid") == 0 ||
+                                g_ascii_strcasecmp (value, "avoid-page") == 0;
+          h->pa_dirty = TRUE;
+        }
+      else if (para && (g_ascii_strcasecmp (key, "widows") == 0 ||
+                        g_ascii_strcasecmp (key, "orphans") == 0))
+        {
+          /* Word's widow control is two lines at either end, or none. */
+          h->pa.widow_control = atoi (value) >= 2;
+          h->pa_dirty = TRUE;
+        }
       else if (para && g_ascii_strcasecmp (key, "float") == 0)
         {
           /* A paragraph set at the side of the column: a frame. */

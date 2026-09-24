@@ -147,6 +147,13 @@ write_para_style (GString *out, const W42ParaFmt *pa, const char *extra)
     }
   if (pa->page_break_before)
     g_string_append (css, "break-before:page;page-break-before:always;");
+  /* How the paragraph meets a page's end, which CSS says for print. */
+  if (pa->keep_next)
+    g_string_append (css, "break-after:avoid;page-break-after:avoid;");
+  if (pa->keep_together)
+    g_string_append (css, "break-inside:avoid;page-break-inside:avoid;");
+  if (!pa->widow_control)
+    g_string_append (css, "widows:1;orphans:1;");
   if (pa->drop_cap > 0)
     g_string_append_printf (css, "--w42-drop-cap:%d;", pa->drop_cap);
 
@@ -462,8 +469,12 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
         g_string_append (out, " }\n");
       }
   }
+  /* Every paragraph, heading or not, says its own spacing where it has
+   * any, so what it does not say is nought: a margin the sheet gave the
+   * headings would be read back as the document's, and was, a heading
+   * with no space after it coming back with a quarter of a line. */
   g_string_append (out,
-    "p { margin: 0; }\nh1, h2, h3, h4, h5, h6 { margin: 0.5em 0 0.25em; }\n"
+    "p, h1, h2, h3, h4, h5, h6 { margin: 0; }\n"
     "table { border-collapse: collapse; }\ntd { padding: 2pt 4pt; vertical-align: top; }\n"
     "table.ruled td { border: 1px solid #000; }\n"
     "a { color: #000080; }\n.notes { margin-top: 1em; border-top: 1px solid #000; width: 33%; padding-top: 0.5em; }\n"

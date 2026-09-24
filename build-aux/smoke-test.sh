@@ -19,7 +19,8 @@
 # metric twins of Calibri and Cambria).  It is checked against
 # W42_BIBLE_PAGES when that is set, against 1708 when fc-list finds both
 # fonts, and otherwise only printed.  Whatever the fonts, the Bible must
-# come back from .docx, .odt and .rtf to as many pages as it went in.
+# come back from .docx, .odt, .rtf, .abw and .html to as many pages as
+# it went in.
 
 set -eu
 
@@ -169,7 +170,7 @@ if [ -n "$want" ]; then
 else
   echo "   $n pages (without Carlito and Caladea, not checked)"
 fi
-for fmt in docx odt rtf; do
+for fmt in docx odt rtf abw html; do
   "$conv" "$bible" "bible.$fmt" || { fail "the Bible to .$fmt"; continue; }
   m=$(pages "bible.$fmt")
   echo "   through .$fmt: $m"
