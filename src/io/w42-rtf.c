@@ -23,14 +23,26 @@ typedef struct {
   GArray     *colours;  /* guint32, in table order; index 0 is \cf1 */
 } RtfTables;
 
+static void write_text (GString *out, const char *utf8, gsize len);
+
 /* A name in a table: the characters RTF would read as syntax are left
- * out, since a font or style name cannot be escaped there. */
+ * out, since a font or style name cannot be escaped there.  The rest
+ * above ASCII go as \uN, as they do in the text: raw, they would be read
+ * in the file's code page, and "Überschrift" would reach Word as
+ * "Ãœberschrift". */
 static void
 rtf_plain (GString *out, const char *name)
 {
-  for (const char *p = name; p != NULL && *p != '\0'; p++)
+  char *valid;
+
+  if (name == NULL)
+    return;
+
+  valid = g_utf8_make_valid (name, -1);
+  for (const char *p = valid; *p != '\0'; p = g_utf8_next_char (p))
     if (*p != '{' && *p != '}' && *p != '\\' && *p != ';' && (guchar) *p >= 0x20)
-      g_string_append_c (out, *p);
+      write_text (out, p, (gsize) (g_utf8_next_char (p) - p));
+  g_free (valid);
 }
 
 static guint
@@ -132,6 +144,12 @@ write_text (GString *out, const char *utf8, gsize len)
         case '\t': g_string_append (out, "\\tab "); break;
         case 0x00AD: g_string_append (out, "\\-"); break;   /* optional hyphen */
         case 0x2028: g_string_append (out, "\\line "); break; /* a line break */
+        case '\n':
+          /* Only an annotation's or the summary's text still holds a
+           * newline -- the body's are paragraph marks -- and a raw one
+           * is not text to an RTF reader: it would vanish. */
+          g_string_append (out, "\\line ");
+          break;
         default:
           if (c < 0x80)
             {
@@ -161,8 +179,14 @@ write_text (GString *out, const char *utf8, gsize len)
     }
 }
 
+/* `over` is what the reader will already have when the run begins --
+ * the paragraph's style, which Word42's reader and others put under a
+ * paragraph that names it -- or NULL.  What the style turns on and the
+ * run does not is turned off in so many words, since saying nothing
+ * would leave the style's. */
 static void
-write_char_props (GString *out, const W42CharFmt *ch, RtfTables *tables)
+write_char_props (GString *out, const W42CharFmt *ch, const W42CharFmt *over,
+                  RtfTables *tables)
 {
   g_string_append_printf (out, "\\f%u", table_intern_font (tables, ch->family));
   g_string_append_printf (out, "\\fs%d", ch->size > 0 ? ch->size : 20);
@@ -209,6 +233,25 @@ write_char_props (GString *out, const W42CharFmt *ch, RtfTables *tables)
   if (ch->revision == 1) g_string_append (out, "\\revised\\revauth1");
   if (ch->revision == 2) g_string_append (out, "\\deleted\\revauth1");
 
+  if (over != NULL)
+    {
+      if (over->bold && !ch->bold)           g_string_append (out, "\\b0");
+      if (over->italic && !ch->italic)       g_string_append (out, "\\i0");
+      if (over->underline && !ch->underline) g_string_append (out, "\\ulnone");
+      if (over->strikeout && !ch->strikeout) g_string_append (out, "\\strike0");
+      if (over->dstrike && !ch->dstrike)     g_string_append (out, "\\striked0");
+      if (over->overline && !ch->overline)   g_string_append (out, "\\ol0");
+      if (over->shadow && !ch->shadow)       g_string_append (out, "\\shad0");
+      if (over->outline && !ch->outline)     g_string_append (out, "\\outl0");
+      if (over->emboss && !ch->emboss)       g_string_append (out, "\\embo0");
+      if (over->engrave && !ch->engrave)     g_string_append (out, "\\impr0");
+      if (over->script != 0 && ch->script == 0) g_string_append (out, "\\nosupersub");
+      if (over->smallcaps && !ch->smallcaps) g_string_append (out, "\\scaps0");
+      if (over->allcaps && !ch->allcaps)     g_string_append (out, "\\caps0");
+      if (over->highlight && !ch->highlight) g_string_append (out, "\\highlight0");
+      if (over->spacing && !ch->spacing)     g_string_append (out, "\\expndtw0");
+    }
+
   g_string_append_c (out, ' ');
 }
 
@@ -224,16 +267,26 @@ style_index (W42StyleSheet *styles, const char *name)
   return 0;
 }
 
+/* The style a paragraph names, whose formatting a reader may put under
+ * the paragraph's own. */
+static const W42Style *
+para_style (W42StyleSheet *styles, const W42ParaFmt *pa)
+{
+  return w42_stylesheet_get (styles, (guint) style_index (styles, pa->style));
+}
+
 static void write_para_body (GString *out, const W42ParaFmt *pa,
-                             RtfTables *tables);
+                             const W42ParaFmt *over, RtfTables *tables);
 
 static void
 write_para_props (GString *out, const W42ParaFmt *pa, W42StyleSheet *styles,
                   RtfTables *tables)
 {
+  const W42Style *style = para_style (styles, pa);
+
   g_string_append (out, "\\pard\\plain");
   g_string_append_printf (out, "\\s%d", style_index (styles, pa->style));
-  write_para_body (out, pa, tables);
+  write_para_body (out, pa, style != NULL ? &style->pa : NULL, tables);
 }
 
 /* Alignment, indents and spacing: the part of a paragraph's formatting that
@@ -273,8 +326,12 @@ write_border_line (GString *out, RtfTables *tables, const W42BorderEdge *edge)
     g_string_append_printf (out, "\\brdrcf%u", table_intern_colour (tables, edge->color) + 1);
 }
 
+/* `over`, as for the characters: the style the reader may already have
+ * put under the paragraph, whose indents and spacing are said to be
+ * nought where the paragraph's are. */
 static void
-write_para_body (GString *out, const W42ParaFmt *pa, RtfTables *tables)
+write_para_body (GString *out, const W42ParaFmt *pa, const W42ParaFmt *over,
+                 RtfTables *tables)
 {
   switch (rtf_mirror_align (pa->align, pa->rtl != 0))
     {
@@ -285,9 +342,10 @@ write_para_body (GString *out, const W42ParaFmt *pa, RtfTables *tables)
     }
   if (pa->rtl) g_string_append (out, "\\rtlpar");
 
-  if (pa->indent_left)  g_string_append_printf (out, "\\li%d", pa->indent_left);
-  if (pa->indent_right) g_string_append_printf (out, "\\ri%d", pa->indent_right);
-  if (pa->indent_first) g_string_append_printf (out, "\\fi%d", pa->indent_first);
+#define SAY(field) (pa->field != 0 || (over != NULL && over->field != 0))
+  if (SAY (indent_left))  g_string_append_printf (out, "\\li%d", pa->indent_left);
+  if (SAY (indent_right)) g_string_append_printf (out, "\\ri%d", pa->indent_right);
+  if (SAY (indent_first)) g_string_append_printf (out, "\\fi%d", pa->indent_first);
   if (pa->page_break_before) g_string_append (out, "\\pagebb");
   if (pa->keep_next)     g_string_append (out, "\\keepn");
   if (pa->keep_together) g_string_append (out, "\\keep");
@@ -331,16 +389,24 @@ write_para_body (GString *out, const W42ParaFmt *pa, RtfTables *tables)
         }
       g_string_append_printf (out, "\\tx%d", pa->tab_pos[i]);
     }
-  if (pa->space_before) g_string_append_printf (out, "\\sb%d", pa->space_before);
-  if (pa->space_after)  g_string_append_printf (out, "\\sa%d", pa->space_after);
+  if (SAY (space_before)) g_string_append_printf (out, "\\sb%d", pa->space_before);
+  if (SAY (space_after))  g_string_append_printf (out, "\\sa%d", pa->space_after);
 
   /* RTF expresses a multiple as a negative-going \slmult1 with \sl in twips
-   * of a nominal 240-twip line, which is how Word writes 1.5 and double. */
-  if (pa->line_spacing_pct > 100)
+   * of a nominal 240-twip line, which is how Word writes 1.5 and double;
+   * \sl0 is single spacing, what a paragraph in a spaced style needs to
+   * say it is. */
+  if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     g_string_append_printf (out, "\\sl%d\\slmult1",
                             (240 * pa->line_spacing_pct) / 100);
   else if (pa->line_spacing > 0)
-    g_string_append_printf (out, "\\sl%d\\slmult0", pa->line_spacing);
+    /* Negative, because a positive \sl is "at least" to Word and the
+     * model's leading is exact; the reader takes either. */
+    g_string_append_printf (out, "\\sl-%d\\slmult0", pa->line_spacing);
+  else if (over != NULL && ((over->line_spacing_pct > 0 && over->line_spacing_pct != 100) ||
+                            over->line_spacing > 0))
+    g_string_append (out, "\\sl0\\slmult0");
+#undef SAY
 }
 
 /* A picture is a \pict group: the format, the size, and the bytes as hex.
@@ -446,7 +512,9 @@ write_shape (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
         "{\\sp{\\sn shapeType}{\\sv %d}}{\\sp{\\sn fFilled}{\\sv %d}}{\\sp{\\sn fillColor}{\\sv %ld}}"
         "{\\sp{\\sn fLine}{\\sv %d}}{\\sp{\\sn lineColor}{\\sv %ld}}{\\sp{\\sn lineWidth}{\\sv %d}}",
         type, object->filled ? 1 : 0, fill, object->line_pt > 0.0 ? 1 : 0, line,
-        (int) (object->line_pt * 12700.0 + 0.5));
+        /* Word's widest line, 1584 pt, so the EMUs stay inside an int
+         * whatever another reader put in the model. */
+        (int) (CLAMP (object->line_pt, 0.0, 1584.0) * 12700.0 + 0.5));
       if (object->shape == W42_SHAPE_ARROW)
         g_string_append (out, "{\\sp{\\sn lineEndArrowhead}{\\sv 1}}");
     }
@@ -501,7 +569,7 @@ write_page_text (GString *out, const char *dest, const W42PageText *slot,
     }
   g_string_append_c (out, ' ');
   if (normal != NULL)
-    write_char_props (out, &normal->ch, tables);
+    write_char_props (out, &normal->ch, NULL, tables);
 
   for (p = slot->text; *p != '\0'; )
     {
@@ -553,6 +621,12 @@ w42_rtf_save (W42PieceTable      *pt,
 
   tables.fonts = g_ptr_array_new ();
   tables.colours = g_array_new (FALSE, FALSE, sizeof (guint32));
+  /* Word's sixteen highlight colours open the table, in Word's order, as
+   * Word writes it: \highlightN is an entry in this table by the
+   * specification and Word's own number for the colour by habit, and
+   * this way the two are the same entry. */
+  for (int i = 1; i <= 16; i++)
+    table_intern_colour (&tables, w42_highlight_rgb (i));
   collect_tables (pt, blocks, aps, &tables, styles);
   if (page != NULL && page->has_border && page->border_color != 0)
     table_intern_colour (&tables, page->border_color);
@@ -614,11 +688,11 @@ w42_rtf_save (W42PieceTable      *pt,
       const W42Style *style = w42_stylesheet_get (styles, i);
 
       g_string_append_printf (out, "{\\s%u", i);
-      write_para_body (out, &style->pa, &tables);
+      write_para_body (out, &style->pa, NULL, &tables);
       if (style->outline > 0)
         g_string_append_printf (out, "\\outlinelevel%d", style->outline - 1);
       g_string_append_c (out, ' ');
-      write_char_props (out, &style->ch, &tables);
+      write_char_props (out, &style->ch, NULL, &tables);
       g_string_append (out, "\\sbasedon0\\snext0 ");
       rtf_plain (out, style->name);
       g_string_append (out, ";}");
@@ -702,6 +776,8 @@ w42_rtf_save (W42PieceTable      *pt,
     {
       const W42Block *block = g_ptr_array_index (blocks, b);
       const W42Fmt *para = w42_ap_table_get (aps, block->ap);
+      const W42Style *pstyle = para_style (styles, &para->pa);
+      const W42CharFmt *over_ch = pstyle != NULL ? &pstyle->ch : NULL;
 
       if (block->note >= 0)
         continue;         /* written inside {\\footnote} at its reference */
@@ -772,7 +848,9 @@ w42_rtf_save (W42PieceTable      *pt,
             {
               int w = (props != NULL && c < (int) props->widths->len)
                         ? g_array_index (props->widths, int, c) : 0;
-              edge += (w > 0) ? w : text_w / n_cols;
+              /* No column is wider than Word's widest page, which also
+               * keeps the running edge inside an int over 1023 of them. */
+              edge += (w > 0) ? MIN (w, 31680) : text_w / n_cols;
               {
                 /* The owning cell's own sides, or the table's setting. */
                 int sides = (props != NULL && !props->borders) ? 0 : W42_BORDER_BOX;
@@ -950,7 +1028,7 @@ w42_rtf_save (W42PieceTable      *pt,
         {
           /* An empty paragraph still carries the mark's own character
            * formatting, which decides how tall the blank line is. */
-          write_char_props (out, &para->ch, &tables);
+          write_char_props (out, &para->ch, over_ch, &tables);
         }
 
       for (guint r = 0; r < block->runs->len; r++)
@@ -964,7 +1042,7 @@ w42_rtf_save (W42PieceTable      *pt,
                * the line it sits on is as tall as they make it. */
               const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
 
-              write_char_props (out, &fmt->ch, &tables);
+              write_char_props (out, &fmt->ch, over_ch, &tables);
               if (object != NULL && (object->shape != W42_SHAPE_PICTURE || object->wrap != W42_WRAP_INLINE))
                 write_shape (out, w42_pt_object_table (pt), run->object);
               else
@@ -984,10 +1062,12 @@ w42_rtf_save (W42PieceTable      *pt,
                 {
                   const W42Block *note = g_ptr_array_index (blocks, nb);
                   const W42Fmt *npara;
+                  const W42Style *nstyle;
 
                   if (note->note != run->footnote_id)
                     continue;
                   npara = w42_ap_table_get (aps, note->ap);
+                  nstyle = para_style (styles, &npara->pa);
                   if (!first)
                     g_string_append (out, "\\par\n");
                   write_para_props (out, &npara->pa, styles, &tables);
@@ -995,7 +1075,7 @@ w42_rtf_save (W42PieceTable      *pt,
                     g_string_append (out, "{\\super\\chftn }");
                   first = FALSE;
                   if (note->runs->len == 0)
-                    write_char_props (out, &npara->ch, &tables);
+                    write_char_props (out, &npara->ch, nstyle != NULL ? &nstyle->ch : NULL, &tables);
                   for (guint nr = 0; nr < note->runs->len; nr++)
                     {
                       const W42Run *run2 = &g_array_index (note->runs, W42Run, nr);
@@ -1004,7 +1084,7 @@ w42_rtf_save (W42PieceTable      *pt,
                       if (run2->object != W42_OBJECT_NONE || run2->footnote > 0)
                         continue;
                       g_string_append_c (out, '{');
-                      write_char_props (out, &fmt2->ch, &tables);
+                      write_char_props (out, &fmt2->ch, nstyle != NULL ? &nstyle->ch : NULL, &tables);
                       write_text (out, note->text->str + run2->byte_offset, run2->n_bytes);
                       g_string_append_c (out, '}');
                     }
@@ -1039,7 +1119,15 @@ w42_rtf_save (W42PieceTable      *pt,
 
           /* A link is a HYPERLINK field with the text as its result; a
            * field is its code with the cached result. */
-          if (fmt->ch.link != NULL)
+          if (fmt->ch.link != NULL && fmt->ch.link[0] == '#')
+            {
+              /* A link to a bookmark is Word's \l switch and the name;
+               * "#name" would be a file of that name to Word. */
+              g_string_append (out, "{\\field{\\*\\fldinst{HYPERLINK \\\\l \"");
+              write_text (out, fmt->ch.link + 1, strlen (fmt->ch.link + 1));
+              g_string_append (out, "\"}}{\\fldrslt ");
+            }
+          else if (fmt->ch.link != NULL)
             {
               g_string_append (out, "{\\field{\\*\\fldinst{HYPERLINK \"");
               write_text (out, fmt->ch.link, strlen (fmt->ch.link));
@@ -1058,7 +1146,7 @@ w42_rtf_save (W42PieceTable      *pt,
           /* Each run reopens a group, so the properties it sets fall away
            * again at its end and cannot leak into the next one. */
           g_string_append_c (out, '{');
-          write_char_props (out, &fmt->ch, &tables);
+          write_char_props (out, &fmt->ch, over_ch, &tables);
           write_text (out, block->text->str + run->byte_offset, run->n_bytes);
           g_string_append_c (out, '}');
 
@@ -1135,7 +1223,10 @@ typedef struct {
   int        uc;        /* how many characters follow a \u and must be eaten */
   gboolean   skip;      /* inside a destination we do not understand */
   gboolean   pntxtb;    /* inside {\pntxtb ...}: the bullet character */
+  gboolean   pnnum;     /* the \pn group named a number format, so its
+                         * \pntxtb is a prefix like "(" and not a bullet */
   gboolean   intbl;     /* the paragraph is a table cell's */
+  gboolean   align_said; /* the paragraph named its alignment since \pard */
   guint8     tab_kind;  /* \\tqr and friends, for the \\tx that follows */
   guint8     tab_leader; /* \\tldot and friends, likewise */
   guint8     border_side; /* the side the \\brdrw that follows belongs to */
@@ -1242,6 +1333,13 @@ struct _RtfReader {
   gsize          pos;        /* where the next thing goes in the document */
   gboolean       first_para; /* the first \par closes the paragraph that the
                               * empty document already has */
+  gsize          last_par_end;  /* `pos` just after the last \par's mark: if
+                                 * nothing has gone in since, the file's last
+                                 * paragraph was closed by a \par */
+  gboolean       page_break_pending;  /* a \page: the paragraph after it
+                                       * starts a page */
+  gboolean       own_file;      /* {\*\generator Word42}: the file is ours */
+  guint          upr_depth;     /* the {\upr} group's depth, or 0 */
 
   /* Collecting the font and colour tables. */
   int            dest;       /* which destination is being collected */
@@ -1298,6 +1396,15 @@ struct _RtfReader {
   guint          note_depth;     /* the {\\footnote group's depth */
   gsize          note_return;    /* where the main text goes on afterwards */
   gboolean       in_note;
+  /* The body's table, set aside while a note in one of its cells is read:
+   * the note's paragraphs are not the cell's, and a \pard among them
+   * would otherwise close the table in the middle of the notes. */
+  int            note_table;
+  gboolean       note_in_cell;
+  gboolean       note_table_before_block;
+  int            note_table_row, note_table_col;
+  gsize          note_last_cell_pos;
+  int            note_last_cell_span;
   W42Align       hf_align;
   W42PageTextKind hf_kind;   /* which of the three is being read */
   gboolean       in_fldinst;     /* inside {\*\fldinst ...}: the field's code */
@@ -1307,6 +1414,8 @@ struct _RtfReader {
   const char    *field_code;     /* the field the result belongs to, or NULL */
   gsize          field_start;    /* where that result began */
   guint          fldrslt_depth;
+  guint          field_depth;    /* the outermost {\field}'s depth, or 0: a
+                                  * link it opened ends with it, result or no */
 
   /* Collecting a drawing object: a {\shp ...} group, which is a picture
    * placed on the page, or a shape.  Its properties come as
@@ -1331,9 +1440,13 @@ struct _RtfReader {
   GString       *shp_text;       /* the \shptxt: the text in the shape */
   gboolean       in_shptxt;
   guint          shptxt_depth;
+  int            shp_outer_dest; /* the destination the shape sits in */
 
   /* Collecting a picture. */
   guint          pict_depth;     /* stack depth of the \pict group */
+  int            pict_outer_dest; /* the destination the picture sits in: a
+                                   * header's logo is the header's, not the
+                                   * body's */
   const char    *pict_format;    /* "png", "jpeg", or NULL for unknown */
   int            pict_wgoal;     /* twips, from \picwgoal */
   int            pict_hgoal;
@@ -1370,8 +1483,16 @@ flush_text (RtfReader *r)
       return;
     }
 
-  w42_pt_insert_text (r->pt, r->pos, r->pending->str, r->pending_ap);
-  r->pos += g_utf8_strlen (r->pending->str, -1);
+  {
+    /* Counted from the document, not from the text: the model drops the
+     * control characters a file may carry, and a position counted past
+     * them would put what follows into the next paragraph, or into the
+     * notes once a footnote has gone in. */
+    gsize before = w42_pt_length (r->pt);
+
+    w42_pt_insert_text (r->pt, r->pos, r->pending->str, r->pending_ap);
+    r->pos += w42_pt_length (r->pt) - before;
+  }
 
   g_string_truncate (r->pending, 0);
   r->have_pending = FALSE;
@@ -1398,7 +1519,7 @@ table_sync (RtfReader *r)
             {
               int edge = g_array_index (r->cellx, int, c);
 
-              widths[c] = MAX (edge - prev, 0);
+              widths[c] = CLAMP (edge - prev, 0, 31680);
               prev = edge;
               g_array_append_val (r->grid, edge);
             }
@@ -1594,28 +1715,46 @@ append_char (RtfReader *r, gunichar c)
 
   if (r->dest == DEST_HEADER || r->dest == DEST_FOOTER)
     {
-      if (!r->in_fldrslt)
+      /* Nor is a skipped group's text the header's: the hex of the
+       * metafile copy of a logo, in {\nonshppict}, is not a line of it. */
+      if (!r->in_fldrslt && !r->state.skip)
         g_string_append_unichar (r->hf_text, c);
       return;
     }
 
-  /* The bullet character in a \pntxtb group says which bullet it is. */
+  /* The bullet character in a \pntxtb group says which bullet it is.  In
+   * a numbered list the group is text before the number -- the "(" of
+   * "(1)" -- and says nothing about the kind.  Either way the rest of the
+   * group is the marker's, not the paragraph's. */
   if (r->state.pntxtb)
     {
-      guint8 kind = c == 'o' ? W42_LIST_BULLET_CIRCLE
+      guint8 kind = (c == 'o' || c == 0x25E6 || c == 0x25CB)
+                    ? W42_LIST_BULLET_CIRCLE
                   : (c == 0xA7 || c == 0x25AA || c == 0x25A0) ? W42_LIST_BULLET_SQUARE
                   : (c == '-' || c == 0x2013 || c == 0x2014) ? W42_LIST_BULLET_DASH
                   : W42_LIST_BULLET;
 
       /* The group is inside the \pn group inside the paragraph: the
        * paragraph's state is two down the stack. */
-      for (guint i = 1; i <= 2 && i <= r->stack->len; i++)
+      for (guint i = 1; i <= 2 && i <= r->stack->len && !r->state.pnnum; i++)
         {
           RtfState *outer = &g_array_index (r->stack, RtfState, r->stack->len - i);
           if (outer->pa.list != W42_LIST_NONE)
             outer->pa.list = kind;
         }
       r->state.pntxtb = FALSE;
+      r->state.skip = TRUE;
+      return;
+    }
+
+  /* A name's \'xx and \uN in the font table and the stylesheet are its
+   * characters as much as the plain ones are: dropped, "Überschrift"
+   * would be read as "berschrift". */
+  if (r->dest == DEST_FONTTBL || r->dest == DEST_STYLESHEET)
+    {
+      if (!r->state.skip)
+        g_string_append_unichar (r->dest == DEST_FONTTBL ? r->font_name
+                                                         : r->style_name, c);
       return;
     }
 
@@ -1654,15 +1793,22 @@ end_paragraph (RtfReader *r)
 {
   W42Fmt fmt;
   W42ApIdx ap;
+  W42ParaFmt pa;
 
   table_sync (r);
   flush_text (r);
+
+  /* A \page before this paragraph's text is the paragraph's own break. */
+  pa = r->state.pa;
+  if (r->page_break_pending)
+    pa.page_break_before = 1;
+  r->page_break_pending = FALSE;
 
   /* Widening backwards has to start from the last thing written, not from
    * `pos`: a document that opens with a table still has its final empty
    * paragraph's BLOCK sitting at `pos`, and that is not this paragraph. */
   w42_pt_apply_para_fmt (r->pt, r->pos > 0 ? r->pos - 1 : 0, 0, PARA_MASK,
-                         &r->state.pa);
+                         &pa);
 
   w42_fmt_init_default (&fmt);
   fmt.ch = r->state.ch;
@@ -1671,6 +1817,7 @@ end_paragraph (RtfReader *r)
 
   w42_pt_insert_block (r->pt, r->pos, ap);
   r->pos += 1;
+  r->last_par_end = r->pos;
   r->first_para = FALSE;
   r->state.pa.list = W42_LIST_NONE;
   r->state.pa.list_start = 0;
@@ -1731,6 +1878,20 @@ rtf_border_line (const char *word, int param, gboolean has_param,
   return FALSE;
 }
 
+/* Whether the colour table opens with Word's sixteen highlight colours,
+ * in Word's order after the "auto" entry, as Word's own tables do and
+ * Word42's have since it wrote \highlight as the specification means. */
+static gboolean
+colours_in_word_order (RtfReader *r)
+{
+  if (r->colours->len < 17)
+    return FALSE;
+  for (int i = 1; i <= 16; i++)
+    if (g_array_index (r->colours, guint32, i) != w42_highlight_rgb (i))
+      return FALSE;
+  return TRUE;
+}
+
 /* Which of Word's sixteen highlight colours a colour is nearest to.  Zero
  * means none, so a white or unset background stays unhighlighted. */
 static int
@@ -1781,18 +1942,31 @@ finish_style (RtfReader *r)
 
       if (g_ascii_strncasecmp (name, "heading ", 8) == 0)
         style.outline = (int) CLAMP (g_ascii_strtoll (name + 8, NULL, 10), 0, 9);
-      else if (r->style_outline > 0 &&
-               w42_stylesheet_find (w42_pt_stylesheet (r->pt), "Heading 1") != NULL)
+      else if (r->style_outline > 0)
         {
-          /* A heading under another name: give it ours, so that the
-           * outline, the table of contents and heading numbering all
-           * find it. */
-          char *heading = g_strdup_printf ("Heading %d", r->style_outline);
+          const char *number = strrchr (name, ' ');
 
-          style.name = g_intern_string (heading);
-          style.pa.style = style.name;
+          /* A heading under another program's name for it -- LibreOffice
+           * writes "Overskrift 1" in the user's language -- is given
+           * ours, so that it is the Heading 1 the document's other
+           * headings and our own stylesheet mean.  A name of the user's
+           * own, "Chapter" at level one, keeps its name: renamed, it
+           * would take Heading 1's place and its formatting with it.
+           * Its level is enough for the outline, the table of contents
+           * and heading numbering to find it.  A file of our own has
+           * only names of the user's. */
           style.outline = r->style_outline;
-          g_free (heading);
+          if (!r->own_file && number != NULL && number[1] != '\0' &&
+              strspn (number + 1, "0123456789") == strlen (number + 1) &&
+              g_ascii_strtoll (number + 1, NULL, 10) == r->style_outline &&
+              w42_stylesheet_find (w42_pt_stylesheet (r->pt), "Heading 1") != NULL)
+            {
+              char *heading = g_strdup_printf ("Heading %d", r->style_outline);
+
+              style.name = g_intern_string (heading);
+              style.pa.style = style.name;
+              g_free (heading);
+            }
         }
 
       w42_stylesheet_set (w42_pt_stylesheet (r->pt), &style);
@@ -1818,9 +1992,11 @@ finish_pict (RtfReader *r)
   int width, height;
   W42ObjectIdx idx;
 
-  r->dest = DEST_NONE;
+  r->dest = r->pict_outer_dest;
 
-  if (n == 0 || r->state.skip)
+  /* A header's logo or a picture in an annotation has nowhere to go in
+   * the model; it is not the body's, where it would otherwise land. */
+  if (n == 0 || r->state.skip || r->dest != DEST_NONE || r->atn_kind != 0)
     return;
 
   bytes = g_malloc (n);
@@ -1844,9 +2020,14 @@ finish_pict (RtfReader *r)
   height = r->pict_hgoal > 0 ? r->pict_hgoal : (int) MIN ((gint64) ph * 15, 31680);
   /* \picscalex: Word's own scaling of the picture, in percent. */
   if (r->pict_scalex > 0 && r->pict_scalex != 100)
-    width = (int) CLAMP ((gint64) width * r->pict_scalex / 100, 15, 31680);
+    width = (int) CLAMP ((gint64) width * r->pict_scalex / 100, 15, 100800);
   if (r->pict_scaley > 0 && r->pict_scaley != 100)
-    height = (int) CLAMP ((gint64) height * r->pict_scaley / 100, 15, 31680);
+    height = (int) CLAMP ((gint64) height * r->pict_scaley / 100, 15, 100800);
+  /* No bigger than the biggest page, as the other readers have it: a
+   * \pichgoal of two thousand million twips is past what the layout's
+   * Pango units can hold, and everything after the picture vanished. */
+  width = CLAMP (width, 15, 100800);
+  height = CLAMP (height, 15, 100800);
 
   idx = w42_object_table_add (w42_pt_object_table (r->pt), data, format,
                               pw, ph, width, height);
@@ -1891,7 +2072,8 @@ shape_property (RtfReader *r)
   else if (g_str_equal (name, "fLine"))         r->shp_lined = v != 0;
   else if (g_str_equal (name, "fillColor"))     r->shp_fill_rgb = bgr_to_rgb (v);
   else if (g_str_equal (name, "lineColor"))     r->shp_line_rgb = bgr_to_rgb (v);
-  else if (g_str_equal (name, "lineWidth"))     r->shp_line_pt = v / 12700.0;
+  else if (g_str_equal (name, "lineWidth"))     /* EMUs; Word's widest is 1584 pt */
+    r->shp_line_pt = CLAMP (v, 0, 1584L * 12700) / 12700.0;
   else if (g_str_equal (name, "lineEndArrowhead") || g_str_equal (name, "lineStartArrowhead"))
     r->shp_arrow = r->shp_arrow || v != 0;
   else if (g_str_equal (name, "fBehindDocument")) r->shp_behind = r->shp_behind || v != 0;
@@ -1907,8 +2089,11 @@ finish_shape (RtfReader *r)
 {
   W42ObjectTable *objects = w42_pt_object_table (r->pt);
   W42ObjectIdx idx = r->shp_pib;
-  int width = MAX (r->shp_right - r->shp_left, 15);
-  int height = MAX (r->shp_bottom - r->shp_top, 15);
+  /* No bigger than Word's biggest page: a shape is drawn into a bitmap
+   * at its size, and one a file says is a hundred inches square costs
+   * the 400 MB the renderer allows it, and seconds to fill. */
+  int width = CLAMP (r->shp_right - r->shp_left, 15, 31680);
+  int height = CLAMP (r->shp_bottom - r->shp_top, 15, 31680);
   W42Wrap wrap;
   int text_w = r->page != NULL && r->page->width > 0
                  ? r->page->width - r->page->margin_left - r->page->margin_right : 9360;
@@ -1916,6 +2101,14 @@ finish_shape (RtfReader *r)
 
   r->in_shp = FALSE;
   r->in_sn = r->in_sv = r->in_shptxt = FALSE;
+
+  /* A shape in a header or an annotation has nowhere to go in the model,
+   * and is not the body's. */
+  if (r->shp_outer_dest != DEST_NONE || r->atn_kind != 0)
+    {
+      g_string_truncate (r->shp_text, 0);
+      return;
+    }
 
   if (idx == W42_OBJECT_NONE)
     {
@@ -2080,6 +2273,10 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
             g_string_truncate (r->info_text, 0);
             return;
           }
+      /* The comments are prose, and may run to more than one line. */
+      if (r->info_field != NULL &&
+          (g_str_equal (word, "par") || g_str_equal (word, "line")))
+        g_string_append_c (r->info_text, '\n');
       return;                         /* the rest of an \info group is not ours */
     }
 
@@ -2147,7 +2344,7 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     }
   if (g_str_equal (word, "trleft") && has_param)
     {
-      r->trleft = param;
+      r->trleft = CLAMP (param, -31680, 31680);
       return;
     }
   if (g_str_has_prefix (word, "trbrdr") && strlen (word) == 7)
@@ -2198,6 +2395,16 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     }
   if (g_str_equal (word, "cellx") && has_param)
     {
+      /* The model's rows have at most 1023 columns.  Edges past that
+       * would only lengthen the grid every cell of the table is looked
+       * up in, twice: fifty thousand of them made a 1 MB file take
+       * seconds to open. */
+      if (r->cellx->len >= 1023)
+        return;
+      /* Two of Word's widest pages either side of the margin, so that
+       * the widths worked out from the edges stay well inside an int. */
+      param = CLAMP (param, -63360, 63360);
+
       /* A cell that named no sides of its own has the row's, where the
        * row named any: its outer lines at the row's ends, its inside
        * ones between the cells. */
@@ -2261,6 +2468,12 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
                              PARA_MASK, &r->state.pa);
       r->in_cell = FALSE;
       r->table_col++;
+      /* The cell's last paragraph ends here rather than at a \par, and
+       * its list ends with it: \pard keeps a list, for the files that
+       * name it first, and every cell after a bulleted one, and the
+       * paragraph after the table, would be bulleted too. */
+      st->pa.list = W42_LIST_NONE;
+      st->pa.list_start = 0;
       return;
     }
   if (g_str_equal (word, "row"))
@@ -2319,8 +2532,13 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       return;
     }
 
+  /* A field inside another's instruction -- IF around a MERGEFIELD, Word
+   * writes them all the time -- is part of that instruction: its own
+   * words start nothing, and its result is not the body's text. */
   if (g_str_equal (word, "fldinst"))
     {
+      if (r->in_fldinst)
+        return;
       r->in_fldinst = TRUE;
       r->fldinst_depth = r->stack->len;
       g_string_truncate (r->fldinst, 0);
@@ -2328,6 +2546,8 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     }
   if (g_str_equal (word, "fldrslt"))
     {
+      if (r->in_fldinst)
+        return;
       flush_text (r);
       r->in_fldrslt = TRUE;
       r->fldrslt_depth = r->stack->len;
@@ -2335,7 +2555,11 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       return;
     }
   if (g_str_equal (word, "field"))
-    return;
+    {
+      if (r->field_depth == 0)
+        r->field_depth = r->stack->len;
+      return;
+    }
 
   if (r->dest == DEST_HEADER || r->dest == DEST_FOOTER)
     {
@@ -2366,6 +2590,20 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       r->pos = body;
       r->in_note = TRUE;
       r->note_depth = r->stack->len;
+
+      /* A note in a table's cell is not in the table.  The table waits
+       * until the note's group closes; left open, the \pard that begins
+       * the note's paragraph would close it in the notes. */
+      r->note_table = r->table;
+      r->note_in_cell = r->in_cell;
+      r->note_table_before_block = r->table_before_block;
+      r->note_table_row = r->table_row;
+      r->note_table_col = r->table_col;
+      r->note_last_cell_pos = r->last_cell_pos;
+      r->note_last_cell_span = r->last_cell_span;
+      r->table = -1;
+      r->in_cell = FALSE;
+      st->intbl = FALSE;
       return;
     }
   if (g_str_equal (word, "chftn"))
@@ -2461,6 +2699,19 @@ formatting:
           guint8 section_break = st->pa.section_break;
           guint8 columns = st->pa.columns;
           int column_gap = st->pa.column_gap;
+          /* Nor are the flags RTF can only turn on: a paragraph that
+           * turned its style's \\keepn off has no word to say so, and a
+           * file that follows the specification repeats the style's
+           * formatting on every paragraph, these flags included. */
+          guint keep_next = st->pa.keep_next;
+          guint keep_together = st->pa.keep_together;
+          guint page_break_before = st->pa.page_break_before;
+          /* Nor the direction: Word writes \rtlpar before the style's
+           * number, and a left-to-right style would turn an Arabic
+           * paragraph round.  The style's alignment is then read in the
+           * paragraph's direction, as the alignment words after it are. */
+          guint rtl = st->pa.rtl;
+          W42Align align = st->pa.align;
 
           flush_text (r);
           st->pa = style->pa;
@@ -2468,6 +2719,17 @@ formatting:
           st->pa.section_break = section_break;
           st->pa.columns = columns;
           st->pa.column_gap = column_gap;
+          st->pa.keep_next = keep_next;
+          st->pa.keep_together = keep_together;
+          st->pa.page_break_before = page_break_before;
+          if (rtl && !st->pa.rtl)
+            {
+              /* An alignment already named -- AbiWord writes \rtlpar\qr
+               * before the style -- was read in this direction and stands. */
+              st->pa.align = st->align_said ? align
+                                            : rtf_mirror_align (st->pa.align, TRUE);
+              st->pa.rtl = 1;
+            }
         }
       return;
     }
@@ -2480,8 +2742,11 @@ formatting:
       r->cur_ls = param;
       if (shape != NULL)
         {
+          /* A level with no number -- LibreOffice's headings -- is no
+           * list, and has no level in one. */
           st->pa.list = shape->kind[CLAMP (r->cur_ilvl, 0, 8)];
-          st->pa.list_level = (guint8) CLAMP (r->cur_ilvl, 0, 8);
+          st->pa.list_level = st->pa.list != W42_LIST_NONE
+                                ? (guint8) CLAMP (r->cur_ilvl, 0, 8) : 0;
         }
       return;
     }
@@ -2494,7 +2759,8 @@ formatting:
       if (shape != NULL)
         {
           st->pa.list = shape->kind[r->cur_ilvl];
-          st->pa.list_level = (guint8) r->cur_ilvl;
+          st->pa.list_level = st->pa.list != W42_LIST_NONE
+                                ? (guint8) r->cur_ilvl : 0;
         }
       return;
     }
@@ -2548,6 +2814,7 @@ formatting:
       flush_text (r);
       r->in_shp = TRUE;
       r->shp_depth = r->stack->len;
+      r->shp_outer_dest = r->dest;
       r->shp_left = r->shp_top = r->shp_right = r->shp_bottom = 0;
       r->shp_wr = 2;
       r->shp_wrk = 0;
@@ -2622,6 +2889,7 @@ formatting:
   if (g_str_equal (word, "pict"))
     {
       flush_text (r);
+      r->pict_outer_dest = r->dest;
       r->dest = DEST_PICT;
       r->pict_depth = r->stack->len;
       r->pict_format = NULL;
@@ -2682,7 +2950,24 @@ formatting:
   else if (g_str_equal (word, "caps"))
     { flush_text (r); st->ch.allcaps = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "highlight"))
-    { flush_text (r); st->ch.highlight = has_param ? (guint8) CLAMP (param, 0, 16) : 0; }
+    {
+      /* N is an entry in the colour table, as the specification has it
+       * and LibreOffice and AbiWord write it.  Word's tables, and ours,
+       * open with its sixteen highlight colours in its order, so there
+       * the entry is the highlight of that number; elsewhere it is the
+       * highlight nearest the entry's colour.  An older Word42 wrote the
+       * number with no such table. */
+      flush_text (r);
+      if (!has_param || param <= 0)
+        st->ch.highlight = 0;
+      else if ((guint) param >= r->colours->len ||
+               (r->own_file && !colours_in_word_order (r)))
+        st->ch.highlight = (guint8) MIN (param, 16);
+      else if (param <= 16 && colour_at (r, param) == w42_highlight_rgb (param))
+        st->ch.highlight = (guint8) param;
+      else
+        st->ch.highlight = (guint8) w42_highlight_nearest (colour_at (r, param));
+    }
   else if (g_str_equal (word, "revised"))
     { flush_text (r); st->ch.revision = (has_param && param == 0) ? 0 : 1; }
   else if (g_str_equal (word, "deleted"))
@@ -2741,11 +3026,23 @@ formatting:
       w42_fmt_init_default (&def);
       st->pa = def.pa;
       st->pa.list = list;
-      if (r->sect_pending)
+      st->align_said = FALSE;
+      /* The list-table words are the paragraph's own: a level-0 item
+       * after a level-1 one names its \ls and leaves \ilvl0 unsaid. */
+      r->cur_ls = -1;
+      r->cur_ilvl = 0;
+      /* The first paragraph of the body after a \sect starts the section,
+       * and only that one: a table cell ends with \cell, not \par, and
+       * every cell until the next \par took a section break of its own.
+       * A header's paragraph, which Word writes between the \sect and the
+       * body's next \pard, is not it. */
+      if (r->sect_pending && r->dest == DEST_NONE && !r->in_note &&
+          r->atn_kind == 0)
         {
           st->pa.section_break = 1;
           st->pa.columns = (guint8) CLAMP (r->sect_cols, 1, 9);
           st->pa.column_gap = r->sect_gap;
+          r->sect_pending = FALSE;
         }
     }
   else if (g_str_equal (word, "clcbpat") && has_param)
@@ -2792,12 +3089,18 @@ formatting:
       r->sect_gap = 0;
     }
   else if (g_str_equal (word, "ql"))
-    st->pa.align = rtf_mirror_align (W42_ALIGN_LEFT, st->pa.rtl != 0);
+    {
+      st->pa.align = rtf_mirror_align (W42_ALIGN_LEFT, st->pa.rtl != 0);
+      st->align_said = TRUE;
+    }
   else if (g_str_equal (word, "rtlpar"))
     {
       /* The direction may be read after the alignment, so what was read
-       * as an alignment is turned round now. */
-      st->pa.align = rtf_mirror_align (st->pa.align, TRUE);
+       * as an alignment is turned round now -- unless it was read in this
+       * direction already, from a right-to-left style, when turning it
+       * again would undo it, and every save would flip it once more. */
+      if (!st->pa.rtl)
+        st->pa.align = rtf_mirror_align (st->pa.align, TRUE);
       st->pa.rtl = 1;
     }
   else if (g_str_equal (word, "ltrpar"))
@@ -2806,10 +3109,21 @@ formatting:
       st->pa.rtl = 0;
     }
   else if (g_str_equal (word, "ltrpar")) st->pa.rtl = 0;
-  else if (g_str_equal (word, "qc")) st->pa.align = W42_ALIGN_CENTER;
+  else if (g_str_equal (word, "qc"))
+    {
+      st->pa.align = W42_ALIGN_CENTER;
+      st->align_said = TRUE;
+    }
   else if (g_str_equal (word, "qr"))
-    st->pa.align = rtf_mirror_align (W42_ALIGN_RIGHT, st->pa.rtl != 0);
-  else if (g_str_equal (word, "qj")) st->pa.align = W42_ALIGN_JUSTIFY;
+    {
+      st->pa.align = rtf_mirror_align (W42_ALIGN_RIGHT, st->pa.rtl != 0);
+      st->align_said = TRUE;
+    }
+  else if (g_str_equal (word, "qj"))
+    {
+      st->pa.align = W42_ALIGN_JUSTIFY;
+      st->align_said = TRUE;
+    }
   else if (g_str_equal (word, "li") && has_param) st->pa.indent_left = param;
   else if (g_str_equal (word, "ri") && has_param) st->pa.indent_right = param;
   else if (g_str_equal (word, "fi") && has_param) st->pa.indent_first = param;
@@ -2868,6 +3182,10 @@ formatting:
                                                    : W42_LIST_NUMBER;
       guint8 level = g_str_equal (word, "pnlvl") ? (guint8) CLAMP (param - 1, 0, 8) : 0;
 
+      /* \pnlvlN alone may be a bullet level, which its \pntxtb then
+       * names; \pnlvlbody is numbered whatever its text says. */
+      if (!g_str_equal (word, "pnlvl"))
+        st->pnnum = g_str_equal (word, "pnlvlbody");
       st->pa.list = kind;
       st->pa.list_level = level;
       if (r->stack->len > 0)
@@ -2885,6 +3203,7 @@ formatting:
                   : g_str_equal (word, "pnucltr") ? W42_LIST_UPPER_LETTER
                   : g_str_equal (word, "pnlcrm")  ? W42_LIST_LOWER_ROMAN
                                                   : W42_LIST_UPPER_ROMAN;
+      st->pnnum = TRUE;
       if (w42_list_is_numbered (st->pa.list))
         {
           st->pa.list = kind;
@@ -2914,6 +3233,7 @@ formatting:
        * an exact leading, and \slmult1 later reinterprets it as a multiple.
        * Clamped, so the multiple's * 100 stays well inside an int. */
       st->pa.line_spacing = CLAMP (ABS (param), 0, 31680);
+      st->pa.line_spacing_pct = 0;
     }
   else if (g_str_equal (word, "slmult") && has_param)
     {
@@ -2929,6 +3249,21 @@ formatting:
     {
       end_paragraph (r);
       r->sect_pending = FALSE;
+    }
+  else if (g_str_equal (word, "page"))
+    {
+      /* A manual page break.  The model says it with the paragraph after
+       * the break, as the DOCX reader reads Word's page break: the one it
+       * is in ends here, unless nothing has gone into it yet, and the
+       * next starts a page. */
+      if (r->dest == DEST_NONE && !r->in_note && r->atn_kind == 0)
+        {
+          table_sync (r);
+          flush_text (r);
+          if (r->pos != r->last_par_end)
+            end_paragraph (r);
+          r->page_break_pending = TRUE;
+        }
     }
   else if (g_str_equal (word, "line"))
     append_char (r, 0x2028);
@@ -2996,6 +3331,10 @@ level_kind (int nfc)
     case 3:  return W42_LIST_UPPER_LETTER;
     case 4:  return W42_LIST_LOWER_LETTER;
     case 23: return W42_LIST_BULLET;
+    /* No number at all: how LibreOffice ties its headings to the outline
+     * without numbering them, which read as a number would give every
+     * heading a "1." it does not have. */
+    case 255: return W42_LIST_NONE;
     default: return W42_LIST_NUMBER;      /* 0 and the rest: 1. 2. 3. */
     }
 }
@@ -3104,6 +3443,11 @@ scan_list_tables (const char *d, gsize len)
             while (list_open > open && d[list_open] != '{')
               list_open--;
             list_end = group_end (d, len, list_open);
+            /* A \list with no group of its own: the brace found behind it
+             * is an earlier group's, which ends before the word, and going
+             * on from that end would come back to the word for ever. */
+            if (list_end <= j)
+              continue;
             id = word_param (d, len, list_open, list_end, "listid");
             if (id < 0)
               {
@@ -3127,6 +3471,8 @@ scan_list_tables (const char *d, gsize len)
                 while (lvl_open > list_open && d[lvl_open] != '{')
                   lvl_open--;
                 lvl_end = group_end (d, len, lvl_open);
+                if (lvl_end <= k)
+                  continue;
                 nfc = word_param (d, len, lvl_open, lvl_end, "levelnfc");
                 shape->kind[level++] = level_kind (nfc);
                 k = lvl_end;
@@ -3163,6 +3509,8 @@ scan_list_tables (const char *d, gsize len)
             while (ov_open > open && d[ov_open] != '{')
               ov_open--;
             ov_end = group_end (d, len, ov_open);
+            if (ov_end <= j)
+              continue;
             id = word_param (d, len, ov_open, ov_end, "listid");
             ls = word_param (d, len, ov_open, ov_end, "ls");
             shape = id >= 0 ? g_hash_table_lookup (by_id, GINT_TO_POINTER (id)) : NULL;
@@ -3194,6 +3542,7 @@ rtf_known_destination (const char *word)
     "footer", "footerl", "footerr", "footerf",
     "wfnumhead", "pn", "bkmkstart", "bkmkend",
     "atrfstart", "atrfend", "atnref", "annotation",
+    "ud",
   };
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
@@ -3212,7 +3561,7 @@ is_ignorable_destination (const char *word)
     "shprslt",                /* what a reader without \shp would show: not this one */
     "picprop", "wpeqn", "wgrffmtfilter", "background",
     "themedata", "colorschememapping", "latentstyles", "datastore",
-    "generator", "xmlnstbl", "rsidtbl", "mmathPr", "upr",
+    "generator", "xmlnstbl", "rsidtbl", "mmathPr",
   };
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
@@ -3302,8 +3651,13 @@ w42_rtf_load (W42PieceTable *pt,
   r.clfilled = g_array_new (FALSE, FALSE, sizeof (int));
   r.last_cell_pos = (gsize) -1;
   r.pos = w42_pt_first_caret_pos (pt);
+  r.last_par_end = r.pos;
   r.first_para = TRUE;
   r.font_index = -1;
+  /* Our own files are read as we wrote them.  The generator's group comes
+   * after the stylesheet, too late to be met on the way through. */
+  r.own_file = g_strstr_len (contents, (gssize) length,
+                             "{\\*\\generator Word42") != NULL;
 
   w42_fmt_init_default (&def);
   r.state.ch = def.ch;
@@ -3320,6 +3674,10 @@ w42_rtf_load (W42PieceTable *pt,
           if (r.stack->len > 4096)
             break;                    /* nested past all sense: a hostile file */
           g_array_append_val (r.stack, r.state);
+          /* {\upr{ansi}{\*\ud{unicode}}}: the first is the same text for
+           * readers that know no Unicode, and the \ud unskips its own. */
+          if (r.upr_depth != 0 && r.stack->len == r.upr_depth + 1)
+            r.state.skip = TRUE;
           p++;
           continue;
         }
@@ -3335,16 +3693,40 @@ w42_rtf_load (W42PieceTable *pt,
               r.in_fldinst = FALSE;
               if (g_ascii_strncasecmp (code, "HYPERLINK", 9) == 0)
                 {
-                  /* HYPERLINK "url": the result that follows is the link. */
-                  const char *q = strchr (code, '"');
-                  if (q != NULL)
+                  /* HYPERLINK "url": the result that follows is the link.
+                   * HYPERLINK \l "name" is a place in this document, which
+                   * the model spells "#name", as the DOCX reader does. */
+                  const char *q = code + 9;
+                  gboolean anchor = FALSE;
+                  char *target = NULL;
+
+                  while (*q != '\0' && target == NULL)
                     {
-                      const char *e = strchr (q + 1, '"');
-                      char *url = e != NULL ? g_strndup (q + 1, (gsize) (e - q - 1))
-                                            : g_strdup (q + 1);
+                      if (*q == '\\' && q[1] != '\0')
+                        {
+                          anchor = q[1] == 'l';
+                          q += 2;
+                        }
+                      else if (*q == '"')
+                        {
+                          const char *e = strchr (q + 1, '"');
+
+                          target = e != NULL
+                                     ? g_strndup (q + 1, (gsize) (e - q - 1))
+                                     : g_strdup (q + 1);
+                        }
+                      else
+                        q++;
+                    }
+                  if (target != NULL)
+                    {
+                      char *url = anchor ? g_strconcat ("#", target, NULL)
+                                         : g_strdup (target);
+
                       flush_text (&r);
                       r.link = g_intern_string (url);
                       g_free (url);
+                      g_free (target);
                     }
                 }
               r.field_code = w42_field_code (code);
@@ -3376,6 +3758,18 @@ w42_rtf_load (W42PieceTable *pt,
                 }
               r.field_code = NULL;
             }
+          if (r.field_depth != 0 && r.stack->len == r.field_depth)
+            {
+              /* The field is over, whether or not it had a result: a
+               * HYPERLINK with none would otherwise make a link of the
+               * rest of the document. */
+              flush_text (&r);
+              r.link = NULL;
+              r.field_code = NULL;
+              r.field_depth = 0;
+            }
+          if (r.upr_depth != 0 && r.stack->len == r.upr_depth)
+            r.upr_depth = 0;
           if (r.atn_kind != 0 && r.stack->len == r.atn_depth)
             {
               char *ref = g_strstrip (g_strdup (r.atn_ref->str));
@@ -3450,12 +3844,27 @@ w42_rtf_load (W42PieceTable *pt,
           if (r.in_note && r.stack->len == r.note_depth)
             {
               flush_text (&r);
+              /* A table in the note ends with it. */
+              if (r.table >= 0)
+                {
+                  r.state.intbl = FALSE;
+                  table_sync (&r);
+                }
               /* A note's last paragraph ends with the group rather than
                  with a \par, so this is where its properties are set. */
               w42_pt_apply_para_fmt (r.pt, r.pos > 0 ? r.pos - 1 : 0, 0,
                                      PARA_MASK, &r.state.pa);
               r.in_note = FALSE;
               r.pos = r.note_return;
+              /* And the body's table, if the note was in one of its cells,
+               * goes on where it was. */
+              r.table = r.note_table;
+              r.in_cell = r.note_in_cell;
+              r.table_before_block = r.note_table_before_block;
+              r.table_row = r.note_table_row;
+              r.table_col = r.note_table_col;
+              r.last_cell_pos = r.note_last_cell_pos;
+              r.last_cell_span = r.note_last_cell_span;
             }
           if (r.dest == DEST_PICT && r.stack->len == r.pict_depth)
             finish_pict (&r);
@@ -3499,6 +3908,24 @@ w42_rtf_load (W42PieceTable *pt,
             }
 
           flush_text (&r);
+
+          if (r.stack->len == 1)
+            {
+              /* The document's own group is closing.  A last paragraph
+               * with no \par of its own -- TextEdit and others end a file
+               * so -- still has its properties to be given, and nothing
+               * after this brace is the document's. */
+              if (r.pos != r.last_par_end && r.dest == DEST_NONE && !r.in_note)
+                {
+                  W42ParaFmt pa = r.state.pa;
+
+                  if (r.page_break_pending)
+                    pa.page_break_before = 1;
+                  w42_pt_apply_para_fmt (r.pt, r.pos > 0 ? r.pos - 1 : 0, 0,
+                                         PARA_MASK, &pa);
+                }
+              break;
+            }
 
           if (r.stack->len > 0)
             {
@@ -3567,6 +3994,13 @@ w42_rtf_load (W42PieceTable *pt,
                 append_char (&r, 0x00A0);
               else if (*p == '-')
                 append_char (&r, 0x00AD);    /* optional hyphen */
+              else if (*p == '_')
+                append_char (&r, 0x2011);    /* non-breaking hyphen */
+              else if (*p == '|' || *p == ':')
+                {
+                  /* The formula character and an index entry's subentry
+                   * mark: syntax of Word's own, not text. */
+                }
               else if (*p == '*')
                 {
                   /* \* marks a destination the reader may ignore.  Take the
@@ -3667,16 +4101,69 @@ w42_rtf_load (W42PieceTable *pt,
                     pending_surrogate = FALSE;
                   }
 
-                /* Skip the fallback characters that follow. */
+                /* Skip the fallback characters that follow.  A control word
+                 * or symbol counts as one of them, as the specification has
+                 * it -- left in, an \emdash written as the fallback of an
+                 * em dash's \u would be a second dash -- and a group's
+                 * brace ends them. */
                 for (int i = 0; i < r.state.uc && p < end; i++)
                   {
-                    if (*p == '\\' && p + 3 < end && p[1] == '\'')
-                      p += 4;
-                    else if (*p != '{' && *p != '}' && *p != '\\')
+                    if (*p == '{' || *p == '}')
+                      break;
+                    if (*p != '\\')
                       p++;
+                    else if (p + 3 < end && p[1] == '\'')
+                      p += 4;
+                    else if (p + 1 < end && g_ascii_isalpha (p[1]))
+                      {
+                        const char *q = p + 1;
+
+                        while (q < end && g_ascii_isalpha (*q))
+                          q++;
+                        /* Except another \uN, which is a character of its
+                         * own from a writer that left \uc1 in force and
+                         * wrote no fallback. */
+                        if (q - p == 2 && p[1] == 'u' && q < end &&
+                            (*q == '-' || g_ascii_isdigit (*q)))
+                          break;
+                        if (q < end && *q == '-')
+                          q++;
+                        while (q < end && g_ascii_isdigit (*q))
+                          q++;
+                        if (q < end && *q == ' ')
+                          q++;
+                        p = q;
+                      }
+                    else if (p + 1 < end)
+                      p += 2;
                     else
                       break;
                   }
+              }
+            else if (g_str_equal (word, "bin") && has_param)
+              {
+                /* \binN: N bytes of data follow, and a brace or backslash
+                 * among them is data, not RTF.  A picture keeps them, as
+                 * the hex they would otherwise have been written in. */
+                gsize n = MIN ((gsize) MAX (param, 0), (gsize) (end - p));
+
+                if (r.dest == DEST_PICT && !r.state.skip)
+                  for (gsize i = 0; i < n; i++)
+                    g_string_append_printf (r.pict_hex, "%02x", (guchar) p[i]);
+                p += n;
+              }
+            else if (g_str_equal (word, "upr"))
+              {
+                /* Its first group is the text again for readers that know
+                 * no Unicode; skipped whole, the {\*\ud} copy that follows
+                 * it went too, and with it the title of the document. */
+                if (!r.state.skip)
+                  r.upr_depth = r.stack->len;
+              }
+            else if (g_str_equal (word, "ud"))
+              {
+                if (r.upr_depth != 0 && r.stack->len == r.upr_depth + 1)
+                  r.state.skip = FALSE;
               }
             else if (is_ignorable_destination (word))
               {
@@ -3711,6 +4198,10 @@ w42_rtf_load (W42PieceTable *pt,
           continue;
         }
 
+      /* A name's characters in the stylesheet and the font table are
+       * decoded below as the text's are, rather than kept byte by byte:
+       * a raw 8-bit name is not UTF-8, and interned as it was it went on
+       * into the model and out into files that must be UTF-8. */
       if (r.dest == DEST_STYLESHEET)
         {
           /* The {\*\cs} and {\*\ts} entries Word writes are skipped
@@ -3721,11 +4212,11 @@ w42_rtf_load (W42PieceTable *pt,
               continue;
             }
           if (*p == ';')
-            finish_style (&r);
-          else
-            g_string_append_c (r.style_name, *p);
-          p++;
-          continue;
+            {
+              finish_style (&r);
+              p++;
+              continue;
+            }
         }
 
       if (r.dest == DEST_FONTTBL)
@@ -3749,13 +4240,9 @@ w42_rtf_load (W42PieceTable *pt,
                     g_strdup (r.font_name->str);
                   g_string_truncate (r.font_name, 0);
                 }
+              p++;
+              continue;
             }
-          else
-            {
-              g_string_append_c (r.font_name, *p);
-            }
-          p++;
-          continue;
         }
 
       if (r.dest == DEST_COLORTBL)
@@ -3798,8 +4285,11 @@ w42_rtf_load (W42PieceTable *pt,
     }
 
   /* The closing \par of the last paragraph leaves an empty one behind, just
-   * as a trailing newline would in a text file.  Drop it. */
-  if (!r.first_para && r.pos >= 1 &&
+   * as a trailing newline would in a text file.  Drop it -- but only if
+   * nothing went in after that \par: a file whose last paragraph has no
+   * \par of its own ends in that paragraph's text, and what was dropped
+   * was its last character. */
+  if (!r.first_para && r.pos >= 1 && r.pos == r.last_par_end &&
       (r.pos == w42_pt_length (pt) || r.pos == w42_pt_notes_start (pt)))
     {
       gsize first = w42_pt_first_caret_pos (pt);
