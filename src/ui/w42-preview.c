@@ -190,6 +190,7 @@ draw_preview (GtkDrawingArea *area, cairo_t *cr, int width, int height,
     {
       double oy = PAGE_GAP + (p / self->columns) * (page_h + PAGE_GAP);
       double ox = ox0 + (p % self->columns) * (page_w + PAGE_GAP);
+      guint first, end;
 
       if (oy > bottom || oy + page_h < top)
         continue;
@@ -225,7 +226,8 @@ draw_preview (GtkDrawingArea *area, cairo_t *cr, int width, int height,
 
       w42_layout_draw_backdrop (self->layout, cr, p);
 
-      for (guint i = 0; i < lines->len; i++)
+      w42_layout_page_lines (self->layout, p, &first, &end);
+      for (guint i = first; i < end; i++)
         {
           const W42LineBox *box = &g_array_index (lines, W42LineBox, i);
 

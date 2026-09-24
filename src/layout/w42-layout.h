@@ -87,6 +87,13 @@ void w42_layout_set_spell_caret (W42Layout *self, gsize pos);
 const GArray *w42_layout_lines         (W42Layout *self);   /* of W42LineBox */
 GPtrArray    *w42_layout_blocks        (W42Layout *self);   /* of W42Block* */
 
+/* The stretch [*first, *end) of w42_layout_lines() that holds every line
+ * of `page`, so that a painter need not look at the whole document's to
+ * find one page's.  Lines of other pages can fall inside it -- a line's
+ * page is still to be checked -- and a page with none has an empty one. */
+void          w42_layout_page_lines    (W42Layout *self, int page,
+                                        guint *first, guint *end);
+
 /* A header or footer laid out for one page, in page-relative pixels. */
 typedef struct {
   int          page;

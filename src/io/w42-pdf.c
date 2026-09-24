@@ -49,6 +49,7 @@ w42_pdf_export (W42PieceTable      *pt,
   cairo_t *cr;
   W42Layout *layout;
   const GArray *lines;
+  guint first, end;
   int n_pages;
   gboolean ok = TRUE;
 
@@ -81,7 +82,8 @@ w42_pdf_export (W42PieceTable      *pt,
 
       w42_layout_draw_backdrop (layout, cr, p);
 
-      for (guint i = 0; i < lines->len; i++)
+      w42_layout_page_lines (layout, p, &first, &end);
+      for (guint i = first; i < end; i++)
         {
           const W42LineBox *box = &g_array_index (lines, W42LineBox, i);
 

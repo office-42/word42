@@ -133,6 +133,7 @@ on_draw_page (GtkPrintOperation *operation,
   PrintJob *job = data;
   cairo_t *cr = gtk_print_context_get_cairo_context (context);
   const GArray *lines = w42_layout_lines (job->layout);
+  guint first, end;
   int page = page_nr;
 
   (void) operation;
@@ -163,7 +164,8 @@ on_draw_page (GtkPrintOperation *operation,
   if (!job->draft)
     w42_layout_draw_backdrop (job->layout, cr, page);
 
-  for (guint i = 0; i < lines->len; i++)
+  w42_layout_page_lines (job->layout, page, &first, &end);
+  for (guint i = first; i < end; i++)
     {
       const W42LineBox *box = &g_array_index (lines, W42LineBox, i);
 

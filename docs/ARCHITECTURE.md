@@ -459,7 +459,11 @@ by a `keyval`-to-character shortcut.
 
 The widget is not a `GtkScrollable`; it reports its full size from `measure()`
 and lets `GtkScrolledWindow` wrap it in a viewport. That keeps the scrolling
-code to the few lines in `view_scroll_to_caret()`.
+code to the few lines in `view_scroll_to_caret()`. It draws only the part of
+itself the scrolled window shows, finding a page's lines through the
+layout's index of them, and watches the window's adjustments to draw again
+when that part moves: a drawing the size of the widget was every page of
+the document on every blink of the caret.
 
 ## Things to be careful about
 

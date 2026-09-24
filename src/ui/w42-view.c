@@ -94,6 +94,11 @@ struct _W42View {
   guint64        repeat_serial;
   guint          blink_id;
   gboolean       blink_on;
+
+  /* The scrolled window's adjustments, watched so that the part of the
+   * view on show is drawn again when it scrolls: only that part is
+   * painted, and GTK keeps a moved widget's last drawing. */
+  GtkAdjustment *scroll_adj[2];
 };
 
 G_DEFINE_FINAL_TYPE (W42View, w42_view, GTK_TYPE_WIDGET)
@@ -5189,11 +5194,15 @@ on_focus_leave (GtkEventControllerFocus *controller, gpointer data)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+static void view_watch_scrolling (W42View *self);
+static void view_unwatch_scrolling (W42View *self);
+
 static void
 on_view_realize (GtkWidget *widget, gpointer data)
 {
   (void) data;
   gtk_im_context_set_client_widget (W42_VIEW (widget)->im, widget);
+  view_watch_scrolling (W42_VIEW (widget));
 }
 
 static void
@@ -5201,6 +5210,7 @@ on_view_unrealize (GtkWidget *widget, gpointer data)
 {
   (void) data;
   gtk_im_context_set_client_widget (W42_VIEW (widget)->im, NULL);
+  view_unwatch_scrolling (W42_VIEW (widget));
 }
 
 static gboolean
@@ -5270,8 +5280,10 @@ draw_text_boundaries (W42View *self, cairo_t *cr)
   cairo_restore (cr);
 }
 
+/* `shown` is the part of the view the scrolled window shows, in the
+ * view's coordinates: pages and lines outside it are not drawn. */
 static void
-view_draw (W42View *self, cairo_t *cr, int width, int height)
+view_draw (W42View *self, cairo_t *cr, const graphene_rect_t *shown)
 {
   W42Layout *layout = self->layout;
   const GArray *lines = w42_layout_lines (layout);
@@ -5285,6 +5297,8 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
   gsize sel_a = sel_start (self);
   gsize sel_b = sel_end (self);
   int n_pages = w42_layout_n_pages (layout);
+  double top = shown->origin.y;
+  double bottom = shown->origin.y + shown->size.height;
 
   gboolean paged = (self->mode == W42_VIEW_PAGE_LAYOUT);
   double paper_r = 1.0, paper_g = 1.0, paper_b = 1.0;
@@ -5325,8 +5339,9 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
       double oy = view_page_origin_y (self, p);
       double pw = page_w * zoom;
       double ph = page_h * zoom;
+      guint first, end;
 
-      if (oy > height || oy + ph < 0)
+      if (oy > bottom || oy + ph < top)
         continue;
 
       if (paged)
@@ -5355,13 +5370,20 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
 
       w42_layout_draw_backdrop (layout, cr, p);
 
-      for (guint i = 0; i < lines->len; i++)
+      w42_layout_page_lines (layout, p, &first, &end);
+      for (guint i = first; i < end; i++)
         {
           const W42LineBox *box = &g_array_index (lines, W42LineBox, i);
           const W42Block *blk;
           gsize line_first, line_last;
 
           if (box->page != p)
+            continue;
+          /* Normal view is one page as long as the document, so its
+           * lines are culled one by one too; a line's height either side
+           * is room for glyphs that stand out of their box. */
+          if (oy + (box->y + 2 * box->height) * zoom < top ||
+              oy + (box->y - box->height) * zoom > bottom)
             continue;
 
           blk = g_ptr_array_index (blocks, box->block);
@@ -5442,23 +5464,83 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
     }
 }
 
+/* The view is as tall as the document, and a drawing the size of the
+ * view was every page of it on every blink of the caret -- most of a
+ * CPU for the Bible sample, and bigger than GL renderers can make a
+ * texture.  So the drawing is only of the part the scrolled window
+ * shows, which is never more than the window. */
+static void
+view_shown_rect (W42View *self, graphene_rect_t *out)
+{
+  GtkWidget *widget = GTK_WIDGET (self);
+  GtkWidget *sw = gtk_widget_get_ancestor (widget, GTK_TYPE_SCROLLED_WINDOW);
+  graphene_rect_t all, window;
+
+  graphene_rect_init (&all, 0, 0, gtk_widget_get_width (widget),
+                      gtk_widget_get_height (widget));
+  *out = all;
+  if (sw != NULL && gtk_widget_compute_bounds (sw, widget, &window))
+    {
+      if (!graphene_rect_intersection (&all, &window, out))
+        graphene_rect_init (out, 0, 0, 0, 0);
+      graphene_rect_round_extents (out, out);
+    }
+}
+
 static void
 w42_view_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
   W42View *self = W42_VIEW (widget);
-  int width  = gtk_widget_get_width (widget);
-  int height = gtk_widget_get_height (widget);
+  graphene_rect_t shown;
   cairo_t *cr;
 
-  if (self->doc == NULL || width <= 0 || height <= 0)
+  if (self->doc == NULL)
+    return;
+  view_shown_rect (self, &shown);
+  if (shown.size.width <= 0 || shown.size.height <= 0)
     return;
 
-  cr = gtk_snapshot_append_cairo (snapshot,
-                                  &GRAPHENE_RECT_INIT (0, 0, width, height));
+  cr = gtk_snapshot_append_cairo (snapshot, &shown);
 
-  view_draw (self, cr, width, height);
+  view_draw (self, cr, &shown);
 
   cairo_destroy (cr);
+}
+
+static void
+view_unwatch_scrolling (W42View *self)
+{
+  for (int i = 0; i < 2; i++)
+    if (self->scroll_adj[i] != NULL)
+      {
+        g_signal_handlers_disconnect_by_func (self->scroll_adj[i],
+                                              gtk_widget_queue_draw, self);
+        g_clear_object (&self->scroll_adj[i]);
+      }
+}
+
+/* Scrolling moves the view in its viewport without asking it to draw
+ * again, and a taller window shows more of it without changing its
+ * size, so the adjustments are watched: their values for the one, their
+ * page sizes for the other. */
+static void
+view_watch_scrolling (W42View *self)
+{
+  GtkWidget *sw = gtk_widget_get_ancestor (GTK_WIDGET (self),
+                                           GTK_TYPE_SCROLLED_WINDOW);
+
+  view_unwatch_scrolling (self);
+  if (sw == NULL)
+    return;
+  self->scroll_adj[0] = g_object_ref (gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (sw)));
+  self->scroll_adj[1] = g_object_ref (gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (sw)));
+  for (int i = 0; i < 2; i++)
+    {
+      g_signal_connect_swapped (self->scroll_adj[i], "value-changed",
+                                G_CALLBACK (gtk_widget_queue_draw), self);
+      g_signal_connect_swapped (self->scroll_adj[i], "changed",
+                                G_CALLBACK (gtk_widget_queue_draw), self);
+    }
 }
 
 static void
@@ -5606,6 +5688,7 @@ w42_view_dispose (GObject *object)
       g_source_remove (self->blink_id);
       self->blink_id = 0;
     }
+  view_unwatch_scrolling (self);
 
   if (self->doc != NULL && self->doc_changed_id != 0)
     {

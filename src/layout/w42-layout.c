@@ -15,6 +15,7 @@ struct _W42Layout {
   GPtrArray    *blocks;    /* W42Block*, owned */
   GPtrArray    *layouts;   /* PangoLayout*, one per block, owned */
   GArray       *lines;     /* W42LineBox */
+  GArray       *page_lines; /* guint pairs: each page's stretch of lines */
   int           n_pages;
 
   double        page_w;
@@ -583,6 +584,7 @@ w42_layout_new (void)
   self->cap_layouts = g_ptr_array_new_with_free_func (g_object_unref);
   self->furniture_cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
   self->lines   = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
+  self->page_lines = g_array_new (FALSE, TRUE, sizeof (guint));
   self->n_pages = 1;
   self->shaped = g_hash_table_new_full (key_hash, key_equal, key_free, shaped_free);
   self->keybuf = g_byte_array_new ();
@@ -609,6 +611,7 @@ w42_layout_free (W42Layout *self)
   g_array_free (self->caps, TRUE);
   g_ptr_array_free (self->cap_layouts, TRUE);
   g_array_free (self->lines, TRUE);
+  g_array_free (self->page_lines, TRUE);
   g_hash_table_destroy (self->shaped);
   g_byte_array_free (self->keybuf, TRUE);
   g_object_unref (self->ctx);
@@ -3100,6 +3103,24 @@ w42_layout_build_pt (W42Layout          *self,
       self->page_h = self->mar_t + y + self->mar_b;
     }
 
+  /* Where each page's lines are.  The view paints a page or two on every
+   * blink of the caret, and finding them by walking every line of the
+   * document was most of what that cost in a long one. */
+  g_array_set_size (self->page_lines, 0);
+  g_array_set_size (self->page_lines, 2 * (guint) self->n_pages);
+  for (guint i = 0; i < self->lines->len; i++)
+    {
+      int p = g_array_index (self->lines, W42LineBox, i).page;
+      guint *range;
+
+      if (p < 0 || p >= self->n_pages)
+        continue;
+      range = &g_array_index (self->page_lines, guint, 2 * p);
+      if (range[1] == 0)
+        range[0] = i;
+      range[1] = i + 1;
+    }
+
   /* What this pass did not want is let go of, so that the cache holds
    * the document as it now is and not everything it has ever been. */
   {
@@ -3421,7 +3442,10 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
    * shading fills and the borders run round.  A paragraph that runs on to
    * the next page gets its top border on this one and its bottom on the
    * next, which is what Word did too. */
-  for (guint i = 0; i < self->lines->len; )
+  guint page_first, page_end;
+
+  w42_layout_page_lines (self, page, &page_first, &page_end);
+  for (guint i = page_first; i < page_end; )
     {
       const W42LineBox *first = &g_array_index (self->lines, W42LineBox, i);
       const W42Block *block = g_ptr_array_index (self->blocks, first->block);
@@ -3990,6 +4014,19 @@ w42_layout_blocks (W42Layout *self)
 {
   g_return_val_if_fail (self != NULL, NULL);
   return self->blocks;
+}
+
+void
+w42_layout_page_lines (W42Layout *self, int page, guint *first, guint *end)
+{
+  g_return_if_fail (self != NULL);
+
+  *first = *end = 0;
+  if (page >= 0 && 2 * (guint) page + 1 < self->page_lines->len)
+    {
+      *first = g_array_index (self->page_lines, guint, 2 * page);
+      *end = g_array_index (self->page_lines, guint, 2 * page + 1);
+    }
 }
 
 /* ---------------------------------------------------------------------- */
