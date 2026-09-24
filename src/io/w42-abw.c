@@ -203,12 +203,18 @@ para_prop (const char *key, const char *value, gpointer data)
   else if (g_str_equal (key, "margin-bottom")) pa->space_after = length_twips (value);
   else if (g_str_equal (key, "line-height") && *value != '\0')
     {
+      /* Either kind replaces the other, which a style may have set; and
+       * a multiple of one is single spacing, which the model says as 0. */
+      pa->line_spacing = 0;
+      pa->line_spacing_pct = 0;
       if (strchr (value, '+') != NULL)          /* "14pt+": at least */
         pa->line_spacing = length_twips (value);
       else if (g_ascii_isdigit (value[strlen (value) - 1]))
         pa->line_spacing_pct = (int) (CLAMP (g_ascii_strtod (value, NULL), 0.0, 100.0) * 100.0 + 0.5);
       else
         pa->line_spacing = length_twips (value);
+      if (pa->line_spacing_pct == 100)
+        pa->line_spacing_pct = 0;
     }
   else if (g_str_equal (key, "list-style") && *value != '\0' &&
            g_ascii_strcasecmp (value, "None") != 0)
@@ -1217,11 +1223,16 @@ para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
 
   if (base == NULL || pa->align != base->align)
     g_string_append_printf (s, "%stext-align:%s", s->len > 0 ? "; " : "", align);
-  if (pa->indent_left)  append_twips (s, "margin-left", pa->indent_left);
-  if (pa->indent_right) append_twips (s, "margin-right", pa->indent_right);
-  if (pa->indent_first) append_twips (s, "text-indent", pa->indent_first);
-  if (pa->space_before) append_twips (s, "margin-top", pa->space_before);
-  if (pa->space_after)  append_twips (s, "margin-bottom", pa->space_after);
+  /* A paragraph's props go over its style's, so what differs from the
+   * style is said, nought included: a paragraph indented 0 in a style
+   * indented an inch would otherwise take the inch. */
+#define DIFFERS(field) (base == NULL ? pa->field != 0 : pa->field != base->field)
+  if (DIFFERS (indent_left))  append_twips (s, "margin-left", pa->indent_left);
+  if (DIFFERS (indent_right)) append_twips (s, "margin-right", pa->indent_right);
+  if (DIFFERS (indent_first)) append_twips (s, "text-indent", pa->indent_first);
+  if (DIFFERS (space_before)) append_twips (s, "margin-top", pa->space_before);
+  if (DIFFERS (space_after))  append_twips (s, "margin-bottom", pa->space_after);
+#undef DIFFERS
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     {
       char buf[G_ASCII_DTOSTR_BUF_SIZE];
@@ -1235,6 +1246,9 @@ para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
       g_string_append_printf (s, "%sline-height:%spt", s->len > 0 ? "; " : "",
                               g_ascii_formatd (buf, sizeof buf, "%.2f", pa->line_spacing / 20.0));
     }
+  else if (base != NULL && ((base->line_spacing_pct > 0 && base->line_spacing_pct != 100) ||
+                            base->line_spacing > 0))
+    g_string_append_printf (s, "%sline-height:1.0", s->len > 0 ? "; " : "");
   if (pa->n_tabs > 0)
     {
       g_string_append_printf (s, "%stabstops:", s->len > 0 ? "; " : "");
@@ -1281,9 +1295,23 @@ para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
 
       g_string_append_printf (s, "%sbgcolor:%02x%02x%02x", s->len > 0 ? "; " : "", grey, grey, grey);
     }
+  else if (base != NULL && (base->has_shading_color || base->shading > 0))
+    g_string_append_printf (s, "%sbgcolor:transparent", s->len > 0 ? "; " : "");
   if (pa->keep_next)     g_string_append_printf (s, "%skeep-with-next:yes", s->len > 0 ? "; " : "");
+  else if (base != NULL && base->keep_next)
+    g_string_append_printf (s, "%skeep-with-next:no", s->len > 0 ? "; " : "");
   if (pa->keep_together) g_string_append_printf (s, "%skeep-together:yes", s->len > 0 ? "; " : "");
+  else if (base != NULL && base->keep_together)
+    g_string_append_printf (s, "%skeep-together:no", s->len > 0 ? "; " : "");
   if (pa->rtl)           g_string_append_printf (s, "%sdom-dir:rtl", s->len > 0 ? "; " : "");
+  else if (base != NULL && base->rtl)
+    g_string_append_printf (s, "%sdom-dir:ltr", s->len > 0 ? "; " : "");
+  /* Widow control is on unless said otherwise; AbiWord counts it in
+   * lines, 2 being its own default. */
+  if (!pa->widow_control)
+    g_string_append_printf (s, "%swidows:0; orphans:0", s->len > 0 ? "; " : "");
+  else if (base != NULL && !base->widow_control)
+    g_string_append_printf (s, "%swidows:2; orphans:2", s->len > 0 ? "; " : "");
 }
 
 static void
@@ -1306,21 +1334,33 @@ char_props (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
     g_string_append_printf (s, "%sfont-weight:%s", s->len > 0 ? "; " : "", ch->bold ? "bold" : "normal");
   if (base == NULL || ch->italic != base->italic)
     g_string_append_printf (s, "%sfont-style:%s", s->len > 0 ? "; " : "", ch->italic ? "italic" : "normal");
+  /* The rest likewise say "none" and "normal" where the base has them
+   * on and the run does not. */
   if (ch->underline || ch->strikeout || ch->overline)
     g_string_append_printf (s, "%stext-decoration:%s%s%s", s->len > 0 ? "; " : "",
                             ch->underline ? "underline " : "", ch->strikeout ? "line-through " : "",
                             ch->overline ? "overline" : "");
-  if (ch->color != 0)
-    g_string_append_printf (s, "%scolor:%06x", s->len > 0 ? "; " : "", ch->color);
+  else if (base != NULL && (base->underline || base->strikeout || base->overline))
+    g_string_append_printf (s, "%stext-decoration:none", s->len > 0 ? "; " : "");
+  if (ch->color != 0 || (base != NULL && base->color != 0))
+    g_string_append_printf (s, "%scolor:%06x", s->len > 0 ? "; " : "", ch->color & 0xFFFFFF);
   if (ch->highlight != 0)
     g_string_append_printf (s, "%sbgcolor:%06x", s->len > 0 ? "; " : "", w42_highlight_rgb (ch->highlight));
+  else if (base != NULL && base->highlight != 0)
+    g_string_append_printf (s, "%sbgcolor:transparent", s->len > 0 ? "; " : "");
   if (ch->script != 0)
     g_string_append_printf (s, "%stext-position:%s", s->len > 0 ? "; " : "", ch->script > 0 ? "superscript" : "subscript");
+  else if (base != NULL && base->script != 0)
+    g_string_append_printf (s, "%stext-position:normal", s->len > 0 ? "; " : "");
   if (ch->smallcaps)
     g_string_append_printf (s, "%sfont-variant:small-caps", s->len > 0 ? "; " : "");
+  else if (base != NULL && base->smallcaps)
+    g_string_append_printf (s, "%sfont-variant:normal", s->len > 0 ? "; " : "");
   if (ch->allcaps)
     g_string_append_printf (s, "%stext-transform:uppercase", s->len > 0 ? "; " : "");
-  if (ch->spacing != 0)
+  else if (base != NULL && base->allcaps)
+    g_string_append_printf (s, "%stext-transform:none", s->len > 0 ? "; " : "");
+  if (ch->spacing != 0 || (base != NULL && base->spacing != 0))
     {
       char buf[G_ASCII_DTOSTR_BUF_SIZE];
 
@@ -1812,7 +1852,31 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
                       "<abiword template=\"false\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
                       "xmlns=\"http://www.abisource.com/awml.dtd\" xmlns:awml=\"http://www.abisource.com/awml.dtd\" "
                       "version=\"3.0.5\" fileformat=\"1.1\" styles=\"unlocked\">\n"
-                      "<metadata><m key=\"dc.format\">application/x-abiword</m><m key=\"abiword.generator\">Word42</m></metadata>\n");
+                      "<metadata><m key=\"dc.format\">application/x-abiword</m><m key=\"abiword.generator\">Word42</m>");
+  {
+    /* File > Summary Info, under the names AbiWord gives it and the
+     * reader looks for. */
+    const W42DocInfo *info = w42_pt_get_info (pt);
+    static const struct { const char *key; gsize offset; } fields[] = {
+      { "dc.title",         G_STRUCT_OFFSET (W42DocInfo, title) },
+      { "dc.subject",       G_STRUCT_OFFSET (W42DocInfo, subject) },
+      { "dc.creator",       G_STRUCT_OFFSET (W42DocInfo, author) },
+      { "abiword.keywords", G_STRUCT_OFFSET (W42DocInfo, keywords) },
+      { "dc.description",   G_STRUCT_OFFSET (W42DocInfo, comments) },
+    };
+
+    for (guint i = 0; info != NULL && i < G_N_ELEMENTS (fields); i++)
+      {
+        const char *value = G_STRUCT_MEMBER (const char *, info, fields[i].offset);
+
+        if (value == NULL || *value == '\0')
+          continue;
+        g_string_append_printf (out, "<m key=\"%s\">", fields[i].key);
+        xml_escape (out, value, strlen (value));
+        g_string_append (out, "</m>");
+      }
+  }
+  g_string_append (out, "</metadata>\n");
   g_string_append (out, "<styles>\n");
   for (guint i = 0; i < w42_stylesheet_size (styles); i++)
     {
