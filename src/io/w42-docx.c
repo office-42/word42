@@ -3466,8 +3466,10 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   xml = w42_zip_read (zip, "word/document.xml");
   if (xml == NULL)
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The file is not a Word document: it has no word/document.xml.");
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                           w42_zip_has (zip, "word/document.xml")
+                           ? "The file is damaged: its word/document.xml cannot be read."
+                           : "The file is not a Word document: it has no word/document.xml.");
       w42_zip_free (zip);
       return FALSE;
     }

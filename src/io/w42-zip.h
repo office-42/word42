@@ -22,7 +22,8 @@ W42Zip *w42_zip_open  (GFile *file, GError **error);
 W42Zip *w42_zip_new_from_bytes (GBytes *bytes, GError **error);
 void    w42_zip_free  (W42Zip *zip);
 gboolean w42_zip_has  (W42Zip *zip, const char *name);
-/* The entry's contents, inflated; NULL if absent or broken. */
+/* The entry's contents, inflated; NULL if absent, damaged, or swelling
+ * past what the file could honestly hold (see w42-zip.c). */
 GBytes *w42_zip_read  (W42Zip *zip, const char *name);
 
 /* Writing.  Entries go in the order added; each is deflated unless that

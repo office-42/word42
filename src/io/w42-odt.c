@@ -2086,8 +2086,10 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   content = w42_zip_read (zip, "content.xml");
   if (content == NULL)
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The file is not an OpenDocument text: it has no content.xml.");
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                           w42_zip_has (zip, "content.xml")
+                           ? "The file is damaged: its content.xml cannot be read."
+                           : "The file is not an OpenDocument text: it has no content.xml.");
       w42_zip_free (zip);
       return FALSE;
     }

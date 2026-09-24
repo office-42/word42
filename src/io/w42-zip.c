@@ -74,7 +74,7 @@ convert_all (GConverter *converter, const guint8 *in, gsize in_len, gsize max_ou
       in_pos += read;
       if (max_out > 0 && out->len + written > max_out)
         {
-          g_byte_array_free (out, TRUE);      /* more than the entry claims: broken */
+          g_byte_array_free (out, TRUE);      /* past its limit: broken, or a trap */
           return NULL;
         }
       g_byte_array_append (out, buf, written);
@@ -122,7 +122,20 @@ typedef struct {
 struct _W42Zip {
   GBytes *bytes;
   GArray *entries;     /* ZipEntry */
+  guint64 unpacked;    /* what every read so far has come to */
 };
+
+/* How far an archive may unpack.  Deflate can make a gigabyte of a
+ * megabyte, and a file that does is a trap rather than a document: the
+ * XML of a real one packs by five to thirty, and its pictures hardly at
+ * all.  So past SWELL_FLOOR nothing may come to more than SWELL_MAX
+ * times what it takes in the file -- an entry against its own packed
+ * size, and all the reads of one archive together against the archive,
+ * which is what stops entries that share one stretch of the file -- and
+ * no entry comes to more than ENTRY_MAX however big the file. */
+#define ENTRY_MAX   (256u << 20)
+#define SWELL_FLOOR (32u << 20)
+#define SWELL_MAX   100
 
 static guint16 rd16 (const guint8 *p) { return (guint16) (p[0] | (p[1] << 8)); }
 static guint32 rd32 (const guint8 *p) { return (guint32) p[0] | ((guint32) p[1] << 8) | ((guint32) p[2] << 16) | ((guint32) p[3] << 24); }
@@ -260,6 +273,8 @@ w42_zip_read (W42Zip *zip, const char *name)
   const guint8 *d;
   gsize data_at;
   guint16 name_len, extra_len;
+  guint64 budget;
+  GBytes *out;
 
   g_return_val_if_fail (zip != NULL, NULL);
 
@@ -275,14 +290,42 @@ w42_zip_read (W42Zip *zip, const char *name)
   if ((guint64) data_at + e->comp_size > len)
     return NULL;
 
+  budget = MAX ((guint64) len * SWELL_MAX, SWELL_FLOOR);
+  if (zip->unpacked >= budget)
+    return NULL;
+
   if (e->method == 0)
-    return g_bytes_new (d + data_at, e->comp_size);
-  if (e->method == 8)
-    /* The entry's own size bounds the output; an entry that claims none
-     * still gets a ceiling, so a small file cannot unpack without end. */
-    return inflate_raw (d + data_at, e->comp_size,
-                        e->size > 0 ? MIN (e->size, 256u << 20) : 256u << 20);
-  return NULL;
+    out = g_bytes_new (d + data_at, e->comp_size);
+  else if (e->method == 8)
+    {
+      /* The entry's own size bounds the output; an entry that claims
+       * none still gets a ceiling, and neither is taken on trust past
+       * what its packed size could honestly give. */
+      guint64 limit = e->size > 0 ? MIN (e->size, ENTRY_MAX) : ENTRY_MAX;
+
+      limit = MIN (limit, MAX ((guint64) e->comp_size * SWELL_MAX, SWELL_FLOOR));
+      limit = MIN (limit, budget - zip->unpacked);
+      out = inflate_raw (d + data_at, e->comp_size, (gsize) limit);
+    }
+  else
+    return NULL;
+  if (out == NULL)
+    return NULL;
+
+  /* The checksum settles whether what came out is what went in: a
+   * damaged entry is refused rather than read as far as it goes. */
+  {
+    gsize n;
+    const guint8 *data = g_bytes_get_data (out, &n);
+
+    if (crc32_of (data, n) != e->crc)
+      {
+        g_bytes_unref (out);
+        return NULL;
+      }
+    zip->unpacked += n;
+  }
+  return out;
 }
 
 /* ---------------------------------------------------------------------- */
