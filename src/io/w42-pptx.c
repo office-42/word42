@@ -454,7 +454,10 @@ slide_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
   (void) ctx; (void) error;
 
-  if (g_str_has_suffix (name, ":sp") || g_str_equal (name, "sp"))
+  /* A shape's text, and a table's -- a graphic frame's cells are
+   * paragraphs too, a line each. */
+  if (g_str_has_suffix (name, ":sp") || g_str_equal (name, "sp") ||
+      g_str_has_suffix (name, ":graphicFrame"))
     {
       r->in_shape = TRUE;
       r->is_title = FALSE;
@@ -492,7 +495,8 @@ slide_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **e
         g_ptr_array_add (r->paras, g_strdup (g_strstrip (r->text->str)));
       g_string_truncate (r->text, 0);
     }
-  else if (g_str_has_suffix (name, ":sp") || g_str_equal (name, "sp"))
+  else if (g_str_has_suffix (name, ":sp") || g_str_equal (name, "sp") ||
+           g_str_has_suffix (name, ":graphicFrame"))
     {
       if (r->paras != NULL)
         {
@@ -568,8 +572,11 @@ slide_order (W42Zip *zip)
               const char *e = strchr (q + 8, '"');
               if (e != NULL) target = g_strndup (q + 8, (gsize) (e - q - 8));
             }
+          /* A target is relative to ppt/, or, starting with a slash, to
+           * the package's root. */
           if (id != NULL && target != NULL && strstr (target, "slides/") != NULL)
-            g_hash_table_insert (by_id, id, g_strconcat ("ppt/", target, NULL));
+            g_hash_table_insert (by_id, id, target[0] == '/' ? g_strdup (target + 1)
+                                                             : g_strconcat ("ppt/", target, NULL));
           else
             g_free (id);
           g_free (target);
@@ -586,6 +593,10 @@ slide_order (W42Zip *zip)
       char *d = g_strndup (raw, len);
       const char *p = d;
 
+      /* Each slide once: a list that names one slide many times would
+       * unpack it as many times. */
+      GHashTable *seen = g_hash_table_new (g_str_hash, g_str_equal);
+
       while ((p = strstr (p, "r:id=\"")) != NULL)
         {
           const char *e = strchr (p + 6, '"');
@@ -596,11 +607,15 @@ slide_order (W42Zip *zip)
             break;
           id = g_strndup (p + 6, (gsize) (e - p - 6));
           target = g_hash_table_lookup (by_id, id);
-          if (target != NULL)
-            g_ptr_array_add (names, g_strdup (target));
+          if (target != NULL && !g_hash_table_contains (seen, target))
+            {
+              g_hash_table_add (seen, (gpointer) target);
+              g_ptr_array_add (names, g_strdup (target));
+            }
           g_free (id);
           p = e + 1;
         }
+      g_hash_table_destroy (seen);
       g_free (d);
       g_bytes_unref (pres);
     }
@@ -621,6 +636,16 @@ slide_order (W42Zip *zip)
 
   g_hash_table_destroy (by_id);
   return names;
+}
+
+/* A title or a line of a slide as one paragraph: a line break in it --
+ * an &#13; is enough -- would be a paragraph of its own to the piece
+ * table, and every later title would be styled a paragraph too early. */
+static void
+append_line (GString *text, const char *line)
+{
+  for (const char *p = line; *p != '\0'; p++)
+    g_string_append_c (text, (*p == '\n' || *p == '\r') ? ' ' : *p);
 }
 
 gboolean
@@ -662,6 +687,7 @@ w42_pptx_load (W42PieceTable *pt,
    * paragraphs under it.  The headings are styled after the text is in. */
   {
     GArray *heading_at = g_array_new (FALSE, FALSE, sizeof (guint));
+    guint n_lines = 0;
 
     for (guint i = 0; i < names->len; i++)
       {
@@ -687,21 +713,18 @@ w42_pptx_load (W42PieceTable *pt,
         g_markup_parse_context_free (ctx);
 
         {
-          guint line_no = (guint) 0;
           const char *title = r.titles->len > 0 ? g_ptr_array_index (r.titles, 0) : NULL;
 
-          (void) line_no;
+          /* The title's paragraph is the lines so far, counted as they
+           * go: counting them again from the start for every slide made
+           * a long deck take minutes. */
           if (text->len > 0)
-            g_string_append_c (text, '\n');
-          {
-            guint at = 0;
-
-            for (const char *p = text->str; *p != '\0'; p++)
-              if (*p == '\n')
-                at++;
-            g_array_append_val (heading_at, at);
-          }
-          g_string_append (text, title != NULL && *title != '\0' ? title : "Slide");
+            {
+              g_string_append_c (text, '\n');
+              n_lines++;
+            }
+          g_array_append_val (heading_at, n_lines);
+          append_line (text, title != NULL && *title != '\0' ? title : "Slide");
 
           for (guint b = 0; b < r.bodies->len; b++)
             {
@@ -714,7 +737,8 @@ w42_pptx_load (W42PieceTable *pt,
                   if (*line == '\0')
                     continue;
                   g_string_append_c (text, '\n');
-                  g_string_append (text, line);
+                  n_lines++;
+                  append_line (text, line);
                 }
             }
         }
