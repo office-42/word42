@@ -45,7 +45,8 @@
         {
           "type": "git",
           "url": "https://github.com/lexbor/lexbor.git",
-          "tag": "v3.0.1"
+          "tag": "v3.0.1",
+          "commit": "7e278c0188489bfce6b71ced0cc900cbb31e6244"
         }
       ]
     },

@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <component type="desktop-application">
   <id>org.word42.word42</id>
-  <name>word42</name>
+  <name>Word42</name>
   <summary>A classic word processor</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -11,7 +11,7 @@
   </developer>
   <description>
     <p>
-      word42 is a word processor written from scratch in C on GTK 4, Pango
+      Word42 is a word processor written from scratch in C on GTK 4, Pango
       and Cairo, in the classic style of the early 1990s: a menu bar, two
       toolbars, a ruler and a page. Styles, tables, footnotes, columns,
       frames, pictures, headers and footers, spelling, printing, and files
@@ -36,4 +36,9 @@
   <provides>
     <binary>word42</binary>
   </provides>
+  <releases>
+    <release version="1.0.2" date="2026-09-21"/>
+    <release version="1.0.1" date="2026-09-16"/>
+    <release version="1.0.0" date="2026-09-03"/>
+  </releases>
 </component>

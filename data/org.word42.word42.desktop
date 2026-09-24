@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=word42
+Name=Word42
 GenericName=Word Processor
 Comment=A classic word processor: menus, toolbars, a ruler and a page
 Exec=word42 %F
