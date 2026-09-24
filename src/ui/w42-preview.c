@@ -46,6 +46,60 @@ struct _W42Preview {
 
 G_DEFINE_FINAL_TYPE (W42Preview, w42_preview, GTK_TYPE_WINDOW)
 
+static void draw_preview (GtkDrawingArea *area, cairo_t *cr, int width,
+                          int height, gpointer data);
+
+/* The pages are drawn on a drawing area as big as all of them, in a
+ * scrolled window.  GTK's own drawing area draws the whole of itself --
+ * every page of a long document, into a drawing bigger than a GL
+ * renderer can make a texture, which aborts -- so this one draws only
+ * the part the scrolled window shows, and draw_preview culls the pages
+ * against that.  The preview draws it again when it scrolls. */
+G_DECLARE_FINAL_TYPE (W42PreviewArea, w42_preview_area, W42, PREVIEW_AREA,
+                      GtkDrawingArea)
+
+struct _W42PreviewArea {
+  GtkDrawingArea parent_instance;
+  W42Preview    *preview;
+};
+
+G_DEFINE_FINAL_TYPE (W42PreviewArea, w42_preview_area, GTK_TYPE_DRAWING_AREA)
+
+static void
+w42_preview_area_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
+{
+  GtkWidget *sw = gtk_widget_get_ancestor (widget, GTK_TYPE_SCROLLED_WINDOW);
+  int width = gtk_widget_get_width (widget);
+  int height = gtk_widget_get_height (widget);
+  graphene_rect_t shown, window;
+  cairo_t *cr;
+
+  graphene_rect_init (&shown, 0, 0, width, height);
+  if (sw != NULL && gtk_widget_compute_bounds (sw, widget, &window)
+      && !graphene_rect_intersection (&shown, &window, &shown))
+    return;
+  graphene_rect_round_extents (&shown, &shown);
+  if (shown.size.width <= 0 || shown.size.height <= 0)
+    return;
+
+  cr = gtk_snapshot_append_cairo (snapshot, &shown);
+  draw_preview (GTK_DRAWING_AREA (widget), cr, width, height,
+                W42_PREVIEW_AREA (widget)->preview);
+  cairo_destroy (cr);
+}
+
+static void
+w42_preview_area_class_init (W42PreviewAreaClass *klass)
+{
+  GTK_WIDGET_CLASS (klass)->snapshot = w42_preview_area_snapshot;
+}
+
+static void
+w42_preview_area_init (W42PreviewArea *area)
+{
+  (void) area;
+}
+
 /* The window's viewport, less the scrollbar, for the fitting zooms. */
 static void
 viewport_size (W42Preview *self, double *w, double *h)
@@ -437,6 +491,8 @@ on_viewport_resized (GObject *adj, GParamSpec *pspec, gpointer data)
       preview_resize (self);
       update_page_label (self);
     }
+  /* A bigger window shows more of the pages than the area last drew. */
+  gtk_widget_queue_draw (self->area);
 }
 
 static void
@@ -458,8 +514,11 @@ on_close (GtkButton *b, gpointer data)
 static void
 on_scrolled (GtkAdjustment *adj, gpointer data)
 {
+  W42Preview *self = data;
+
   (void) adj;
-  update_page_label (data);
+  update_page_label (self);
+  gtk_widget_queue_draw (self->area);
 }
 
 static void
@@ -581,13 +640,14 @@ w42_preview_init (W42Preview *self)
   gtk_widget_set_vexpand (self->scrolled, TRUE);
   gtk_box_append (GTK_BOX (box), self->scrolled);
 
-  self->area = gtk_drawing_area_new ();
-  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (self->area), draw_preview,
-                                  self, NULL);
+  self->area = g_object_new (w42_preview_area_get_type (), NULL);
+  W42_PREVIEW_AREA (self->area)->preview = self;
   gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (self->scrolled), self->area);
 
   g_signal_connect (gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->scrolled)),
                     "value-changed", G_CALLBACK (on_scrolled), self);
+  g_signal_connect_swapped (gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scrolled)),
+                            "value-changed", G_CALLBACK (gtk_widget_queue_draw), self->area);
   /* The fitting zooms follow the window's size. */
   g_signal_connect (gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scrolled)),
                     "notify::page-size", G_CALLBACK (on_viewport_resized), self);
