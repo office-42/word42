@@ -149,6 +149,12 @@ typedef struct {
   int        outline;
   gboolean   resolved;
   gboolean   has_pa, has_ch;
+  /* The attributes of its paragraph-properties and text-properties, as
+   * the file gave them: resolving puts them over the parent's values, so
+   * that what the style says -- "start", "0in", "normal" included -- is
+   * what it gets, and what it does not say comes from the parent. */
+  char     **pa_names, **pa_values;
+  char     **ch_names, **ch_values;
 } OdtStyle;
 
 /* What a graphic style says about a shape: its fill, its outline, and
@@ -200,6 +206,10 @@ typedef struct {
   OdtListStyle  *cur_list;
   char          *cur_col_style;
   gboolean       in_page_layout, page_seen;
+  int            in_hf_style;      /* 1 in a header-style, 2 a footer-style */
+  int            hf_box[2];        /* the header's and footer's height and
+                                    * spacing, which the page's margin in
+                                    * OpenDocument does not count */
   gboolean       in_header, in_footer;
   W42PageTextKind hf_kind;      /* which of the three is being read */
   GString       *hf_text;
@@ -269,7 +279,31 @@ style_free (gpointer data)
   g_free (s->parent);
   g_free (s->list_style);
   g_free (s->display);
+  g_strfreev (s->pa_names);
+  g_strfreev (s->pa_values);
+  g_strfreev (s->ch_names);
+  g_strfreev (s->ch_values);
   g_free (s);
+}
+
+/* Adds an element's attributes to those a style has kept. */
+static void
+keep_attrs (char ***names, char ***values, const char **an, const char **av)
+{
+  guint have = *names != NULL ? g_strv_length (*names) : 0;
+  guint more = 0;
+
+  while (an != NULL && an[more] != NULL)
+    more++;
+  *names = g_renew (char *, *names, have + more + 1);
+  *values = g_renew (char *, *values, have + more + 1);
+  for (guint i = 0; i < more; i++)
+    {
+      (*names)[have + i] = g_strdup (an[i]);
+      (*values)[have + i] = g_strdup (av[i]);
+    }
+  (*names)[have + more] = NULL;
+  (*values)[have + more] = NULL;
 }
 
 /* ---- properties into formats -------------------------------------------- */
@@ -281,6 +315,9 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
     {
       const char *k = an[i], *v = av[i];
 
+      /* "start" and "end" are the left and the right whichever way the
+       * paragraph runs: that is how LibreOffice sets them, a right-to-left
+       * paragraph's "start" included. */
       if (g_str_equal (k, "fo:text-align"))
         pa->align = g_str_equal (v, "center") ? W42_ALIGN_CENTER
                   : g_str_equal (v, "end") || g_str_equal (v, "right") ? W42_ALIGN_RIGHT
@@ -294,10 +331,16 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
       else if (g_str_equal (k, "fo:margin-bottom")) pa->space_after = length_twips (v);
       else if (g_str_equal (k, "fo:line-height"))
         {
+          /* Either kind replaces the other, which a parent style may
+           * have set; 100% and "normal" are single spacing, the model's 0. */
+          pa->line_spacing = 0;
+          pa->line_spacing_pct = 0;
           if (strchr (v, '%') != NULL)
             pa->line_spacing_pct = CLAMP (atoi (v), 0, 10000);
           else if (!g_str_equal (v, "normal"))
             pa->line_spacing = length_twips (v);
+          if (pa->line_spacing_pct == 100)
+            pa->line_spacing_pct = 0;
         }
       else if (g_str_equal (k, "fo:break-before"))  pa->page_break_before = g_str_equal (v, "page");
       else if (g_str_equal (k, "fo:keep-with-next")) pa->keep_next = g_str_equal (v, "always");
@@ -308,13 +351,16 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
                g_str_equal (k, "fo:border-bottom") || g_str_equal (k, "fo:border-left") ||
                g_str_equal (k, "fo:border-right"))
         {
-          if (!g_str_equal (v, "none"))
-            {
-              int bit = g_str_equal (k, "fo:border") ? W42_BORDER_BOX
-                      : g_str_equal (k, "fo:border-top") ? W42_BORDER_TOP
-                      : g_str_equal (k, "fo:border-bottom") ? W42_BORDER_BOTTOM
-                      : g_str_equal (k, "fo:border-left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
+          int bit = g_str_equal (k, "fo:border") ? W42_BORDER_BOX
+                  : g_str_equal (k, "fo:border-top") ? W42_BORDER_TOP
+                  : g_str_equal (k, "fo:border-bottom") ? W42_BORDER_BOTTOM
+                  : g_str_equal (k, "fo:border-left") ? W42_BORDER_LEFT : W42_BORDER_RIGHT;
 
+          /* "none" takes away a side a parent style drew. */
+          if (g_str_equal (v, "none"))
+            pa->border &= ~bit;
+          else
+            {
               const char *hash = strchr (v, '#');
               W42BorderEdge edge;
 
@@ -335,6 +381,11 @@ para_props (Odt *o, W42ParaFmt *pa, const char **an, const char **av)
             {
               pa->shading_color = (guint32) strtoul (v + 1, NULL, 16) & 0xFFFFFF;
               pa->has_shading_color = 1;
+              pa->shading = 0;
+            }
+          else if (g_str_equal (v, "transparent"))
+            {
+              pa->has_shading_color = 0;
               pa->shading = 0;
             }
         }
@@ -434,8 +485,8 @@ text_props (Odt *o, W42CharFmt *ch, const char **an, const char **av)
       else if (g_str_equal (k, "fo:text-transform")) ch->allcaps = g_str_equal (v, "uppercase");
       else if (g_str_equal (k, "fo:letter-spacing"))
         {
-          if (!g_str_equal (v, "normal"))
-            ch->spacing = (gint16) CLAMP (length_twips (v), -720, 720);
+          ch->spacing = g_str_equal (v, "normal")
+                          ? 0 : (gint16) CLAMP (length_twips (v), -720, 720);
         }
     }
 
@@ -474,39 +525,23 @@ resolve_style (Odt *o, const char *name, int depth)
       if (parent != NULL)
         {
           /* What the style itself set stays; the rest comes from the
-           * parent.  The properties were read on to defaults, so the
-           * merge is: parent, then the style's own attributes again --
-           * which is what re-reading would do.  Here the style's own
-           * values were kept separately in has_pa/has_ch as whole
-           * blocks; good enough for the styles files carry. */
+           * parent: the parent's values, then the style's own attributes
+           * read again over them. */
           W42ParaFmt pa = parent->pa;
           W42CharFmt ch = parent->ch;
 
-          if (s->has_pa)
+          if (s->pa_names != NULL)
+            para_props (o, &pa, (const char **) s->pa_names, (const char **) s->pa_values);
+          /* Tab stops and a drop cap come in elements of their own, so
+           * they are taken whole: a style's stops replace its parent's. */
+          if (s->pa.n_tabs)
             {
-              /* keep the style's own paragraph values where they differ from the default */
-              W42Fmt def;
-
-              w42_fmt_init_default (&def);
-              if (s->pa.align != def.pa.align) pa.align = s->pa.align;
-              if (s->pa.indent_left != def.pa.indent_left) pa.indent_left = s->pa.indent_left;
-              if (s->pa.indent_right != def.pa.indent_right) pa.indent_right = s->pa.indent_right;
-              if (s->pa.indent_first != def.pa.indent_first) pa.indent_first = s->pa.indent_first;
-              if (s->pa.space_before != def.pa.space_before) pa.space_before = s->pa.space_before;
-              if (s->pa.space_after != def.pa.space_after) pa.space_after = s->pa.space_after;
-              if (s->pa.line_spacing_pct != def.pa.line_spacing_pct) pa.line_spacing_pct = s->pa.line_spacing_pct;
-              if (s->pa.line_spacing != def.pa.line_spacing) pa.line_spacing = s->pa.line_spacing;
-              if (s->pa.page_break_before) pa.page_break_before = 1;
-              if (s->pa.keep_next) pa.keep_next = 1;
-              if (s->pa.keep_together) pa.keep_together = 1;
-              if (s->pa.border) { pa.border = s->pa.border; memcpy (pa.edge, s->pa.edge, sizeof pa.edge); }
-              if (s->pa.shading) pa.shading = s->pa.shading;
-              if (s->pa.has_shading_color)
-                { pa.has_shading_color = 1; pa.shading_color = s->pa.shading_color; pa.shading = 0; }
-              if (s->pa.rtl) pa.rtl = 1;
-              if (s->pa.n_tabs) { pa.n_tabs = s->pa.n_tabs; memcpy (pa.tab_pos, s->pa.tab_pos, sizeof pa.tab_pos); memcpy (pa.tab_kind, s->pa.tab_kind, sizeof pa.tab_kind); }
-              if (s->pa.drop_cap) pa.drop_cap = s->pa.drop_cap;
+              pa.n_tabs = s->pa.n_tabs;
+              memcpy (pa.tab_pos, s->pa.tab_pos, sizeof pa.tab_pos);
+              memcpy (pa.tab_kind, s->pa.tab_kind, sizeof pa.tab_kind);
             }
+          if (s->pa.drop_cap)
+            pa.drop_cap = s->pa.drop_cap;
           {
             /* A named style of the file's own keeps its name; an automatic
              * style takes its parent's. */
@@ -516,31 +551,8 @@ resolve_style (Odt *o, const char *name, int depth)
             if (s->pa.style != NULL && s->pa.style != def.pa.style)
               pa.style = s->pa.style;
           }
-          if (s->has_ch)
-            {
-              W42Fmt def;
-
-              w42_fmt_init_default (&def);
-              if (s->ch.bold) ch.bold = 1;
-              if (s->ch.italic) ch.italic = 1;
-              if (s->ch.underline) ch.underline = s->ch.underline;
-              if (s->ch.strikeout) ch.strikeout = 1;
-              if (s->ch.overline) ch.overline = 1;
-              if (s->ch.size != def.ch.size) ch.size = s->ch.size;
-              if (s->ch.color != def.ch.color) ch.color = s->ch.color;
-              if (s->ch.family != def.ch.family) ch.family = s->ch.family;
-              if (s->ch.highlight) ch.highlight = s->ch.highlight;
-              if (s->ch.script) ch.script = s->ch.script;
-              if (s->ch.smallcaps) ch.smallcaps = 1;
-              if (s->ch.allcaps) ch.allcaps = 1;
-              if (s->ch.spacing) ch.spacing = s->ch.spacing;
-              if (s->ch.lang != NULL) ch.lang = s->ch.lang;
-              if (s->ch.dstrike) ch.dstrike = 1;
-              if (s->ch.shadow) ch.shadow = 1;
-              if (s->ch.outline) ch.outline = 1;
-              if (s->ch.emboss) ch.emboss = 1;
-              if (s->ch.engrave) ch.engrave = 1;
-            }
+          if (s->ch_names != NULL)
+            text_props (o, &ch, (const char **) s->ch_names, (const char **) s->ch_values);
           s->pa = pa;
           s->ch = ch;
           if (s->outline == 0)
@@ -553,6 +565,24 @@ resolve_style (Odt *o, const char *name, int depth)
       s->resolved = TRUE;
     }
   return s;
+}
+
+/* A text style over the text it is applied to: its named parents' text
+ * properties first, then its own, each saying what it says -- "normal"
+ * as much as "bold".  The family's default style is not among them: the
+ * paragraph's text has already had it. */
+static void
+span_props (Odt *o, OdtStyle *s, W42CharFmt *ch, int depth)
+{
+  if (s->parent != NULL && s->parent[0] != '@' && depth < 16)
+    {
+      OdtStyle *parent = g_hash_table_lookup (o->styles, s->parent);
+
+      if (parent != NULL)
+        span_props (o, parent, ch, depth + 1);
+    }
+  if (s->ch_names != NULL)
+    text_props (o, ch, (const char **) s->ch_names, (const char **) s->ch_values);
 }
 
 /* The word42 style a named style stands for, by its display name. */
@@ -729,6 +759,7 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
   else if (g_str_equal (tag, "paragraph-properties") && o->cur_style != NULL)
     {
       para_props (o, &o->cur_style->pa, an, av);
+      keep_attrs (&o->cur_style->pa_names, &o->cur_style->pa_values, an, av);
       o->cur_style->has_pa = TRUE;
     }
   else if (g_str_equal (tag, "tab-stop") && o->cur_style != NULL)
@@ -755,6 +786,7 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
   else if (g_str_equal (tag, "text-properties") && o->cur_style != NULL)
     {
       text_props (o, &o->cur_style->ch, an, av);
+      keep_attrs (&o->cur_style->ch_names, &o->cur_style->ch_values, an, av);
       o->cur_style->has_ch = TRUE;
     }
   else if (g_str_equal (tag, "table-cell-properties") && o->cur_cell_style != NULL)
@@ -949,6 +981,21 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
       }
       o->in_page_layout = TRUE;
     }
+  else if ((g_str_equal (tag, "header-style") || g_str_equal (tag, "footer-style")) &&
+           !o->page_seen)
+    o->in_hf_style = tag[0] == 'h' ? 1 : 2;
+  else if (g_str_equal (tag, "header-footer-properties") && o->in_hf_style != 0 && !o->page_seen)
+    {
+      /* OpenDocument's page margin runs to the header; the header's
+       * height and its gap to the text are the rest of Word's margin. */
+      const char *height = attr (an, av, "svg:height");
+      const char *gap = attr (an, av, o->in_hf_style == 1 ? "fo:margin-bottom" : "fo:margin-top");
+
+      if (height == NULL)
+        height = attr (an, av, "fo:min-height");
+      o->hf_box[o->in_hf_style - 1] = CLAMP ((height != NULL ? length_twips (height) : 0) +
+                                             (gap != NULL ? length_twips (gap) : 0), 0, 31680);
+    }
   else if (g_str_equal (tag, "columns") && o->in_page_layout)
     {
       const char *n = attr (an, av, "fo:column-count"), *gap = attr (an, av, "fo:column-gap");
@@ -1114,6 +1161,8 @@ styles_end (Odt *o, const char *tag)
         o->page_seen = TRUE;
       o->in_page_layout = FALSE;
     }
+  else if (g_str_equal (tag, "header-style") || g_str_equal (tag, "footer-style"))
+    o->in_hf_style = 0;
   else if (g_str_equal (tag, "header") || g_str_equal (tag, "footer") ||
            g_str_equal (tag, "header-left") || g_str_equal (tag, "footer-left") ||
            g_str_equal (tag, "header-first") || g_str_equal (tag, "footer-first"))
@@ -1374,33 +1423,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
 
       odt_flush (o);
       if (s != NULL && s->has_ch)
-        {
-          /* A text style adds to what is there. */
-          if (s->ch.bold) ch.bold = 1;
-          if (s->ch.italic) ch.italic = 1;
-          if (s->ch.underline) ch.underline = s->ch.underline;
-          if (s->ch.strikeout) ch.strikeout = 1;
-          if (s->ch.overline) ch.overline = 1;
-          {
-            W42Fmt def;
-
-            w42_fmt_init_default (&def);
-            if (s->ch.size != def.ch.size) ch.size = s->ch.size;
-            if (s->ch.color != def.ch.color) ch.color = s->ch.color;
-            if (s->ch.family != def.ch.family) ch.family = s->ch.family;
-          }
-          if (s->ch.highlight) ch.highlight = s->ch.highlight;
-          if (s->ch.script) ch.script = s->ch.script;
-          if (s->ch.smallcaps) ch.smallcaps = 1;
-          if (s->ch.allcaps) ch.allcaps = 1;
-          if (s->ch.spacing) ch.spacing = s->ch.spacing;
-          if (s->ch.lang != NULL) ch.lang = s->ch.lang;
-          if (s->ch.dstrike) ch.dstrike = 1;
-          if (s->ch.shadow) ch.shadow = 1;
-          if (s->ch.outline) ch.outline = 1;
-          if (s->ch.emboss) ch.emboss = 1;
-          if (s->ch.engrave) ch.engrave = 1;
-        }
+        span_props (o, s, &ch, 0);
       g_array_append_val (o->span_stack, ch);
     }
   else if (g_str_equal (tag, "a"))
@@ -1978,7 +2001,8 @@ odt_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data, 
 typedef struct {
   GString *text;
   char    *field;
-  char    *keep[5];
+  char    *keep[6];      /* title, subject, author, keywords, comments,
+                          * and the last one to edit it */
 } OdtMeta;
 
 static void
@@ -2013,8 +2037,10 @@ meta_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
   (void) ctx; (void) error;
   if (g_str_equal (tag, "title"))            slot = &m->keep[0];
   else if (g_str_equal (tag, "subject"))     slot = &m->keep[1];
-  else if (g_str_equal (tag, "creator") ||
-           g_str_equal (tag, "initial-creator")) slot = &m->keep[2];
+  /* The author is the initial creator; dc:creator is whoever saved it
+   * last, the author only when the file says nothing else. */
+  else if (g_str_equal (tag, "initial-creator")) slot = &m->keep[2];
+  else if (g_str_equal (tag, "creator"))     slot = &m->keep[5];
   else if (g_str_equal (tag, "keyword"))     slot = &m->keep[3];
   else if (g_str_equal (tag, "description")) slot = &m->keep[4];
   if (slot != NULL && m->text->len > 0 && *slot == NULL)
@@ -2043,7 +2069,7 @@ odt_read_meta (W42Zip *zip, W42PieceTable *pt)
   memset (&info, 0, sizeof info);
   info.title = m.keep[0];
   info.subject = m.keep[1];
-  info.author = m.keep[2];
+  info.author = m.keep[2] != NULL ? m.keep[2] : m.keep[5];
   info.keywords = m.keep[3];
   info.comments = m.keep[4];
   w42_pt_set_info (pt, &info);
@@ -2143,6 +2169,24 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
     ok = parse_part (&o, styles, error);
   if (ok)
     ok = parse_part (&o, content, error);
+
+  /* The header's box, when there is a header, is part of Word's margin. */
+  for (int k = 0; k < W42_PAGE_TEXT_KINDS; k++)
+    {
+      const W42PageText *h = w42_pt_get_header_kind (pt, (W42PageTextKind) k);
+      const W42PageText *f = w42_pt_get_footer_kind (pt, (W42PageTextKind) k);
+
+      if (h != NULL && h->text != NULL && *h->text != '\0' && o.hf_box[0] > 0)
+        {
+          page->margin_top += o.hf_box[0];
+          o.hf_box[0] = 0;
+        }
+      if (f != NULL && f->text != NULL && *f->text != '\0' && o.hf_box[1] > 0)
+        {
+          page->margin_bottom += o.hf_box[1];
+          o.hf_box[1] = 0;
+        }
+    }
 
   odt_flush (&o);
   w42_builder_finish (&o.b);
@@ -2289,10 +2333,25 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
       g_ascii_formatd (buf, sizeof buf, "%.2f", pa->line_spacing / 20.0);
       g_string_append_printf (s, " fo:line-height=\"%spt\"", buf);
     }
+  else if (base != NULL && ((base->line_spacing_pct > 0 && base->line_spacing_pct != 100) ||
+                            base->line_spacing > 0))
+    g_string_append (s, " fo:line-height=\"100%\"");
+  /* The flags likewise: what the style turns on, a paragraph that has
+   * it off turns off. */
   if (pa->page_break_before) g_string_append (s, " fo:break-before=\"page\"");
+  else if (base != NULL && base->page_break_before) g_string_append (s, " fo:break-before=\"auto\"");
   if (pa->keep_next)     g_string_append (s, " fo:keep-with-next=\"always\"");
+  else if (base != NULL && base->keep_next) g_string_append (s, " fo:keep-with-next=\"auto\"");
   if (pa->keep_together) g_string_append (s, " fo:keep-together=\"always\"");
+  else if (base != NULL && base->keep_together) g_string_append (s, " fo:keep-together=\"auto\"");
   if (pa->rtl)           g_string_append (s, " style:writing-mode=\"rl-tb\"");
+  else if (base != NULL && base->rtl) g_string_append (s, " style:writing-mode=\"lr-tb\"");
+  /* Widow control is on unless said otherwise, as Word 97 had it; in
+   * OpenDocument it is off unless said, so a style of its own says it. */
+  if (!pa->widow_control)
+    g_string_append (s, " fo:widows=\"0\" fo:orphans=\"0\"");
+  else if (base == NULL || !base->widow_control)
+    g_string_append (s, " fo:widows=\"2\" fo:orphans=\"2\"");
   if (pa->border != 0)
     {
       static const char *names[4] = { "fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right" };
@@ -2307,6 +2366,8 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
                                   pa->edge[i].color & 0xFFFFFF);
       g_string_append (s, " fo:padding=\"0.02in\"");
     }
+  else if (base != NULL && base->border != 0)
+    g_string_append (s, " fo:border=\"none\"");
   if (pa->has_shading_color)
     g_string_append_printf (s, " fo:background-color=\"#%06x\"",
                             pa->shading_color & 0xFFFFFF);
@@ -2316,6 +2377,8 @@ write_para_props_xml (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
 
       g_string_append_printf (s, " fo:background-color=\"#%02x%02x%02x\"", grey, grey, grey);
     }
+  else if (base != NULL && (base->has_shading_color || base->shading > 0))
+    g_string_append (s, " fo:background-color=\"transparent\"");
   if (pa->n_tabs > 0 || pa->drop_cap > 0)
     {
       g_string_append_c (s, '>');
@@ -2400,10 +2463,20 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
    * or colour, and what a style leaves unsaid it inherits. */
   else if (base == NULL)
     g_string_append (s, " style:text-underline-style=\"none\"");
+  /* The line's type says "none" where there is none: LibreOffice takes a
+   * type of "single" as a line through the text, whatever the style
+   * beside it says. */
   if (ch->strikeout || ch->dstrike) g_string_append (s, " style:text-line-through-style=\"solid\"");
-  else if (base == NULL) g_string_append (s, " style:text-line-through-style=\"none\"");
+  else if (base == NULL || base->strikeout || base->dstrike)
+    g_string_append (s, " style:text-line-through-style=\"none\"");
   if (ch->dstrike) g_string_append (s, " style:text-line-through-type=\"double\"");
-  else if (base == NULL || base->dstrike) g_string_append (s, " style:text-line-through-type=\"single\"");
+  else if (ch->strikeout)
+    {
+      if (base == NULL || base->dstrike)
+        g_string_append (s, " style:text-line-through-type=\"single\"");
+    }
+  else if (base == NULL || base->strikeout || base->dstrike)
+    g_string_append (s, " style:text-line-through-type=\"none\"");
   /* The shadow's offset is what LibreOffice writes for its own. */
   if (ch->shadow) g_string_append (s, " fo:text-shadow=\"1pt 1pt\"");
   else if (base == NULL || base->shadow) g_string_append (s, " fo:text-shadow=\"none\"");
@@ -2420,10 +2493,15 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
   if (ch->script > 0) g_string_append (s, " style:text-position=\"super 58%\"");
   else if (ch->script < 0) g_string_append (s, " style:text-position=\"sub 58%\"");
   else if (base == NULL) g_string_append (s, " style:text-position=\"0% 100%\"");
+  /* LibreOffice keeps small capitals and capitals as one property, so
+   * the "off" of either is left unsaid when the other is on: it would
+   * cancel it. */
   if (ch->smallcaps) g_string_append (s, " fo:font-variant=\"small-caps\"");
-  else if (base == NULL) g_string_append (s, " fo:font-variant=\"normal\"");
+  else if ((base == NULL || base->smallcaps) && !ch->allcaps)
+    g_string_append (s, " fo:font-variant=\"normal\"");
   if (ch->allcaps)   g_string_append (s, " fo:text-transform=\"uppercase\"");
-  else if (base == NULL) g_string_append (s, " fo:text-transform=\"none\"");
+  else if ((base == NULL || base->allcaps) && !ch->smallcaps)
+    g_string_append (s, " fo:text-transform=\"none\"");
   if (ch->spacing)
     {
       char buf[G_ASCII_DTOSTR_BUF_SIZE];
@@ -2431,6 +2509,8 @@ write_text_props_xml (GString *s, const W42CharFmt *ch, const W42CharFmt *base)
       g_ascii_formatd (buf, sizeof buf, "%.2f", ch->spacing / 20.0);
       g_string_append_printf (s, " fo:letter-spacing=\"%spt\"", buf);
     }
+  else if (base == NULL || base->spacing != 0)
+    g_string_append (s, " fo:letter-spacing=\"0pt\"");
   if (ch->lang != NULL)
     {
       /* OpenDocument keeps the language and the country apart, and says
@@ -3293,6 +3373,15 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       g_string_append (stylesxml, "</style:style>");
     }
   g_string_append (stylesxml, "</office:styles><office:automatic-styles>");
+  /* OpenDocument's margin runs to the header, and the header's box --
+   * its height and its gap to the text -- makes up the rest of Word's.
+   * The header stands half an inch from the edge, where Word puts it and
+   * the .docx says it is. */
+  gboolean has_header = header != NULL && header->text != NULL && *header->text;
+  gboolean has_footer = footer != NULL && footer->text != NULL && *footer->text;
+  int top = has_header ? MIN (720, pg.margin_top / 2) : pg.margin_top;
+  int bottom = has_footer ? MIN (720, pg.margin_bottom / 2) : pg.margin_bottom;
+
   g_string_append (stylesxml, "<style:page-layout style:name=\"Mpm1\"><style:page-layout-properties fo:page-width=\"");
   twips_out (stylesxml, pg.width);
   g_string_append (stylesxml, "\" fo:page-height=\"");
@@ -3305,8 +3394,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
        * becomes the margin, and the rest of the margin the padding. */
       int width = pg.border_width > 0 ? pg.border_width : W42_BORDER_HAIRLINE;
       int space = CLAMP (pg.border_space, 0, MIN (pg.width, pg.height) / 4);
-      int pad_t = MAX (pg.margin_top - space - width, 0);
-      int pad_b = MAX (pg.margin_bottom - space - width, 0);
+      int pad_t = MAX (top - space - width, 0);
+      int pad_b = MAX (bottom - space - width, 0);
       int pad_l = MAX (pg.margin_left - space - width, 0);
       int pad_r = MAX (pg.margin_right - space - width, 0);
       char buf[G_ASCII_DTOSTR_BUF_SIZE];
@@ -3327,9 +3416,9 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   else
     {
       g_string_append (stylesxml, " fo:margin-top=\"");
-      twips_out (stylesxml, pg.margin_top);
+      twips_out (stylesxml, top);
       g_string_append (stylesxml, "\" fo:margin-bottom=\"");
-      twips_out (stylesxml, pg.margin_bottom);
+      twips_out (stylesxml, bottom);
       g_string_append (stylesxml, "\" fo:margin-left=\"");
       twips_out (stylesxml, pg.margin_left);
       g_string_append (stylesxml, "\" fo:margin-right=\"");
@@ -3347,6 +3436,18 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     }
   else
     g_string_append (stylesxml, "/>");
+  if (has_header)
+    {
+      g_string_append (stylesxml, "<style:header-style><style:header-footer-properties fo:min-height=\"");
+      twips_out (stylesxml, pg.margin_top - top);
+      g_string_append (stylesxml, "\" fo:margin-bottom=\"0in\"/></style:header-style>");
+    }
+  if (has_footer)
+    {
+      g_string_append (stylesxml, "<style:footer-style><style:header-footer-properties fo:min-height=\"");
+      twips_out (stylesxml, pg.margin_bottom - bottom);
+      g_string_append (stylesxml, "\" fo:margin-top=\"0in\"/></style:footer-style>");
+    }
   g_string_append (stylesxml, "</style:page-layout>");
   if (header != NULL && header->text != NULL && *header->text)
     {
@@ -3436,6 +3537,9 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     static const struct { const char *tag; gsize offset; } fields[] = {
       { "dc:title",       G_STRUCT_OFFSET (W42DocInfo, title) },
       { "dc:subject",     G_STRUCT_OFFSET (W42DocInfo, subject) },
+      /* The author is the one who made it, and -- as far as this file
+       * knows -- the one who last saved it too. */
+      { "meta:initial-creator", G_STRUCT_OFFSET (W42DocInfo, author) },
       { "dc:creator",     G_STRUCT_OFFSET (W42DocInfo, author) },
       { "meta:keyword",   G_STRUCT_OFFSET (W42DocInfo, keywords) },
       { "dc:description", G_STRUCT_OFFSET (W42DocInfo, comments) },
