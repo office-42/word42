@@ -42,13 +42,9 @@ style_new (const char *name, const char *family, int size,
   return style;
 }
 
-W42StyleSheet *
-w42_stylesheet_new (void)
+static void
+add_defaults (W42StyleSheet *sheet)
 {
-  W42StyleSheet *sheet = g_new0 (W42StyleSheet, 1);
-
-  sheet->styles = g_ptr_array_new_with_free_func (g_free);
-
   /* Word 97's own definitions, near enough: Normal in 10pt Times, headings in
    * Arial with space above, a title centred and large. */
   g_ptr_array_add (sheet->styles,
@@ -69,8 +65,27 @@ w42_stylesheet_new (void)
    * and below so it sits apart from the picture and the text. */
   g_ptr_array_add (sheet->styles,
     style_new ("Caption",   "Times New Roman", 18, TRUE,  FALSE, 120, 120, 0));
+}
+
+W42StyleSheet *
+w42_stylesheet_new (void)
+{
+  W42StyleSheet *sheet = g_new0 (W42StyleSheet, 1);
+
+  sheet->styles = g_ptr_array_new_with_free_func (g_free);
+  add_defaults (sheet);
 
   return sheet;
+}
+
+void
+w42_stylesheet_reset (W42StyleSheet *sheet)
+{
+  g_return_if_fail (sheet != NULL);
+
+  g_ptr_array_set_size (sheet->styles, 0);
+  add_defaults (sheet);
+  sheet->number_headings = FALSE;
 }
 
 void

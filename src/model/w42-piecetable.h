@@ -71,6 +71,15 @@ typedef struct {
 
 typedef struct _W42PieceTable W42PieceTable;
 
+/* The rows a table can have: a cell mark keeps its row in what its
+ * payload has left above the column, which is more on a 64-bit machine.
+ * A reader stops a table there rather than number a row round to 0. */
+#if GLIB_SIZEOF_SIZE_T >= 8
+#define W42_TABLE_MAX_ROWS 0x100000
+#else
+#define W42_TABLE_MAX_ROWS 0x1000
+#endif
+
 /* ---- Formatting masks ------------------------------------------------- */
 
 typedef enum {

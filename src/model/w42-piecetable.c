@@ -44,7 +44,8 @@ typedef struct {
   guint8       type;       /* W42PieceType */
   guint8       strux;
   W42ApIdx     ap;
-  W42ObjectIdx object;     /* for an OBJECT piece */
+  gsize        payload;    /* an OBJECT piece's picture or a strux's payload:
+                            * the piece's offset, all of it */
   gsize        n;          /* characters, 1 for a strux or an object */
   gsize        chars_off;  /* index into the record's chars array */
 } W42SavedRun;
@@ -140,8 +141,12 @@ piece_is_strux (const W42Piece *p, W42StruxType which)
 #define NOTE_IS_END(o)   (((o) & NOTE_END_BIT) != 0)
 
 /* A CELL mark's payload: the row, the column, and how many columns the
- * cell spans, which is 1 unless cells have been merged. */
-#define CELL_ROW(o)     ((int) (((o) >> 20) & 0xfff))
+ * cell spans, which is 1 unless cells have been merged.  The row has the
+ * rest of the word above the column: in twelve bits a long table's rows
+ * wrapped round to row 0, and the caret in row 4097 was said to be in
+ * row 1, which Delete Row then took out. */
+#define CELL_ROW_MAX    (W42_TABLE_MAX_ROWS - 1)
+#define CELL_ROW(o)     ((int) (((o) >> 20) & CELL_ROW_MAX))
 #define CELL_COL(o)     ((int) (((o) >> 10) & 0x3ff))
 #define CELL_SPAN(o)    (MAX ((int) ((o) & 0x3ff), 1))
 #define CELL_PAYLOAD(r, c, s) \
@@ -491,8 +496,7 @@ pt_do_delete (W42PieceTable *pt, gsize pos, gsize n)
       run.ap        = p->ap;
       /* An object piece's picture and a strux's payload both live in the
        * piece's offset, and both have to come back with the piece. */
-      run.object    = (p->type == W42_PIECE_TEXT) ? W42_OBJECT_NONE
-                                                  : (W42ObjectIdx) p->offset;
+      run.payload   = (p->type == W42_PIECE_TEXT) ? 0 : p->offset;
       run.n         = p->length;
       run.chars_off = 0;
 
@@ -533,7 +537,7 @@ pt_do_insert_runs (W42PieceTable *pt, gsize pos, GArray *runs, GArray *chars)
       piece->length = run->n;
 
       if (run->type != W42_PIECE_TEXT)
-        piece->offset = run->object;
+        piece->offset = run->payload;
 
       if (run->type == W42_PIECE_TEXT)
         {
@@ -1073,6 +1077,10 @@ w42_pt_load_text (W42PieceTable *pt, const char *utf8)
   pt->title_page = FALSE;
   pt->facing_pages = FALSE;
   g_ptr_array_set_size (pt->tables, 0);
+  /* Nor its styles: a style edited, or added, in the last document would
+   * otherwise be saved with this one.  The summary info is left alone,
+   * because the OpenDocument reader sets it before it gets here. */
+  w42_stylesheet_reset (pt->styles);
 
   ap = w42_ap_table_default (pt->aps);
   pt_append_strux (pt, W42_STRUX_SECTION, ap);
@@ -1098,6 +1106,17 @@ w42_pt_load_text (W42PieceTable *pt, const char *utf8)
             p = next;
           c = '\n';
         }
+      /* What w42_pt_insert_text lets into a run, and no more: a text
+       * file's form feed was a page it wanted to start, so it is a
+       * paragraph here; a vertical tab is Word's own line break; the
+       * other controls would be invisible and yet saved. */
+      else if (c == '\f')
+        c = '\n';
+      else if (c == '\v')
+        c = 0x2028;
+      else if ((c < 0x20 && c != '\t' && c != '\n') || c == 0x7F ||
+               c > 0x10FFFF || (c >= 0xD800 && c < 0xE000))
+        continue;
 
       if (c == '\n')
         {
@@ -1273,7 +1292,10 @@ w42_pt_next_pos (W42PieceTable *pt, gsize pos)
         return p;
     }
 
-  return w42_pt_clamp_pos (pt, pos > pt->length ? pt->length : pos);
+  /* Nothing further on: the last place there is, at or before `pos`.
+   * Asking w42_pt_clamp_pos instead asked this again for a document whose
+   * end is no caret position, and the two called each other for ever. */
+  return w42_pt_prev_pos (pt, MIN (pos, pt->length) + 1);
 }
 
 gsize
@@ -1885,7 +1907,8 @@ w42_pt_resize_object (W42PieceTable *pt, gsize pos, int width, int height)
     return;
 
   ap = w42_pt_ap_at (pt, pos);
-  fresh = w42_object_table_clone (pt->objects, old, MAX (width, 15), MAX (height, 15));
+  fresh = w42_object_table_clone (pt->objects, old, CLAMP (width, 15, W42_OBJECT_MAX_TWIPS),
+                                  CLAMP (height, 15, W42_OBJECT_MAX_TWIPS));
 
   w42_pt_begin_group (pt);
   w42_pt_delete (pt, pos, 1);
@@ -2857,7 +2880,7 @@ w42_pt_resolve_vmerges (W42PieceTable *pt, int table)
           any = TRUE;
       }
   /* Most tables merge nothing, and need nothing. */
-  if (!any || rows == 0 || rows > 4096)
+  if (!any || rows == 0 || (gsize) rows * cols > 4096 * 1023)
     return;
 
   /* The first mark for each row and column, as a lookup would find it. */
@@ -3475,6 +3498,12 @@ w42_pt_table_insert_row (W42PieceTable *pt, int table, int row)
     }
 
   n_rows = (int) rows->len;
+  if (n_rows > CELL_ROW_MAX)
+    {
+      /* One more could not be numbered: it would come out as row 0. */
+      g_array_free (rows, TRUE);
+      return;
+    }
   /* Before the first row: row -1, so that the new row is row 0. */
   row = CLAMP (row, -1, n_rows - 1);
 
@@ -4095,7 +4124,7 @@ w42_pt_table_set_row_height (W42PieceTable *pt, int table, int row, int twips)
   W42TableProps *props;
 
   g_return_if_fail (pt != NULL);
-  if (table < 0 || (guint) table >= pt->tables->len || row < 0 || row > 4095)
+  if (table < 0 || (guint) table >= pt->tables->len || row < 0 || row > CELL_ROW_MAX)
     return;
   props = g_ptr_array_index (pt->tables, table);
   {
@@ -4414,20 +4443,29 @@ w42_pt_table_split_cell (W42PieceTable *pt, int table, int row, int col)
   w42_pt_begin_group (pt);
 
   /* Empty cells for the columns given up, then a mark of one column in
-   * place of the wide one. */
+   * place of the wide one.  The mark keeps what the cell had -- its fill,
+   * its sides, the rows it covers -- or a merge down from it would be
+   * left with nothing at its head, and the cells under it not drawn. */
   for (int c = col + 1; c < col + span; c++)
     {
       w42_pt_insert_cell (pt, end, table, row, c, w42_ap_table_default (pt->aps));
       end += 2;
     }
-  pt_push (pt, pt_do_delete (pt, start - 2, 1));
-  pt_insert_strux_at (pt, start - 2, W42_STRUX_CELL, CELL_PAYLOAD (row, col, 1),
-                      w42_ap_table_default (pt->aps));
-  pt_push (pt, cr_new (CR_INSERT, start - 2, 1));
+  {
+    gsize offset = 0;
+    W42Piece *mark = pt_find (pt, start - 2, &offset);
+    W42ApIdx ap = (mark != NULL && piece_is_strux (mark, W42_STRUX_CELL))
+                    ? mark->ap : w42_ap_table_default (pt->aps);
+
+    pt_push (pt, pt_do_delete (pt, start - 2, 1));
+    pt_insert_strux_at (pt, start - 2, W42_STRUX_CELL, CELL_PAYLOAD (row, col, 1), ap);
+    pt_push (pt, cr_new (CR_INSERT, start - 2, 1));
+  }
+  pt_table_renumber (pt, table);
+  pt_table_fix_vmerges (pt, table);
 
   w42_pt_end_group (pt);
   pt->coalescing = FALSE;
-  pt_table_renumber (pt, table);
 }
 
 /* The CELL mark of the cell covering column `col` in the row starting at
@@ -4740,6 +4778,18 @@ copy_range (W42PieceTable *dst, gsize at, W42PieceTable *src, gsize from, gsize 
               W42ObjectIdx idx = w42_object_table_add (dst->objects, object->data, object->format,
                                                        object->pixel_w, object->pixel_h,
                                                        object->width, object->height);
+
+              /* The rest of it too: a text box pasted came back a plain
+               * inline picture of itself, and a metafile lost the file
+               * it would be saved as. */
+              w42_object_table_set_wrap (dst->objects, idx, object->wrap);
+              w42_object_table_set_position (dst->objects, idx, object->positioned,
+                                             object->pos_x, object->pos_y);
+              w42_object_table_set_shape (dst->objects, idx, object->shape, object->line_pt,
+                                          object->line_rgb, object->filled, object->fill_rgb,
+                                          object->text);
+              w42_object_table_set_original (dst->objects, idx, object->original,
+                                             object->original_format);
               w42_pt_insert_object (dst, at + put, idx, ap);
               put += 1;
             }
@@ -4970,6 +5020,13 @@ w42_pt_table_sort (W42PieceTable *pt, int table, gboolean descending)
   first = props != NULL ? props->header_rows : 0;
   if (n_rows - first < 2 || n_cols < 1)
     return;                           /* nothing to sort */
+  /* Rows are sorted by moving what their cells hold, and the marks stay
+   * where they are: a row's text moved into a cell a merge covers would
+   * not be drawn.  Word would not sort such a table either. */
+  for (int r = 0; r < n_rows; r++)
+    for (int c = 0; c < n_cols; c++)
+      if (w42_pt_cell_vspan (pt, table, r, c) > 1)
+        return;
 
   /* Every cell's content, and the key its row sorts on. */
   frags = g_ptr_array_new ();

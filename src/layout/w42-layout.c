@@ -310,7 +310,12 @@ w42_block_pos_to_byte (const W42Block *block, gsize pos)
   if (pos <= block->start_pos)
     return 0;
 
+  /* g_utf8_offset_to_pointer walks on blindly past the end of the text,
+   * and a position among the marks after a paragraph -- a table's, the
+   * notes' -- is past it. */
   chars = pos - block->start_pos - 1;
+  if (chars >= (gsize) g_utf8_strlen (block->text->str, (gssize) block->text->len))
+    return block->text->len;
   p = g_utf8_offset_to_pointer (block->text->str, (glong) chars);
 
   if (p < block->text->str)
@@ -394,8 +399,8 @@ layout_note (W42Layout *self, W42ApTable *aps, int id, double text_w,
           box.width       = (double) logical.width / PANGO_SCALE;
           box.column_w    = text_w;
           box.height      = (double) logical.height / PANGO_SCALE;
-          box.baseline    = (double) (pango_layout_iter_get_baseline (iter) -
-                                      logical.y) / PANGO_SCALE;
+          box.baseline    = ((double) pango_layout_iter_get_baseline (iter) -
+                             logical.y) / PANGO_SCALE;
           box.block       = (int) b;
           box.start_index = line->start_index;
           box.length      = line->length;
@@ -445,6 +450,21 @@ balance_last_page (W42Layout *self, int first_cp, int end_cp, int n_columns)
   for (guint i = 0; i < self->note_rules->len && plain; i++)
     {
       int p = g_array_index (self->note_rules, W42NoteRule, i).page;
+      if (p >= first_cp && p < end_cp)
+        plain = FALSE;
+    }
+  /* A wrapped picture or a dropped letter stays where it was put, and the
+   * lines beside it are set narrow for it: moved to the other column,
+   * they would leave it behind. */
+  for (guint i = 0; i < self->floats->len && plain; i++)
+    {
+      int p = g_array_index (self->floats, W42FloatBox, i).page;
+      if (p >= first_cp && p < end_cp)
+        plain = FALSE;
+    }
+  for (guint i = 0; i < self->caps->len && plain; i++)
+    {
+      int p = g_array_index (self->caps, CapBox, i).page;
       if (p >= first_cp && p < end_cp)
         plain = FALSE;
     }
@@ -805,12 +825,11 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
               continue;
             }
 
-          w = w42_twips_to_px (object->width);
-          h = w42_twips_to_px (object->height);
-          /* Pango counts in ints of 1/1024 px: a size a file made up must
-           * not overflow them.  No page is taller than 70 inches. */
-          w = CLAMP (w, 1.0, 6720.0);
-          h = CLAMP (h, 1.0, 6720.0);
+          /* Pango counts in ints of 1/1024 pixel: a size a file made up
+           * overflowed them, and a line two million pixels tall upwards
+           * put everything after it above the page. */
+          w = w42_twips_to_px (CLAMP (object->width, 15, W42_OBJECT_MAX_TWIPS));
+          h = w42_twips_to_px (CLAMP (object->height, 15, W42_OBJECT_MAX_TWIPS));
 
           /* A picture wider than the column is shown scaled to fit it.  The
            * document keeps the size that was asked for; only the display
@@ -1299,7 +1318,8 @@ layout_cell (W42Layout      *self,
           box.width       = (double) logical.width / PANGO_SCALE;
           box.column_w    = width;
           box.height      = line_h;
-          box.baseline    = (double) (pango_layout_iter_get_baseline (iter) - logical.y) / PANGO_SCALE;
+          /* In double: two ints near Pango's limit overflow an int. */
+          box.baseline    = ((double) pango_layout_iter_get_baseline (iter) - logical.y) / PANGO_SCALE;
           box.block       = (int) b;
           box.start_index = line->start_index;
           box.length      = line->length;
@@ -1541,7 +1561,7 @@ collect_lines (PangoLayout *layout, GArray *out, guint from, guint to, gboolean 
       bl.layout = layout;
       bl.line = line;
       pango_layout_iter_get_line_extents (iter, NULL, &bl.logical);
-      bl.baseline = (double) (pango_layout_iter_get_baseline (iter) - bl.logical.y) / PANGO_SCALE;
+      bl.baseline = ((double) pango_layout_iter_get_baseline (iter) - bl.logical.y) / PANGO_SCALE;
       bl.start_index = cs;
       bl.length = ce > cs ? ce - cs : 0;
       bl.narrow = narrow;
@@ -2314,7 +2334,7 @@ w42_layout_build_pt (W42Layout          *self,
               box.width       = (double) logical.width / PANGO_SCALE;
               box.column_w    = fw_px;
               box.height      = line_h;
-              box.baseline    = (double) (pango_layout_iter_get_baseline (fi) - logical.y) / PANGO_SCALE;
+              box.baseline    = ((double) pango_layout_iter_get_baseline (fi) - logical.y) / PANGO_SCALE;
               box.block       = (int) b;
               box.start_index = line->start_index;
               box.length      = line->length;
@@ -4143,8 +4163,8 @@ w42_layout_object_rect (W42Layout *self, gsize pos, int *page,
   box = &g_array_index (self->lines, W42LineBox, line_index);
 
   /* The same fit-to-column that build_attributes applies. */
-  w = w42_twips_to_px (object->width);
-  h = w42_twips_to_px (object->height);
+  w = w42_twips_to_px (CLAMP (object->width, 15, W42_OBJECT_MAX_TWIPS));
+  h = w42_twips_to_px (CLAMP (object->height, 15, W42_OBJECT_MAX_TWIPS));
   if (w > self->text_w && self->text_w > 0)
     {
       h = h * (self->text_w / w);
