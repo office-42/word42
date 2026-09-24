@@ -1209,20 +1209,38 @@ append_twips (GString *s, const char *key, int twips)
                           g_ascii_formatd (buf, sizeof buf, "%.5f", twips / 1440.0));
 }
 
+/* `base` is what the props are set over: a paragraph's style, or a
+ * style's base.  A length or a spacing that differs from the base's is
+ * written even when it is nought or single, or the reader -- ours, or
+ * AbiWord -- would give it the base's.  With `whole`, for a style, the
+ * rest is written too, so that the style does not depend on its base
+ * being defined first. */
 static void
-para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base)
+para_props (GString *s, const W42ParaFmt *pa, const W42ParaFmt *base,
+            gboolean whole)
 {
   const char *align = pa->align == W42_ALIGN_CENTER ? "center" : pa->align == W42_ALIGN_RIGHT ? "right"
                     : pa->align == W42_ALIGN_JUSTIFY ? "justify" : "left";
+  gboolean same_line = base != NULL && pa->line_spacing_pct == base->line_spacing_pct &&
+                       pa->line_spacing == base->line_spacing;
 
-  if (base == NULL || pa->align != base->align)
+  if (base == NULL || whole || pa->align != base->align)
     g_string_append_printf (s, "%stext-align:%s", s->len > 0 ? "; " : "", align);
-  if (pa->indent_left)  append_twips (s, "margin-left", pa->indent_left);
-  if (pa->indent_right) append_twips (s, "margin-right", pa->indent_right);
-  if (pa->indent_first) append_twips (s, "text-indent", pa->indent_first);
-  if (pa->space_before) append_twips (s, "margin-top", pa->space_before);
-  if (pa->space_after)  append_twips (s, "margin-bottom", pa->space_after);
-  if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
+#define DIFFERS(field) (pa->field != 0 ? base == NULL || whole || pa->field != base->field \
+                                       : base != NULL && base->field != 0)
+  if (DIFFERS (indent_left))  append_twips (s, "margin-left", pa->indent_left);
+  if (DIFFERS (indent_right)) append_twips (s, "margin-right", pa->indent_right);
+  if (DIFFERS (indent_first)) append_twips (s, "text-indent", pa->indent_first);
+  if (DIFFERS (space_before)) append_twips (s, "margin-top", pa->space_before);
+  if (DIFFERS (space_after))  append_twips (s, "margin-bottom", pa->space_after);
+#undef DIFFERS
+  if (same_line && !whole)
+    ;
+  else if (base != NULL && !same_line &&
+           (pa->line_spacing_pct == 100 ||
+            (pa->line_spacing_pct <= 0 && pa->line_spacing <= 0)))
+    g_string_append_printf (s, "%sline-height:1.0", s->len > 0 ? "; " : "");
+  else if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     {
       char buf[G_ASCII_DTOSTR_BUF_SIZE];
       g_string_append_printf (s, "%sline-height:%s", s->len > 0 ? "; " : "",
@@ -1460,7 +1478,7 @@ write_block_runs (AbwWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *b
                 continue;
               nfmt = w42_ap_table_get (aps, nb->ap);
               np = g_string_new (NULL);
-              para_props (np, &nfmt->pa, NULL);
+              para_props (np, &nfmt->pa, NULL, FALSE);
               g_string_append_printf (w->out, "<p style=\"Normal\" props=\"%s\">", np->str);
               g_string_free (np, TRUE);
               g_string_append_printf (w->out, "<c props=\"text-position:superscript\"><field type=\"%s_anchor\" %s-id=\"%d\"/></c>",
@@ -1687,7 +1705,7 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
                     shown.shading = 0;
                   }
                 if (shown.border != 0 || shown.has_shading_color || own)
-                  para_props (cell_props, &shown, NULL);
+                  para_props (cell_props, &shown, NULL, FALSE);
               }
               g_string_append_printf (body, "<cell props=\"left-attach:%d; right-attach:%d; top-attach:%d; bot-attach:%d%s%s\">\n",
                                       block->col, block->col + MAX (block->span, 1), block->row, block->row + 1,
@@ -1716,7 +1734,7 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         }
 
       props = g_string_new (NULL);
-      para_props (props, pa, style != NULL ? &style->pa : NULL);
+      para_props (props, pa, style != NULL ? &style->pa : NULL, FALSE);
       if (pa->page_break_before)
         g_string_append (props, props->len > 0 ? "; page-break-before:yes" : "page-break-before:yes");
       g_string_append (body, "<p");
@@ -1817,10 +1835,13 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   for (guint i = 0; i < w42_stylesheet_size (styles); i++)
     {
       const W42Style *s = w42_stylesheet_get (styles, i);
+      const W42Style *base = s->based_on != NULL ? w42_stylesheet_find (styles, s->based_on)
+                           : g_ascii_strcasecmp (s->name, "Normal") != 0
+                             ? w42_stylesheet_find (styles, "Normal") : NULL;
       GString *props = g_string_new (NULL);
 
       if (!s->character)
-        para_props (props, &s->pa, NULL);
+        para_props (props, &s->pa, base != NULL && !base->character ? &base->pa : NULL, TRUE);
       char_props (props, &s->ch, NULL);
       g_string_append_printf (out, "<s type=\"%s\" name=\"", s->character ? "C" : "P");
       xml_escape (out, s->name, strlen (s->name));
