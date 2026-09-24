@@ -58,6 +58,9 @@ jobs:
       - name: Build
         run: meson compile -C builddir
 
+      - name: Smoke test
+        run: sh build-aux/smoke-test.sh builddir/src/word42-convert
+
       - name: Upload binary
         if: success()
         uses: actions/upload-artifact@v7

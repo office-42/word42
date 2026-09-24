@@ -65,6 +65,15 @@ w42_core_dep = declare_dependency(
   dependencies: core_deps,
 )
 
+# The engine from a terminal: files converted, laid out and read with no
+# display, which is what the smoke test runs on every system the CI has.
+executable('word42-convert',
+  'convert-main.c',
+  dependencies: w42_core_dep,
+  include_directories: w42_inc,
+  install: false,
+)
+
 w42_ui_sources = files(
   'ui/w42-settings.c',
   'ui/w42-autotext.c',

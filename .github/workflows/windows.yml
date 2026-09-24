@@ -89,6 +89,9 @@ jobs:
           export CCACHE_DIR="${GITHUB_WORKSPACE}/.ccache"
           meson compile -C builddir
 
+      - name: Smoke test
+        run: sh build-aux/smoke-test.sh builddir/src/word42-convert.exe
+
       - name: Bundle
         run: |
           bash build-aux/bundle-windows.sh builddir dist

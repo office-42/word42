@@ -118,11 +118,36 @@ makes the MSIX package the Microsoft Store takes; it needs
 `mingw-w64-ucrt-x86_64-librsvg` for the tiles and the Windows 10/11 SDK for
 `makeappx`, and `docs/WINDOWS-STORE.md` covers the rest.
 
+## Without a window
+
+The build also makes `word42-convert`, the engine with no window: the
+readers, the writers and the layout, linked without GTK. It converts a
+file by the extensions of the two names, and prints the pages a
+document lays out to, or its text:
+
+```sh
+./builddir/src/word42-convert samples/bible-kjv.docx bible.odt
+./builddir/src/word42-convert --pages samples/bible-kjv.docx   # 1708
+./builddir/src/word42-convert --text samples/libreoffice/feature-tour.doc
+```
+
+The 1708 is with Carlito and Caladea installed (`fonts-crosextra-carlito
+fonts-crosextra-caladea` on Debian and Ubuntu), the metric twins of the
+Calibri and Cambria the Bible is set in. `word42-convert` is not
+installed; `sh build-aux/smoke-test.sh builddir/src/word42-convert` runs
+it over every sample in every format, as the CI does.
+
 ## Continuous integration
 
 Every push and pull request builds on Linux (`ubuntu-26.04`, GCC), macOS
 (`macos-15`, clang) and Windows (`windows-2025`, MSYS2/UCRT64 GCC).
 Linux additionally runs the built binary under Xvfb to prove it links and
-finds its resources. Linux and Windows build with `--werror`; macOS does
-not, because Apple clang warns about a different set of things and a warning
-it invents on its own should not turn the tree red.
+finds its resources. All three run `build-aux/smoke-test.sh`, which writes
+every sample in every format through `word42-convert`, reads each back and
+wants its text, parses every XML part of the .docx, .odt and .pptx files,
+and lays out the Bible: its page count is checked on Linux, where the
+fonts are installed, and everywhere must survive .docx, .odt and .rtf.
+
+Linux and Windows build with `--werror`; macOS does not, because Apple
+clang warns about a different set of things and a warning it invents on
+its own should not turn the tree red.
