@@ -92,7 +92,7 @@ typedef struct {
                                      * item whose marker is text to skip */
 } Html;
 
-static void open_cell (Html *h);
+static void begin_cell (Html *h, int colspan, int rowspan);
 
 static W42ApIdx
 html_ap (Html *h)
@@ -115,7 +115,7 @@ flush_text (Html *h)
    * words straight into a row -- goes into a cell, since the model has
    * nowhere else in a table to put it. */
   if (h->table >= 0 && !h->in_cell)
-    open_cell (h);
+    begin_cell (h, 1, 1);
 
   /* In a cell, a paragraph that ended waits for more text before its
    * successor is made, so a cell never ends with an empty one. */
@@ -188,7 +188,10 @@ add_text (Html *h, const char *text, gsize len)
       /* A no-break space is a character an author chose, not whitespace
        * to be collapsed: it is kept as it is. */
 
-      if (h->pre_depth == 0 && (c == ' ' || c == '\t' || c == '\n' || c == '\r'))
+      /* HTML's whitespace is these five: a form feed between a table's
+       * cells is whitespace too, and Lexbor leaves it there. */
+      if (h->pre_depth == 0 && (c == ' ' || c == '\t' || c == '\n' ||
+                                c == '\f' || c == '\r'))
         {
           if (!h->at_para_start)
             h->space_pending = TRUE;
@@ -273,13 +276,15 @@ open_covered_cell (Html *h)
   h->table_col++;
 }
 
+/* Opens a cell without looking at the text waiting to go in: this is
+ * what flush_text opens a cell with, and a cell that flushed that text
+ * first would come straight back here, for ever. */
 static void
-open_cell_spanning (Html *h, int colspan, int rowspan)
+begin_cell (Html *h, int colspan, int rowspan)
 {
   if (h->table < 0 || h->in_cell)
     return;
 
-  flush_text (h);
   /* Columns a cell above still covers come first. */
   while (h->table_col < h->table_cols && h->table_col < 1024 && h->covered[h->table_col] > 0)
     open_covered_cell (h);
@@ -310,12 +315,6 @@ open_cell_spanning (Html *h, int colspan, int rowspan)
 }
 
 static void
-open_cell (Html *h)
-{
-  open_cell_spanning (h, 1, 1);
-}
-
-static void
 close_cell (Html *h)
 {
   if (h->table < 0 || !h->in_cell)
@@ -337,6 +336,25 @@ close_cell (Html *h)
     w42_fmt_init_default (&def);
     h->pa = def.pa;
   }
+}
+
+/* Text waiting between cells gets a cell of its own, which flush_text
+ * opens; it ends before the one asked for begins. */
+static void
+open_cell_spanning (Html *h, int colspan, int rowspan)
+{
+  if (h->table < 0 || h->in_cell)
+    return;
+
+  flush_text (h);
+  close_cell (h);
+  begin_cell (h, colspan, rowspan);
+}
+
+static void
+open_cell (Html *h)
+{
+  open_cell_spanning (h, 1, 1);
 }
 
 static void
