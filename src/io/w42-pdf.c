@@ -106,12 +106,31 @@ w42_pdf_export (W42PieceTable      *pt,
     }
 
   cairo_destroy (cr);
+  /* Finishing writes most of the file -- the fonts, the page tree, the
+   * cross-reference table -- so a full disk shows here, not before. */
   cairo_surface_finish (surface);
+  if (ok && cairo_surface_status (surface) != CAIRO_STATUS_SUCCESS)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "Word42 could not write the PDF: %s",
+                   cairo_status_to_string (cairo_surface_status (surface)));
+      ok = FALSE;
+    }
   cairo_surface_destroy (surface);
   w42_layout_free (layout);
 
-  if (!g_output_stream_close (G_OUTPUT_STREAM (stream), NULL, ok ? error : NULL))
-    ok = FALSE;
+  if (ok)
+    ok = g_output_stream_close (G_OUTPUT_STREAM (stream), NULL, error);
+  else
+    {
+      /* A close that is cancelled leaves the file that was there: a
+       * failed export must not replace it with the half it wrote. */
+      GCancellable *cancel = g_cancellable_new ();
+
+      g_cancellable_cancel (cancel);
+      g_output_stream_close (G_OUTPUT_STREAM (stream), cancel, NULL);
+      g_object_unref (cancel);
+    }
 
   g_object_unref (stream);
   return ok;
