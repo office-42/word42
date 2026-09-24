@@ -250,7 +250,8 @@ w42_search_replace_all (W42PieceTable          *pt,
                         const W42SearchOptions *options)
 {
   W42SearchOptions sweep;
-  gsize pos;
+  GPtrArray *blocks;
+  GArray *hits;                     /* gsize pairs: start, end */
   gsize count = 0;
 
   g_return_val_if_fail (pt != NULL, 0);
@@ -262,41 +263,48 @@ w42_search_replace_all (W42PieceTable          *pt,
   if (replacement == NULL)
     replacement = "";
 
-  /* Replace-all always runs forwards from the top and never wraps; wrapping
-   * would put it straight back over its own replacements. */
   sweep = *options;
   sweep.backwards = FALSE;
   sweep.wrap = FALSE;
 
-  pos = w42_pt_first_caret_pos (pt);
+  /* Every hit, from one snapshot, then replaced from the back so that no
+   * replacement moves a hit still to be made.  A snapshot for each hit
+   * made this the square of the document: 848 names in the Bible sample
+   * took 52 seconds. */
+  blocks = w42_pt_snapshot_blocks (pt);
+  hits = g_array_new (FALSE, FALSE, sizeof (gsize));
+  for (guint b = 0; b < blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (blocks, b);
+      gsize from = 0, hs = 0, he = 0;
+
+      while (from < block->text->len &&
+             search_block (block, from, block->text->len, needle, &sweep, &hs, &he))
+        {
+          gsize at = block_byte_to_pos (block, hs), to = block_byte_to_pos (block, he);
+
+          g_array_append_val (hits, at);
+          g_array_append_val (hits, to);
+          from = he;
+        }
+    }
+  g_ptr_array_free (blocks, TRUE);
 
   w42_pt_begin_group (pt);
-
-  for (;;)
+  for (guint i = hits->len; i >= 2; i -= 2)
     {
-      gsize start = 0, end = 0;
-      W42ApIdx ap;
-
-      if (!w42_search_find (pt, pos, needle, &sweep, &start, &end))
-        break;
-
-      /* Take the formatting of the text being replaced, so replacing a word
-       * inside a bold run leaves the replacement bold. */
-      ap = w42_pt_ap_at (pt, start + 1);
+      gsize start = g_array_index (hits, gsize, i - 2);
+      gsize end = g_array_index (hits, gsize, i - 1);
+      /* The formatting of the text being replaced. */
+      W42ApIdx ap = w42_pt_ap_at (pt, start + 1);
 
       w42_pt_delete (pt, start, end - start);
       if (*replacement != '\0')
         w42_pt_insert_text (pt, start, replacement, ap);
-
-      pos = start + g_utf8_strlen (replacement, -1);
       count++;
-
-      /* Deleting to nothing and inserting nothing would not advance. */
-      if (pos <= start && *replacement == '\0')
-        pos = start;
     }
-
   w42_pt_end_group (pt);
+  g_array_free (hits, TRUE);
 
   return count;
 }
