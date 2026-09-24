@@ -122,7 +122,21 @@ typedef struct {
 struct _W42Zip {
   GBytes *bytes;
   GArray *entries;     /* ZipEntry */
+  gsize   unpacked;    /* what w42_zip_read has handed out so far */
 };
+
+/* What one archive may unpack to in all.  An entry's own ceiling does not
+ * bound it: a quarter-megabyte deflate stream makes 256 MB, and a document
+ * can name that one part as a picture as often as it likes.  A real file
+ * unpacks to a few times its size -- four, for the Bible in samples/ --
+ * so the ceiling grows with the archive and a small one still has room. */
+static gsize
+unpack_budget (gsize archive_len)
+{
+  if (archive_len > G_MAXSIZE / 64)
+    return G_MAXSIZE;
+  return MAX ((gsize) 256 << 20, archive_len * 64);
+}
 
 static guint16 rd16 (const guint8 *p) { return (guint16) (p[0] | (p[1] << 8)); }
 static guint32 rd32 (const guint8 *p) { return (guint32) p[0] | ((guint32) p[1] << 8) | ((guint32) p[2] << 16) | ((guint32) p[3] << 24); }
@@ -258,8 +272,9 @@ w42_zip_read (W42Zip *zip, const char *name)
   const ZipEntry *e;
   gsize len;
   const guint8 *d;
-  gsize data_at;
+  gsize data_at, room;
   guint16 name_len, extra_len;
+  GBytes *out;
 
   g_return_val_if_fail (zip != NULL, NULL);
 
@@ -275,14 +290,29 @@ w42_zip_read (W42Zip *zip, const char *name)
   if ((guint64) data_at + e->comp_size > len)
     return NULL;
 
+  room = unpack_budget (len);
+  room = zip->unpacked < room ? room - zip->unpacked : 0;
   if (e->method == 0)
-    return g_bytes_new (d + data_at, e->comp_size);
-  if (e->method == 8)
-    /* The entry's own size bounds the output; an entry that claims none
-     * still gets a ceiling, so a small file cannot unpack without end. */
-    return inflate_raw (d + data_at, e->comp_size,
-                        e->size > 0 ? MIN (e->size, 256u << 20) : 256u << 20);
-  return NULL;
+    {
+      if (e->comp_size > room)
+        return NULL;
+      out = g_bytes_new (d + data_at, e->comp_size);
+    }
+  else if (e->method == 8)
+    {
+      /* The entry's own size bounds the output; an entry that claims none
+       * still gets a ceiling, so a small file cannot unpack without end. */
+      gsize cap = MIN (e->size > 0 ? MIN (e->size, 256u << 20) : 256u << 20, room);
+
+      if (cap == 0)
+        return NULL;          /* inflate_raw would take 0 to mean no ceiling */
+      out = inflate_raw (d + data_at, e->comp_size, cap);
+    }
+  else
+    return NULL;
+  if (out != NULL)
+    zip->unpacked += g_bytes_get_size (out);
+  return out;
 }
 
 /* ---------------------------------------------------------------------- */

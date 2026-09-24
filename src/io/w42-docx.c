@@ -155,7 +155,9 @@ border_element (const char **an, const char **av, W42BorderEdge *edge)
               : g_str_has_prefix (val, "dash") || g_str_has_prefix (val, "dotDash") ||
                 g_str_has_prefix (val, "dotDotDash") ? W42_BORDER_DASHED
               : g_str_equal (val, "dotted") ? W42_BORDER_DOTTED : W42_BORDER_SINGLE;
-  edge->width = (guint8) CLAMP (sz * 20 / 8, 5, 255);   /* eighths of a point */
+  /* sz is in eighths of a point, and Word keeps it to 96 -- so should a
+   * file that says 2147483647, before twenty times it overflows. */
+  edge->width = (guint8) CLAMP (CLAMP (sz, 0, 96) * 20 / 8, 5, 255);
   edge->color = (colour != NULL && !g_str_equal (colour, "auto"))
                   ? (guint32) strtoul (colour, NULL, 16) & 0xFFFFFF : 0;
   return TRUE;
@@ -212,6 +214,22 @@ toggle_on (const char **names, const char **values)
 
   return v == NULL || !(g_str_equal (v, "0") || g_str_equal (v, "false") ||
                         g_str_equal (v, "off") || g_str_equal (v, "none"));
+}
+
+/* Word's auto line spacing is in 240ths of a line, Word42's in percent.
+ * Both ways round to the nearest, so that a value survives being read and
+ * written: truncated, Word 2013's 259 came in as 107, went out as 256, and
+ * lost another percent every time the file was saved. */
+static int
+line_pct (int line)
+{
+  return (line * 100 + 120) / 240;
+}
+
+static int
+line_240ths (int pct)
+{
+  return (pct * 240 + 50) / 100;
 }
 
 /* ====================================================================== */
@@ -426,14 +444,61 @@ typedef struct {
   gboolean       have_normal;    /* the file defined Normal itself */
   GHashTable    *display;        /* every style id -> its name */
   GPtrArray     *pending_based;  /* char*: "name\tbased-id", resolved at the end */
+  guint32        cur_extra;      /* the CH_EXTRA_* the style being read sets */
+  GHashTable    *extras;         /* style name -> StyleExtra*, for those that set any */
 } Styles;
 
+/* The character settings a W42Style has no own-bit for: struck through,
+ * capitals, raised or lowered, spaced out, highlighted, the relief
+ * effects and the language.  The sheet takes these from the base whenever
+ * it follows one, so a style's own would be lost to its base the moment
+ * the bases are filled in; the reader notes which each style set itself
+ * and puts them back afterwards. */
+enum {
+  CH_EXTRA_STRIKE    = 1 << 0,
+  CH_EXTRA_DSTRIKE   = 1 << 1,
+  CH_EXTRA_CAPS      = 1 << 2,
+  CH_EXTRA_SMALLCAPS = 1 << 3,
+  CH_EXTRA_SCRIPT    = 1 << 4,
+  CH_EXTRA_SPACING   = 1 << 5,
+  CH_EXTRA_HIGHLIGHT = 1 << 6,
+  CH_EXTRA_OUTLINE   = 1 << 7,
+  CH_EXTRA_SHADOW    = 1 << 8,
+  CH_EXTRA_EMBOSS    = 1 << 9,
+  CH_EXTRA_IMPRINT   = 1 << 10,
+  CH_EXTRA_LANG      = 1 << 11
+};
+
+typedef struct {
+  guint32    mask;               /* CH_EXTRA_* */
+  W42CharFmt ch;                 /* their values */
+} StyleExtra;
+
+/* The settings `mask` names, from `from` onto `to`. */
+static void
+copy_extras (W42CharFmt *to, const W42CharFmt *from, guint32 mask)
+{
+  if (mask & CH_EXTRA_STRIKE)    to->strikeout = from->strikeout;
+  if (mask & CH_EXTRA_DSTRIKE)   to->dstrike = from->dstrike;
+  if (mask & CH_EXTRA_CAPS)      to->allcaps = from->allcaps;
+  if (mask & CH_EXTRA_SMALLCAPS) to->smallcaps = from->smallcaps;
+  if (mask & CH_EXTRA_SCRIPT)    to->script = from->script;
+  if (mask & CH_EXTRA_SPACING)   to->spacing = from->spacing;
+  if (mask & CH_EXTRA_HIGHLIGHT) to->highlight = from->highlight;
+  if (mask & CH_EXTRA_OUTLINE)   to->outline = from->outline;
+  if (mask & CH_EXTRA_SHADOW)    to->shadow = from->shadow;
+  if (mask & CH_EXTRA_EMBOSS)    to->emboss = from->emboss;
+  if (mask & CH_EXTRA_IMPRINT)   to->engrave = from->engrave;
+  if (mask & CH_EXTRA_LANG)      to->lang = from->lang;
+}
+
 /* One property element -- of a style's pPr or rPr, or of docDefaults --
- * onto `ch` and `pa`, marking in `ch_own` and `pa_own` what it sets. */
+ * onto `ch` and `pa`, marking in `ch_own` and `pa_own` what it sets, and
+ * in `extra` the CH_EXTRA_* ones. */
 static void
 style_property (Styles *s, const char *tag, const char **an, const char **av,
                 W42CharFmt *ch, W42ParaFmt *pa, guint32 *ch_own, guint32 *pa_own,
-                int *outline)
+                guint32 *extra, int *outline)
 {
   if (s->in_rpr)
     {
@@ -483,6 +548,93 @@ style_property (Styles *s, const char *tag, const char **an, const char **av,
               *ch_own |= W42_STYLE_CH_COLOR;
             }
         }
+      /* The rest, read as a run's rPr reads them. */
+      else if (g_str_equal (tag, "strike"))
+        {
+          ch->strikeout = toggle_on (an, av);
+          *extra |= CH_EXTRA_STRIKE;
+        }
+      else if (g_str_equal (tag, "dstrike"))
+        {
+          ch->dstrike = toggle_on (an, av);
+          *extra |= CH_EXTRA_DSTRIKE;
+        }
+      else if (g_str_equal (tag, "caps"))
+        {
+          ch->allcaps = toggle_on (an, av);
+          *extra |= CH_EXTRA_CAPS;
+        }
+      else if (g_str_equal (tag, "smallCaps"))
+        {
+          ch->smallcaps = toggle_on (an, av);
+          *extra |= CH_EXTRA_SMALLCAPS;
+        }
+      else if (g_str_equal (tag, "outline"))
+        {
+          ch->outline = toggle_on (an, av);
+          *extra |= CH_EXTRA_OUTLINE;
+        }
+      else if (g_str_equal (tag, "shadow"))
+        {
+          ch->shadow = toggle_on (an, av);
+          *extra |= CH_EXTRA_SHADOW;
+        }
+      else if (g_str_equal (tag, "emboss"))
+        {
+          ch->emboss = toggle_on (an, av);
+          *extra |= CH_EXTRA_EMBOSS;
+        }
+      else if (g_str_equal (tag, "imprint"))
+        {
+          ch->engrave = toggle_on (an, av);
+          *extra |= CH_EXTRA_IMPRINT;
+        }
+      else if (g_str_equal (tag, "vertAlign"))
+        {
+          const char *v = attr (an, av, "val");
+
+          ch->script = v == NULL ? 0 : g_str_equal (v, "superscript") ? 1
+                     : g_str_equal (v, "subscript") ? -1 : 0;
+          *extra |= CH_EXTRA_SCRIPT;
+        }
+      else if (g_str_equal (tag, "spacing"))
+        {
+          ch->spacing = (gint16) CLAMP (attr_int (an, av, "val", 0), -720, 720);
+          *extra |= CH_EXTRA_SPACING;
+        }
+      else if (g_str_equal (tag, "highlight"))
+        {
+          const char *v = attr (an, av, "val");
+
+          ch->highlight = (v != NULL && !g_str_equal (v, "none")) ? (guint8) highlight_index (v) : 0;
+          *extra |= CH_EXTRA_HIGHLIGHT;
+        }
+      else if (g_str_equal (tag, "shd"))
+        {
+          /* LibreOffice's way of saying a highlight, as in a run. */
+          const char *fill = attr (an, av, "fill");
+
+          if (fill != NULL && !g_str_equal (fill, "auto"))
+            {
+              ch->highlight = (guint8) nearest_highlight (fill);
+              *extra |= CH_EXTRA_HIGHLIGHT;
+            }
+        }
+      else if (g_str_equal (tag, "lang"))
+        {
+          const char *known = w42_lang_normalise (attr (an, av, "val"));
+
+          if (known != NULL)
+            {
+              ch->lang = known;
+              *extra |= CH_EXTRA_LANG;
+            }
+        }
+      else if (g_str_equal (tag, "noProof"))
+        {
+          ch->lang = toggle_on (an, av) ? g_intern_static_string (W42_LANG_NONE) : NULL;
+          *extra |= CH_EXTRA_LANG;
+        }
       return;
     }
   if (!s->in_ppr)
@@ -519,9 +671,13 @@ style_property (Styles *s, const char *tag, const char **an, const char **av,
         {
           int l = CLAMP (atoi (line), 0, 31680);
 
+          /* Single spacing is kept as none at all, as the paragraph
+           * reader keeps it: a style holding 100 over a paragraph holding
+           * 0 looked like a difference, and the pair changed places every
+           * time the file was saved. */
           if (rule == NULL || g_str_equal (rule, "auto"))
             {
-              pa->line_spacing_pct = l * 100 / 240;
+              pa->line_spacing_pct = line_pct (l) == 100 ? 0 : line_pct (l);
               pa->line_spacing = 0;
             }
           else
@@ -715,6 +871,7 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
       s->cur.ch = s->def_ch;
       s->cur.pa = s->def_pa;
       s->cur_take = FALSE;
+      s->cur_extra = 0;
       s->cur_paragraph = type == NULL || g_str_equal (type, "paragraph");
       s->cur_character = type != NULL && g_str_equal (type, "character");
       s->cur_table = type != NULL && g_str_equal (type, "table");
@@ -791,10 +948,10 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (s->in_defaults != 0)
     {
-      guint32 ch_own = 0, pa_own = 0;
+      guint32 ch_own = 0, pa_own = 0, extra = 0;
       int outline = 0;
 
-      style_property (s, tag, an, av, &s->def_ch, &s->def_pa, &ch_own, &pa_own, &outline);
+      style_property (s, tag, an, av, &s->def_ch, &s->def_pa, &ch_own, &pa_own, &extra, &outline);
     }
   else if (s->cur_tbl != NULL)
     {
@@ -843,7 +1000,7 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
               if (rule == NULL || g_str_equal (rule, "auto"))
                 {
-                  t->line_pct = l * 100 / 240;
+                  t->line_pct = line_pct (l) == 100 ? 0 : line_pct (l);
                   t->line_exact = 0;
                 }
               else
@@ -856,7 +1013,7 @@ styles_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
   else if (s->cur_take)
     style_property (s, tag, an, av, &s->cur.ch, &s->cur.pa, &s->cur.ch_own, &s->cur.pa_own,
-                    &s->cur.outline);
+                    &s->cur_extra, &s->cur.outline);
 }
 
 static void
@@ -903,6 +1060,14 @@ styles_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **
               s->cur.ch_own = W42_STYLE_CH_ALL;
             }
           w42_stylesheet_set (s->sheet, &s->cur);
+          if (s->cur_extra != 0)
+            {
+              StyleExtra *x = g_new0 (StyleExtra, 1);
+
+              x->mask = s->cur_extra;
+              x->ch = s->cur.ch;
+              g_hash_table_insert (s->extras, (gpointer) g_intern_string (s->cur.name), x);
+            }
           if (s->cur_based != NULL)
             g_ptr_array_add (s->pending_based, g_strdup_printf ("%s\t%s", s->cur.name, s->cur_based));
           s->cur_take = FALSE;
@@ -995,6 +1160,32 @@ read_core_props (W42Zip *zip, W42PieceTable *pt)
   g_bytes_unref (xml);
 }
 
+/* settings.xml: whether even pages have headers and footers of their own.
+ * That is the document's to say, not the section's, and it is said here. */
+static void
+settings_start (GMarkupParseContext *ctx, const char *name, const char **an,
+                const char **av, gpointer data, GError **error)
+{
+  (void) ctx; (void) error;
+  if (g_str_equal (local (name), "evenAndOddHeaders"))
+    w42_pt_set_facing_pages (data, toggle_on (an, av));
+}
+
+static void
+read_settings (W42Zip *zip, W42PieceTable *pt)
+{
+  GBytes *xml = w42_zip_read (zip, "word/settings.xml");
+  GMarkupParser parser = { settings_start, NULL, NULL, NULL, NULL };
+  GMarkupParseContext *ctx;
+
+  if (xml == NULL)
+    return;
+  ctx = g_markup_parse_context_new (&parser, 0, pt, NULL);
+  g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
+  g_markup_parse_context_free (ctx);
+  g_bytes_unref (xml);
+}
+
 static void
 read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *out)
 {
@@ -1024,6 +1215,7 @@ read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *ou
       }
       s.display = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
       s.pending_based = g_ptr_array_new_with_free_func (g_free);
+      s.extras = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
       g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
       g_markup_parse_context_free (ctx);
 
@@ -1076,6 +1268,35 @@ read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *ou
             w42_stylesheet_follow (sheet, st->name);
         }
 
+      /* Following a base took the settings no own-bit speaks for from it,
+       * a style's own included: each has them back now, its own where it
+       * set them, else the nearest base's that did, else what it was
+       * given, which is the document's defaults it started from. */
+      if (g_hash_table_size (s.extras) > 0)
+        for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
+          {
+            W42Style copy = *w42_stylesheet_get (sheet, i);
+            const char *name = copy.name;
+            guint32 done = 0;
+
+            for (int depth = 0; name != NULL && depth < 12; depth++)
+              {
+                const StyleExtra *x = g_hash_table_lookup (s.extras, name);
+                const W42Style *base;
+
+                if (x != NULL)
+                  {
+                    copy_extras (&copy.ch, &x->ch, x->mask & ~done);
+                    done |= x->mask;
+                  }
+                base = w42_stylesheet_find (sheet, name);
+                name = base != NULL && base->based_on != NULL &&
+                       g_ascii_strcasecmp (base->based_on, name) != 0 ? base->based_on : NULL;
+              }
+            if (done != 0)
+              w42_stylesheet_set (sheet, &copy);
+          }
+
       /* A table style with no rules of its own has its base's. */
       g_hash_table_iter_init (&iter, out->tables);
       while (g_hash_table_iter_next (&iter, &key, &value))
@@ -1100,6 +1321,7 @@ read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *ou
 
       g_ptr_array_free (s.pending_based, TRUE);
       g_hash_table_destroy (s.display);
+      g_hash_table_destroy (s.extras);
       g_free (s.cur_based);
       g_free (s.current_id);
       g_bytes_unref (xml);
@@ -1130,6 +1352,9 @@ numbering_start (GMarkupParseContext *ctx, const char *name, const char **an,
     {
       g_free (n->current_abstract);
       n->current_abstract = g_strdup (attr (an, av, "abstractNumId"));
+      /* One inside a w:lvl -- a broken file -- ends the level it is in,
+       * or the level's end would look itself up under no id at all. */
+      n->in_level0 = FALSE;
       n->level0_done = FALSE;
       if (n->current_abstract != NULL)
         g_hash_table_insert (n->abstract, g_strdup (n->current_abstract),
@@ -1179,7 +1404,7 @@ numbering_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError
   const char *tag = local (name);
 
   (void) ctx; (void) error;
-  if (g_str_equal (tag, "lvl") && n->in_level0)
+  if (g_str_equal (tag, "lvl") && n->in_level0 && n->current_abstract != NULL)
     {
       /* A bullet's character says which bullet. */
       gpointer kind = g_hash_table_lookup (n->abstract, n->current_abstract);
@@ -1585,7 +1810,9 @@ vml_length (const char *v)
   if (v == NULL)
     return 0;
   n = g_ascii_strtod (v, &end);
-  if (end == v)
+  /* Nothing a page holds is a million units long; and "1e300pt" or
+   * "nan", multiplied out, is no number a gint64 can hold. */
+  if (end == v || !(n > -1e6 && n < 1e6))
     return 0;
   while (*end == ' ')
     end++;
@@ -1833,6 +2060,15 @@ docx_flush_text (Docx *d)
 static void
 docx_apply_section_columns (Docx *d, int cols, int gap)
 {
+  /* The gaps between the columns have to leave the columns some width:
+   * a file's w:space="2147483647" made them less than none.  The page is
+   * the one the body's sectPr has given so far, which for its own w:cols,
+   * after w:pgSz and w:pgMar, is the section's. */
+  {
+    int text_w = d->page->width - d->page->margin_left - d->page->margin_right;
+
+    gap = CLAMP (gap, 0, MAX (text_w, 1440) / CLAMP (cols, 1, 9));
+  }
   if (d->section_first == (gsize) -1)
     {
       d->page->columns = cols;
@@ -1987,10 +2223,21 @@ docx_finish_drawing (Docx *d)
            * draw, and goes back into the file as it came when the
            * document is saved. */
           const char *dot = strrchr (part, '.');
-          char *ext = dot != NULL ? g_ascii_strdown (dot + 1, -1) : g_strdup ("picture");
-          char *label = g_strdup_printf ("%s picture", ext);
-          W42ObjectTable *objects = w42_pt_object_table (d->pt);
+          const char *slash = strrchr (part, '/');
+          GString *ext = g_string_new (NULL);
+          char *label;
 
+          /* The kind is the part name's extension, and it goes back out
+           * as one, into a relationship's Target and a content type: so
+           * letters and digits only, or a name like media/x.a"b would
+           * write markup of its own. */
+          if (dot != NULL && (slash == NULL || dot > slash))
+            for (const char *q = dot + 1; *q != '\0' && ext->len < 8; q++)
+              if (g_ascii_isalnum (*q))
+                g_string_append_c (ext, g_ascii_tolower (*q));
+          if (ext->len == 0)
+            g_string_assign (ext, "picture");
+          label = g_strdup_printf ("%s picture", ext->str);
           for (char *q = label; *q != '\0' && *q != ' '; q++)
             *q = (char) g_ascii_toupper (*q);
           d->b.ch = d->run_ch;
@@ -2000,12 +2247,13 @@ docx_finish_drawing (Docx *d)
                              (int) CLAMP (d->cx / EMU_PER_TWIP, 15, 31680),
                              (int) CLAMP (d->cy / EMU_PER_TWIP, 15, 31680),
                              0.75, 0x999999, FALSE, 0xFFFFFF, label);
-          if (w42_object_table_size (objects) > 0)
-            w42_object_table_set_original (objects, w42_object_table_size (objects) - 1, bytes, ext);
+          if (d->b.last_object != W42_OBJECT_NONE)
+            w42_object_table_set_original (w42_pt_object_table (d->pt), d->b.last_object,
+                                           bytes, ext->str);
           if (d->anchored)
             docx_place_anchored (d);
           g_free (label);
-          g_free (ext);
+          g_string_free (ext, TRUE);
         }
       if (bytes != NULL)
         g_bytes_unref (bytes);
@@ -2247,10 +2495,20 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
             {
               int l = CLAMP (atoi (line), 0, 31680);
 
+              /* Either kind replaces what the style said of the other:
+               * single spacing over a style's exact leading is single. */
               if (rule == NULL || g_str_equal (rule, "auto"))
-                pa->line_spacing_pct = l * 100 / 240;
+                {
+                  pa->line_spacing_pct = line_pct (l);
+                  pa->line_spacing = 0;
+                  if (pa->line_spacing_pct == 100)
+                    pa->line_spacing_pct = 0;
+                }
               else
-                pa->line_spacing = l;
+                {
+                  pa->line_spacing = l;
+                  pa->line_spacing_pct = 0;
+                }
             }
           pa->space_before = CLAMP (pa->space_before, 0, 31680);
           pa->space_after = CLAMP (pa->space_after, 0, 31680);
@@ -2351,8 +2609,22 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
               if (st->ch.size != def.ch.size) ch->size = st->ch.size;
               if (st->ch.bold) ch->bold = 1;
               if (st->ch.italic) ch->italic = 1;
-              if (st->ch.underline) ch->underline = 1;
+              if (st->ch.underline) ch->underline = st->ch.underline;
               if (st->ch.color != def.ch.color) ch->color = st->ch.color;
+              /* And what else it turns on, read from styles.xml as a
+               * run's own rPr would be. */
+              if (st->ch.strikeout) ch->strikeout = 1;
+              if (st->ch.dstrike) ch->dstrike = 1;
+              if (st->ch.allcaps) ch->allcaps = 1;
+              if (st->ch.smallcaps) ch->smallcaps = 1;
+              if (st->ch.outline) ch->outline = 1;
+              if (st->ch.shadow) ch->shadow = 1;
+              if (st->ch.emboss) ch->emboss = 1;
+              if (st->ch.engrave) ch->engrave = 1;
+              if (st->ch.script != 0) ch->script = st->ch.script;
+              if (st->ch.spacing != 0) ch->spacing = st->ch.spacing;
+              if (st->ch.highlight != 0) ch->highlight = st->ch.highlight;
+              if (st->ch.lang != NULL) ch->lang = st->ch.lang;
             }
         }
 
@@ -2544,8 +2816,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         ? g_hash_table_lookup (d->note_spans, key) : NULL;
 
       docx_flush_text (d);
-      if (span != NULL && d->note_pt[endnote ? 1 : 0] != NULL &&
-          !w42_builder_in_table (&d->b))
+      /* A note in a table cell is read as any other: Word42 puts them
+       * there, and so does Word. */
+      if (span != NULL && d->note_pt[endnote ? 1 : 0] != NULL)
         {
           /* The note as it was written: its paragraphs, their formatting
            * and their runs, copied whole out of the notes part. */
@@ -2563,7 +2836,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->b.pa = keep;
           w42_pt_free (frag);
         }
-      else if (body != NULL && !w42_builder_in_table (&d->b))
+      else if (body != NULL)
         {
           char **paras = g_strsplit (body, "\n", -1);
           W42ParaFmt keep = d->b.pa;
@@ -2711,8 +2984,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       const char *w = attr (an, av, "w");
 
       d->in_ln = TRUE;
+      /* In EMU, and DrawingML goes no wider than 1584 points. */
       if (w != NULL)
-        d->line_pt = g_ascii_strtoll (w, NULL, 10) / 12700.0;
+        d->line_pt = CLAMP (g_ascii_strtoll (w, NULL, 10), 0, 20116800) / 12700.0;
     }
   else if (d->in_wsp && d->in_ln && g_str_equal (tag, "noFill"))
     d->has_line = FALSE;
@@ -2774,6 +3048,10 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->in_drawing = FALSE;
       d->in_pict = FALSE;
       d->vml_shape = FALSE;
+      /* The box is its paragraphs now, not a shape as well: left on, the
+       * drawing's end drew an empty rectangle after them, and a picture
+       * in the box came out as one too. */
+      d->in_wsp = FALSE;
       d->txbx_reopened = FALSE;
     }
   else if (g_str_equal (tag, "txbxContent"))
@@ -3079,7 +3357,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
           if (border_element (an, av, &edge))
             {
-              int space = attr_int (an, av, "space", 24) * 20;
+              /* Points, and Word allows up to 31 of them. */
+              int space = CLAMP (attr_int (an, av, "space", 24), 0, 31) * 20;
 
               d->page->has_border = 1;
               d->page->border_style = edge.style;
@@ -3093,9 +3372,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (g_str_equal (tag, "cols"))
         docx_apply_section_columns (d, attr_int (an, av, "num", 1), attr_int (an, av, "space", 720));
       else if (g_str_equal (tag, "titlePg"))
-        w42_pt_set_title_page (d->pt, TRUE);
-      else if (g_str_equal (tag, "evenAndOddHeaders"))
-        w42_pt_set_facing_pages (d->pt, TRUE);
+        w42_pt_set_title_page (d->pt, toggle_on (an, av));
       else if (g_str_equal (tag, "headerReference") || g_str_equal (tag, "footerReference"))
         {
           const char *type = attr (an, av, "type");
@@ -3116,14 +3393,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
                   W42PageTextKind kind = type == NULL || g_str_equal (type, "default") ? W42_PAGE_TEXT_DEFAULT
                                        : g_str_equal (type, "first") ? W42_PAGE_TEXT_FIRST : W42_PAGE_TEXT_EVEN;
 
+                  /* Whether the first page's and even pages' own are used
+                   * is for w:titlePg and settings.xml to say: Word keeps
+                   * them in the file when they are switched off. */
                   if (g_str_equal (tag, "headerReference"))
                     w42_pt_set_header_kind (d->pt, kind, p.text->str, p.align);
                   else
                     w42_pt_set_footer_kind (d->pt, kind, p.text->str, p.align);
-                  if (kind == W42_PAGE_TEXT_FIRST)
-                    w42_pt_set_title_page (d->pt, TRUE);
-                  else if (kind == W42_PAGE_TEXT_EVEN)
-                    w42_pt_set_facing_pages (d->pt, TRUE);
                 }
               g_string_free (p.text, TRUE);
               g_free (part);
@@ -3401,7 +3677,18 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   d.pt = outer->note_pt[which];
   d.page = outer->page;
   d.zip = zip;
-  d.rels = outer->rels;
+  {
+    /* A notes part has relationships of its own, and its r:ids mean
+     * those: looked up in the document's, a note's link to a web page
+     * came back as a link to styles.xml. */
+    const char *slash = strrchr (part, '/');
+    char *rels = slash != NULL
+                   ? g_strdup_printf ("%.*s/_rels/%s.rels", (int) (slash - part), part, slash + 1)
+                   : g_strdup_printf ("_rels/%s.rels", part);
+
+    d.rels = read_rels (zip, rels);
+    g_free (rels);
+  }
   d.styles = outer->styles;
   d.table_styles = outer->table_styles;
   d.major_font = outer->major_font;
@@ -3441,6 +3728,7 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   g_hash_table_destroy (d.bookmarks);
   g_hash_table_destroy (d.bookmark_start);
   g_hash_table_destroy (d.comment_start);
+  g_hash_table_destroy (d.rels);
   g_free (d.note_open);
   g_free (d.blip);
   g_bytes_unref (xml);
@@ -3499,6 +3787,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
     d.minor_font = st.minor_font;
   }
   read_core_props (zip, pt);
+  read_settings (zip, pt);
   d.numbering = read_numbering (zip);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
   d.endnotes = read_notes (zip, "word/endnotes.xml");
@@ -3575,25 +3864,31 @@ xml_escape (GString *out, const char *text, gsize len)
       default:
         if ((guchar) text[i] < 0x20 && text[i] != '\t')
           break;
+        /* U+FFFE and U+FFFF are not characters XML allows either, and a
+         * file that holds one is refused whole. */
+        if ((guchar) text[i] == 0xEF && i + 2 < len && (guchar) text[i + 1] == 0xBF &&
+            ((guchar) text[i + 2] == 0xBE || (guchar) text[i + 2] == 0xBF))
+          {
+            i += 2;
+            break;
+          }
         g_string_append_c (out, text[i]);
       }
 }
 
-/* The author's name for comments and revisions, XML-safe; and initials. */
-static const char *
+/* The author's name for comments and revisions, XML-safe, whole: cut to
+ * a buffer's length after escaping, a long name lost the end of an
+ * "&amp;" or half a character, and the part with it; and initials. */
+static char *
 author_xml (W42PieceTable *pt)
 {
   const char *name = w42_pt_get_author (pt);
-  static char buf[128];
-  GString *tmp;
+  GString *out = g_string_new (NULL);
 
   if (name == NULL || *name == '\0')
-    return "Word42";
-  tmp = g_string_new (NULL);
-  xml_escape (tmp, name, strlen (name));
-  g_strlcpy (buf, tmp->str, sizeof buf);
-  g_string_free (tmp, TRUE);
-  return buf;
+    name = "Word42";
+  xml_escape (out, name, strlen (name));
+  return g_string_free (out, FALSE);
 }
 
 static const char *
@@ -3618,30 +3913,82 @@ author_initials (W42PieceTable *pt)
   return n > 0 ? buf : "w";
 }
 
+/* A part's relationships.  The document has its own and so has each
+ * notes part: an r:id in footnotes.xml is looked up in footnotes.xml's,
+ * so a link or a picture in a note needs its relationship there. */
 typedef struct {
-  GString   *rels;          /* document.xml.rels body */
-  int        next_rel;
+  GString    *xml;          /* the Relationship elements */
+  int         next;         /* the number the next rId takes */
+  GHashTable *links;        /* url -> rId (owned strings) */
+} RelSet;
+
+static void
+rel_set_init (RelSet *set)
+{
+  set->xml = g_string_new (NULL);
+  set->next = 1;
+  set->links = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+}
+
+static void
+rel_set_clear (RelSet *set)
+{
+  g_string_free (set->xml, TRUE);
+  g_hash_table_destroy (set->links);
+}
+
+typedef struct {
+  RelSet     doc_rels, foot_rels, end_rels;
+  RelSet    *rels;          /* the part being written's */
   GPtrArray *media_names;   /* char*, in word/media */
   GPtrArray *media_data;    /* GBytes* */
-  GHashTable *link_rels;    /* url -> rId (owned strings) */
   gboolean   have_lists[W42_LIST_KINDS];
+  /* The numbered lists, counted as the layout counts them.  Word counts
+   * on through every paragraph of one w:num, where Word42 starts again
+   * after a plain paragraph or at another kind; so each list Word42
+   * starts again gets a w:num of its own, starting where it does. */
+  int        level_n[9];
+  guint8     level_kind[9];
+  int        level_num[9];  /* the w:num the level's items go under, or 0 */
+  int        next_num;
+  GString   *nums;          /* the w:num elements made for them */
   int        bookmark_id;
   int        revision_id;
   int        image_id;
-  const char *header_rid, *footer_rid;   /* every section's */
-  const char *header_first_rid, *footer_first_rid;
-  const char *header_even_rid, *footer_even_rid;
+  char      *header_rid, *footer_rid;   /* every section's */
+  char      *header_first_rid, *footer_first_rid;
+  char      *header_even_rid, *footer_even_rid;
   gboolean    title_page, facing_pages;
   GString   *comments;      /* comments.xml body */
   int        comment_id;
+  char      *author;        /* author_xml's */
+  W42StyleSheet *styles;    /* what styles.xml says */
+  GHashTable *style_ids;    /* style name, folded -> the styleId it is written with */
 } Parts;
+
+/* The style a reader puts under a paragraph's own formatting: the one it
+ * names, or Normal, which is the default and what an unknown name falls
+ * back to. */
+static const W42Style *
+para_style (Parts *parts, const W42ParaFmt *pa)
+{
+  const W42Style *style = NULL;
+
+  if (parts->styles == NULL)
+    return NULL;
+  if (pa->style != NULL)
+    style = w42_stylesheet_find (parts->styles, pa->style);
+  if (style == NULL || style->character)
+    style = w42_stylesheet_find (parts->styles, "Normal");
+  return style;
+}
 
 static char *
 add_rel (Parts *parts, const char *type, const char *target, gboolean external)
 {
-  char *id = g_strdup_printf ("rId%d", parts->next_rel++);
+  char *id = g_strdup_printf ("rId%d", parts->rels->next++);
 
-  g_string_append_printf (parts->rels,
+  g_string_append_printf (parts->rels->xml,
     "<Relationship Id=\"%s\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/%s\" Target=\"%s\"%s/>",
     id, type, target, external ? " TargetMode=\"External\"" : "");
   return id;
@@ -3665,6 +4012,57 @@ style_id (const char *name)
   return buf;
 }
 
+/* Every style's styleId, by its name folded to lower case, as the sheet
+ * finds names.  Two names can come to one id -- "Quote A" and "Quote-A"
+ * both make QuoteA, and every name in another alphabet makes Style -- and
+ * read again they would be one style; so the second is QuoteA2.  Normal
+ * is Normal whatever else is called what. */
+static GHashTable *
+make_style_ids (W42StyleSheet *styles)
+{
+  GHashTable *ids = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  GHashTable *taken = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+
+  g_hash_table_insert (ids, g_strdup ("normal"), g_strdup ("Normal"));
+  g_hash_table_add (taken, g_strdup ("normal"));
+  for (guint i = 0; i < w42_stylesheet_size (styles); i++)
+    {
+      const char *name = w42_stylesheet_get (styles, i)->name;
+      char *key = g_ascii_strdown (name, -1);
+      char *id, *folded;
+
+      if (g_hash_table_contains (ids, key))
+        {
+          g_free (key);
+          continue;
+        }
+      id = g_strdup (style_id (name));
+      folded = g_ascii_strdown (id, -1);
+      for (int n = 2; g_hash_table_contains (taken, folded); n++)
+        {
+          g_free (id);
+          g_free (folded);
+          id = g_strdup_printf ("%s%d", style_id (name), n);
+          folded = g_ascii_strdown (id, -1);
+        }
+      g_hash_table_add (taken, folded);
+      g_hash_table_insert (ids, key, id);
+    }
+  g_hash_table_destroy (taken);
+  return ids;
+}
+
+/* The styleId a style of this name is written with. */
+static const char *
+style_id_of (Parts *parts, const char *name)
+{
+  char *key = g_ascii_strdown (name != NULL ? name : "Normal", -1);
+  const char *id = parts->style_ids != NULL ? g_hash_table_lookup (parts->style_ids, key) : NULL;
+
+  g_free (key);
+  return id != NULL ? id : style_id (name);
+}
+
 static void
 append_rfonts (GString *out, const char *family)
 {
@@ -3676,45 +4074,59 @@ append_rfonts (GString *out, const char *family)
   g_string_free (esc, TRUE);
 }
 
+/* `base` is the run's paragraph style as styles.xml gives it.  What the
+ * run has is written where it differs from that, "off" as much as "on" --
+ * a word in a bold heading that is not bold says so, or the heading's bold
+ * is its.  styles_part writes a style's own the same way, against the
+ * style it is based on. */
 static void
 write_rpr (GString *out, const W42CharFmt *ch, const W42CharFmt *base)
 {
   GString *rpr = g_string_new (NULL);
 
+#define TOGGLE(field, tag) \
+  if (ch->field)        g_string_append (rpr, "<w:" tag "/>"); \
+  else if (base->field) g_string_append (rpr, "<w:" tag " w:val=\"0\"/>")
+
   if (ch->family != NULL && ch->family != base->family)
     append_rfonts (rpr, ch->family);
-  if (ch->bold)      g_string_append (rpr, "<w:b/>");
-  if (ch->italic)    g_string_append (rpr, "<w:i/>");
-  if (ch->allcaps)   g_string_append (rpr, "<w:caps/>");
-  if (ch->smallcaps) g_string_append (rpr, "<w:smallCaps/>");
-  if (ch->strikeout) g_string_append (rpr, "<w:strike/>");
-  if (ch->dstrike)   g_string_append (rpr, "<w:dstrike/>");
-  if (ch->outline)   g_string_append (rpr, "<w:outline/>");
-  if (ch->shadow)    g_string_append (rpr, "<w:shadow/>");
-  if (ch->emboss)    g_string_append (rpr, "<w:emboss/>");
-  if (ch->engrave)   g_string_append (rpr, "<w:imprint/>");
-  if (ch->color != 0)
-    g_string_append_printf (rpr, "<w:color w:val=\"%06X\"/>", ch->color);
-  if (ch->spacing != 0)
+  TOGGLE (bold, "b");
+  TOGGLE (italic, "i");
+  TOGGLE (allcaps, "caps");
+  TOGGLE (smallcaps, "smallCaps");
+  TOGGLE (strikeout, "strike");
+  TOGGLE (dstrike, "dstrike");
+  TOGGLE (outline, "outline");
+  TOGGLE (shadow, "shadow");
+  TOGGLE (emboss, "emboss");
+  TOGGLE (engrave, "imprint");
+#undef TOGGLE
+  /* Word marks a run that is not to be checked with noProof rather
+   * than with a language of its own; the schema puts it here. */
+  if (g_strcmp0 (ch->lang, W42_LANG_NONE) == 0)
+    g_string_append (rpr, "<w:noProof/>");
+  else if (g_strcmp0 (base->lang, W42_LANG_NONE) == 0)
+    g_string_append (rpr, "<w:noProof w:val=\"0\"/>");
+  if (ch->color != 0 || base->color != 0)
+    g_string_append_printf (rpr, "<w:color w:val=\"%06X\"/>", ch->color & 0xFFFFFF);
+  if (ch->spacing != 0 || base->spacing != 0)
     g_string_append_printf (rpr, "<w:spacing w:val=\"%d\"/>", ch->spacing);
   if (ch->size != base->size && ch->size > 0)
     g_string_append_printf (rpr, "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/>", ch->size, ch->size);
   if (ch->highlight != 0)
     g_string_append_printf (rpr, "<w:highlight w:val=\"%s\"/>", HIGHLIGHT_NAMES[CLAMP (ch->highlight, 1, 16)]);
+  else if (base->highlight != 0)
+    g_string_append (rpr, "<w:highlight w:val=\"none\"/>");
   if (ch->underline)
     g_string_append_printf (rpr, "<w:u w:val=\"%s\"/>",
                             underline_val (ch->underline));
+  else if (base->underline)
+    g_string_append (rpr, "<w:u w:val=\"none\"/>");
   if (ch->script > 0) g_string_append (rpr, "<w:vertAlign w:val=\"superscript\"/>");
-  if (ch->script < 0) g_string_append (rpr, "<w:vertAlign w:val=\"subscript\"/>");
-  if (ch->lang != NULL)
-    {
-      /* Word marks a run that is not to be checked with noProof rather
-       * than with a language of its own. */
-      if (g_strcmp0 (ch->lang, W42_LANG_NONE) == 0)
-        g_string_append (rpr, "<w:noProof/>");
-      else
-        g_string_append_printf (rpr, "<w:lang w:val=\"%s\"/>", ch->lang);
-    }
+  else if (ch->script < 0) g_string_append (rpr, "<w:vertAlign w:val=\"subscript\"/>");
+  else if (base->script != 0) g_string_append (rpr, "<w:vertAlign w:val=\"baseline\"/>");
+  if (ch->lang != NULL && g_strcmp0 (ch->lang, W42_LANG_NONE) != 0)
+    g_string_append_printf (rpr, "<w:lang w:val=\"%s\"/>", ch->lang);
 
   if (rpr->len > 0)
     g_string_append_printf (out, "<w:rPr>%s</w:rPr>", rpr->str);
@@ -3774,9 +4186,19 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
     return;
   if (object->original != NULL && object->original_format != NULL)
     {
-      /* The picture the placeholder stood in for, as it came. */
+      /* The picture the placeholder stood in for, as it came -- under
+       * its own extension when that is a plain one, since it goes into a
+       * part name, a Target and a content type as it stands. */
       bytes = g_bytes_ref (object->original);
       ext = object->original_format;
+      for (const char *q = ext; *q != '\0'; q++)
+        if (!g_ascii_isalnum (*q) || q - ext >= 8)
+          {
+            ext = "bin";
+            break;
+          }
+      if (*ext == '\0')
+        ext = "bin";
     }
   else if (object->shape == W42_SHAPE_PICTURE)
     {
@@ -3862,8 +4284,10 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
         g_string_append (out, "<a:noFill/>");
       if (object->line_pt > 0.0)
         {
+          /* DrawingML's widest line is 1584 points; past what an int
+           * holds, the width came out negative. */
           g_string_append_printf (out, "<a:ln w=\"%d\"><a:solidFill><a:srgbClr val=\"%06X\"/></a:solidFill>",
-                                  (int) (object->line_pt * 12700.0 + 0.5), object->line_rgb);
+                                  (int) (MIN (object->line_pt, 1584.0) * 12700.0 + 0.5), object->line_rgb);
           if (object->shape == W42_SHAPE_ARROW)
             g_string_append (out, "<a:tailEnd type=\"triangle\"/>");
           g_string_append (out, "</a:ln>");
@@ -3908,8 +4332,10 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
 
 static void
 write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
-            const W42Block *block, const W42CharFmt *base)
+            const W42Block *block, const W42CharFmt *normal)
 {
+  const W42Style *style = para_style (parts, &w42_ap_table_get (aps, block->ap)->pa);
+  const W42CharFmt *base = style != NULL ? &style->ch : normal;
   const char *open_link = NULL;
   const char *open_bookmark = NULL;
   const char *open_comment = NULL;
@@ -3920,13 +4346,39 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
     {
       const W42Run *run = &g_array_index (block->runs, W42Run, i);
       const W42CharFmt *ch = &w42_ap_table_get (aps, run->ap)->ch;
+      const char *want_field = ch->field;
+      int level = 3;
 
-      if (open_field != NULL && ch->field != open_field)
+      /* A field, a link and a revision nest in that order, the field
+       * outermost.  Where one of them changes, what is inside it closes
+       * first and opens again after: closed on their own, a revision that
+       * ran on out of a link left </w:hyperlink> inside <w:ins>, and the
+       * file could not be read again, by Word42 or anything else.  A
+       * field is not opened on a picture or a note's mark. */
+      if (open_field == NULL && (run->object != W42_OBJECT_NONE || run->footnote != 0))
+        want_field = NULL;
+      if (want_field != open_field)
+        level = 0;
+      else if (ch->link != open_link)
+        level = 1;
+      else if (ch->revision != open_revision)
+        level = 2;
+      if (level <= 2 && open_revision != 0)
+        {
+          g_string_append (out, open_revision == 1 ? "</w:ins>" : "</w:del>");
+          open_revision = 0;
+        }
+      if (level <= 1 && open_link != NULL)
+        {
+          g_string_append (out, "</w:hyperlink>");
+          open_link = NULL;
+        }
+      if (level == 0 && open_field != NULL)
         {
           g_string_append (out, "</w:fldSimple>");
           open_field = NULL;
         }
-      if (ch->field != NULL && open_field == NULL && run->object == W42_OBJECT_NONE && run->footnote == 0)
+      if (want_field != NULL && open_field == NULL)
         {
           GString *esc = g_string_new (NULL);
 
@@ -3949,24 +4401,14 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
           g_string_append_printf (out, "<w:commentRangeStart w:id=\"%d\"/>", parts->comment_id);
           g_string_append_printf (parts->comments,
             "<w:comment w:id=\"%d\" w:author=\"%s\" w:date=\"2026-01-01T00:00:00Z\" w:initials=\"%s\"><w:p><w:r><w:t xml:space=\"preserve\">",
-            parts->comment_id, author_xml (pt), author_initials (pt));
+            parts->comment_id, parts->author, author_initials (pt));
           xml_escape (parts->comments, ch->comment, strlen (ch->comment));
           g_string_append (parts->comments, "</w:t></w:r></w:p></w:comment>");
           open_comment = ch->comment;
         }
 
-      /* Bookmarks, links and revisions wrap runs; close what changed,
-       * then open what is new. */
-      if (open_revision != 0 && ch->revision != open_revision)
-        {
-          g_string_append (out, open_revision == 1 ? "</w:ins>" : "</w:del>");
-          open_revision = 0;
-        }
-      if (open_link != NULL && ch->link != open_link)
-        {
-          g_string_append (out, "</w:hyperlink>");
-          open_link = NULL;
-        }
+      /* Bookmarks are marks, not wrappers: they end and start between
+       * the runs; then the link and the revision open, if they are new. */
       if (open_bookmark != NULL && ch->bookmark != open_bookmark)
         {
           g_string_append_printf (out, "<w:bookmarkEnd w:id=\"%d\"/>", parts->bookmark_id);
@@ -3989,7 +4431,7 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
             }
           else
             {
-              char *rid = g_hash_table_lookup (parts->link_rels, ch->link);
+              char *rid = g_hash_table_lookup (parts->rels->links, ch->link);
 
               if (rid == NULL)
                 {
@@ -3997,7 +4439,7 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
 
                   xml_escape (esc, ch->link, strlen (ch->link));
                   rid = add_rel (parts, "hyperlink", esc->str, TRUE);
-                  g_hash_table_insert (parts->link_rels, g_strdup (ch->link), rid);
+                  g_hash_table_insert (parts->rels->links, g_strdup (ch->link), rid);
                   g_string_free (esc, TRUE);
                 }
               g_string_append_printf (out, "<w:hyperlink r:id=\"%s\">", rid);
@@ -4007,7 +4449,7 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
       if (ch->revision != 0 && open_revision == 0)
         {
           g_string_append_printf (out, "<w:%s w:id=\"%d\" w:author=\"%s\" w:date=\"2026-01-01T00:00:00Z\">",
-                                  ch->revision == 1 ? "ins" : "del", ++parts->revision_id, author_xml (pt));
+                                  ch->revision == 1 ? "ins" : "del", ++parts->revision_id, parts->author);
           open_revision = ch->revision;
         }
 
@@ -4080,29 +4522,18 @@ write_sectpr (GString *out, const W42PageSetup *page, int cols, int gap,
   g_string_append (out, "</w:sectPr>");
 }
 
+/* A pPr's borders, shading and tab stops, which come together in it.
+ * Given `base` -- the style a style is based on -- a side, a shading or a
+ * stop the base has and `pa` has not is said to be off, as Word would
+ * otherwise take it from the base; given none, only what `pa` has is
+ * written. */
 static void
-write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup *page,
-           gboolean ends_section, int sect_cols, int sect_gap)
+write_ppr_rules (GString *out, const W42ParaFmt *pa, const W42ParaFmt *base)
 {
-  g_string_append (out, "<w:pPr>");
-  if (pa->style != NULL && g_ascii_strcasecmp (pa->style, "Normal") != 0)
-    g_string_append_printf (out, "<w:pStyle w:val=\"%s\"/>", style_id (pa->style));
-  if (pa->keep_next)     g_string_append (out, "<w:keepNext/>");
-  if (pa->keep_together) g_string_append (out, "<w:keepLines/>");
-  if (pa->page_break_before) g_string_append (out, "<w:pageBreakBefore/>");
-  if (pa->frame_side != W42_FRAME_NONE)
-    g_string_append_printf (out, "<w:framePr w:w=\"%d\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"margin\" w:xAlign=\"%s\" w:y=\"1\"/>",
-                            pa->frame_width > 0 ? pa->frame_width : 3120,
-                            pa->frame_side == W42_FRAME_LEFT ? "left" : "right");
-  if (!pa->widow_control) g_string_append (out, "<w:widowControl w:val=\"0\"/>");
-  if (pa->list != W42_LIST_NONE)
-    {
-      parts->have_lists[pa->list] = TRUE;
-      g_string_append_printf (out, "<w:numPr><w:ilvl w:val=\"%d\"/><w:numId w:val=\"%d\"/></w:numPr>",
-                              MIN (pa->list_level, 8), (int) pa->list);
-    }
-  if (pa->rtl) g_string_append (out, "<w:bidi/>");
-  if (pa->border != 0)
+  guint8 sides = pa->border | (base != NULL ? base->border : 0);
+  int n_clear = 0;
+
+  if (sides != 0)
     {
       /* Word wants them in this order. */
       static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
@@ -4111,6 +4542,8 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
       for (int i = 0; i < 4; i++)
         if (pa->border & (1 << order[i]))
           write_border_element (out, order[i], &pa->edge[order[i]], TRUE, 1);
+        else if (sides & (1 << order[i]))
+          write_border_element (out, order[i], NULL, FALSE, 1);
       g_string_append (out, "</w:pBdr>");
     }
   if (pa->has_shading_color)
@@ -4122,9 +4555,30 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
 
       g_string_append_printf (out, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"%02X%02X%02X\"/>", grey, grey, grey);
     }
-  if (pa->n_tabs > 0)
+  else if (base != NULL && (base->has_shading_color || base->shading > 0))
+    g_string_append (out, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"auto\"/>");
+
+  for (int i = 0; base != NULL && i < base->n_tabs; i++)
+    {
+      gboolean kept = FALSE;
+
+      for (int j = 0; j < pa->n_tabs && !kept; j++)
+        kept = pa->tab_pos[j] == base->tab_pos[i];
+      if (!kept)
+        n_clear++;
+    }
+  if (pa->n_tabs > 0 || n_clear > 0)
     {
       g_string_append (out, "<w:tabs>");
+      for (int i = 0; n_clear > 0 && i < base->n_tabs; i++)
+        {
+          gboolean kept = FALSE;
+
+          for (int j = 0; j < pa->n_tabs && !kept; j++)
+            kept = pa->tab_pos[j] == base->tab_pos[i];
+          if (!kept)
+            g_string_append_printf (out, "<w:tab w:val=\"clear\" w:pos=\"%d\"/>", base->tab_pos[i]);
+        }
       for (int i = 0; i < pa->n_tabs; i++)
         g_string_append_printf (out, "<w:tab w:val=\"%s\"%s w:pos=\"%d\"/>",
                                 W42_TAB_KIND (pa->tab_kind[i]) == W42_TAB_CENTER ? "center"
@@ -4136,27 +4590,132 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
                                 pa->tab_pos[i]);
       g_string_append (out, "</w:tabs>");
     }
+}
+
+/* The w:num a numbered paragraph goes under, counting as the layout
+ * does: a list of one kind counts on at its level, another kind or a
+ * restart begins again, an item starts the levels below it over, and a
+ * plain paragraph (list_forget) ends them all.  Where Word42 begins again,
+ * a fresh w:num begins there, with every level's start said, since Word
+ * carries a count on through every paragraph of one w:num -- and through
+ * others of the same abstractNum that do not say where to start. */
+static int
+list_num (Parts *parts, const W42ParaFmt *pa)
+{
+  int lv = MIN (pa->list_level, 8);
+  gboolean again;
+  int n;
+
+  if (!w42_list_is_numbered (pa->list))
+    return (int) pa->list;              /* a bullet counts nothing */
+  again = pa->list_start > 0 || pa->list != parts->level_kind[lv] || parts->level_num[lv] == 0;
+  n = pa->list_start > 0 ? pa->list_start
+    : pa->list != parts->level_kind[lv] ? 1 : parts->level_n[lv] + 1;
+  parts->level_n[lv] = n;
+  parts->level_kind[lv] = pa->list;
+  for (int deeper = lv + 1; deeper < 9; deeper++)
+    {
+      parts->level_n[deeper] = 0;
+      parts->level_kind[deeper] = W42_LIST_NONE;
+      parts->level_num[deeper] = 0;
+    }
+  if (again)
+    {
+      int id = parts->next_num++;
+
+      g_string_append_printf (parts->nums, "<w:num w:numId=\"%d\"><w:abstractNumId w:val=\"%d\"/>",
+                              id, (int) pa->list);
+      for (int l = 0; l < 9; l++)
+        g_string_append_printf (parts->nums,
+                                "<w:lvlOverride w:ilvl=\"%d\"><w:startOverride w:val=\"%d\"/></w:lvlOverride>",
+                                l, l == lv ? n : 1);
+      g_string_append (parts->nums, "</w:num>");
+      parts->level_num[lv] = id;
+    }
+  return parts->level_num[lv];
+}
+
+static void
+list_forget (Parts *parts)
+{
+  memset (parts->level_n, 0, sizeof parts->level_n);
+  memset (parts->level_kind, 0, sizeof parts->level_kind);
+  memset (parts->level_num, 0, sizeof parts->level_num);
+}
+
+/* What the paragraph's style says -- as styles.xml has it: its keeping
+ * with the next, its spacing, indents and alignment -- is under the
+ * paragraph's own pPr, so where the paragraph differs from it, nought and
+ * "left" included, the pPr says so. */
+static void
+write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup *page,
+           gboolean ends_section, int sect_cols, int sect_gap)
+{
+  const W42Style *style = para_style (parts, pa);
+  W42ParaFmt none;
+  const W42ParaFmt *over;
+
+  memset (&none, 0, sizeof none);
+  over = style != NULL ? &style->pa : &none;
+  g_string_append (out, "<w:pPr>");
+  if (pa->style != NULL && g_ascii_strcasecmp (pa->style, "Normal") != 0)
+    g_string_append_printf (out, "<w:pStyle w:val=\"%s\"/>", style_id_of (parts, pa->style));
+  if (pa->keep_next)     g_string_append (out, "<w:keepNext/>");
+  else if (over->keep_next) g_string_append (out, "<w:keepNext w:val=\"0\"/>");
+  if (pa->keep_together) g_string_append (out, "<w:keepLines/>");
+  else if (over->keep_together) g_string_append (out, "<w:keepLines w:val=\"0\"/>");
+  if (pa->page_break_before) g_string_append (out, "<w:pageBreakBefore/>");
+  if (pa->frame_side != W42_FRAME_NONE)
+    g_string_append_printf (out, "<w:framePr w:w=\"%d\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"margin\" w:xAlign=\"%s\" w:y=\"1\"/>",
+                            pa->frame_width > 0 ? pa->frame_width : 3120,
+                            pa->frame_side == W42_FRAME_LEFT ? "left" : "right");
+  /* Widow control is on unless a style turns it off, and styles.xml says
+   * it either way. */
+  if (!pa->widow_control) g_string_append (out, "<w:widowControl w:val=\"0\"/>");
+  else if (style != NULL && !over->widow_control) g_string_append (out, "<w:widowControl/>");
+  if (pa->list != W42_LIST_NONE && pa->list < W42_LIST_KINDS)
+    {
+      int num = list_num (parts, pa);
+
+      parts->have_lists[pa->list] = TRUE;
+      g_string_append_printf (out, "<w:numPr><w:ilvl w:val=\"%d\"/><w:numId w:val=\"%d\"/></w:numPr>",
+                              MIN (pa->list_level, 8), num);
+    }
+  else if (pa->list == W42_LIST_NONE)
+    list_forget (parts);
+  write_ppr_rules (out, pa, NULL);
   if (pa->rtl) g_string_append (out, "<w:bidi/>");
-  if (pa->space_before || pa->space_after || pa->line_spacing_pct > 0 || pa->line_spacing > 0)
-    {
-      g_string_append (out, "<w:spacing");
-      if (pa->space_before) g_string_append_printf (out, " w:before=\"%d\"", pa->space_before);
-      if (pa->space_after)  g_string_append_printf (out, " w:after=\"%d\"", pa->space_after);
-      if (pa->line_spacing_pct > 0)
-        g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"auto\"", pa->line_spacing_pct * 240 / 100);
-      else if (pa->line_spacing > 0)
-        g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"exact\"", pa->line_spacing);
-      g_string_append (out, "/>");
-    }
-  if (pa->indent_left || pa->indent_right || pa->indent_first)
-    {
-      g_string_append (out, "<w:ind");
-      if (pa->indent_left)  g_string_append_printf (out, " w:left=\"%d\"", pa->indent_left);
-      if (pa->indent_right) g_string_append_printf (out, " w:right=\"%d\"", pa->indent_right);
-      if (pa->indent_first > 0) g_string_append_printf (out, " w:firstLine=\"%d\"", pa->indent_first);
-      if (pa->indent_first < 0) g_string_append_printf (out, " w:hanging=\"%d\"", -pa->indent_first);
-      g_string_append (out, "/>");
-    }
+  {
+#define SAY(field) (pa->field != 0 || over->field != 0)
+    gboolean over_line = (over->line_spacing_pct > 0 && over->line_spacing_pct != 100) ||
+                         over->line_spacing > 0;
+
+    if (SAY (space_before) || SAY (space_after) || pa->line_spacing_pct > 0 ||
+        pa->line_spacing > 0 || over_line)
+      {
+        g_string_append (out, "<w:spacing");
+        if (SAY (space_before)) g_string_append_printf (out, " w:before=\"%d\"", pa->space_before);
+        if (SAY (space_after))  g_string_append_printf (out, " w:after=\"%d\"", pa->space_after);
+        if (pa->line_spacing_pct > 0)
+          g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"auto\"", line_240ths (pa->line_spacing_pct));
+        else if (pa->line_spacing > 0)
+          g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"exact\"", pa->line_spacing);
+        else if (over_line)
+          g_string_append (out, " w:line=\"240\" w:lineRule=\"auto\"");
+        g_string_append (out, "/>");
+      }
+    if (SAY (indent_left) || SAY (indent_right) || SAY (indent_first))
+      {
+        g_string_append (out, "<w:ind");
+        if (SAY (indent_left))  g_string_append_printf (out, " w:left=\"%d\"", pa->indent_left);
+        if (SAY (indent_right)) g_string_append_printf (out, " w:right=\"%d\"", pa->indent_right);
+        if (pa->indent_first > 0) g_string_append_printf (out, " w:firstLine=\"%d\"", pa->indent_first);
+        else if (pa->indent_first < 0) g_string_append_printf (out, " w:hanging=\"%d\"", -pa->indent_first);
+        else if (over->indent_first != 0) g_string_append (out, " w:firstLine=\"0\"");
+        g_string_append (out, "/>");
+      }
+#undef SAY
+  }
   switch (mirror_align (pa->align, pa->rtl))
     {
     case W42_ALIGN_CENTER:  g_string_append (out, "<w:jc w:val=\"center\"/>"); break;
@@ -4164,8 +4723,9 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
     case W42_ALIGN_JUSTIFY: g_string_append (out, "<w:jc w:val=\"both\"/>"); break;
     case W42_ALIGN_LEFT:
       /* In a right-to-left paragraph Word's "left" is the right margin,
-       * so it is worth saying even though it is the default. */
-      if (pa->rtl)
+       * so it is worth saying even though it is the default; and in a
+       * style that centres, a left-aligned paragraph has to say it. */
+      if (pa->rtl || over->align != W42_ALIGN_LEFT)
         g_string_append (out, "<w:jc w:val=\"left\"/>");
       break;
     default: break;
@@ -4195,10 +4755,12 @@ write_paragraph (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
       int size = (ch->size > 0 ? ch->size : 20) * pa->drop_cap * 12 / 10;
       W42Block trimmed = *block;
 
-      g_string_append_printf (out, "<w:p><w:pPr><w:framePr w:dropCap=\"drop\" w:lines=\"%d\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"text\"/>",
-                              pa->drop_cap);
+      /* pStyle first: the schema has it lead the pPr. */
+      g_string_append (out, "<w:p><w:pPr>");
       if (pa->style != NULL && g_ascii_strcasecmp (pa->style, "Normal") != 0)
-        g_string_append_printf (out, "<w:pStyle w:val=\"%s\"/>", style_id (pa->style));
+        g_string_append_printf (out, "<w:pStyle w:val=\"%s\"/>", style_id_of (parts, pa->style));
+      g_string_append_printf (out, "<w:framePr w:dropCap=\"drop\" w:lines=\"%d\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"text\"/>",
+                              pa->drop_cap);
       g_string_append (out, "</w:pPr><w:r><w:rPr>");
       if (ch->family != NULL)
         append_rfonts (out, ch->family);
@@ -4238,15 +4800,17 @@ write_paragraph (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
   g_string_append (out, "</w:p>");
 }
 
-/* One part holding paragraphs of text: a header or footer. */
+/* One part holding paragraphs of text: a header or footer, whose root is
+ * `root`, "w:hdr" or "w:ftr".  Said here rather than put right after: a
+ * search-and-replace of the finished part changed the footer's text too. */
 static char *
-page_text_part (const W42PageText *text)
+page_text_part (const W42PageText *text, const char *root)
 {
   GString *out = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
   const char *jc = text->align == W42_ALIGN_CENTER ? "center"
                  : text->align == W42_ALIGN_RIGHT ? "right" : NULL;
 
-  g_string_append (out, "<w:hdr " W_NS ">");
+  g_string_append_printf (out, "<%s " W_NS ">", root);
   g_string_append (out, "<w:p><w:pPr>");
   if (jc != NULL)
     g_string_append_printf (out, "<w:jc w:val=\"%s\"/>", jc);
@@ -4296,16 +4860,111 @@ page_text_part (const W42PageText *text)
         p = close + 1;
       }
   }
-  g_string_append (out, "</w:p></w:hdr>");
+  g_string_append_printf (out, "</w:p></%s>", root);
   return g_string_free (out, FALSE);
 }
 
-static char *
-styles_part (W42StyleSheet *styles)
+/* The style a style is written as based on: the one it names, when the
+ * sheet has it, else Normal for a paragraph style.  Normal, and a
+ * character style of no base, stand on the document's defaults: NULL. */
+static const W42Style *
+style_base (W42StyleSheet *styles, const W42Style *s)
 {
+  const W42Style *base = NULL;
+
+  if (g_ascii_strcasecmp (s->name, "Normal") == 0)
+    return NULL;
+  if (s->based_on != NULL && g_ascii_strcasecmp (s->based_on, s->name) != 0)
+    base = w42_stylesheet_find (styles, s->based_on);
+  if (base == NULL && !s->character)
+    base = w42_stylesheet_find (styles, "Normal");
+  return base != s ? base : NULL;
+}
+
+/* A paragraph style's pPr, said against its base's: where it differs,
+ * nought, "left" and "off" included, since in Word, and in Word42 reading
+ * the file again, a style takes what it does not say from its base.  With
+ * no base everything is said.  Borders, shading and tab stops are said
+ * whole all the same: Word42's sheet keeps those as each style's own. */
+static void
+write_style_ppr (GString *out, const W42Style *s, const W42Style *base)
+{
+  const W42ParaFmt *pa = &s->pa;
+  W42ParaFmt none;
+  const W42ParaFmt *over;
+  gboolean all = base == NULL;
+
+  memset (&none, 0, sizeof none);
+  over = base != NULL ? &base->pa : &none;
+  g_string_append (out, "<w:pPr>");
+  /* Keeping with the next, keeping the lines together and widow control
+   * are one setting to the sheet, owned together: said together. */
+  if (all || pa->keep_next != over->keep_next || pa->keep_together != over->keep_together ||
+      pa->widow_control != over->widow_control)
+    g_string_append_printf (out, "<w:keepNext%s/><w:keepLines%s/><w:widowControl%s/>",
+                            pa->keep_next ? "" : " w:val=\"0\"",
+                            pa->keep_together ? "" : " w:val=\"0\"",
+                            pa->widow_control ? "" : " w:val=\"0\"");
+  write_ppr_rules (out, pa, base != NULL ? &base->pa : NULL);
+  {
+    gboolean before = all || pa->space_before != over->space_before;
+    gboolean after = all || pa->space_after != over->space_after;
+    gboolean line = pa->line_spacing != over->line_spacing ||
+                    pa->line_spacing_pct != over->line_spacing_pct;
+
+    if (before || after || line)
+      {
+        g_string_append (out, "<w:spacing");
+        if (before)
+          g_string_append_printf (out, " w:before=\"%d\"", pa->space_before);
+        if (after)
+          g_string_append_printf (out, " w:after=\"%d\"", pa->space_after);
+        if (line && pa->line_spacing_pct > 0)
+          g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"auto\"", line_240ths (pa->line_spacing_pct));
+        else if (line && pa->line_spacing > 0)
+          g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"exact\"", pa->line_spacing);
+        else if (line)
+          g_string_append (out, " w:line=\"240\" w:lineRule=\"auto\"");
+        g_string_append (out, "/>");
+      }
+  }
+  {
+    gboolean left = all || pa->indent_left != over->indent_left;
+    gboolean right = all || pa->indent_right != over->indent_right;
+    gboolean first = all || pa->indent_first != over->indent_first;
+
+    if (left || right || first)
+      {
+        g_string_append (out, "<w:ind");
+        if (left)
+          g_string_append_printf (out, " w:left=\"%d\"", pa->indent_left);
+        if (right)
+          g_string_append_printf (out, " w:right=\"%d\"", pa->indent_right);
+        if (first && pa->indent_first < 0)
+          g_string_append_printf (out, " w:hanging=\"%d\"", -pa->indent_first);
+        else if (first)
+          g_string_append_printf (out, " w:firstLine=\"%d\"", pa->indent_first);
+        g_string_append (out, "/>");
+      }
+  }
+  if (all || pa->align != over->align)
+    g_string_append_printf (out, "<w:jc w:val=\"%s\"/>",
+                            pa->align == W42_ALIGN_CENTER ? "center"
+                            : pa->align == W42_ALIGN_RIGHT ? "right"
+                            : pa->align == W42_ALIGN_JUSTIFY ? "both" : "left");
+  if (s->outline > 0)
+    g_string_append_printf (out, "<w:outlineLvl w:val=\"%d\"/>", s->outline - 1);
+  g_string_append (out, "</w:pPr>");
+}
+
+static char *
+styles_part (Parts *parts)
+{
+  W42StyleSheet *styles = parts->styles;
   GString *out = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
   const W42Style *normal = w42_stylesheet_find (styles, "Normal");
   W42Fmt def;
+  W42CharFmt defaults;
 
   w42_fmt_init_default (&def);
   g_string_append (out, "<w:styles " W_NS ">");
@@ -4315,77 +4974,43 @@ styles_part (W42StyleSheet *styles)
     "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/></w:rPr></w:rPrDefault>"
     "<w:pPrDefault><w:pPr/></w:pPrDefault></w:docDefaults>",
     normal != NULL ? normal->ch.size : def.ch.size, normal != NULL ? normal->ch.size : def.ch.size);
+  /* What a style of no base starts from when the file is read: the
+   * defaults just written, and nothing else on. */
+  defaults = def.ch;
+  defaults.family = normal != NULL ? normal->ch.family : def.ch.family;
+  defaults.size = normal != NULL ? normal->ch.size : def.ch.size;
 
   for (guint i = 0; i < w42_stylesheet_size (styles); i++)
     {
       const W42Style *s = w42_stylesheet_get (styles, i);
+      const W42Style *base = style_base (styles, s);
       gboolean is_normal = g_ascii_strcasecmp (s->name, "Normal") == 0;
 
       g_string_append_printf (out, "<w:style w:type=\"%s\" w:styleId=\"%s\"%s><w:name w:val=\"",
                               s->character ? "character" : "paragraph",
-                              style_id (s->name), is_normal ? " w:default=\"1\"" : "");
+                              style_id_of (parts, s->name), is_normal ? " w:default=\"1\"" : "");
       xml_escape (out, s->name, strlen (s->name));
       g_string_append (out, "\"/>");
-      if (s->based_on != NULL && w42_stylesheet_find (styles, s->based_on) != NULL)
-        g_string_append_printf (out, "<w:basedOn w:val=\"%s\"/>", style_id (s->based_on));
-      else if (!is_normal && !s->character)
-        g_string_append (out, "<w:basedOn w:val=\"Normal\"/>");
+      if (base != NULL)
+        g_string_append_printf (out, "<w:basedOn w:val=\"%s\"/>", style_id_of (parts, base->name));
       if (!is_normal && !s->character)
         g_string_append (out, "<w:next w:val=\"Normal\"/><w:qFormat/>");
       else if (s->character)
         g_string_append (out, "<w:qFormat/>");
       if (!s->character)
-        {
-          g_string_append (out, "<w:pPr>");
-          if (s->outline > 0)
-            g_string_append (out, "<w:keepNext/>");
-          if (s->pa.space_before || s->pa.space_after || s->pa.line_spacing_pct > 0 || s->pa.line_spacing > 0)
-            {
-              g_string_append_printf (out, "<w:spacing w:before=\"%d\" w:after=\"%d\"", s->pa.space_before, s->pa.space_after);
-              if (s->pa.line_spacing_pct > 0)
-                g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"auto\"", s->pa.line_spacing_pct * 240 / 100);
-              else if (s->pa.line_spacing > 0)
-                g_string_append_printf (out, " w:line=\"%d\" w:lineRule=\"exact\"", s->pa.line_spacing);
-              g_string_append (out, "/>");
-            }
-          if (s->pa.indent_left != 0 || s->pa.indent_right != 0 || s->pa.indent_first != 0)
-            {
-              g_string_append_printf (out, "<w:ind w:left=\"%d\" w:right=\"%d\"", s->pa.indent_left, s->pa.indent_right);
-              if (s->pa.indent_first < 0)
-                g_string_append_printf (out, " w:hanging=\"%d\"", -s->pa.indent_first);
-              else if (s->pa.indent_first > 0)
-                g_string_append_printf (out, " w:firstLine=\"%d\"", s->pa.indent_first);
-              g_string_append (out, "/>");
-            }
-          if (s->pa.align == W42_ALIGN_CENTER)
-            g_string_append (out, "<w:jc w:val=\"center\"/>");
-          else if (s->pa.align == W42_ALIGN_RIGHT)
-            g_string_append (out, "<w:jc w:val=\"right\"/>");
-          else if (s->pa.align == W42_ALIGN_JUSTIFY)
-            g_string_append (out, "<w:jc w:val=\"both\"/>");
-          if (s->outline > 0)
-            g_string_append_printf (out, "<w:outlineLvl w:val=\"%d\"/>", s->outline - 1);
-          g_string_append (out, "</w:pPr>");
-        }
-      g_string_append (out, "<w:rPr>");
-      if (s->ch.family != NULL && (normal == NULL || s->ch.family != normal->ch.family))
-        append_rfonts (out, s->ch.family);
-      if (s->ch.bold)   g_string_append (out, "<w:b/>");
-      if (s->ch.italic) g_string_append (out, "<w:i/>");
-      if (s->ch.underline)
-        g_string_append_printf (out, "<w:u w:val=\"%s\"/>", underline_val (s->ch.underline));
-      if (s->ch.color != 0)
-        g_string_append_printf (out, "<w:color w:val=\"%06X\"/>", s->ch.color & 0xFFFFFF);
-      if (s->ch.size > 0 && (normal == NULL || s->ch.size != normal->ch.size))
-        g_string_append_printf (out, "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/>", s->ch.size, s->ch.size);
-      g_string_append (out, "</w:rPr></w:style>");
+        write_style_ppr (out, s, base);
+      write_rpr (out, &s->ch, base != NULL ? &base->ch : &defaults);
+      g_string_append (out, "</w:style>");
     }
   g_string_append (out, "</w:styles>");
   return g_string_free (out, FALSE);
 }
 
+/* The numbering: an abstractNum for each kind the document uses, a w:num
+ * for each kind as it is, and `nums`, the w:num elements list_num made for
+ * the lists that start again. */
 static char *
-numbering_part (const gboolean *have)
+numbering_part (const gboolean *have, const char *nums)
 {
   GString *out = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
 
@@ -4423,8 +5048,22 @@ numbering_part (const gboolean *have)
   for (int k = 1; k < W42_LIST_KINDS; k++)
     if (have[k])
       g_string_append_printf (out, "<w:num w:numId=\"%d\"><w:abstractNumId w:val=\"%d\"/></w:num>", k, k);
+  g_string_append (out, nums);
   g_string_append (out, "</w:numbering>");
   return g_string_free (out, FALSE);
+}
+
+/* A part's relationships, as the part that holds them. */
+static void
+add_rels_part (W42ZipWriter *zip, const char *name, const RelSet *set)
+{
+  GString *xml = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+
+  g_string_append (xml, set->xml->str);
+  g_string_append (xml, "</Relationships>");
+  w42_zip_writer_add (zip, name, xml->str, xml->len);
+  g_string_free (xml, TRUE);
 }
 
 gboolean
@@ -4444,6 +5083,7 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
   int table_open = -1, row_open = -1;
   char *header_rid = NULL, *footer_rid = NULL;
   const W42PageText *header, *footer;
+  gboolean want_settings;
   gboolean ok;
 
   g_return_val_if_fail (pt != NULL, FALSE);
@@ -4471,15 +5111,19 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
   }
 
   memset (&parts, 0, sizeof parts);
-  parts.rels = g_string_new (NULL);
-  parts.next_rel = 1;
+  parts.styles = styles;
+  parts.style_ids = make_style_ids (styles);
+  rel_set_init (&parts.doc_rels);
+  rel_set_init (&parts.foot_rels);
+  rel_set_init (&parts.end_rels);
+  parts.rels = &parts.doc_rels;
   parts.media_names = g_ptr_array_new_with_free_func (g_free);
   parts.media_data = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
-  parts.link_rels = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   parts.comments = g_string_new (NULL);
+  parts.nums = g_string_new (NULL);
+  parts.next_num = 100;           /* past the kinds, which are numIds too */
+  parts.author = author_xml (pt);
   g_free (add_rel (&parts, "styles", "styles.xml", FALSE));
-  if (page != NULL && page->has_background)
-    g_free (add_rel (&parts, "settings", "settings.xml", FALSE));
 
   header = w42_pt_get_header (pt);
   footer = w42_pt_get_footer (pt);
@@ -4514,6 +5158,9 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
       if (f != NULL && f->text != NULL && *f->text != '\0')
         parts.footer_even_rid = add_rel (&parts, "footer", "footer3.xml", FALSE);
     }
+  want_settings = (page != NULL && page->has_background) || parts.facing_pages;
+  if (want_settings)
+    g_free (add_rel (&parts, "settings", "settings.xml", FALSE));
 
   g_string_append (doc, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document " W_NS ">");
   if (page != NULL && page->has_background)
@@ -4542,6 +5189,7 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
           gboolean last = next == NULL || next->note != block->note;
 
           if (block->note_end) any_endnotes = TRUE; else any_notes = TRUE;
+          parts.rels = block->note_end ? &parts.end_rels : &parts.foot_rels;
           if (first)
             {
               g_string_append_printf (target, "<w:%s w:id=\"%d\">", block->note_end ? "endnote" : "footnote", block->note + 1);
@@ -4557,6 +5205,7 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
           g_string_append (target, "</w:p>");
           if (last)
             g_string_append_printf (target, "</w:%s>", block->note_end ? "endnote" : "footnote");
+          parts.rels = &parts.doc_rels;
           continue;
         }
 
@@ -4736,13 +5385,42 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
     gboolean any_lists = FALSE;
     char *xml;
 
+    {
+      /* Every part needs a content type, and a picture kept as it came
+       * can be of a kind the list above lacks: HD Photo, WebP, PICT. */
+      static const char *listed[] = { "rels", "xml", "png", "jpeg", "jpg", "gif", "bmp",
+                                      "emf", "wmf", "tif", "tiff", "svg", NULL };
+      GHashTable *seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+
+      for (int k = 0; listed[k] != NULL; k++)
+        g_hash_table_add (seen, g_strdup (listed[k]));
+      for (guint i = 0; i < parts.media_names->len; i++)
+        {
+          const char *dot = strrchr (g_ptr_array_index (parts.media_names, i), '.');
+          char *ext = g_ascii_strdown (dot != NULL ? dot + 1 : "bin", -1);
+
+          if (g_hash_table_contains (seen, ext))
+            {
+              g_free (ext);
+              continue;
+            }
+          g_string_append_printf (types, "<Default Extension=\"%s\" ContentType=\"%s\"/>", ext,
+                                  g_str_equal (ext, "wdp") || g_str_equal (ext, "jxr") ? "image/vnd.ms-photo"
+                                  : g_str_equal (ext, "webp") ? "image/webp"
+                                  : g_str_equal (ext, "pict") || g_str_equal (ext, "pct") ? "image/pict"
+                                  : "application/octet-stream");
+          g_hash_table_add (seen, ext);
+        }
+      g_hash_table_destroy (seen);
+    }
+
     for (int k = 1; k < W42_LIST_KINDS; k++)
       any_lists |= parts.have_lists[k];
     if (any_lists)
       {
         g_string_append (types, "<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>");
         g_free (add_rel (&parts, "numbering", "numbering.xml", FALSE));
-        xml = numbering_part (parts.have_lists);
+        xml = numbering_part (parts.have_lists, parts.nums->str);
         w42_zip_writer_add (zip, "word/numbering.xml", xml, strlen (xml));
         g_free (xml);
       }
@@ -4756,6 +5434,8 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
         g_string_append (types, "<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>");
         g_free (add_rel (&parts, "footnotes", "footnotes.xml", FALSE));
         w42_zip_writer_add (zip, "word/footnotes.xml", part->str, part->len);
+        if (parts.foot_rels.xml->len > 0)
+          add_rels_part (zip, "word/_rels/footnotes.xml.rels", &parts.foot_rels);
         g_string_free (part, TRUE);
       }
     if (any_endnotes)
@@ -4768,6 +5448,8 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
         g_string_append (types, "<Override PartName=\"/word/endnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml\"/>");
         g_free (add_rel (&parts, "endnotes", "endnotes.xml", FALSE));
         w42_zip_writer_add (zip, "word/endnotes.xml", part->str, part->len);
+        if (parts.end_rels.xml->len > 0)
+          add_rels_part (zip, "word/_rels/endnotes.xml.rels", &parts.end_rels);
         g_string_free (part, TRUE);
       }
     if (parts.comments->len > 0)
@@ -4783,25 +5465,16 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
       }
     if (header_rid != NULL)
       {
-        xml = page_text_part (header);
+        xml = page_text_part (header, "w:hdr");
         g_string_append (types, "<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>");
         w42_zip_writer_add (zip, "word/header1.xml", xml, strlen (xml));
         g_free (xml);
       }
     if (footer_rid != NULL)
       {
-        xml = page_text_part (footer);
-        /* A footer is the same part with another root. */
-        {
-          char *ftr = g_strdup (xml);
-          char *p;
-
-          while ((p = strstr (ftr, "w:hdr")) != NULL)
-            memcpy (p, "w:ftr", 5);
-          g_string_append (types, "<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>");
-          w42_zip_writer_add (zip, "word/footer1.xml", ftr, strlen (ftr));
-          g_free (ftr);
-        }
+        xml = page_text_part (footer, "w:ftr");
+        g_string_append (types, "<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>");
+        w42_zip_writer_add (zip, "word/footer1.xml", xml, strlen (xml));
         g_free (xml);
       }
     {
@@ -4820,7 +5493,7 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
 
           if (hrid != NULL && h != NULL)
             {
-              char *part = page_text_part (h);
+              char *part = page_text_part (h, "w:hdr");
 
               g_string_append_printf (types, "<Override PartName=\"/%s\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>", more[k].header);
               w42_zip_writer_add (zip, more[k].header, part, strlen (part));
@@ -4828,18 +5501,15 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
             }
           if (frid != NULL && f != NULL)
             {
-              char *part = page_text_part (f);
-              char *p;
+              char *part = page_text_part (f, "w:ftr");
 
-              while ((p = strstr (part, "w:hdr")) != NULL)
-                memcpy (p, "w:ftr", 5);
               g_string_append_printf (types, "<Override PartName=\"/%s\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>", more[k].footer);
               w42_zip_writer_add (zip, more[k].footer, part, strlen (part));
               g_free (part);
             }
         }
     }
-    if (page != NULL && page->has_background)
+    if (want_settings)
       g_string_append (types, "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>");
     g_string_append (types, "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>");
     g_string_append (types, "</Types>");
@@ -4852,26 +5522,28 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
       "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
       "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>"
       "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/></Relationships>";
-    GString *rels = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
     char *xml;
 
     w42_zip_writer_add (zip, "_rels/.rels", root_rels, strlen (root_rels));
-    g_string_append (rels, parts.rels->str);
-    g_string_append (rels, "</Relationships>");
-    w42_zip_writer_add (zip, "word/_rels/document.xml.rels", rels->str, rels->len);
-    g_string_free (rels, TRUE);
+    add_rels_part (zip, "word/_rels/document.xml.rels", &parts.doc_rels);
 
     w42_zip_writer_add (zip, "word/document.xml", doc->str, doc->len);
-    if (page != NULL && page->has_background)
+    if (want_settings)
       {
         /* Word paints the background only if it is told to display the
-         * background shape; the settings part is where that is said. */
-        const char *settings =
-          "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-          "<w:settings " W_NS "><w:displayBackgroundShape/></w:settings>";
+         * background shape, and gives even pages headers and footers of
+         * their own only if told that too; the settings part is where
+         * both are said, in this order. */
+        GString *settings = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                                          "<w:settings " W_NS ">");
 
-        w42_zip_writer_add (zip, "word/settings.xml", settings, strlen (settings));
+        if (page != NULL && page->has_background)
+          g_string_append (settings, "<w:displayBackgroundShape/>");
+        if (parts.facing_pages)
+          g_string_append (settings, "<w:evenAndOddHeaders/>");
+        g_string_append (settings, "</w:settings>");
+        w42_zip_writer_add (zip, "word/settings.xml", settings->str, settings->len);
+        g_string_free (settings, TRUE);
       }
   {
     /* What the document says about itself. */
@@ -4902,7 +5574,7 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
     w42_zip_writer_add (zip, "docProps/core.xml", core->str, core->len);
     g_string_free (core, TRUE);
   }
-    xml = styles_part (styles);
+    xml = styles_part (&parts);
     w42_zip_writer_add (zip, "word/styles.xml", xml, strlen (xml));
     g_free (xml);
     for (guint i = 0; i < parts.media_names->len; i++)
@@ -4921,13 +5593,21 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
   g_string_free (doc, TRUE);
   g_string_free (notes, TRUE);
   g_string_free (endnotes, TRUE);
-  g_string_free (parts.rels, TRUE);
+  rel_set_clear (&parts.doc_rels);
+  rel_set_clear (&parts.foot_rels);
+  rel_set_clear (&parts.end_rels);
   g_ptr_array_free (parts.media_names, TRUE);
   g_ptr_array_free (parts.media_data, TRUE);
-  g_hash_table_destroy (parts.link_rels);
   g_string_free (parts.comments, TRUE);
+  g_string_free (parts.nums, TRUE);
+  g_free (parts.author);
+  g_hash_table_destroy (parts.style_ids);
   g_free (header_rid);
   g_free (footer_rid);
+  g_free (parts.header_first_rid);
+  g_free (parts.footer_first_rid);
+  g_free (parts.header_even_rid);
+  g_free (parts.footer_even_rid);
   g_ptr_array_free (blocks, TRUE);
   return ok;
 }
