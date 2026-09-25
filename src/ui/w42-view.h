@@ -285,6 +285,8 @@ gboolean w42_view_go_to_note  (W42View *self);
  * number past the end goes to the end.  Lines are the laid-out lines of
  * the current view. */
 void w42_view_go_to_page (W42View *self, int page);
+/* How many printed pages there are, in any view. */
+int      w42_view_page_count (W42View *self);
 void w42_view_go_to_line (W42View *self, int line);
 int  w42_view_line_count (W42View *self);
 
@@ -382,6 +384,20 @@ gboolean w42_view_find_misspelling (W42View *self, W42Spell *spell, gsize from,
 /* The style of the paragraph at the caret, and applying one to every
  * paragraph the selection touches. */
 const char *w42_view_get_style   (W42View *self);
+
+/* View > Typewriter Scrolling: the line being written is kept in the
+ * middle of the window, the page moving up under it, rather than the
+ * caret wandering down to the window's foot. */
+void        w42_view_set_typewriter (W42View *self, gboolean on);
+gboolean    w42_view_get_typewriter (W42View *self);
+
+/* The language of the text at the caret: the one it is marked with, else
+ * the document's own, else the desktop's.  A BCP-47 tag. */
+const char *w42_view_get_language (W42View *self);
+/* The document's own language -- Normal's, which every style follows --
+ * or NULL for none, when the desktop's stands in. */
+const char *w42_view_get_document_language (W42View *self);
+void        w42_view_set_document_language (W42View *self, const char *lang);
 void        w42_view_apply_style (W42View *self, const char *name);
 
 G_END_DECLS

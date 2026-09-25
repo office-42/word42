@@ -466,12 +466,18 @@ enum {
   CH_EXTRA_SHADOW    = 1 << 8,
   CH_EXTRA_EMBOSS    = 1 << 9,
   CH_EXTRA_IMPRINT   = 1 << 10,
-  CH_EXTRA_LANG      = 1 << 11
+  CH_EXTRA_LANG      = 1 << 11,
+  /* And one of the paragraph's: the page break before, which the sheet
+   * keeps as each style's own and so never takes from a base, where in
+   * Word a chapter style based on Heading 1 breaks the page as Heading 1
+   * does. */
+  PA_EXTRA_PAGE_BREAK = 1 << 12
 };
 
 typedef struct {
-  guint32    mask;               /* CH_EXTRA_* */
+  guint32    mask;               /* CH_EXTRA_* and PA_EXTRA_* */
   W42CharFmt ch;                 /* their values */
+  gboolean   page_break;
 } StyleExtra;
 
 /* The settings `mask` names, from `from` onto `to`. */
@@ -778,6 +784,11 @@ style_property (Styles *s, const char *tag, const char **an, const char **av,
       pa->widow_control = toggle_on (an, av);
       *pa_own |= W42_STYLE_PA_FLOW;
     }
+  else if (g_str_equal (tag, "pageBreakBefore"))
+    {
+      pa->page_break_before = toggle_on (an, av);
+      *extra |= PA_EXTRA_PAGE_BREAK;
+    }
 }
 
 static void
@@ -1066,6 +1077,7 @@ styles_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **
 
               x->mask = s->cur_extra;
               x->ch = s->cur.ch;
+              x->page_break = s->cur.pa.page_break_before;
               g_hash_table_insert (s->extras, (gpointer) g_intern_string (s->cur.name), x);
             }
           if (s->cur_based != NULL)
@@ -1287,6 +1299,8 @@ read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *ou
                 if (x != NULL)
                   {
                     copy_extras (&copy.ch, &x->ch, x->mask & ~done);
+                    if (x->mask & ~done & PA_EXTRA_PAGE_BREAK)
+                      copy.pa.page_break_before = x->page_break;
                     done |= x->mask;
                   }
                 base = w42_stylesheet_find (sheet, name);
@@ -1328,16 +1342,46 @@ read_styles (W42Zip *zip, GHashTable *rels, W42StyleSheet *sheet, DocxStyles *ou
     }
 }
 
-/* numbering.xml: numId -> list kind, through the abstract numbering's
- * first level. */
+/* numbering.xml: what list each numId stands for.  Its kind is the
+ * abstract numbering's first level's; the number each level starts at is
+ * the abstract numbering's w:start, or the w:num's own w:startOverride,
+ * which is how Word -- and Word42 -- say that a list starts again. */
 typedef struct {
-  GHashTable *abstract;   /* abstractNumId -> kind */
-  GHashTable *nums;       /* numId -> kind */
-  char       *current_abstract;
-  gboolean    in_level0;
-  gboolean    level0_done;
-  char       *current_num;
-  char       *bullet_text;
+  W42ListKind kind;
+  int         start[9];
+} DocxAbstract;
+
+typedef struct {
+  W42ListKind kind;
+  int         start[9];        /* the number each level starts at */
+  char       *abstract;        /* its abstractNumId */
+  int         override[9];     /* w:startOverride, or 0 */
+  char       *count;           /* whose count it goes on: its own, when it
+                                * starts a level over, else its abstract
+                                * numbering's, which Word counts through
+                                * every w:num that shares it */
+} DocxNum;
+
+static void
+docx_num_free (gpointer data)
+{
+  DocxNum *num = data;
+
+  g_free (num->abstract);
+  g_free (num->count);
+  g_free (num);
+}
+
+typedef struct {
+  GHashTable   *abstract;   /* abstractNumId -> DocxAbstract* */
+  GHashTable   *nums;       /* numId -> DocxNum* */
+  DocxAbstract *cur_abstract;
+  int           lvl;           /* the w:lvl being read, or -1 */
+  gboolean      in_level0;
+  gboolean      level0_done;
+  DocxNum      *cur_num;
+  int           override_lvl;  /* the w:lvlOverride being read, or -1 */
+  char         *bullet_text;
 } Numbering;
 
 static void
@@ -1350,24 +1394,51 @@ numbering_start (GMarkupParseContext *ctx, const char *name, const char **an,
   (void) ctx; (void) error;
   if (g_str_equal (tag, "abstractNum"))
     {
-      g_free (n->current_abstract);
-      n->current_abstract = g_strdup (attr (an, av, "abstractNumId"));
+      const char *id = attr (an, av, "abstractNumId");
+
       /* One inside a w:lvl -- a broken file -- ends the level it is in,
        * or the level's end would look itself up under no id at all. */
       n->in_level0 = FALSE;
       n->level0_done = FALSE;
-      if (n->current_abstract != NULL)
-        g_hash_table_insert (n->abstract, g_strdup (n->current_abstract),
-                             GINT_TO_POINTER (W42_LIST_NUMBER));
+      n->lvl = -1;
+      n->cur_abstract = NULL;
+      n->cur_num = NULL;
+      if (id != NULL)
+        {
+          DocxAbstract *a = g_new0 (DocxAbstract, 1);
+
+          /* A level that says no w:start starts at one, as Word's do. */
+          a->kind = W42_LIST_NUMBER;
+          for (int l = 0; l < 9; l++)
+            a->start[l] = 1;
+          g_hash_table_insert (n->abstract, g_strdup (id), a);
+          n->cur_abstract = a;
+        }
     }
   else if (g_str_equal (tag, "lvl"))
-    n->in_level0 = n->current_abstract != NULL && attr_int (an, av, "ilvl", 0) == 0 && !n->level0_done;
+    {
+      int ilvl = attr_int (an, av, "ilvl", 0);
+
+      n->lvl = ilvl >= 0 && ilvl < 9 ? ilvl : -1;
+      n->in_level0 = n->cur_abstract != NULL && n->cur_num == NULL && ilvl == 0 && !n->level0_done;
+    }
+  else if (g_str_equal (tag, "start") && n->lvl >= 0)
+    {
+      /* A level of the abstract numbering; or one a w:num redefines in
+       * its override, whose start is that override's. */
+      int v = CLAMP (attr_int (an, av, "val", 1), 0, 255);
+
+      if (n->cur_num != NULL && n->override_lvl >= 0)
+        n->cur_num->override[n->override_lvl] = MAX (v, 1);
+      else if (n->cur_num == NULL && n->cur_abstract != NULL)
+        n->cur_abstract->start[n->lvl] = v;
+    }
   else if (g_str_equal (tag, "lvlText") && n->in_level0)
     {
       g_free (n->bullet_text);
       n->bullet_text = g_strdup (attr (an, av, "val"));
     }
-  else if (g_str_equal (tag, "numFmt") && n->in_level0 && n->current_abstract != NULL)
+  else if (g_str_equal (tag, "numFmt") && n->in_level0 && n->cur_abstract != NULL)
     {
       const char *fmt = attr (an, av, "val");
       W42ListKind kind = W42_LIST_NUMBER;
@@ -1380,21 +1451,35 @@ numbering_start (GMarkupParseContext *ctx, const char *name, const char **an,
           else if (g_str_equal (fmt, "lowerRoman"))  kind = W42_LIST_LOWER_ROMAN;
           else if (g_str_equal (fmt, "upperRoman"))  kind = W42_LIST_UPPER_ROMAN;
         }
-      g_hash_table_insert (n->abstract, g_strdup (n->current_abstract), GINT_TO_POINTER (kind));
+      n->cur_abstract->kind = kind;
     }
   else if (g_str_equal (tag, "num"))
     {
-      g_free (n->current_num);
-      n->current_num = g_strdup (attr (an, av, "numId"));
-    }
-  else if (g_str_equal (tag, "abstractNumId") && n->current_num != NULL)
-    {
-      const char *val = attr (an, av, "val");
-      gpointer kind = val != NULL ? g_hash_table_lookup (n->abstract, val) : NULL;
+      const char *id = attr (an, av, "numId");
 
-      g_hash_table_insert (n->nums, g_strdup (n->current_num),
-                           kind != NULL ? kind : GINT_TO_POINTER (W42_LIST_NUMBER));
+      n->cur_abstract = NULL;
+      n->cur_num = NULL;
+      n->override_lvl = -1;
+      if (id != NULL)
+        {
+          n->cur_num = g_new0 (DocxNum, 1);
+          n->cur_num->kind = W42_LIST_NUMBER;
+          g_hash_table_insert (n->nums, g_strdup (id), n->cur_num);
+        }
     }
+  else if (g_str_equal (tag, "abstractNumId") && n->cur_num != NULL)
+    {
+      g_free (n->cur_num->abstract);
+      n->cur_num->abstract = g_strdup (attr (an, av, "val"));
+    }
+  else if (g_str_equal (tag, "lvlOverride") && n->cur_num != NULL)
+    {
+      int ilvl = attr_int (an, av, "ilvl", 0);
+
+      n->override_lvl = ilvl >= 0 && ilvl < 9 ? ilvl : -1;
+    }
+  else if (g_str_equal (tag, "startOverride") && n->cur_num != NULL && n->override_lvl >= 0)
+    n->cur_num->override[n->override_lvl] = CLAMP (attr_int (an, av, "val", 1), 1, 255);
 }
 
 static void
@@ -1404,12 +1489,10 @@ numbering_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError
   const char *tag = local (name);
 
   (void) ctx; (void) error;
-  if (g_str_equal (tag, "lvl") && n->in_level0 && n->current_abstract != NULL)
+  if (g_str_equal (tag, "lvl") && n->in_level0 && n->cur_abstract != NULL)
     {
       /* A bullet's character says which bullet. */
-      gpointer kind = g_hash_table_lookup (n->abstract, n->current_abstract);
-
-      if (GPOINTER_TO_INT (kind) == W42_LIST_BULLET && n->bullet_text != NULL)
+      if (n->cur_abstract->kind == W42_LIST_BULLET && n->bullet_text != NULL)
         {
           gunichar c = g_utf8_get_char (n->bullet_text);
           W42ListKind k;
@@ -1425,32 +1508,66 @@ numbering_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError
                 ? W42_LIST_BULLET_SQUARE
             : c == '-' || c == 0x2013 || c == 0x2014 ? W42_LIST_BULLET_DASH
             : W42_LIST_BULLET;
-          g_hash_table_insert (n->abstract, g_strdup (n->current_abstract), GINT_TO_POINTER (k));
+          n->cur_abstract->kind = k;
         }
       n->in_level0 = FALSE;
       n->level0_done = TRUE;
       g_free (n->bullet_text);
       n->bullet_text = NULL;
     }
+  if (g_str_equal (tag, "lvl"))
+    n->lvl = -1;
+  else if (g_str_equal (tag, "lvlOverride"))
+    n->override_lvl = -1;
+  else if (g_str_equal (tag, "abstractNum"))
+    n->cur_abstract = NULL;
+  else if (g_str_equal (tag, "num"))
+    n->cur_num = NULL;
 }
 
 static GHashTable *
 read_numbering (W42Zip *zip)
 {
-  GHashTable *nums = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  GHashTable *nums = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, docx_num_free);
   GBytes *xml = w42_zip_read (zip, "word/numbering.xml");
 
   if (xml != NULL)
     {
       GMarkupParser parser = { numbering_start, numbering_end, NULL, NULL, NULL };
-      Numbering n = { g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL), nums, NULL, FALSE, FALSE, NULL, NULL };
-      GMarkupParseContext *ctx = g_markup_parse_context_new (&parser, 0, &n, NULL);
+      Numbering n;
+      GMarkupParseContext *ctx;
+      GHashTableIter iter;
+      gpointer key, value;
 
+      memset (&n, 0, sizeof n);
+      n.abstract = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+      n.nums = nums;
+      n.lvl = -1;
+      n.override_lvl = -1;
+      ctx = g_markup_parse_context_new (&parser, 0, &n, NULL);
       g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
       g_markup_parse_context_free (ctx);
+
+      /* A w:num may come before the abstract numbering it names, so each
+       * is filled in from its abstract numbering once both are read. */
+      g_hash_table_iter_init (&iter, nums);
+      while (g_hash_table_iter_next (&iter, &key, &value))
+        {
+          DocxNum *num = value;
+          const DocxAbstract *a = num->abstract != NULL
+                                    ? g_hash_table_lookup (n.abstract, num->abstract) : NULL;
+          gboolean own = FALSE;
+
+          num->kind = a != NULL ? a->kind : W42_LIST_NUMBER;
+          for (int l = 0; l < 9; l++)
+            {
+              num->start[l] = num->override[l] > 0 ? num->override[l] : a != NULL ? a->start[l] : 1;
+              own |= num->override[l] > 0;
+            }
+          num->count = own ? g_strconcat ("n", (const char *) key, NULL)
+                           : g_strconcat ("a", num->abstract != NULL ? num->abstract : "", NULL);
+        }
       g_hash_table_destroy (n.abstract);
-      g_free (n.current_abstract);
-      g_free (n.current_num);
       g_free (n.bullet_text);
       g_bytes_unref (xml);
     }
@@ -1690,6 +1807,7 @@ typedef struct {
   W42ParaFmt  txbx_saved_pa; /* the paragraph the box hangs on */
   gboolean    txbx_reopened;
   gboolean    in_align;      /* wp:align: the anchored picture's side */
+  gboolean    h_aligned;     /* and it said left or right */
   gboolean    anchored;      /* wp:anchor rather than wp:inline */
   W42Wrap     wrap;          /* the side the text keeps off */
   gint64      cx, cy;
@@ -1714,6 +1832,17 @@ typedef struct {
   gboolean    vml_fill_given;  /* the v:shape said whether it is filled */
   gboolean    run_hidden;    /* w:vanish: the run is not shown */
 
+  const DocxNum *para_num;         /* the list the paragraph's w:numId names */
+  GHashTable *list_counts;        /* a list's count -> DocxCount*, as Word
+                                   * numbers its items */
+  int         level_n[9];         /* and as Word42 numbers them, as the */
+  guint8      level_kind[9];      /* layout and the writer count */
+  gboolean    break_para;         /* the paragraph began at a page break: its
+                                   * own, before its text, or one it was
+                                   * split at */
+  gboolean    break_carry;        /* a page break with nothing after it in its
+                                   * paragraph: the next paragraph's */
+  gboolean    carry_section;      /* and the section that paragraph began */
   gboolean    section_pending;    /* the next paragraph starts a section */
   gsize       section_first;      /* the first paragraph of the current section */
   gboolean    first_para;
@@ -1741,6 +1870,50 @@ typedef struct {
                                * not in the span: the note's body has one
                                * of its own for the text to go into. */
 } W42NoteSpan;
+
+/* How far one of Word's lists has counted, level by level. */
+typedef struct {
+  int      n[9];
+  gboolean started[9];
+} DocxCount;
+
+/* A numbered paragraph's number as Word gives it, kept as the paragraph's
+ * restart where Word42 would count it otherwise.  Word counts a list on
+ * through whatever stands between its items and starts it where
+ * numbering.xml says; Word42 counts on over consecutive items, from one,
+ * and says anything else -- a list Word42 itself started again, which it
+ * writes as a w:num with a w:startOverride -- with a restart.  Without
+ * it, every list read came back numbered from one. */
+static void
+docx_list_number (Docx *d)
+{
+  W42ParaFmt *pa = &d->b.pa;
+  const DocxNum *num = d->para_num;
+  int lv = MIN (pa->list_level, 8);
+  DocxCount *c = g_hash_table_lookup (d->list_counts, num->count);
+  int word, ours;
+
+  if (c == NULL)
+    {
+      c = g_new0 (DocxCount, 1);
+      g_hash_table_insert (d->list_counts, g_strdup (num->count), c);
+    }
+  word = CLAMP (c->started[lv] ? c->n[lv] + 1 : num->start[lv], 1, 255);
+  c->n[lv] = word;
+  c->started[lv] = TRUE;
+  for (int deeper = lv + 1; deeper < 9; deeper++)
+    c->started[deeper] = FALSE;
+
+  ours = pa->list != d->level_kind[lv] ? 1 : d->level_n[lv] + 1;
+  pa->list_start = word != ours ? (guint8) word : 0;
+  d->level_n[lv] = word;
+  d->level_kind[lv] = pa->list;
+  for (int deeper = lv + 1; deeper < 9; deeper++)
+    {
+      d->level_n[deeper] = 0;
+      d->level_kind[deeper] = W42_LIST_NONE;
+    }
+}
 
 static const char *
 map_style (Docx *d, const char *id)
@@ -1775,6 +1948,9 @@ docx_apply_style (Docx *d, const char *name)
   pa->keep_next = st->pa.keep_next;
   pa->keep_together = st->pa.keep_together;
   pa->widow_control = st->pa.widow_control;
+  /* A chapter heading whose style starts a page starts one: left out,
+   * a book's chapters all ran on from the page before. */
+  pa->page_break_before = st->pa.page_break_before;
   pa->border = st->pa.border;
   memcpy (pa->edge, st->pa.edge, sizeof pa->edge);
   pa->shading = st->pa.shading;
@@ -2120,9 +2296,18 @@ docx_apply_field (Docx *d)
             }
           else if (*p == '"')
             {
-              const char *end = strchr (p + 1, '"');
+              /* To the closing quotation mark: one written \" is the
+               * address's own, and \\ a backslash, as Word's field
+               * syntax has them. */
+              GString *arg = g_string_new (NULL);
 
-              target = g_strndup (p + 1, end != NULL ? (gsize) (end - p - 1) : strlen (p + 1));
+              for (p++; *p != '\0' && *p != '"'; p++)
+                {
+                  if (*p == '\\' && (p[1] == '"' || p[1] == '\\'))
+                    p++;
+                  g_string_append_c (arg, *p);
+                }
+              target = g_string_free (arg, FALSE);
             }
           else
             p++;
@@ -2339,6 +2524,16 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (d->first_para)
         d->section_first = (gsize) -1;
       d->first_para = FALSE;
+      /* The paragraph goes into the mark of one that held nothing but a
+       * page break, and begins what that one began. */
+      if (d->carry_section)
+        {
+          d->b.pa.section_break = 1;
+          d->b.pa.columns = 1;
+          d->carry_section = FALSE;
+        }
+      d->break_para = FALSE;
+      d->para_num = NULL;
     }
   else if (g_str_equal (tag, "pPr"))
     d->in_ppr = TRUE;
@@ -2405,8 +2600,32 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       docx_flush_text (d);
       if (type != NULL && g_str_equal (type, "page"))
         {
-          w42_builder_end_paragraph (&d->b);
+          /* Before any of the paragraph's text the break is the
+           * paragraph's own: a chapter's heading that Word starts with
+           * one is the heading, on a new page, and not an empty heading
+           * followed by its title in Normal.  After some, what follows is
+           * a paragraph of the same formatting and style, on a new page;
+           * but no list item of its own, since Word shows no number
+           * there, and none of what only a paragraph's start has. */
+          if (d->b.in_para)
+            {
+              W42ParaFmt rest = d->b.pa;
+
+              w42_builder_end_paragraph (&d->b);
+              rest.section_break = 0;
+              rest.columns = 0;
+              rest.column_gap = 0;
+              rest.drop_cap = 0;
+              if (rest.list != W42_LIST_NONE)
+                {
+                  rest.list = W42_LIST_NONE;
+                  rest.list_start = 0;
+                  rest.indent_first = 0;
+                }
+              d->b.pa = rest;
+            }
           d->b.pa.page_break_before = 1;
+          d->break_para = TRUE;
         }
       else
         w42_builder_text (&d->b, "\342\200\250");
@@ -2518,11 +2737,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (g_str_equal (tag, "numId"))
         {
           const char *v = attr (an, av, "val");
-          gpointer kind = v != NULL ? g_hash_table_lookup (d->numbering, v) : NULL;
+          const DocxNum *num = v != NULL ? g_hash_table_lookup (d->numbering, v) : NULL;
 
+          d->para_num = NULL;
           if (v != NULL && !g_str_equal (v, "0"))
             {
-              pa->list = (guint8) (kind != NULL ? GPOINTER_TO_INT (kind) : W42_LIST_NUMBER);
+              pa->list = (guint8) (num != NULL ? num->kind : W42_LIST_NUMBER);
+              d->para_num = num;
               if (pa->indent_left == 0)
                 pa->indent_left = 360 * (pa->list_level + 1);
               if (pa->indent_first == 0)
@@ -2934,6 +3155,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
       d->anchored = TRUE;
       d->wrap = W42_WRAP_LEFT;
+      d->h_aligned = FALSE;
       d->behind = behind != NULL && (g_str_equal (behind, "1") || g_str_equal (behind, "true"));
       d->pos_h_set = d->pos_v_set = FALSE;
       d->pos_x = d->pos_y = 0;
@@ -3060,6 +3282,21 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     d->wrap = W42_WRAP_TOP_BOTTOM;
   else if (d->in_drawing && g_str_equal (tag, "wrapNone"))
     d->wrap = d->behind ? W42_WRAP_BEHIND : W42_WRAP_FRONT;
+  else if (d->in_drawing && d->anchored &&
+           (g_str_equal (tag, "wrapSquare") || g_str_equal (tag, "wrapTight") ||
+            g_str_equal (tag, "wrapThrough")))
+    {
+      /* wrapText is the side the text goes, so the picture is at the
+       * other: "left" is text on its left only.  A picture aligned to a
+       * side is at that side whatever this says; one set at a place of
+       * its own has only this to say which side it keeps to. */
+      const char *side = attr (an, av, "wrapText");
+
+      if (!d->h_aligned && side != NULL && g_str_equal (side, "left"))
+        d->wrap = W42_WRAP_RIGHT;
+      else if (!d->h_aligned && side != NULL && g_str_equal (side, "right"))
+        d->wrap = W42_WRAP_LEFT;
+    }
   else if (d->in_drawing && g_str_equal (tag, "align"))
     d->in_align = TRUE;
   else if (d->in_drawing && g_str_equal (tag, "extent"))
@@ -3501,6 +3738,8 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
        * both are known only now that its properties have been read. */
       d->in_ppr = FALSE;
       d->b.pa.align = mirror_align (d->b.pa.align, d->b.pa.rtl);
+      if (d->para_num != NULL && d->list_counts != NULL && w42_list_is_numbered (d->b.pa.list))
+        docx_list_number (d);
       /* The mark's formatting is the empty paragraph's height. */
       d->b.ch = d->run_ch;
     }
@@ -3533,6 +3772,27 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
           return;
         }
       d->txbx_reopened = FALSE;
+      if (d->break_para && !d->b.in_para && d->depth_tbl == 0 && d->txbx_depth == 0 &&
+          !d->reading_notes && !d->cell_pending && d->drop_pending == 0 && d->drop_join == 0)
+        {
+          /* Nothing after the page break -- Word's Ctrl+Enter is a
+           * paragraph holding only one, and a paragraph may end with one
+           * -- so there is no paragraph on the new page but the next: the
+           * break is its, and the next one's text goes into this mark. */
+          d->break_carry = TRUE;
+          d->carry_section = d->b.pa.section_break != 0;
+          return;
+        }
+      if (d->break_carry)
+        {
+          d->b.pa.page_break_before = 1;
+          d->break_carry = FALSE;
+        }
+      if (d->b.pa.list == W42_LIST_NONE)
+        {
+          memset (d->level_n, 0, sizeof d->level_n);
+          memset (d->level_kind, 0, sizeof d->level_kind);
+        }
       if (d->txbx_depth > 0)
         {
           d->b.pa.frame_side = (guint8) d->txbx_side;
@@ -3649,6 +3909,8 @@ docx_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data,
       /* wp:align under wp:positionH: which side the picture sits at. */
       if (len >= 5 && strncmp (text, "right", 5) == 0 && d->wrap != W42_WRAP_INLINE)
         d->wrap = W42_WRAP_RIGHT;
+      if ((len >= 5 && strncmp (text, "right", 5) == 0) || (len >= 4 && strncmp (text, "left", 4) == 0))
+        d->h_aligned = TRUE;
       d->in_align = FALSE;
     }
 }
@@ -3789,6 +4051,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   read_core_props (zip, pt);
   read_settings (zip, pt);
   d.numbering = read_numbering (zip);
+  d.list_counts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
   d.endnotes = read_notes (zip, "word/endnotes.xml");
   d.comments = read_notes (zip, "word/comments.xml");
@@ -3828,6 +4091,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   g_hash_table_destroy (d.styles);
   g_hash_table_destroy (d.table_styles);
   g_hash_table_destroy (d.numbering);
+  g_hash_table_destroy (d.list_counts);
   g_hash_table_destroy (d.footnotes);
   g_hash_table_destroy (d.endnotes);
   g_hash_table_destroy (d.note_spans);
@@ -4236,10 +4500,15 @@ write_drawing (GString *out, Parts *parts, W42PieceTable *pt, const W42Run *run,
   else
     {
       /* Anchored at the paragraph's top, against the column's side, with
-       * the text running down the other side; or where it was put. */
+       * the text running down the other side; or where it was put.  The
+       * wrap says that side: wrapText is where the text goes, so "left" is
+       * a picture at the right.  Said rather than "bothSides", since a
+       * picture set at a place of its own has no alignment to say which
+       * side it keeps to, and came back at the left. */
       const char *wrap = object->wrap == W42_WRAP_TOP_BOTTOM ? "<wp:wrapTopAndBottom/>"
                        : object->wrap == W42_WRAP_FRONT || object->wrap == W42_WRAP_BEHIND ? "<wp:wrapNone/>"
-                       : "<wp:wrapSquare wrapText=\"bothSides\"/>";
+                       : object->wrap == W42_WRAP_RIGHT ? "<wp:wrapSquare wrapText=\"left\"/>"
+                       : "<wp:wrapSquare wrapText=\"right\"/>";
 
       g_string_append_printf (out,
         "<w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" "
@@ -4665,6 +4934,7 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
   if (pa->keep_together) g_string_append (out, "<w:keepLines/>");
   else if (over->keep_together) g_string_append (out, "<w:keepLines w:val=\"0\"/>");
   if (pa->page_break_before) g_string_append (out, "<w:pageBreakBefore/>");
+  else if (over->page_break_before) g_string_append (out, "<w:pageBreakBefore w:val=\"0\"/>");
   if (pa->frame_side != W42_FRAME_NONE)
     g_string_append_printf (out, "<w:framePr w:w=\"%d\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"margin\" w:xAlign=\"%s\" w:y=\"1\"/>",
                             pa->frame_width > 0 ? pa->frame_width : 3120,
@@ -4898,12 +5168,24 @@ write_style_ppr (GString *out, const W42Style *s, const W42Style *base)
   over = base != NULL ? &base->pa : &none;
   g_string_append (out, "<w:pPr>");
   /* Keeping with the next, keeping the lines together and widow control
-   * are one setting to the sheet, owned together: said together. */
-  if (all || pa->keep_next != over->keep_next || pa->keep_together != over->keep_together ||
-      pa->widow_control != over->widow_control)
-    g_string_append_printf (out, "<w:keepNext%s/><w:keepLines%s/><w:widowControl%s/>",
+   * are one setting to the sheet, owned together: said together, with the
+   * page break between them where the schema puts it. */
+  gboolean flow = all || pa->keep_next != over->keep_next ||
+                  pa->keep_together != over->keep_together ||
+                  pa->widow_control != over->widow_control;
+
+  if (flow)
+    g_string_append_printf (out, "<w:keepNext%s/><w:keepLines%s/>",
                             pa->keep_next ? "" : " w:val=\"0\"",
-                            pa->keep_together ? "" : " w:val=\"0\"",
+                            pa->keep_together ? "" : " w:val=\"0\"");
+  /* The page break a chapter's heading style starts every chapter with;
+   * and its absence, where the base has one. */
+  if (pa->page_break_before)
+    g_string_append (out, "<w:pageBreakBefore/>");
+  else if (base != NULL && base->pa.page_break_before)
+    g_string_append (out, "<w:pageBreakBefore w:val=\"0\"/>");
+  if (flow)
+    g_string_append_printf (out, "<w:widowControl%s/>",
                             pa->widow_control ? "" : " w:val=\"0\"");
   write_ppr_rules (out, pa, base != NULL ? &base->pa : NULL);
   {
@@ -4970,10 +5252,15 @@ styles_part (Parts *parts)
   g_string_append (out, "<w:styles " W_NS ">");
   g_string_append (out, "<w:docDefaults><w:rPrDefault><w:rPr>");
   append_rfonts (out, normal != NULL ? normal->ch.family : def.ch.family);
-  g_string_append_printf (out,
-    "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/></w:rPr></w:rPrDefault>"
-    "<w:pPrDefault><w:pPr/></w:pPrDefault></w:docDefaults>",
-    normal != NULL ? normal->ch.size : def.ch.size, normal != NULL ? normal->ch.size : def.ch.size);
+  g_string_append_printf (out, "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/>",
+                          normal != NULL ? normal->ch.size : def.ch.size,
+                          normal != NULL ? normal->ch.size : def.ch.size);
+  /* The document's language is Normal's, and the defaults are where Word
+   * and LibreOffice look for it: a style based on none -- a character
+   * style -- and text in no style would otherwise be in the reader's. */
+  if (normal != NULL && normal->ch.lang != NULL && g_strcmp0 (normal->ch.lang, W42_LANG_NONE) != 0)
+    g_string_append_printf (out, "<w:lang w:val=\"%s\"/>", normal->ch.lang);
+  g_string_append (out, "</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr/></w:pPrDefault></w:docDefaults>");
   /* What a style of no base starts from when the file is read: the
    * defaults just written, and nothing else on. */
   defaults = def.ch;

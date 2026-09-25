@@ -16,13 +16,15 @@
 struct _W42Spell {
 #ifdef HAVE_ENCHANT
   EnchantBroker *broker;
-  EnchantDict   *dict;
+  EnchantDict   *dict;       /* the default, which w42_spell_check uses */
 #endif
-  char          *language;
+  char          *language;   /* the default's BCP-47 tag */
   GHashTable    *ignored;    /* words ignored this session */
   GHashTable    *by_lang;    /* BCP-47 tag -> EnchantDict*, or NULL when
-                              * there is no dictionary for it */
-  guint          serial;     /* bumped when a word is ignored or added */
+                              * there is no dictionary for it; each holds
+                              * a reference of its own */
+  guint          serial;     /* bumped when a word is ignored or added,
+                              * or the default dictionary changes */
   /* What the dictionary said of each word asked about: a long document
    * asks about the same few thousand words hundreds of thousands of
    * times, and asking Hunspell each time doubled the time the Bible
@@ -62,6 +64,24 @@ static gboolean
 is_word_char (gunichar c)
 {
   return g_unichar_isalpha (c) || g_unichar_ismark (c) || c == 0x00AD;
+}
+
+/* The first `len` bytes of `word` without the soft hyphens Tools >
+ * Hyphenation put in, which are not letters and which no dictionary
+ * knows: every path to a dictionary goes through here. */
+static char *
+plain_copy (const char *word, gsize len)
+{
+  GString *plain;
+
+  if (g_strstr_len (word, (gssize) len, "\302\255") == NULL)
+    return g_strndup (word, len);
+
+  plain = g_string_sized_new (len);
+  for (const char *p = word; p < word + len; p = g_utf8_next_char (p))
+    if (g_utf8_get_char (p) != 0x00AD)
+      g_string_append_unichar (plain, g_utf8_get_char (p));
+  return g_string_free (plain, FALSE);
 }
 
 gboolean
@@ -129,8 +149,74 @@ w42_spell_next_word (const char *text, gsize len, gsize *start, gsize *end)
 
 #ifdef HAVE_ENCHANT
 
-/* The user's language if there is a dictionary for it, else the language
- * without its country, else English. */
+static void
+add_try (GPtrArray *tries, char *name)
+{
+  for (guint i = 0; i < tries->len; i++)
+    if (g_ascii_strcasecmp (g_ptr_array_index (tries, i), name) == 0)
+      {
+        g_free (name);
+        return;
+      }
+  g_ptr_array_add (tries, name);
+}
+
+/* A tag as Enchant spells it: "nb_NO". */
+static char *
+enchant_spelling (const char *tag)
+{
+  char *name = g_strdup (tag);
+
+  g_strdelimit (name, "-", '_');
+  return name;
+}
+
+/* The name Enchant has the dictionary for `lang` under, or NULL.  The tag
+ * is tried as it is; then without its country; then with the country
+ * its language is usually written in, as the language table has it,
+ * which is how "nb" finds nb_NO, and how "no" -- Norwegian, which in
+ * practice means Bokmål -- does too; and last with the language's own
+ * code for the country, "fr" as fr_FR, for a language the table does
+ * not know. */
+static char *
+dictionary_name (EnchantBroker *broker, const char *lang)
+{
+  GPtrArray *tries = g_ptr_array_new_with_free_func (g_free);
+  char *base = enchant_spelling (lang);
+  char *sep = strchr (base, '_');
+  char *found = NULL;
+  const char *usual;
+
+  add_try (tries, g_strdup (base));
+  if (sep != NULL)
+    {
+      *sep = '\0';
+      add_try (tries, g_strdup (base));
+    }
+  if ((usual = w42_lang_normalise (lang)) != NULL)
+    add_try (tries, enchant_spelling (usual));
+  if ((usual = w42_lang_normalise (base)) != NULL)
+    add_try (tries, enchant_spelling (usual));
+  if (strlen (base) >= 2)
+    {
+      char *upper = g_ascii_strup (base, -1);
+
+      add_try (tries, g_strdup_printf ("%s_%s", base, upper));
+      g_free (upper);
+    }
+
+  for (guint i = 0; i < tries->len && found == NULL; i++)
+    if (enchant_broker_dict_exists (broker, g_ptr_array_index (tries, i)))
+      found = g_strdup (g_ptr_array_index (tries, i));
+
+  g_free (base);
+  g_ptr_array_free (tries, TRUE);
+  return found;
+}
+
+/* The desktop's language if there is a dictionary for it, found the way
+ * dictionary_name finds one, else English.  `language` receives its tag,
+ * spelt the BCP-47 way like every other tag in the program. */
 static EnchantDict *
 open_dictionary (EnchantBroker *broker, char **language)
 {
@@ -146,24 +232,27 @@ open_dictionary (EnchantBroker *broker, char **language)
           char *tag = g_strdup (list[i]);
           char *dot = strchr (tag, '.');
           char *at = strchr (tag, '@');
+          char *name = NULL;
 
           if (dot != NULL) *dot = '\0';
           if (at != NULL) *at = '\0';
 
           if (*tag != '\0' && !g_str_equal (tag, "C") &&
-              !g_str_equal (tag, "POSIX") &&
-              enchant_broker_dict_exists (broker, tag))
+              !g_str_equal (tag, "POSIX"))
+            name = dictionary_name (broker, tag);
+          g_free (tag);
+
+          if (name != NULL)
             {
-              EnchantDict *dict = enchant_broker_request_dict (broker, tag);
+              EnchantDict *dict = enchant_broker_request_dict (broker, name);
 
               if (dict != NULL)
                 {
-                  *language = tag;
+                  *language = g_strdelimit (name, "_", '-');
                   return dict;
                 }
+              g_free (name);
             }
-
-          g_free (tag);
         }
     }
 
@@ -210,7 +299,9 @@ w42_spell_free (W42Spell *spell)
 
 #ifdef HAVE_ENCHANT
   /* The dictionaries other languages opened go back first: they are the
-   * broker's, and the broker outlives them by a line. */
+   * broker's, and the broker outlives them by a line.  Enchant hands out
+   * one dictionary per name and counts who holds it, so one that is the
+   * default's too, or another tag's, is given back once per holder. */
   if (spell->by_lang != NULL)
     {
       GHashTableIter it;
@@ -218,7 +309,7 @@ w42_spell_free (W42Spell *spell)
 
       g_hash_table_iter_init (&it, spell->by_lang);
       while (g_hash_table_iter_next (&it, &key, &value))
-        if (value != NULL && value != spell->dict)
+        if (value != NULL)
           enchant_broker_free_dict (spell->broker, value);
     }
   if (spell->dict != NULL)
@@ -240,6 +331,59 @@ w42_spell_language (W42Spell *spell)
 {
   g_return_val_if_fail (spell != NULL, NULL);
   return spell->language;
+}
+
+gboolean
+w42_spell_set_language (W42Spell *spell, const char *lang)
+{
+  g_return_val_if_fail (spell != NULL, FALSE);
+
+#ifdef HAVE_ENCHANT
+  {
+    EnchantDict *dict = NULL;
+    char *language = NULL;
+
+    if (lang == NULL || *lang == '\0')
+      dict = open_dictionary (spell->broker, &language);
+    else if (g_strcmp0 (lang, W42_LANG_NONE) != 0)
+      {
+        char *name = dictionary_name (spell->broker, lang);
+
+        if (name != NULL)
+          dict = enchant_broker_request_dict (spell->broker, name);
+        g_free (name);
+        language = g_strdup (lang);
+      }
+    if (dict == NULL)
+      {
+        g_free (language);
+        return FALSE;
+      }
+
+    /* Enchant gives the same dictionary back for the same name, with one
+     * more reference on it. */
+    if (dict == spell->dict && g_strcmp0 (language, spell->language) == 0)
+      {
+        enchant_broker_free_dict (spell->broker, dict);
+        g_free (language);
+        return TRUE;
+      }
+
+    enchant_broker_free_dict (spell->broker, spell->dict);
+    spell->dict = dict;
+    g_free (spell->language);
+    spell->language = language;
+    /* The default's verdicts are kept under the bare word, so they are
+     * the old dictionary's; and everything already underlined was
+     * underlined by it. */
+    g_hash_table_remove_all (spell->checked);
+    spell->serial++;
+    return TRUE;
+  }
+#else
+  (void) lang;
+  return FALSE;
+#endif
 }
 
 /* The script the dictionary is written for.  A word in another script is
@@ -320,7 +464,7 @@ dict_for_lang (W42Spell *spell, const char *lang)
 {
   gpointer found;
   EnchantDict *dict = NULL;
-  char *tag, *dash;
+  char *name;
 
   if (lang == NULL || *lang == '\0')
     return spell->dict;
@@ -330,21 +474,10 @@ dict_for_lang (W42Spell *spell, const char *lang)
   if (g_hash_table_lookup_extended (spell->by_lang, lang, NULL, &found))
     return found;
 
-  /* Enchant spells a tag with an underscore, and will take the language
-   * without its country when that is all there is. */
-  tag = g_strdup (lang);
-  for (char *p = tag; *p != '\0'; p++)
-    if (*p == '-')
-      *p = '_';
-  if (enchant_broker_dict_exists (spell->broker, tag))
-    dict = enchant_broker_request_dict (spell->broker, tag);
-  if (dict == NULL && (dash = strchr (tag, '_')) != NULL)
-    {
-      *dash = '\0';
-      if (enchant_broker_dict_exists (spell->broker, tag))
-        dict = enchant_broker_request_dict (spell->broker, tag);
-    }
-  g_free (tag);
+  name = dictionary_name (spell->broker, lang);
+  if (name != NULL)
+    dict = enchant_broker_request_dict (spell->broker, name);
+  g_free (name);
 
   g_hash_table_insert (spell->by_lang, g_strdup (lang), dict);
   return dict;
@@ -385,9 +518,16 @@ w42_spell_check_lang (W42Spell *spell, const char *lang,
     if (dict == spell->dict)
       return w42_spell_check (spell, word, len);
 
+    g_return_val_if_fail (word != NULL, TRUE);
     if (len < 0)
       len = (gssize) strlen (word);
-    copy = g_strndup (word, (gsize) len);
+    copy = plain_copy (word, (gsize) len);
+    len = (gssize) strlen (copy);
+    if (len == 0)
+      {
+        g_free (copy);
+        return TRUE;
+      }
     {
       char *key = g_strconcat (lang, "\037", copy, NULL);
 
@@ -421,6 +561,7 @@ w42_spell_suggest_lang (W42Spell *spell, const char *lang,
   EnchantDict *dict;
   size_t n = 0;
   char **found, **out;
+  char *plain;
 
   g_return_val_if_fail (spell != NULL, NULL);
   g_return_val_if_fail (word != NULL, NULL);
@@ -433,7 +574,9 @@ w42_spell_suggest_lang (W42Spell *spell, const char *lang,
 
   if (len < 0)
     len = (gssize) strlen (word);
-  found = enchant_dict_suggest (dict, word, len, &n);
+  plain = plain_copy (word, (gsize) len);
+  found = *plain != '\0' ? enchant_dict_suggest (dict, plain, -1, &n) : NULL;
+  g_free (plain);
   if (found == NULL || n == 0)
     {
       if (found != NULL)
@@ -462,22 +605,12 @@ w42_spell_check (W42Spell *spell, const char *word, gssize len)
 
   if (len < 0)
     len = (gssize) strlen (word);
+  copy = plain_copy (word, (gsize) len);
+  len = (gssize) strlen (copy);
   if (len == 0)
-    return TRUE;
-
-  copy = g_strndup (word, (gsize) len);
-
-  /* Soft hyphens from Tools > Hyphenation are not letters. */
-  if (strstr (copy, "\302\255") != NULL)
     {
-      GString *plain = g_string_new (NULL);
-
-      for (const char *p = copy; *p != '\0'; p = g_utf8_next_char (p))
-        if (g_utf8_get_char (p) != 0x00AD)
-          g_string_append_unichar (plain, g_utf8_get_char (p));
       g_free (copy);
-      copy = g_string_free (plain, FALSE);
-      len = (gssize) strlen (copy);
+      return TRUE;
     }
 
   if (checked_lookup (spell, copy, &ok))
@@ -505,6 +638,7 @@ w42_spell_suggest (W42Spell *spell, const char *word, gssize len)
   size_t n = 0;
   char **found;
   char **out;
+  char *plain;
 
   g_return_val_if_fail (spell != NULL, NULL);
   g_return_val_if_fail (word != NULL, NULL);
@@ -512,7 +646,10 @@ w42_spell_suggest (W42Spell *spell, const char *word, gssize len)
   if (len < 0)
     len = (gssize) strlen (word);
 
-  found = enchant_dict_suggest (spell->dict, word, len, &n);
+  plain = plain_copy (word, (gsize) len);
+  found = *plain != '\0'
+            ? enchant_dict_suggest (spell->dict, plain, -1, &n) : NULL;
+  g_free (plain);
   if (found == NULL || n == 0)
     {
       if (found != NULL)
@@ -532,25 +669,13 @@ w42_spell_suggest (W42Spell *spell, const char *word, gssize len)
 #endif
 }
 
-/* The word without its soft hyphens, which the checker looks past. */
-static char *
-plain_word (const char *word)
-{
-  GString *plain = g_string_new (NULL);
-
-  for (const char *p = word; *p != '\0'; p = g_utf8_next_char (p))
-    if (g_utf8_get_char (p) != 0x00AD)
-      g_string_append_unichar (plain, g_utf8_get_char (p));
-  return g_string_free (plain, FALSE);
-}
-
 void
 w42_spell_ignore (W42Spell *spell, const char *word)
 {
   g_return_if_fail (spell != NULL);
   g_return_if_fail (word != NULL);
 
-  g_hash_table_add (spell->ignored, plain_word (word));
+  g_hash_table_add (spell->ignored, plain_copy (word, strlen (word)));
   g_hash_table_remove_all (spell->checked);
   spell->serial++;
 }
@@ -569,7 +694,7 @@ w42_spell_add (W42Spell *spell, const char *word)
   g_return_if_fail (word != NULL);
 
   {
-    char *plain = plain_word (word);
+    char *plain = plain_copy (word, strlen (word));
 
 #ifdef HAVE_ENCHANT
     enchant_dict_add (spell->dict, plain, -1);

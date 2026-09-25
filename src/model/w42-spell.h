@@ -24,9 +24,21 @@ typedef struct _W42Spell W42Spell;
  * NULL when there is none at all. */
 W42Spell   *w42_spell_new      (void);
 void        w42_spell_free     (W42Spell *spell);
+
+/* The language of the default dictionary, as a BCP-47 tag ("nb-NO"). */
 const char *w42_spell_language (W42Spell *spell);
 
-/* TRUE when the word is spelt right, or has been ignored or added. */
+/* Makes the dictionary for `lang` -- a BCP-47 tag, or NULL for the one
+ * the desktop's language chooses -- the default: the one
+ * w42_spell_check(), w42_spell_suggest() and w42_spell_check_lang() with
+ * no tag use, and w42_spell_add() adds to.  A bare language finds its
+ * usual country, and "no" finds Bokmål.  Bumps the serial when the
+ * default changes; FALSE, and nothing changed, when there is no
+ * dictionary for it. */
+gboolean    w42_spell_set_language (W42Spell *spell, const char *lang);
+
+/* TRUE when the word is spelt right, or has been ignored or added.  Soft
+ * hyphens in it, here and in everything below, are looked past. */
 gboolean    w42_spell_check    (W42Spell *spell, const char *word, gssize len);
 
 /* The same, with the language the run of text is marked with: a BCP-47
@@ -49,9 +61,10 @@ char      **w42_spell_suggest_lang (W42Spell *spell, const char *lang,
 void        w42_spell_ignore   (W42Spell *spell, const char *word);
 void        w42_spell_add      (W42Spell *spell, const char *word);
 
-/* Bumped whenever a word is ignored or added, so that anything holding
- * on to what the checker said before -- the layout's shaped paragraphs,
- * with their red underlines -- knows to work it out again. */
+/* Bumped whenever a word is ignored or added or the default dictionary
+ * changes, so that anything holding on to what the checker said before
+ * -- the layout's shaped paragraphs, with their red underlines -- knows
+ * to work it out again. */
 guint       w42_spell_serial   (W42Spell *spell);
 
 /* The next word of `text` at or after byte `*end`: on TRUE, [*start, *end)

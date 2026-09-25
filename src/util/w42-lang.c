@@ -19,7 +19,7 @@ static const W42Language LANGUAGES[] = {
   { "en-GB", "English (United Kingdom)",         2057 },
   { "en-AU", "English (Australia)",              3081 },
   { "en-CA", "English (Canada)",                 4105 },
-  { "nb-NO", "Norwegian (Bokmal)",               1044 },
+  { "nb-NO", "Norwegian (Bokm\303\245l)",        1044 },
   { "nn-NO", "Norwegian (Nynorsk)",              2068 },
   { "da-DK", "Danish",                           1030 },
   { "sv-SE", "Swedish",                          1053 },
@@ -88,19 +88,35 @@ w42_lang_from_lcid (int lcid)
 int
 w42_lang_to_lcid (const char *tag)
 {
+  char canon[32];
   gsize n;
 
   if (tag == NULL || *tag == '\0')
     return 0;
 
+  /* The C library spells a tag "nb_NO".  And "no" is Norwegian, which in
+   * practice means Bokmål: it was 1044's own tag before Bokmål and
+   * Nynorsk had tags of their own, and a desktop set to no_NO still
+   * says it. */
+  n = strlen (tag);
+  if (n >= sizeof canon)
+    return 0;
+  for (gsize i = 0; i <= n; i++)
+    canon[i] = tag[i] == '_' ? '-' : tag[i];
+  if (g_ascii_strncasecmp (canon, "no", 2) == 0 &&
+      (canon[2] == '\0' || canon[2] == '-'))
+    {
+      canon[0] = 'n';
+      canon[1] = 'b';
+    }
+
   for (guint i = 0; i < G_N_ELEMENTS (LANGUAGES); i++)
-    if (g_ascii_strcasecmp (LANGUAGES[i].tag, tag) == 0)
+    if (g_ascii_strcasecmp (LANGUAGES[i].tag, canon) == 0)
       return LANGUAGES[i].lcid;
 
   /* "en" on its own: the first English there is. */
-  n = strlen (tag);
   for (guint i = 0; i < G_N_ELEMENTS (LANGUAGES); i++)
-    if (g_ascii_strncasecmp (LANGUAGES[i].tag, tag, n) == 0 &&
+    if (g_ascii_strncasecmp (LANGUAGES[i].tag, canon, n) == 0 &&
         LANGUAGES[i].tag[n] == '-')
       return LANGUAGES[i].lcid;
 

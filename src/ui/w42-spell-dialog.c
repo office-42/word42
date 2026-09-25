@@ -428,8 +428,11 @@ w42_spell_dialog_new (GtkWindow *parent, W42View *view, W42Spell *spell)
   gtk_window_set_destroy_with_parent (GTK_WINDOW (self), TRUE);
   gtk_window_set_modal (GTK_WINDOW (self), FALSE);
 
-  g_signal_connect_swapped (self, "destroy",
-                            G_CALLBACK (gtk_widget_grab_focus), view);
+  /* Bound to the view's life: Window > Split can take the pane away
+   * while the box is open, and focus must not go to a freed widget. */
+  g_signal_connect_object (self, "destroy",
+                           G_CALLBACK (gtk_widget_grab_focus), view,
+                           G_CONNECT_SWAPPED);
 
   return GTK_WIDGET (self);
 }

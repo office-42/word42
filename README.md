@@ -15,13 +15,25 @@ hyphenation, mail merge, macros in a dialect of VBA, a Document Map,
 Compare Documents, a split window, Normal, Online Layout and Page Layout
 views and print preview — reading and writing
 RTF, OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and
-plain text. Word 97 is the yardstick: its menus are the specification
-and [docs/PARITY.md](docs/PARITY.md) keeps the score against it.
+plain text, and writing EPUB e-books. Word 97 is the yardstick: its menus
+are the specification and [docs/PARITY.md](docs/PARITY.md) keeps the score against it.
 [docs/STATUS.md](docs/STATUS.md) lists what it does,
 [Word42.md](Word42.md) what it does not do yet,
 [docs/COMPARISON.md](docs/COMPARISON.md) sets it beside Word, AbiWord
 and LibreOffice Writer on size, speed, files and features, and the
 [user guide](docs/GUIDE.md) describes every command in the program.
+
+## For writers
+
+Word42 is made to write books in. AutoCorrect sets quotation marks and
+dialogue dashes the way the text's language does — « » and – in
+Norwegian — and the spelling, thesaurus and hyphenation follow the
+document's language; the status bar counts the words toward a goal, the
+Document Map weighs the chapters against each other, and a Novel
+template, typewriter scrolling, backup copies, EPUB export and
+`word42 --convert-to=pdf|epub|odt FILE` do the rest.
+[docs/morild](docs/morild/) is *Morild*, a 150-page science-fiction novel
+in Norwegian written in Word42, as its manuscript, a PDF and an e-book.
 
 ## Getting it
 

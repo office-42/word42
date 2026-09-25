@@ -37,8 +37,10 @@ image_loader_new (void)
   return loader;
 }
 
+/* The picture as the file's pixels have it, with the loader's options --
+ * among them the EXIF orientation a camera writes -- still on it. */
 static GdkPixbuf *
-decode (GBytes *data, const char **format)
+decode_raw (GBytes *data, const char **format)
 {
   GdkPixbufLoader *loader;
   GdkPixbuf *pixbuf = NULL;
@@ -83,6 +85,31 @@ decode (GBytes *data, const char **format)
 
   g_object_unref (loader);
   return pixbuf;
+}
+
+static gboolean
+turned (GdkPixbuf *raw)
+{
+  const char *orientation = gdk_pixbuf_get_option (raw, "orientation");
+
+  return orientation != NULL && !g_str_equal (orientation, "1");
+}
+
+/* The picture the right way up.  A phone keeps the sensor's pixels as
+ * they came and says in the EXIF how to turn them, so a portrait photo
+ * is stored lying on its side; everything that asks a picture's size or
+ * draws it comes through here, so that the two agree. */
+static GdkPixbuf *
+decode (GBytes *data, const char **format)
+{
+  GdkPixbuf *raw = decode_raw (data, format);
+  GdkPixbuf *upright;
+
+  if (raw == NULL)
+    return NULL;
+  upright = gdk_pixbuf_apply_embedded_orientation (raw);
+  g_object_unref (raw);
+  return upright;
 }
 
 gboolean
@@ -137,13 +164,17 @@ w42_image_load_file (GFile       *file,
 cairo_surface_t *
 w42_image_surface (GBytes *data)
 {
-  GdkPixbuf *pixbuf = decode (data, NULL);
+  const char *format = NULL;
+  GdkPixbuf *raw = decode_raw (data, &format);
+  gboolean was_turned = raw != NULL && turned (raw);
+  GdkPixbuf *pixbuf = raw != NULL ? gdk_pixbuf_apply_embedded_orientation (raw) : NULL;
   cairo_surface_t *surface;
   int width, height, src_stride, dst_stride, channels;
   const guint8 *src;
   guint8 *dst;
   gboolean alpha;
 
+  g_clear_object (&raw);
   if (pixbuf == NULL)
     return NULL;
 
@@ -191,6 +222,17 @@ w42_image_surface (GBytes *data)
   cairo_surface_mark_dirty (surface);
   g_object_unref (pixbuf);
 
+  /* A JPEG goes into a PDF as the JPEG it is, rather than as its pixels
+   * packed again: a novel with a photograph on every chapter's first
+   * page is a few megabytes, not a hundred.  Not one a camera turned,
+   * whose bytes are the right way up only once the EXIF is read. */
+  if (format != NULL && g_str_equal (format, "jpeg") && !was_turned)
+    cairo_surface_set_mime_data (surface, CAIRO_MIME_TYPE_JPEG,
+                                 g_bytes_get_data (data, NULL),
+                                 g_bytes_get_size (data),
+                                 (cairo_destroy_func_t) g_bytes_unref,
+                                 g_bytes_ref (data));
+
   return surface;
 }
 
@@ -227,14 +269,51 @@ w42_image_for_container (GBytes *data, const char **ext, const char **mime)
     { "bmp",  "bmp",  "image/bmp"  },
   };
   const char *format = NULL;
-  int w = 0, h = 0;
+  GdkPixbuf *raw;
 
   if (ext != NULL)  *ext = "png";
   if (mime != NULL) *mime = "image/png";
   if (data == NULL)
     return NULL;
 
-  if (w42_image_probe (data, &w, &h, &format) && format != NULL)
+  raw = decode_raw (data, &format);
+  if (raw == NULL)
+    return NULL;
+
+  /* A picture the EXIF says to turn is turned here and written out
+   * upright: a reader that ignores the EXIF would otherwise show it on
+   * its side, squeezed into a frame the shape of the upright picture.
+   * A photograph stays a JPEG. */
+  if (turned (raw))
+    {
+      GdkPixbuf *upright = gdk_pixbuf_apply_embedded_orientation (raw);
+      gboolean jpeg = format != NULL && g_str_equal (format, "jpeg");
+      char *buffer = NULL;
+      gsize length = 0;
+      gboolean saved;
+
+      g_object_unref (raw);
+      if (upright == NULL)
+        return NULL;
+      if (jpeg)
+        saved = gdk_pixbuf_save_to_buffer (upright, &buffer, &length, "jpeg",
+                                           NULL, "quality", "95", NULL);
+      else
+        saved = gdk_pixbuf_save_to_buffer (upright, &buffer, &length, "png",
+                                           NULL, NULL);
+      g_object_unref (upright);
+      if (!saved)
+        return NULL;
+      if (jpeg)
+        {
+          if (ext != NULL)  *ext = "jpeg";
+          if (mime != NULL) *mime = "image/jpeg";
+        }
+      return g_bytes_new_take (buffer, length);
+    }
+  g_object_unref (raw);
+
+  if (format != NULL)
     for (gsize i = 0; i < G_N_ELEMENTS (kept); i++)
       if (g_str_equal (format, kept[i].format))
         {

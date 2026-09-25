@@ -21,8 +21,10 @@
 G_BEGIN_DECLS
 
 /* Runs Sub `entry` of `source` on `view`, whose window is `parent`.
- * What the macro prints goes to `output` when that is given.  The edits
- * the macro makes are one undo step.  FALSE with a message -- a line of
+ * Documents.Add and Documents.Open move it on to the new document's
+ * window, which Word makes the active document.  What the macro prints
+ * goes to `output` when that is given.  The edits the macro makes are
+ * one undo step in each document.  FALSE with a message -- a line of
  * the macro, and what went wrong on it -- when it could not be
  * translated or stopped on an error. */
 gboolean w42_macro_run (GtkWindow *parent, W42View *view, const char *source,

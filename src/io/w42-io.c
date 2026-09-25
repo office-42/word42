@@ -7,6 +7,7 @@
 #include "w42-io.h"
 
 #include "w42-doc.h"
+#include "w42-epub.h"
 #include "w42-html.h"
 #include "w42-htmlin.h"
 #include "w42-docx.h"
@@ -52,6 +53,8 @@ w42_io_guess_format (GFile *file)
     format = W42_FORMAT_ODT;
   else if (g_str_has_suffix (name, ".pptx") || g_str_has_suffix (name, ".ppsx"))
     format = W42_FORMAT_PPTX;
+  else if (g_str_has_suffix (name, ".epub"))
+    format = W42_FORMAT_EPUB;
 
   g_free (name);
   return format;
@@ -68,6 +71,7 @@ w42_io_format_round_trips (GFile *file)
     case W42_FORMAT_PDF:
     case W42_FORMAT_HTML:
     case W42_FORMAT_PPTX:
+    case W42_FORMAT_EPUB:
       return FALSE;
     default:
       return TRUE;
@@ -210,6 +214,16 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
   g_return_val_if_fail (pt != NULL, FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
+  /* An e-book is XHTML in a zip, which as text would be a screenful of
+   * binary; and it is refused before anything of the window's page is
+   * touched, since nothing is going to be loaded. */
+  if (w42_io_guess_format (file) == W42_FORMAT_EPUB)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                   "Word42 writes EPUB but does not read it.");
+      return FALSE;
+    }
+
   /* A file says what colour its page is and whether it has a border, or
    * says nothing; either way the page it is read into does not keep the
    * last document's, since a window's document is loaded into again. */
@@ -286,6 +300,8 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
       return w42_pdf_export (pt, page, file, error);
     case W42_FORMAT_HTML:
       return w42_html_export (pt, page, file, error);
+    case W42_FORMAT_EPUB:
+      return w42_epub_export (pt, page, file, error);
     case W42_FORMAT_DOCX:
       return w42_docx_save (pt, page, file, error);
     case W42_FORMAT_ABW:

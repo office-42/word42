@@ -34,11 +34,14 @@ const W42Language *w42_languages (int *n);
 const char *w42_lang_from_lcid (int lcid);
 
 /* And back: 0 when the tag is not one we know.  A tag with no country
- * ("en") matches the first entry of that language. */
+ * ("en") matches the first entry of that language; the C library's
+ * underscore ("nb_NO") is taken for a hyphen, and Norwegian, "no", is
+ * taken for Bokmål, "nb", which is what it means in practice. */
 int w42_lang_to_lcid (const char *tag);
 
 /* The tag spelt the way this table spells it -- "en" becomes "en-US",
- * "NB-no" becomes "nb-NO" -- interned, or NULL for one we do not know. */
+ * "NB-no" becomes "nb-NO", "no" and "no-NO" become "nb-NO" -- interned,
+ * or NULL for one we do not know. */
 const char *w42_lang_normalise (const char *tag);
 
 /* The name to show for a tag, or the tag itself when it is not one of

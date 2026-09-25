@@ -52,10 +52,25 @@ typedef struct {
    * screen, and a macro carrying on in them works where nobody sees. */
   gboolean       gone;
   Modal         *modal;         /* the box being answered, if any */
+  /* Every window and view the macro has worked in, held until it ends;
+   * and the documents it has worked on, each of which gets its edits as
+   * one undo step once `grouping`. */
+  GPtrArray     *held;
+  GPtrArray     *docs;
+  gboolean       grouping;
   /* Selection.Find's properties, for an Execute with no arguments. */
   char          *find_text;
   char          *replace_text;
   gboolean       match_case, whole_word, forward, wrap;
+  /* A run of Execute Replace:=wdReplaceOne: the view it is in, the
+   * selection the last one left -- which is how the next knows it
+   * carries the run on -- where the run began, and whether its search
+   * has wrapped round the end of the document, or come back round
+   * past where it began. */
+  W42View       *replace_view;
+  gsize          replace_start, replace_end;
+  gsize          replace_origin;
+  gboolean       replace_wrapped, replace_done;
 } Ctx;
 
 static Ctx *
@@ -71,6 +86,57 @@ static W42PieceTable *
 pt_of (Ctx *c)
 {
   return w42_document_pt (w42_view_get_document (c->view));
+}
+
+static void on_gone (GtkWidget *widget, gpointer data);
+
+/* Makes `view`, in `parent`, the one the macro works in: the one it was
+ * run in, and after that each document Documents.Add or Documents.Open
+ * makes, which becomes the active document as it does in Word.  Both
+ * are held until the macro ends, since every native reaches through
+ * them and a MsgBox runs the main loop, from which they can be closed.
+ * Held, a closed window is not disposed until it is let go, so
+ * "destroy" does not come in time; what does come at once, to a window
+ * closed and to a pane taken away, is "unrealize". */
+static void
+ctx_enter (Ctx *c, GtkWindow *parent, W42View *view)
+{
+  W42Document *doc = w42_view_get_document (view);
+
+  c->parent = parent;
+  c->view = view;
+  c->gone = FALSE;
+  g_ptr_array_add (c->held, g_object_ref (view));
+  g_signal_connect (view, "unrealize", G_CALLBACK (on_gone), c);
+  if (parent != NULL)
+    {
+      g_ptr_array_add (c->held, g_object_ref (parent));
+      g_signal_connect (parent, "unrealize", G_CALLBACK (on_gone), c);
+    }
+  if (doc != NULL && !g_ptr_array_find (c->docs, doc, NULL))
+    {
+      g_ptr_array_add (c->docs, g_object_ref (doc));
+      if (c->grouping)
+        w42_pt_begin_group (w42_document_pt (doc));
+    }
+}
+
+/* The view a window edits in: the first in it, which is the only one a
+ * window just made has. */
+static W42View *
+window_view (GtkWidget *widget)
+{
+  if (W42_IS_VIEW (widget))
+    return W42_VIEW (widget);
+  for (GtkWidget *child = gtk_widget_get_first_child (widget); child != NULL;
+       child = gtk_widget_get_next_sibling (child))
+    {
+      W42View *view = window_view (child);
+
+      if (view != NULL)
+        return view;
+    }
+  return NULL;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -683,17 +749,36 @@ NATIVE (n_isnumeric)
   return mb_push_int (s, l, yes);
 }
 
+/* IIf(condition, a, b).  A string MY-BASIC hands over lives only until
+ * the next argument is popped -- "odd" & i is freed while b is worked
+ * out -- so each is copied as it comes, and the one chosen goes back as
+ * a string of its own. */
 NATIVE (n_iif)
 {
   gboolean cond;
   mb_value_t a, b;
+  char *sa = NULL, *sb = NULL;
+  int rc;
 
   OPEN ();
   mb_check (arg_bool (s, l, &cond, FALSE));
   mb_check (arg_value (s, l, &a));
-  mb_check (arg_value (s, l, &b));
-  CLOSE ();
-  return mb_push_value (s, l, cond ? a : b);
+  if (a.type == MB_DT_STRING)
+    sa = g_strdup (a.value.string);
+  rc = arg_value (s, l, &b);
+  if (rc == MB_FUNC_OK && b.type == MB_DT_STRING)
+    sb = g_strdup (b.value.string);
+  if (rc == MB_FUNC_OK)
+    rc = mb_attempt_close_bracket (s, l);
+  if (rc == MB_FUNC_OK)
+    {
+      const char *str = cond ? sa : sb;
+
+      rc = str != NULL ? push_string (s, l, str) : mb_push_value (s, l, cond ? a : b);
+    }
+  g_free (sa);
+  g_free (sb);
+  return rc;
 }
 
 NATIVE (n_hex)
@@ -741,15 +826,25 @@ NATIVE (n_timer)
 NATIVE (n_format)
 {
   mb_value_t v;
-  char *fmt = NULL, *r;
+  char *str = NULL, *fmt = NULL, *r;
   int rc;
 
   OPEN ();
   mb_check (arg_value (s, l, &v));
-  mb_check (arg_string (s, l, &fmt));
-  CLOSE ();
+  /* Copied before the format is popped, which frees it: see IIf. */
   if (v.type == MB_DT_STRING)
-    r = g_strdup (v.value.string);
+    str = g_strdup (v.value.string);
+  rc = arg_string (s, l, &fmt);
+  if (rc == MB_FUNC_OK)
+    rc = mb_attempt_close_bracket (s, l);
+  if (rc != MB_FUNC_OK)
+    {
+      g_free (str);
+      g_free (fmt);
+      return rc;
+    }
+  if (str != NULL)
+    r = g_steal_pointer (&str);
   else
     {
       double d = v.type == MB_DT_INT ? v.value.integer : v.type == MB_DT_REAL ? v.value.float_point : 0.0;
@@ -921,16 +1016,24 @@ move_by (Ctx *c, gsize pos, int unit, int count, int dir)
           }
           break;
         case 4:                         /* wdParagraph */
-          if (dir > 0)
-            next = w42_pt_clamp_pos (pt, w42_pt_paragraph_end (pt, pos) + 1);
-          else
-            {
-              gsize mark = w42_pt_paragraph_start (pt, pos);
+          {
+            /* A position just before a paragraph mark is the end of the
+             * paragraph before it, and the only place the caret has in
+             * an empty one: counted as the next paragraph's, an empty
+             * paragraph was stepped over, and MoveUp there went down. */
+            gsize at = pos > 0 && w42_pt_is_block_mark (pt, pos) ? pos - 1 : pos;
 
-              if (mark + 1 == pos && mark > 0)
-                mark = w42_pt_paragraph_start (pt, mark - 1);
-              next = w42_pt_clamp_pos (pt, mark + 1);
-            }
+            if (dir > 0)
+              next = w42_pt_clamp_pos (pt, w42_pt_paragraph_end (pt, at) + 1);
+            else
+              {
+                gsize mark = w42_pt_paragraph_start (pt, at);
+
+                if (mark + 1 == pos && mark > 0)
+                  mark = w42_pt_paragraph_start (pt, mark - 1);
+                next = w42_pt_clamp_pos (pt, mark + 1);
+              }
+          }
           break;
         case 5:                         /* wdLine */
           {
@@ -1171,6 +1274,32 @@ NATIVE (n_sel_insertbefore)
   sel_set (c, start, start);
   type_text (c, text);
   g_free (text);
+  return MB_FUNC_OK;
+}
+
+/* InsertBreak([Type]): a page break, which is what it puts in when not
+ * told, or a section break that starts a new page.  Either takes the
+ * selection's place. */
+NATIVE (n_sel_insertbreak)
+{
+  Ctx *c = ctx_of (s);
+  int type;
+
+  OPEN ();
+  mb_check (arg_int (s, l, &type, 7));
+  CLOSE ();
+  switch (type)
+    {
+    case 7:                             /* wdPageBreak */
+      w42_view_insert_page_break (c->view);
+      break;
+    case 2:                             /* wdSectionBreakNextPage */
+      w42_view_insert_section_break (c->view);
+      break;
+    default:
+      return fail (s, l, "Word42 inserts a wdPageBreak or a wdSectionBreakNextPage, "
+                         "and no other kind of break");
+    }
   return MB_FUNC_OK;
 }
 
@@ -1422,12 +1551,33 @@ NATIVE (n_font_color_set)
 
 /* ---- ParagraphFormat ---------------------------------------------------- */
 
+/* The paragraph formatting of the selection's first paragraph, which is
+ * what Word reports for a selection over several.  The view's own
+ * getters read the paragraph the caret is in, and the caret is at
+ * whichever end of the selection moved: after MoveDown with wdExtend,
+ * the paragraph below. */
+static void
+sel_para_fmt (Ctx *c, W42ParaFmt *out)
+{
+  W42PieceTable *pt = pt_of (c);
+  gsize start, end;
+
+  w42_view_get_selection_bounds (c->view, &start, &end);
+  /* A position just before a paragraph mark is the end of the paragraph
+   * before it, as it is for the caret. */
+  if (start > 0 && w42_pt_is_block_mark (pt, start))
+    start--;
+  *out = w42_ap_table_get (w42_pt_ap_table (pt), w42_pt_block_ap_at (pt, start))->pa;
+}
+
 NATIVE (n_para_alignment)
 {
   Ctx *c = ctx_of (s);
+  W42ParaFmt pa;
 
   OPEN (); CLOSE ();
-  return mb_push_int (s, l, (int) w42_view_get_align (c->view));
+  sel_para_fmt (c, &pa);
+  return mb_push_int (s, l, (int) pa.align);
 }
 
 NATIVE (n_para_alignment_set)
@@ -1451,7 +1601,7 @@ para_get_points (struct mb_interpreter_t *s, void **l, int which)
   int twips = 0;
 
   OPEN (); CLOSE ();
-  w42_view_get_para_fmt (c->view, &pa);
+  sel_para_fmt (c, &pa);
   switch (which)
     {
     case 0: twips = pa.indent_left; break;
@@ -1503,16 +1653,99 @@ NATIVE (n_para_spacebefore_set) { return para_set_points (s, l, 3); }
 NATIVE (n_para_spaceafter)      { return para_get_points (s, l, 4); }
 NATIVE (n_para_spaceafter_set)  { return para_set_points (s, l, 4); }
 
+/* KeepWithNext on each paragraph the selection touches, as the view
+ * would set any paragraph formatting.  The model keeps it with Keep
+ * Lines Together and Widow/Orphan Control as one (W42_PARA_FLOW), so
+ * each paragraph is set on its own and keeps its other two: set from
+ * the first paragraph's, a long paragraph after a heading would be kept
+ * on one page because the heading is. */
+static void
+set_keep_with_next (Ctx *c, gboolean on)
+{
+  W42PieceTable *pt = pt_of (c);
+  W42Document *doc = w42_view_get_document (c->view);
+  gsize start, end, mark;
+  gboolean changed = FALSE;
+
+  w42_view_get_selection_bounds (c->view, &start, &end);
+  if (start == end && start > 0 && w42_pt_is_block_mark (pt, start))
+    start--;
+  end = MAX (end, start + 1);
+  for (mark = w42_pt_paragraph_start (pt, start); mark < end && mark < w42_pt_length (pt);
+       mark = w42_pt_paragraph_end (pt, mark))
+    {
+      W42ParaFmt pa;
+
+      /* The mark after a paragraph can be a cell's or a table's, with
+       * the next paragraph's own mark after it. */
+      while (mark < end && mark < w42_pt_length (pt) && !w42_pt_is_block_mark (pt, mark))
+        mark++;
+      if (mark >= end || mark >= w42_pt_length (pt))
+        break;
+      pa = w42_ap_table_get (w42_pt_ap_table (pt), w42_pt_block_ap_at (pt, mark))->pa;
+      if (pa.keep_next == (on ? 1 : 0))
+        continue;
+      pa.keep_next = on ? 1 : 0;
+      w42_pt_apply_para_fmt (pt, mark, 0, W42_PARA_FLOW, &pa);
+      changed = TRUE;
+    }
+  if (changed)
+    {
+      w42_document_set_modified (doc, TRUE);
+      w42_document_touch (doc);
+    }
+}
+
+/* PageBreakBefore and KeepWithNext: True, False, or wdToggle. */
+static int
+para_get_switch (struct mb_interpreter_t *s, void **l, int which)
+{
+  Ctx *c = ctx_of (s);
+  W42ParaFmt pa;
+
+  OPEN (); CLOSE ();
+  sel_para_fmt (c, &pa);
+  return mb_push_int (s, l, which == 0 ? pa.page_break_before : pa.keep_next);
+}
+
+static int
+para_set_switch (struct mb_interpreter_t *s, void **l, int which)
+{
+  Ctx *c = ctx_of (s);
+  W42ParaFmt pa;
+  int value;
+
+  OPEN ();
+  mb_check (arg_int (s, l, &value, 1));
+  CLOSE ();
+  sel_para_fmt (c, &pa);
+  if (which == 0)
+    {
+      pa.page_break_before = switch_value (value, pa.page_break_before);
+      w42_view_apply_para_fmt (c->view, W42_PARA_PAGE_BREAK, &pa);
+    }
+  else
+    set_keep_with_next (c, switch_value (value, pa.keep_next));
+  return MB_FUNC_OK;
+}
+
+NATIVE (n_para_pagebreakbefore)     { return para_get_switch (s, l, 0); }
+NATIVE (n_para_pagebreakbefore_set) { return para_set_switch (s, l, 0); }
+NATIVE (n_para_keepwithnext)        { return para_get_switch (s, l, 1); }
+NATIVE (n_para_keepwithnext_set)    { return para_set_switch (s, l, 1); }
+
 /* ---- Style ------------------------------------------------------------- */
 
+/* The style of the selection's first paragraph, as ParagraphFormat
+ * reads it. */
 NATIVE (n_sel_style)
 {
   Ctx *c = ctx_of (s);
-  const char *name;
+  W42ParaFmt pa;
 
   OPEN (); CLOSE ();
-  name = w42_view_get_style (c->view);
-  return push_string (s, l, name != NULL ? name : "Normal");
+  sel_para_fmt (c, &pa);
+  return push_string (s, l, pa.style != NULL ? pa.style : "Normal");
 }
 
 /* By name, or by Word's built-in numbers: wdStyleNormal, wdStyleHeading1. */
@@ -1615,6 +1848,100 @@ NATIVE (n_find_wrap_set)
   return MB_FUNC_OK;
 }
 
+/* Whether a run of replacements has come back round to where it began,
+ * now that a search from `from` has found a match at `start`: back past
+ * the place it began, or past the end of the document a second time.
+ * A search that goes past the end is noted. */
+static gboolean
+replace_round (Ctx *c, gsize start, gsize from, gboolean forward)
+{
+  gboolean wraps = forward ? start < from : start >= from;
+  gboolean beyond = forward ? start >= c->replace_origin : start < c->replace_origin;
+  gboolean wrapped = c->replace_wrapped;
+
+  c->replace_wrapped = wrapped || wraps;
+  return (wrapped && wraps) || (c->replace_wrapped && beyond);
+}
+
+/* Replace:=wdReplaceOne: the selection, when it is a match, or else the
+ * next match, is replaced, and the match after it selected, as Word's
+ * Replace button does.  A macro calls this in a loop until it is False,
+ * so the loop has to end even with Wrap on and a replacement that is a
+ * match itself: once the search comes back round to where the run
+ * began, what is left is what the run put there, and it stops. */
+static gboolean
+replace_one (Ctx *c, const char *text, const char *with,
+             const W42SearchOptions *opts)
+{
+  W42PieceTable *pt = pt_of (c);
+  W42SearchOptions exact = *opts;
+  gboolean forward = !opts->backwards;
+  gboolean fresh = FALSE;
+  gsize s0, e0, start, end, from, after, length;
+
+  w42_view_get_selection_bounds (c->view, &s0, &e0);
+  if (c->replace_view != c->view || s0 != c->replace_start || e0 != c->replace_end)
+    {
+      fresh = TRUE;
+      c->replace_view = c->view;
+      c->replace_origin = forward ? s0 : e0;
+      c->replace_wrapped = FALSE;
+      c->replace_done = FALSE;
+    }
+  if (c->replace_done)
+    {
+      c->replace_view = NULL;
+      return FALSE;
+    }
+
+  exact.backwards = FALSE;
+  exact.wrap = FALSE;
+  if (s0 < e0 && w42_search_find (pt, s0, text, &exact, &start, &end) &&
+      start == s0 && end == e0)
+    ;                                   /* the selection is the match */
+  else
+    {
+      from = forward ? e0 : s0;
+      if (!w42_search_find (pt, from, text, opts, &start, &end))
+        {
+          c->replace_view = NULL;
+          return FALSE;
+        }
+      if (replace_round (c, start, from, forward) && !fresh)
+        {
+          c->replace_view = NULL;
+          return FALSE;
+        }
+    }
+
+  /* Replacing with nothing is a deletion, which inserting nothing is
+   * not: the match would stay, and be found again. */
+  length = w42_pt_length (pt);
+  w42_view_select_range (c->view, start, end);
+  if (*with == '\0')
+    w42_view_clear (c->view);
+  else
+    w42_view_insert_text (c->view, with);
+  after = w42_view_get_caret (c->view);
+  if (start < c->replace_origin)
+    c->replace_origin = c->replace_origin >= end
+                        ? c->replace_origin - (end - start) + (after - start)
+                        : after;
+
+  /* And on to the next, unless that is back where the run began -- or
+   * the match did not go: marking changes, a deletion only strikes the
+   * text through, and it would be found and replaced for ever. */
+  from = forward ? after : start;
+  if (w42_pt_length (pt) + (end - start) == length + (after - start) &&
+      w42_search_find (pt, from, text, opts, &s0, &e0) &&
+      !replace_round (c, s0, from, forward))
+    w42_view_select_range (c->view, s0, e0);
+  else
+    c->replace_done = TRUE;
+  w42_view_get_selection_bounds (c->view, &c->replace_start, &c->replace_end);
+  return TRUE;
+}
+
 /* Execute(FindText, MatchCase, MatchWholeWord, MatchWildcards,
  * MatchSoundsLike, MatchAllWordForms, Forward, Wrap, Format, ReplaceWith,
  * Replace): finds and selects the next match, or replaces one or all.
@@ -1661,10 +1988,13 @@ NATIVE (n_find_execute)
   opts.backwards = !forward;
   opts.wrap = wrap != 0;
 
-  if (replace == 2)
+  if (replace == 1)
+    found = replace_one (c, text, with, &opts);
+  else if (replace == 2)
     {
       gsize n = w42_search_replace_all (pt, text, with, &opts);
 
+      c->replace_view = NULL;
       found = n > 0;
       if (found)
         {
@@ -1679,20 +2009,13 @@ NATIVE (n_find_execute)
       gsize start, end, from;
       gsize s0, e0;
 
+      c->replace_view = NULL;
       w42_view_get_selection_bounds (c->view, &s0, &e0);
       from = forward ? e0 : s0;
       if (w42_search_find (pt, from, text, &opts, &start, &end))
         {
           found = TRUE;
           w42_view_select_range (c->view, start, end);
-          if (replace == 1)
-            {
-              w42_view_insert_text (c->view, with);
-              /* And on to the next, as Word's Replace did. */
-              w42_view_get_selection_bounds (c->view, &s0, &e0);
-              if (w42_search_find (pt, e0, text, &opts, &start, &end))
-                w42_view_select_range (c->view, start, end);
-            }
         }
     }
   g_free (text);
@@ -2093,6 +2416,8 @@ NATIVE (n_documents_count)
 NATIVE (n_documents_add)
 {
   Ctx *c = ctx_of (s);
+  W42Document *doc;
+  GtkApplication *app;
 
   OPEN ();
   while (mb_has_arg (s, l))
@@ -2102,8 +2427,22 @@ NATIVE (n_documents_add)
       mb_check (arg_value (s, l, &v));
     }
   CLOSE ();
-  if (w42_window_new_document (c->parent) == NULL)
+  doc = w42_window_new_document (c->parent);
+  if (doc == NULL)
     return fail (s, l, "A new document could not be made");
+  /* The new document is the active one: Selection and ActiveDocument
+   * go on in its window. */
+  app = gtk_window_get_application (c->parent);
+  for (GList *w = gtk_application_get_windows (app); w != NULL; w = w->next)
+    {
+      W42View *view = W42_IS_WINDOW (w->data) ? window_view (w->data) : NULL;
+
+      if (view != NULL && w42_view_get_document (view) == doc)
+        {
+          ctx_enter (c, w->data, view);
+          break;
+        }
+    }
   return MB_FUNC_OK;
 }
 
@@ -2115,6 +2454,7 @@ NATIVE (n_documents_open)
   GtkApplication *app;
   GFile *file;
   GtkWidget *window;
+  W42View *view;
   GError *error = NULL;
 
   OPEN ();
@@ -2152,6 +2492,10 @@ NATIVE (n_documents_open)
   gtk_window_present (GTK_WINDOW (window));
   g_object_unref (file);
   g_free (name);
+  /* As Documents.Add: what follows is done to the document opened. */
+  view = window_view (window);
+  if (view != NULL)
+    ctx_enter (c, GTK_WINDOW (window), view);
   return MB_FUNC_OK;
 }
 
@@ -2192,6 +2536,7 @@ static const Native NATIVES[] = {
   { "SELECTION_RANGE_START", n_sel_start }, { "SELECTION_RANGE_END", n_sel_end },
   { "SELECTION_COPY", n_sel_copy }, { "SELECTION_CUT", n_sel_cut }, { "SELECTION_PASTE", n_sel_paste },
   { "SELECTION_INSERTAFTER", n_sel_insertafter }, { "SELECTION_INSERTBEFORE", n_sel_insertbefore },
+  { "SELECTION_INSERTBREAK", n_sel_insertbreak },
   { "SELECTION_WORDS_COUNT", n_sel_words_count }, { "SELECTION_CHARACTERS_COUNT", n_sel_characters_count },
   { "SELECTION_PARAGRAPHS_COUNT", n_sel_paragraphs_count },
   { "SELECTION_STYLE", n_sel_style }, { "SELECTION_STYLE_SET", n_sel_style_set },
@@ -2225,6 +2570,10 @@ static const Native NATIVES[] = {
   { "SELECTION_PARAGRAPHFORMAT_SPACEBEFORE_SET", n_para_spacebefore_set },
   { "SELECTION_PARAGRAPHFORMAT_SPACEAFTER", n_para_spaceafter },
   { "SELECTION_PARAGRAPHFORMAT_SPACEAFTER_SET", n_para_spaceafter_set },
+  { "SELECTION_PARAGRAPHFORMAT_PAGEBREAKBEFORE", n_para_pagebreakbefore },
+  { "SELECTION_PARAGRAPHFORMAT_PAGEBREAKBEFORE_SET", n_para_pagebreakbefore_set },
+  { "SELECTION_PARAGRAPHFORMAT_KEEPWITHNEXT", n_para_keepwithnext },
+  { "SELECTION_PARAGRAPHFORMAT_KEEPWITHNEXT_SET", n_para_keepwithnext_set },
   /* Selection.Find. */
   { "SELECTION_FIND_CLEARFORMATTING", n_find_clearformatting },
   { "SELECTION_FIND_REPLACEMENT_CLEARFORMATTING", n_find_clearformatting },
@@ -2324,7 +2673,10 @@ on_gone (GtkWidget *widget, gpointer data)
 {
   Ctx *c = data;
 
-  (void) widget;
+  /* A window the macro has moved on from may go; only the one it works
+   * in now stops it. */
+  if (widget != (GtkWidget *) c->view && widget != (GtkWidget *) c->parent)
+    return;
   c->gone = TRUE;
   /* A box being answered is answered: nobody is left to answer it. */
   if (c->modal != NULL && c->modal->loop != NULL)
@@ -2346,10 +2698,11 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
   int rc;
   gboolean ok = TRUE;
   W42Document *doc;
-  gulong view_gone = 0, parent_gone = 0;
 
   g_return_val_if_fail (W42_IS_VIEW (view), FALSE);
   g_return_val_if_fail (source != NULL, FALSE);
+  doc = w42_view_get_document (view);
+  g_return_val_if_fail (W42_IS_DOCUMENT (doc), FALSE);
   if (error != NULL)
     *error = NULL;
 
@@ -2370,26 +2723,14 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
     }
 
   memset (&ctx, 0, sizeof ctx);
-  ctx.parent = parent;
-  ctx.view = view;
   ctx.output = output;
   ctx.forward = TRUE;
   ctx.wrap = TRUE;
+  ctx.held = g_ptr_array_new ();
+  ctx.docs = g_ptr_array_new_with_free_func (g_object_unref);
 
-  /* Held until the macro ends, since every native reaches through them
-   * and a MsgBox runs the main loop, from which they can be closed.  Held,
-   * a closed window is not disposed until it is let go, so "destroy" does
-   * not come in time; what does come at once, to a window closed and to
-   * a pane taken away, is "unrealize". */
   running = TRUE;
-  g_object_ref (view);
-  view_gone = g_signal_connect (view, "unrealize", G_CALLBACK (on_gone), &ctx);
-  if (parent != NULL)
-    {
-      g_object_ref (parent);
-      parent_gone = g_signal_connect (parent, "unrealize", G_CALLBACK (on_gone), &ctx);
-    }
-  doc = g_object_ref (w42_view_get_document (view));
+  ctx_enter (&ctx, parent, view);
 
   mb_init ();
   mb_open (&bas);
@@ -2409,12 +2750,15 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
   rc = mb_load_string (bas, prog->program, true);
   if (rc == MB_FUNC_OK)
     {
-      /* Everything the macro does is one undo step.  The table is asked
-       * for again at the end: a Revert while the macro waited on a box
-       * gives the document another. */
+      /* Everything the macro does is one undo step, in each document it
+       * works on.  The table is asked for again at the end: a Revert
+       * while the macro waited on a box gives the document another. */
+      ctx.grouping = TRUE;
       w42_pt_begin_group (w42_document_pt (doc));
       rc = mb_run (bas, true);
-      w42_pt_end_group (w42_document_pt (doc));
+      for (guint i = 0; i < ctx.docs->len; i++)
+        w42_pt_end_group (w42_document_pt (g_ptr_array_index (ctx.docs, i)));
+      ctx.grouping = FALSE;
     }
 
   if (rc != MB_FUNC_OK || ctx.error != NULL)
@@ -2436,16 +2780,19 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
   w42_vba_program_free (prog);
 
   /* Whatever was changed, every view on the document sees it. */
-  w42_document_touch (doc);
+  for (guint i = 0; i < ctx.docs->len; i++)
+    w42_document_touch (g_ptr_array_index (ctx.docs, i));
 
-  if (g_signal_handler_is_connected (view, view_gone))
-    g_signal_handler_disconnect (view, view_gone);
-  if (parent != NULL && g_signal_handler_is_connected (parent, parent_gone))
-    g_signal_handler_disconnect (parent, parent_gone);
-  g_object_unref (doc);
-  if (parent != NULL)
-    g_object_unref (parent);
-  g_object_unref (view);
+  /* A widget disposed while held has lost its handlers already. */
+  for (guint i = 0; i < ctx.held->len; i++)
+    {
+      gpointer widget = g_ptr_array_index (ctx.held, i);
+
+      g_signal_handlers_disconnect_by_func (widget, on_gone, &ctx);
+      g_object_unref (widget);
+    }
+  g_ptr_array_unref (ctx.held);
+  g_ptr_array_unref (ctx.docs);
   running = FALSE;
   return ok;
 }

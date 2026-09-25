@@ -59,13 +59,24 @@ and the ruler off and on; Word42 remembers the setting for the next time.
 **File ▸ New** (Ctrl+N) opens an empty document in a new window.
 **File ▸ Open** (Ctrl+O) opens an existing one, and **File ▸ Close**
 (Ctrl+W) closes the window, asking first if there is anything unsaved.
+A file that is already open is not opened a second time — as a second,
+separate document whose saving would throw the first one's work away —
+but its window is raised.
 
 The File menu remembers the last eight files you opened or saved; pick one
 from the bottom of the menu to open it again.
 
 **File ▸ New from Template** starts a document from one of the templates
 that travel with the program — Letter, Memo, Fax Cover, Report, Meeting
-Notes — or from one of your own. **File ▸ Save as Template** puts a copy
+Notes, **Novel** and **Manuscript** — or from one of your own. Novel is a
+book: A5 pages, justified text in 11 point with the first line of each
+paragraph set in, and chapters in Heading 1, each on a page of its own
+with the page number at the foot. Manuscript is what agents and
+publishers ask to be sent: Courier at 12 point, double-spaced, ragged
+right, each chapter a third of the way down a new page, and the author's
+surname, the title and the page number at the top of every page but the
+first. A new document starts in the language chosen with Tools ▸ Language
+▸ Default. **File ▸ Save as Template** puts a copy
 of the document you are in into the templates folder, where the list
 picks it up; the document itself is unchanged and keeps its own file. A
 document started from a template is untitled: saving asks where to put
@@ -88,6 +99,7 @@ throw away.
 | Web page (`.html`, `.htm`) | yes | yes |
 | Plain text (`.txt`) | yes | yes |
 | Presentation (`.pptx`) | yes, as an outline | yes, from the outline |
+| E-book (`.epub`) | — | export only |
 | PDF (`.pdf`) | text only, where the PDF library is present | export only |
 
 **File ▸ Save** (Ctrl+S) writes the document back in the format it came in.
@@ -112,11 +124,19 @@ Tools ▸ Options the first time.
 
 ### Autosave and recovery
 
-Every two minutes, a document with unsaved changes is copied into Word42's
-data directory. Saving or closing cleanly removes the copy. If Word42 stops
-without either — a power cut, a crash — the next start opens the copy as the
-document it was, marked as changed, and tells you so. Save it, and the copy
-goes.
+Every two minutes — or as often as Tools ▸ Options ▸ Save says — a
+document with unsaved changes is copied into Word42's data directory.
+Saving or closing cleanly removes the copy, and so does undoing or
+reverting back to the saved text. If Word42 stops without either — a power
+cut, a crash — the next start opens the copy as the document it was,
+marked as changed, and tells you so. The copy stays on disk until the
+recovered document is saved, closed or copied again, so a second crash
+loses nothing either. A document open in two windows keeps its copy until
+the last of them closes.
+
+With **Always create backup copy** on in Tools ▸ Options ▸ Save, the file
+a save is about to replace is kept beside it first as "Backup of" and its
+name — `Backup of Morild.odt` — so a save regretted can be had back.
 
 ### Insert one document into another
 
@@ -276,6 +296,11 @@ so are the four buttons on the formatting toolbar and Format ▸ Alignment.
   indented **By** so much, or a hanging indent.
 - **Spacing** — before and after the paragraph, in points.
 - **Line spacing** — single, 1½, double, At Least, Exactly or a multiple.
+- **Text flow** — Widow/Orphan Control, Keep Lines Together, Keep with
+  Next, and **Page Break Before**, which starts the paragraph on a new
+  page. Enter after a paragraph that starts a page gives an ordinary
+  paragraph: the break, a list numbered afresh and a dropped capital stay
+  with the paragraph that has them.
 
 ### Tabs and the ruler
 
@@ -366,7 +391,15 @@ Heading 1, Heading 2, Heading 3, Title and Caption.
 - **Apply** one from the Style box at the left of the formatting toolbar,
   or with Ctrl+Shift+N (Normal) and Ctrl+Alt+1/2/3 (the headings).
 - **Format ▸ Style** redefines one: change it, and every paragraph in that
-  style changes with it.
+  style changes with it. Besides the font, the alignment and the space
+  around it, a style sets the **first-line indent**, the **line spacing**,
+  **Page break before** — every chapter heading on a page of its own — and
+  **Keep with next**. The headings keep with the paragraph under them
+  from the start, as Word's do.
+- Formatting of your own survives the style: a word in italics stays in
+  italics when the paragraph is given another style, or when its style is
+  given another font or size. As in Word, formatting that covers most of a
+  paragraph is taken to be its old look and goes when a style is applied.
 - **New** in that dialog makes a style of your own. A new style is *based
   on* an existing one and keeps only what you change in it, so changing the
   base changes everything built on it.
@@ -679,7 +712,15 @@ language at all and is never checked — the right thing for a code
 listing or a part number.
 
 With nothing selected the language is set for what is typed next, the way
-bold is. The mark travels with the text: RTF carries it as `\lang`, Word
+bold is.
+
+**Default** makes the chosen language the document's own, as Word 97's
+Default button did: it goes on Normal, and so on every style, which makes
+it the language of all the text not marked otherwise — what the spelling
+checker, the thesaurus, the hyphenation and AutoCorrect's quotation marks
+then go by — and it becomes the language new documents start in. A novel
+written in Norwegian on a machine set up in English is checked, quoted and
+hyphenated as Norwegian without a word of it being marked. The mark travels with the text: RTF carries it as `\lang`, Word
 as `w:lang`, OpenDocument as `fo:language` and `fo:country`, AbiWord as
 its `lang` property and HTML as `lang=`.
 
@@ -705,16 +746,31 @@ checker looks past them.
 
 ### Tools ▸ AutoCorrect
 
-What is put right as you type, as Word 97 did it:
+What is put right as you type, as Word 97 did it — in the typography of
+the language the text is in:
 
-- **Quotes** — a straight `"` or `'` becomes the opening or closing curly
-  one, whichever fits where it stands.
+- **Quotes** — a straight `"` or `'` becomes the opening or closing
+  quotation mark, whichever fits where it stands, and in the language's
+  own shapes: “ ” in English, « » and ‘ ’ in Norwegian, » « in Danish,
+  „ “ in German, « » in French, Italian, Spanish and Russian, and so on.
+  An apostrophe inside a word stays an apostrophe (’) whatever the
+  language's closing quote looks like.
+- **Dialogue dashes** — in the languages whose novels open a line of
+  dialogue with a dash (Norwegian, Swedish, Danish, Finnish, French,
+  Spanish, Italian, Russian, Polish…), a hyphen and a space at the start
+  of a paragraph become that dash: `- hei` becomes `– Hei`. A hyphen
+  standing alone between two words becomes an en dash, in any language.
+- **Three dots** — become an ellipsis (…), after a word too.
 - **TWo INitial CApitals** — the second capital goes.
-- **The first word of a sentence** — takes its capital.
+- **The first word of a sentence** — takes its capital, after an opening
+  quote or a dialogue dash as well; but not after an ordinal where the
+  language writes one with a full stop (`3. september`), an initial, or
+  one of the language's abbreviations (`f.eks.`, `kl.`, `ca.`, `e.g.`,
+  `Mr.`).
 - **Two hyphens** — become a dash.
 - **Misspellings** — a short list of the ones a hand makes rather than a
-  head: teh, adn, thier, recieve, and a few more, with (c), (r) and (tm)
-  becoming ©, ® and ™.
+  head: teh, adn, thier, recieve, and a few more — in English text only —
+  with (c), (r) and (tm) becoming ©, ® and ™ in any.
 
 The dialog lists them and carries the switch; Tools ▸ Options has the
 switch as well. A correction and the character that prompted it are one
@@ -725,7 +781,20 @@ undo step, so Ctrl+Z once puts back exactly what you typed.
 Pages, words, characters with and without their spaces, paragraphs and
 lines. **Include footnotes and endnotes** counts what is down in the
 notes as well, and with text selected the box counts the selection
-beside the document.
+beside the document. A word is a run of text with a letter or a digit in
+it, so a dialogue dash is not one, and soft hyphens are not characters.
+The pages and lines are the printed ones in every view.
+
+The status bar keeps a running count — `53,338 words` — which catches up
+a moment after the typing stops, and the page the caret is on out of how
+many there are, `13/152`, as Word 97's did.
+
+### Tools ▸ Word Count Goal
+
+The number of words the document is meant to reach. The status bar then
+counts toward it — `12,345 of 45,000 words` — and its tip says how far
+along that is, and how many words were written since the document was
+opened. The goal is remembered with the file; 0 means none.
 
 ### Tools ▸ Envelopes and Labels
 
@@ -841,19 +910,37 @@ is read in an expression and set by assignment.
 
 | Object | Members |
 | --- | --- |
-| `Selection` | `TypeText text`, `TypeParagraph`, `TypeBackspace`, `Delete [unit, count]`, `Text` (read and set), `Start`, `End` (read and set, as document positions), `MoveLeft` / `MoveRight` / `MoveUp` / `MoveDown [unit, count, extend]`, `HomeKey` / `EndKey [unit, extend]`, `Collapse [direction]`, `WholeStory`, `Copy`, `Cut`, `Paste`, `InsertBefore text`, `InsertAfter text`, `Style` (a name, or `wdStyleNormal`, `wdStyleHeading1`..`3`, `wdStyleTitle`), `Words.Count`, `Characters.Count`, `Paragraphs.Count` |
+| `Selection` | `TypeText text`, `TypeParagraph`, `TypeBackspace`, `Delete [unit, count]`, `Text` (read and set), `Start`, `End` (read and set, as document positions), `MoveLeft` / `MoveRight` / `MoveUp` / `MoveDown [unit, count, extend]`, `HomeKey` / `EndKey [unit, extend]`, `Collapse [direction]`, `WholeStory`, `Copy`, `Cut`, `Paste`, `InsertBefore text`, `InsertAfter text`, `InsertBreak [type]` (`wdPageBreak`, the default, or `wdSectionBreakNextPage`), `Style` (a name, or `wdStyleNormal`, `wdStyleHeading1`..`3`, `wdStyleTitle`), `Words.Count`, `Characters.Count`, `Paragraphs.Count` |
 | `Selection.Font` | `Bold`, `Italic`, `Underline` (`wdUnderlineNone`, `Single`, `Words`, `Double`), `StrikeThrough`, `Superscript`, `Subscript`, `AllCaps`, `SmallCaps`, `Size` (points), `Name`, `Color` (Word's `vb`/`wd` colours); a switch set to `wdToggle` turns over |
-| `Selection.ParagraphFormat` | `Alignment` (`wdAlignParagraphLeft`, `Center`, `Right`, `Justify`), `LeftIndent`, `RightIndent`, `FirstLineIndent`, `SpaceBefore`, `SpaceAfter` (points) |
-| `Selection.Find` | `Text`, `Replacement.Text`, `MatchCase`, `MatchWholeWord`, `Forward`, `Wrap`, `ClearFormatting`; `Execute([FindText, MatchCase, MatchWholeWord, , , , Forward, Wrap, , ReplaceWith, Replace])` selects the next match and is True when one was found; `Replace:=wdReplaceOne` or `wdReplaceAll` |
+| `Selection.ParagraphFormat` | `Alignment` (`wdAlignParagraphLeft`, `Center`, `Right`, `Justify`), `LeftIndent`, `RightIndent`, `FirstLineIndent`, `SpaceBefore`, `SpaceAfter` (points), `PageBreakBefore`, `KeepWithNext` (`True`, `False` or `wdToggle`) |
+| `Selection.Find` | `Text`, `Replacement.Text`, `MatchCase`, `MatchWholeWord`, `Forward`, `Wrap`, `ClearFormatting`; `Execute([FindText, MatchCase, MatchWholeWord, , , , Forward, Wrap, , ReplaceWith, Replace])` selects the next match and is True when one was found; `Replace:=wdReplaceOne` replaces the selected match, or the next, and selects the one after, and `wdReplaceAll` replaces them all; an empty `ReplaceWith` deletes |
 | `ActiveDocument` | `Name`, `FullName`, `Path`, `Saved`, `Save`, `SaveAs name[, format]` (the extension decides the format; none is Rich Text), `Close [wdDoNotSaveChanges]`, `Content.Text` / `Range.Text` (the whole text, read and set), `Words.Count`, `Characters.Count`, `Paragraphs.Count`, `Pages.Count`, `Tables.Count`, `ComputeStatistics(wdStatisticWords`...`)`, `Undo`, `Redo`, `Select`, `PrintOut` |
 | `Application` | `Name`, `Version`, `StatusBar = text`, `ScreenUpdating`, `DisplayAlerts` (accepted), `ActiveWindow.Caption`, `Quit` |
-| `Documents` | `Count`, `Add`, `Open name` |
+| `Documents` | `Count`, `Add`, `Open name`; the new document is the active one, and `Selection` and `ActiveDocument` go on in its window |
 | `Debug` | `Print a, b` to the editor's pane and the status bar |
 
 Units for moving are `wdCharacter`, `wdWord`, `wdLine`, `wdParagraph`
 and `wdStory`; `wdExtend` extends the selection instead of moving the
 caret; `wdCollapseStart` and `wdCollapseEnd` say where Collapse leaves
-it.
+it. `Style` and the `ParagraphFormat` properties read the selection's
+first paragraph, as Word's do, and setting one sets every paragraph the
+selection touches.
+
+A macro that starts a new chapter on a page of its own:
+
+```vb
+Sub NewChapter()
+    Selection.EndKey Unit:=wdStory
+    Selection.InsertBreak Type:=wdPageBreak
+    Selection.Style = wdStyleHeading1
+    Selection.ParagraphFormat.KeepWithNext = True
+    Selection.TypeText "Chapter"
+End Sub
+```
+
+`Do While .Execute(Replace:=wdReplaceOne)` ... `Loop` goes once round
+the document from where it began and stops there, even with `.Wrap =
+wdFindContinue` and a replacement the search would find again.
 
 A macro that runs longer than a few minutes of statements is stopped,
 so a loop that never ends cannot take the program with it. Three
@@ -869,6 +956,9 @@ macros to start from are in `samples/macros`.
 - **Spelling** — check spelling as you type, on or off.
 - **Correct as you type** — the AutoCorrect switch, the same one the
   AutoCorrect dialog carries.
+- **Save** — **Always create backup copy**, which keeps the file a save
+  replaces beside it as "Backup of" and its name, and **Save AutoRecover
+  info every** so many minutes, from one to 120.
 
 The settings live in a small file in your configuration directory, along
 with the toolbar and ruler switches from the View menu.
@@ -913,9 +1003,21 @@ selected. Click a heading and the caret goes to it and the page scrolls
 to show it. The list follows the text as it is typed -- a heading added,
 renamed or taken out shows a moment later -- and shows the section
 numbers when Format ▸ Heading Numbering is on. The Title counts as the
-top of the outline, as it does in the slide show; headings in tables and
-notes are not listed. A bar between the map and the page drags to size
-it, and the setting is remembered between runs.
+top of the outline, as it does in the slide show, and is not numbered, as
+it is not on the page; headings in tables and notes are not listed. A bar
+between the map and the page drags to size it, and the setting is
+remembered between runs.
+
+Beside each heading, in grey, is the number of words under it down to the
+next heading at its level: a novelist sees at a glance which chapter has
+grown long and which part is thin.
+
+### View ▸ Typewriter Scrolling
+
+Keeps the line being written in the middle of the window: as you type,
+the page moves up under the caret, rather than the caret wandering down to
+the window's foot. It applies to every pane and is remembered between
+runs.
 
 ### View ▸ Full Screen
 
@@ -981,7 +1083,10 @@ is the same layout engine that draws the document, so the preview is the
 print.
 
 **File ▸ Export as PDF** writes the document as a PDF, pictures, notes and
-all.
+all, with its headings as the PDF's bookmarks — a book's parts and
+chapters in the reader's side panel — and the Summary Info's title,
+author, subject and keywords as the PDF's own. A JPEG picture goes in as
+the JPEG it is, so an illustrated book stays a few megabytes.
 
 **File ▸ Export as Web Page** writes one self-contained HTML file:
 headings, paragraphs with their alignment and indents, runs with their
@@ -995,7 +1100,36 @@ so the page can be sent as it is.
 opens it in the browser, so that what a reader on the web would see can
 be seen without saving anything; one file is written over each time.
 
-Fields are updated before printing and before either export.
+**File ▸ Export as E-book** writes the document as an EPUB 3 book, the
+format e-book readers and shops take: a file for every chapter — a new one
+at each top-level heading, and at a heading that starts a new page — the
+table of contents made from the headings, the pictures as files of their
+own (the first large one before the first heading as the cover), notes at
+the end of the chapter that refers to them, and a stylesheet made from the
+document's own styles. The Summary Info's title, author, subject and
+comments, and the document's language, are the book's. What is written
+is what the document is — headings, paragraphs, italics, lists, tables,
+pictures — rather than what its pages look like, since a reader flows the
+text to its own screen. Word42 writes EPUB but does not read it.
+
+Fields are updated before printing and before every export.
+
+### From the command line
+
+`word42 --convert-to=FORMAT FILE…` writes each file in another format and
+exits, without a window or even a display: what a script needs to make
+the proofs, the e-book and the copy for the publisher out of one
+manuscript.
+
+```sh
+word42 --convert-to=pdf Morild.odt              # Morild.pdf beside it
+word42 --convert-to=epub --outdir=ut *.odt       # every manuscript, into ut/
+word42 --convert-to=docx Morild.odt              # for an editor who uses Word
+```
+
+FORMAT is the extension to write: `pdf`, `epub`, `odt`, `docx`, `rtf`,
+`html`, `txt`, `abw` or `pptx`. The exit status is 0 when every file was
+converted and 1 when one could not be; each file written is printed.
 
 ---
 

@@ -273,9 +273,10 @@ GPtrArray *w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool);
 
 /* ---- What the document counts up to ------------------------------------ */
 
-/* Tools > Word Count.  Pictures and note reference marks are not
- * characters and are not counted; a word is a run of anything that is
- * not white space, which is how Word counted them. */
+/* Tools > Word Count.  Pictures, note reference marks and soft hyphens
+ * are not characters and are not counted; a word is a run of anything
+ * that is not white space with a letter or a digit in it, so that the
+ * dash opening a line of dialogue is not a word. */
 typedef struct {
   gsize words;
   gsize characters;             /* with the spaces */
@@ -321,11 +322,15 @@ void w42_pt_apply_char_fmt (W42PieceTable    *pt,
 void w42_pt_apply_style (W42PieceTable *pt, gsize pos, gsize n, const char *name);
 
 /* Re-applies a style to every paragraph that carries it, for after its
- * definition has changed. */
-void w42_pt_restyle (W42PieceTable *pt, const char *name);
+ * definition has changed.  `was` is the definition the text was
+ * formatted by, so that what differs from it -- direct formatting --
+ * survives; NULL takes the definition as it stands. */
+void w42_pt_restyle (W42PieceTable *pt, const char *name, const W42Style *was);
 /* The same for the style and every style based on it, after
- * w42_stylesheet_follow has recomputed them.  One undo step. */
-void w42_pt_restyle_tree (W42PieceTable *pt, const char *name);
+ * w42_stylesheet_follow has recomputed them.  `before` is a copy of the
+ * stylesheet from before the change, or NULL.  One undo step. */
+void w42_pt_restyle_tree (W42PieceTable *pt, const char *name,
+                          W42StyleSheet *before);
 /* A character style: its font, size, weight, slant, underline, colour and
  * case go on to [pos, pos+n) as one undo step. */
 void w42_pt_apply_char_style (W42PieceTable *pt, gsize pos, gsize n, const char *name);

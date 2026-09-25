@@ -638,14 +638,18 @@ slide_order (W42Zip *zip)
   return names;
 }
 
-/* A title or a line of a slide as one paragraph: a line break in it --
- * an &#13; is enough -- would be a paragraph of its own to the piece
- * table, and every later title would be styled a paragraph too early. */
+/* A title or a line of a slide as one paragraph: whatever
+ * w42_pt_load_text ends a paragraph at -- a line feed, a carriage
+ * return, and a form feed, which a text file uses to start a page; an
+ * &#13; or &#12; is enough to put one in -- would be a paragraph of its
+ * own to the piece table, and every later title would be styled a
+ * paragraph too early.  A vertical tab it makes a line break, inside
+ * the paragraph, so that is left alone. */
 static void
 append_line (GString *text, const char *line)
 {
   for (const char *p = line; *p != '\0'; p++)
-    g_string_append_c (text, (*p == '\n' || *p == '\r') ? ' ' : *p);
+    g_string_append_c (text, (*p == '\n' || *p == '\r' || *p == '\f') ? ' ' : *p);
 }
 
 gboolean

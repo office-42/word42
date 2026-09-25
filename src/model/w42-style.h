@@ -60,6 +60,9 @@ typedef struct _W42StyleSheet W42StyleSheet;
 /* A new sheet holds Word 97's defaults: Normal, Heading 1 to 3, Title. */
 W42StyleSheet   *w42_stylesheet_new  (void);
 void             w42_stylesheet_free (W42StyleSheet *sheet);
+/* A copy to set beside the sheet, to know what a style was before an
+ * edit; free with w42_stylesheet_free. */
+W42StyleSheet   *w42_stylesheet_copy (W42StyleSheet *sheet);
 /* Back to what a new sheet holds, heading numbers off: for a document
  * read into a table that held another.  Styles found before this are
  * gone after it. */
@@ -88,6 +91,10 @@ void             w42_style_own_from_base (const W42Style *style, const W42Style 
 /* The names of the styles based (at any depth) on `name`, NULL-ended;
  * free with g_free (the names are interned). */
 const char     **w42_stylesheet_descendants (W42StyleSheet *sheet, const char *name);
+
+/* The document's own language: the one Normal is marked with, or NULL
+ * when it has none and the desktop's stands in. */
+const char      *w42_stylesheet_language (W42StyleSheet *sheet);
 
 /* The outline level of a style by name; 0 when the style is unknown. */
 int              w42_stylesheet_outline (W42StyleSheet *sheet, const char *name);

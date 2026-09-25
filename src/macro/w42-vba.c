@@ -330,6 +330,28 @@ with_prefix (State *st)
   return NULL;
 }
 
+/* VBA's reserved words, none of which can be a label: "Else:" at the
+ * start of a line is Else, and the colon ends it. */
+static gboolean
+is_reserved (const char *id)
+{
+  static const char *const words[] = {
+    "And", "As", "ByRef", "ByVal", "Call", "Case", "Const", "Declare", "Dim",
+    "Do", "Each", "Else", "ElseIf", "End", "Enum", "Erase", "Exit", "False",
+    "For", "Function", "Get", "Global", "GoSub", "GoTo", "If", "Is", "Let",
+    "Like", "Loop", "Me", "Mod", "New", "Next", "Not", "Nothing", "On",
+    "Option", "Optional", "Or", "Private", "Property", "Public", "ReDim",
+    "Rem", "Resume", "Return", "Select", "Set", "Static", "Stop", "Sub",
+    "Then", "To", "True", "Type", "Until", "Wend", "While", "With", "Xor",
+    NULL
+  };
+
+  for (int i = 0; words[i] != NULL; i++)
+    if (g_ascii_strcasecmp (id, words[i]) == 0)
+      return TRUE;
+  return FALSE;
+}
+
 static gboolean
 is_user_sub (State *st, const char *name)
 {
@@ -379,6 +401,7 @@ static const Signature SIGNATURES[] = {
   { "close",      { "savechanges", NULL } },
   { "printout",   { "background", "append", "range", "outputfilename", "from", "to", NULL } },
   { "computestatistics", { "statistic", NULL } },
+  { "insertbreak", { "type", NULL } },
   { "goto",       { "what", "which", "count", "name", NULL } },
   { "insertparagraph", { NULL } },
   { "replace",    { "expression", "find", "replace", NULL } },
@@ -610,6 +633,15 @@ chain_member (const char *chain)
   return u != NULL ? u + 1 : chain;
 }
 
+/* VBA's functions of no arguments, written without brackets --
+ * Selection.TypeText Date -- which MY-BASIC will not call without. */
+static gboolean
+is_bare_function (const char *id)
+{
+  return g_ascii_strcasecmp (id, "Date") == 0 || g_ascii_strcasecmp (id, "Now") == 0 ||
+         g_ascii_strcasecmp (id, "Time") == 0 || g_ascii_strcasecmp (id, "Timer") == 0;
+}
+
 /* Words MY-BASIC spells differently, or has as keywords of its own. */
 static const char *
 keyword_spelling (const char *id)
@@ -759,7 +791,7 @@ translate_expr (State *st, GArray *toks, guint from, guint to, GPtrArray *atoms)
               g_free (args);
               i = close + 1;
             }
-          else if (dotted || is_user_sub (st, chain))
+          else if (dotted || is_user_sub (st, chain) || is_bare_function (chain))
             {
               /* A property read, or a function of no arguments. */
               g_ptr_array_add (atoms, g_strdup_printf ("%s%s()", is_user_sub (st, chain) ? "call " : "", chain));
@@ -1621,7 +1653,9 @@ static const char PRELUDE[] =
   "wdFormatRTF = 6 : wdFormatDocumentDefault = 16 : wdFormatXMLDocument = 12 : "
   "wdFormatOpenDocumentText = 23 : wdFormatHTML = 8 : wdFormatPDF = 17 : wdFormatText = 2 : "
   "wdStyleNormal = -1 : wdStyleHeading1 = -2 : wdStyleHeading2 = -3 : wdStyleHeading3 = -4 : "
-  "wdStyleTitle = -63";
+  "wdStyleTitle = -63 : "
+  "wdSectionBreakNextPage = 2 : wdSectionBreakContinuous = 3 : wdLineBreak = 6 : "
+  "wdPageBreak = 7 : wdColumnBreak = 8";
 
 W42VbaProgram *
 w42_vba_translate (const char *source, const char *entry)
@@ -1680,9 +1714,11 @@ w42_vba_translate (const char *source, const char *entry)
             {
               GString *stmt = g_string_new (NULL);
 
-              /* "Label:" -- a name alone before a colon -- is not ours. */
+              /* "Label:" -- a name alone before a colon -- is not ours;
+               * a keyword alone before one is a statement. */
               if (k == start + 1 && k < toks->len && TOK (toks, start)->kind == TOK_ID &&
-                  !is_user_sub (&st, TOK (toks, start)->text) && k == 1)
+                  !is_user_sub (&st, TOK (toks, start)->text) &&
+                  !is_reserved (TOK (toks, start)->text) && k == 1)
                 {
                   fail (&st, "labels are not supported");
                 }

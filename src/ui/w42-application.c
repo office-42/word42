@@ -299,10 +299,20 @@ w42_application_open (GApplication  *app,
 
   for (int i = 0; i < n_files; i++)
     {
-      GtkWidget *window = w42_window_new (GTK_APPLICATION (app));
+      GtkWidget *window;
       GError *error = NULL;
       GtkWindow *other = NULL;
       char *name, *heading;
+      W42Window *open = w42_window_find_file (GTK_APPLICATION (app), files[i]);
+
+      /* Already open -- double-clicked again in the file manager, or
+       * recovered a moment ago: raised, not read a second time. */
+      if (open != NULL)
+        {
+          gtk_window_present (GTK_WINDOW (open));
+          continue;
+        }
+      window = w42_window_new (GTK_APPLICATION (app));
 
       if (w42_window_load (W42_WINDOW (window), files[i], &error))
         {
@@ -348,11 +358,23 @@ w42_application_class_init (W42ApplicationClass *klass)
   app_class->open     = w42_application_open;
 }
 
+/* Shown by --help.  main() does the converting itself, before the
+ * application is made, since it needs no window and no display. */
+static const GOptionEntry OPTIONS[] = {
+  { "convert-to", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "Write each FILE in another format and exit, without a window "
+    "(pdf, epub, odt, docx, rtf, html, txt, abw)", "FORMAT" },
+  { "outdir", 0, 0, G_OPTION_ARG_FILENAME, NULL,
+    "Where --convert-to writes; beside each file if not given", "DIR" },
+  { NULL, 0, 0, 0, NULL, NULL, NULL }
+};
+
 static void
 w42_application_init (W42Application *self)
 {
   g_action_map_add_action_entries (G_ACTION_MAP (self), APP_ACTIONS,
                                    G_N_ELEMENTS (APP_ACTIONS), self);
+  g_application_add_main_option_entries (G_APPLICATION (self), OPTIONS);
 }
 
 W42Application *

@@ -39,7 +39,7 @@ struct _W42Layout {
   GPtrArray      *cap_layouts;   /* their PangoLayouts */
   W42StyleSheet  *styles;    /* not owned */
   W42ApTable     *aps;       /* not owned; for the backdrop painter */
-  double        text_w;      /* the column pictures must fit inside */
+  double        text_w;      /* the text column of the last section laid out */
   GPtrArray    *prefixes;    /* PangoLayout*, the section numbers */
   W42Spell     *spell;       /* not owned; NULL for no underlining */
   gsize         spell_caret;
@@ -360,7 +360,8 @@ static PangoLayout *build_block_layout (W42Layout *self, const W42Block *block,
                                         guint hide_from, guint hide_to);
 
 /* Lays out note `id`'s paragraphs at y = 0 into `out`, returning their
- * height.  The blocks' lines are placed when the page is finished. */
+ * height.  The blocks' lines are placed when the page is finished.  With
+ * `out` NULL the note is measured the same way and nothing is kept. */
 static double
 layout_note (W42Layout *self, W42ApTable *aps, int id, double text_w,
              GArray *out, double y_base)
@@ -381,7 +382,8 @@ layout_note (W42Layout *self, W42ApTable *aps, int id, double text_w,
       pa = &w42_ap_table_get (aps, block->ap)->pa;
       indent_x = w42_twips_to_px (pa->indent_left);
       layout = build_block_layout (self, block, aps, text_w, 0.0, 0, 0, 0);
-      g_ptr_array_add (self->layouts, layout);
+      if (out != NULL)
+        g_ptr_array_add (self->layouts, layout);
 
       iter = pango_layout_get_iter (layout);
       do
@@ -408,11 +410,14 @@ layout_note (W42Layout *self, W42ApTable *aps, int id, double text_w,
           box.prefix      = NULL;
           box.prefix_x    = box.origin_x;
 
-          g_array_append_val (out, box);
+          if (out != NULL)
+            g_array_append_val (out, box);
           y += box.height;
         }
       while (pango_layout_iter_next_line (iter));
       pango_layout_iter_free (iter);
+      if (out == NULL)
+        g_object_unref (layout);
     }
 
   return y - y_base;
@@ -530,10 +535,12 @@ flush_notes (W42Layout *self, GArray *page_notes, double *notes_h,
       return;
     }
 
+  /* On a page the notes end at the foot of the text: the room for the
+   * rule above them is what line_fits() kept free under the text. */
   if (self->galley)
     y0 = self->mar_t + *y_io + NOTE_SEP;
   else
-    y0 = self->mar_t + text_h - *notes_h + NOTE_SEP;
+    y0 = self->mar_t + text_h - *notes_h;
 
   {
     W42NoteRule rule = { page, self->mar_l, y0 - NOTE_SEP / 2 };
@@ -751,10 +758,46 @@ apply_font_description (PangoFontDescription *desc, const W42CharFmt *ch)
     ch->italic ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
 }
 
+/* An inline picture's size on the page: its own, or scaled down whole to
+ * `room` when it is wider.  The document keeps the size that was asked
+ * for; only the display yields, and only as far as it must. */
+static void
+inline_picture_size (const W42Object *object, double room,
+                     double *w, double *h)
+{
+  /* Pango counts in ints of 1/1024 pixel: a size a file made up
+   * overflowed them, and a line two million pixels tall upwards
+   * put everything after it above the page. */
+  *w = w42_twips_to_px (CLAMP (object->width, 15, W42_OBJECT_MAX_TWIPS));
+  *h = w42_twips_to_px (CLAMP (object->height, 15, W42_OBJECT_MAX_TWIPS));
+
+  if (room > 0.0 && *w > room)
+    {
+      *h *= room / *w;
+      *w = room;
+    }
+}
+
+/* `text_width` and `extra_indent` are what the paragraph is being set in
+ * and how far a number in front pushes its first line, as for
+ * build_block_layout. */
 static PangoAttrList *
-build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
+build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps,
+                  double text_width, double extra_indent)
 {
   PangoAttrList *list = pango_attr_list_new ();
+  const W42ParaFmt *pa = &w42_ap_table_get (aps, block->ap)->pa;
+  /* A picture must fit the line it is on, which is the column less the
+   * paragraph's indents -- and on the first line less the first-line
+   * indent and any number too.  One that opens the paragraph is on the
+   * first line; one after other text that is too wide for the rest of
+   * that line goes down to the next, which is a whole line wide.  A
+   * hanging first line is wider, but no picture is let out past the
+   * lines under it. */
+  double room = MAX (text_width - w42_twips_to_px (pa->indent_left)
+                                - w42_twips_to_px (pa->indent_right), 1.0);
+  double room_first = MAX (room - MAX (w42_twips_to_px (pa->indent_first)
+                                       + extra_indent, 0.0), 1.0);
 
   for (guint i = 0; i < block->runs->len; i++)
     {
@@ -825,20 +868,9 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps)
               continue;
             }
 
-          /* Pango counts in ints of 1/1024 pixel: a size a file made up
-           * overflowed them, and a line two million pixels tall upwards
-           * put everything after it above the page. */
-          w = w42_twips_to_px (CLAMP (object->width, 15, W42_OBJECT_MAX_TWIPS));
-          h = w42_twips_to_px (CLAMP (object->height, 15, W42_OBJECT_MAX_TWIPS));
-
-          /* A picture wider than the column is shown scaled to fit it.  The
-           * document keeps the size that was asked for; only the display
-           * yields, and only as far as it must. */
-          if (w > self->text_w && self->text_w > 0)
-            {
-              h = h * (self->text_w / w);
-              w = self->text_w;
-            }
+          inline_picture_size (object,
+                               run->byte_offset == 0 ? room_first : room,
+                               &w, &h);
 
           rect.x = 0;
           rect.y = -(int) (h * PANGO_SCALE);
@@ -1051,7 +1083,6 @@ shaping_key (W42Layout      *self,
   n32 = 1; PUT (&n32, 4);                       /* what the signature means */
   d = text_width;    PUT (&d, sizeof d);
   d = extra_indent;  PUT (&d, sizeof d);
-  d = self->text_w;  PUT (&d, sizeof d);        /* an oversized picture is scaled to it */
   n32 = cap_bytes;   PUT (&n32, 4);
   n32 = hide_from;   PUT (&n32, 4);
   n32 = hide_to;     PUT (&n32, 4);
@@ -1135,7 +1166,7 @@ build_block_layout (W42Layout      *self,
 
   pango_layout_set_text (layout, block->text->str, (int) block->text->len);
 
-  attrs = build_attributes (self, block, aps);
+  attrs = build_attributes (self, block, aps, text_width, extra_indent);
   if (self->spell != NULL)
     add_spelling (self, attrs, block, aps);
   /* Text set elsewhere -- a dropped letter, or the part of the paragraph
@@ -1645,6 +1676,226 @@ layout_block_lines (W42Layout *self, const W42Block *block, W42ApTable *aps,
         }
     }
   collect_lines (a, lines, 0, len, wrap_w > 0.0, TRUE);
+}
+
+/* Whether a line `line_h` tall set at y is still on the page, with
+ * `notes_h` of notes already at the page's foot and `line_notes_h` more
+ * for the notes it refers to itself.  A line needs its own height, not
+ * its advance: the leading of spacing above single goes under it and may
+ * run past the foot, and an exact spacing tighter than the type does not
+ * make the type any shorter.  The flow rules and the placing of lines
+ * both ask this, so that what the rules foresee is what happens. */
+static gboolean
+line_fits (double y, double line_h, double notes_h, double line_notes_h,
+           double text_h)
+{
+  return y + line_h + notes_h + line_notes_h +
+           ((notes_h > 0.0 || line_notes_h > 0.0) ? NOTE_SEP : 0.0) <= text_h;
+}
+
+/* How many of a paragraph's `n_lines` lines go on the page when its first
+ * is set at *y_io, below the paragraph's space before: the placing loop's
+ * sums done ahead of it.  `lead` is what a picture set over the text takes
+ * under the first line.  When all of them fit, *y_io and *notes_h_io come
+ * back as they will be after the last. */
+static int
+lines_that_fit (W42Layout        *self,
+                W42ApTable       *aps,
+                const W42Block   *block,
+                const W42ParaFmt *pa,
+                const BlockLine  *lines,
+                guint             n_lines,
+                const GArray     *placed,
+                double            text_w,
+                double            text_h,
+                double            lead,
+                double           *y_io,
+                double           *notes_h_io)
+{
+  double y = *y_io, notes_h = *notes_h_io;
+  gboolean refers = FALSE;
+  guint li;
+
+  for (guint r = 0; r < block->runs->len && !refers; r++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, r);
+
+      refers = run->footnote > 0 && !run->endnote;
+    }
+
+  for (li = 0; li < n_lines; li++)
+    {
+      const BlockLine *bl = &lines[li];
+      double line_h = (double) bl->logical.height / PANGO_SCALE;
+      double line_notes_h = 0.0;
+
+      for (guint r = 0; refers && r < block->runs->len; r++)
+        {
+          const W42Run *run = &g_array_index (block->runs, W42Run, r);
+
+          if (run->footnote <= 0 || run->endnote)
+            continue;
+          if (run->byte_offset < (gsize) bl->start_index ||
+              run->byte_offset >= (gsize) (bl->start_index + bl->length))
+            continue;
+          if ((guint) run->footnote_id < placed->len &&
+              g_array_index (placed, gboolean, run->footnote_id))
+            continue;
+          line_notes_h += layout_note (self, aps, run->footnote_id, text_w,
+                                       NULL, 0.0);
+        }
+
+      /* At the top of a page a line goes on whatever its height, as it
+       * does when it is placed. */
+      if (y > 0.0 && !line_fits (y, line_h, notes_h, line_notes_h, text_h))
+        break;
+      notes_h += line_notes_h;
+      if (li == 0)
+        y += lead;
+      y += line_advance (pa, line_h);
+    }
+
+  *y_io = y;
+  *notes_h_io = notes_h;
+  return (int) li;
+}
+
+/* What "keep lines together" and widow control make of a paragraph of
+ * which `fits` of `n` lines go on the page: TRUE when the whole of it
+ * should start the next page instead, or else the line that should start
+ * it early in *break_at, -1 for none.  At the top of a page, where going
+ * over gains nothing, `can_move` is FALSE and only a widow is seen to. */
+static gboolean
+flow_rules (const W42ParaFmt *pa, int fits, int n, gboolean can_move,
+            int *break_at)
+{
+  *break_at = -1;
+  if (fits >= n)
+    return FALSE;
+  if (pa->keep_together && can_move)
+    return TRUE;
+  if (pa->widow_control && fits > 0)
+    {
+      /* One line alone at the foot is an orphan; one alone at the top a
+       * widow.  Either way one more line moves. */
+      if (fits == 1 || (n - fits == 1 && fits - 1 < 2))
+        return can_move;
+      if (n - fits == 1)
+        *break_at = fits - 1;
+    }
+  return FALSE;
+}
+
+/* The paragraphs "keep with next" looks ahead to, each measured once in a
+ * pass: a chain is looked down from every paragraph in it, and each of
+ * its paragraphs would otherwise be shaped again for every one before. */
+typedef struct {
+  guint  first;      /* its first line in the lines */
+  guint  n;          /* how many; none until it is measured */
+  double width;      /* the column it was measured in */
+} AheadAt;
+
+typedef struct {
+  GArray *lines;     /* BlockLine, their layouts let go */
+  GArray *at;        /* AheadAt, by block */
+} Ahead;
+
+/* Whether what "keep with next" asks of paragraph `b` is on the page with
+ * it, when it has ended at y with notes of `notes_h` at the foot: as much
+ * of the paragraph after it as that paragraph's own flow rules would
+ * leave on the page -- its first two lines, usually -- or, if that one
+ * keeps with its next too, the whole of it and the same again, down the
+ * chain.  The paragraphs ahead are measured at the column's full width,
+ * without a number in front or anything beside them. */
+static gboolean
+kept_with_next (W42Layout    *self,
+                W42ApTable   *aps,
+                guint         b,
+                Ahead        *ahead,
+                const GArray *placed,
+                double        text_w,
+                double        text_h,
+                double        y,
+                double        notes_h)
+{
+  const W42Block *block = g_ptr_array_index (self->blocks, b);
+  const W42ParaFmt *pa = &w42_ap_table_get (aps, block->ap)->pa;
+
+  for (guint c = b + 1; c < self->blocks->len; c++)
+    {
+      const W42Block *next = g_ptr_array_index (self->blocks, c);
+      const W42ParaFmt *npa = &w42_ap_table_get (aps, next->ap)->pa;
+      AheadAt *at = &g_array_index (ahead->at, AheadAt, c);
+      const BlockLine *lines;
+      int fits, break_at;
+      gboolean moves;
+
+      if (next->note >= 0)
+        continue;             /* not in the flow here */
+      /* A table goes by rules of its own, a frame stands beside the text,
+       * and a paragraph that starts a page starts it anyway: none of them
+       * can be kept with this one, and waiting for them gains nothing. */
+      if (next->table >= 0 || npa->frame_side != W42_FRAME_NONE ||
+          npa->page_break_before || npa->section_break)
+        return TRUE;
+
+      y += w42_twips_to_px (pa->space_after) +
+           w42_twips_to_px (npa->space_before);
+      if (at->n == 0 || at->width != text_w)
+        {
+          PangoLayout *layout = build_block_layout (self, next, aps, text_w,
+                                                    0.0, 0, 0, 0);
+
+          at->first = ahead->lines->len;
+          collect_lines (layout, ahead->lines, 0, (guint) next->text->len,
+                         FALSE, TRUE);
+          at->n = ahead->lines->len - at->first;
+          at->width = text_w;
+          /* Only the measurements are wanted, and the layout may not
+           * outlive this. */
+          for (guint i = at->first; i < ahead->lines->len; i++)
+            {
+              g_array_index (ahead->lines, BlockLine, i).layout = NULL;
+              g_array_index (ahead->lines, BlockLine, i).line = NULL;
+            }
+          g_object_unref (layout);
+        }
+      lines = &g_array_index (ahead->lines, BlockLine, at->first);
+      fits = lines_that_fit (self, aps, next, npa, lines, at->n, placed,
+                             text_w, text_h, 0.0, &y, &notes_h);
+
+      moves = flow_rules (npa, fits, (int) at->n, TRUE, &break_at);
+      if (fits == 0 || moves)
+        return FALSE;
+      /* Some of it stays, and a paragraph broken over the page keeps with
+       * its next on the page after, whatever it asks. */
+      if (fits < (int) at->n || !npa->keep_next)
+        return TRUE;
+      pa = npa;
+    }
+  return TRUE;
+}
+
+/* The last paragraph of the chain of "keep with next" that `b` starts: the
+ * one that keeps with a paragraph that does not. */
+static guint
+chain_last (W42Layout *self, W42ApTable *aps, guint b)
+{
+  guint last = b;
+
+  for (guint c = b + 1; c < self->blocks->len; c++)
+    {
+      const W42Block *next = g_ptr_array_index (self->blocks, c);
+      const W42ParaFmt *npa = &w42_ap_table_get (aps, next->ap)->pa;
+
+      if (next->note >= 0)
+        continue;
+      if (next->table >= 0 || npa->frame_side != W42_FRAME_NONE ||
+          npa->page_break_before || npa->section_break || !npa->keep_next)
+        break;
+      last = c;
+    }
+  return last;
 }
 
 /* A table: blocks `first` to `last`, all cells of one table.  Column widths
@@ -2220,6 +2471,13 @@ w42_layout_build_pt (W42Layout          *self,
    * measurable part of a keystroke. */
   GArray *blines_scratch = g_array_new (FALSE, FALSE, sizeof (BlockLine));
   GArray *line_notes_scratch = g_array_new (FALSE, FALSE, sizeof (W42LineBox));
+  Ahead ahead = { g_array_new (FALSE, FALSE, sizeof (BlockLine)),
+                  g_array_new (FALSE, TRUE, sizeof (AheadAt)) };
+  /* Inside a chain of "keep with next" too long for a page, up to its
+   * last link: kept no more. */
+  guint keep_off_until = 0;
+
+  g_array_set_size (ahead.at, self->blocks->len);
 
   /* Section numbers: one counter per outline level, the deeper ones reset
    * whenever a shallower heading comes along.  Heading Numbering does
@@ -2617,80 +2875,6 @@ w42_layout_build_pt (W42Layout          *self,
 
       layout_block_lines (self, block, aps, pa, text_w, prefix_w, wrap_w, beside_h, cap_bytes, blines);
 
-      /* Text flow: keep with next, keep lines together, widows and orphans.
-       * Decided from the lines' heights before any is placed: whether the
-       * whole paragraph moves to the next page, or where it breaks. */
-      gboolean flow_break_before = FALSE;
-      int flow_break_at = -1;
-      int flow_line = -1;
-
-      if (!self->galley && y > 0.0)
-        {
-          GArray *adv = g_array_new (FALSE, FALSE, sizeof (double));
-          double total = 0.0, cum = 0.0, avail;
-          int n_lines, fits = 0;
-
-          for (guint li = 0; li < blines->len; li++)
-            {
-              const BlockLine *bl = &g_array_index (blines, BlockLine, li);
-              double a = line_advance (pa, (double) bl->logical.height / PANGO_SCALE);
-
-              g_array_append_val (adv, a);
-              total += a;
-            }
-
-          n_lines = (int) adv->len;
-          avail = text_h - notes_h - y - w42_twips_to_px (pa->space_before);
-          for (int k = 0; k < n_lines; k++)
-            {
-              cum += g_array_index (adv, double, k);
-              if (cum <= avail)
-                fits = k + 1;
-              else
-                break;
-            }
-
-          if (fits < n_lines)
-            {
-              if (pa->keep_together)
-                flow_break_before = TRUE;
-              else if (pa->widow_control && fits > 0)
-                {
-                  /* One line alone at the foot is an orphan; one alone at
-                   * the top a widow.  Either way one more line moves. */
-                  if (fits == 1 || (n_lines - fits == 1 && fits - 1 < 2))
-                    flow_break_before = TRUE;
-                  else if (n_lines - fits == 1)
-                    flow_break_at = fits - 1;
-                }
-            }
-          else if (pa->keep_next && b + 1 < self->blocks->len)
-            {
-              const W42Block *next = g_ptr_array_index (self->blocks, b + 1);
-
-              if (next->table < 0 && next->note < 0)
-                {
-                  const W42ParaFmt *npa = &w42_ap_table_get (aps, next->ap)->pa;
-                  PangoLayout *nl = build_block_layout (self, next, aps, text_w, 0.0, 0, 0, 0);
-                  PangoLayoutIter *ni = pango_layout_get_iter (nl);
-                  PangoRectangle lg;
-                  double need;
-
-                  pango_layout_iter_get_line_extents (ni, NULL, &lg);
-                  need = total + w42_twips_to_px (pa->space_after) +
-                         w42_twips_to_px (npa->space_before) +
-                         (double) lg.height / PANGO_SCALE;
-                  pango_layout_iter_free (ni);
-                  g_object_unref (nl);
-
-                  if (need > avail)
-                    flow_break_before = TRUE;
-                }
-            }
-
-          g_array_free (adv, TRUE);
-        }
-
       /* A section break: the paragraph starts a fresh page, and from here
        * the text flows in the section's own columns. */
       if (pa->section_break && b > 0 && !self->galley)
@@ -2729,32 +2913,94 @@ w42_layout_build_pt (W42Layout          *self,
           layout_block_lines (self, block, aps, pa, text_w, prefix_w, wrap_w, beside_h, cap_bytes, blines);
         }
 
-      /* A wrapped picture goes over with its paragraph when it will not
-       * fit under what is on the page. */
-      if (fobj != NULL && !self->galley && y > 0.0 &&
-          y + w42_twips_to_px (pa->space_before) + fh > text_h - notes_h)
-        flow_break_before = TRUE;
-
       /* Page break before: the paragraph starts a fresh page, unless it is
-       * already at the top of one. */
-      if ((pa->page_break_before || flow_break_before) && !self->galley && y > 0.0)
+       * already at the top of one.  So does a wrapped picture that will not
+       * fit under what is on the page, taking its paragraph with it. */
+      if ((pa->page_break_before ||
+           (fobj != NULL &&
+            y + w42_twips_to_px (pa->space_before) + fh > text_h - notes_h)) &&
+          !self->galley && y > 0.0)
         {
           flush_notes (self, page_notes, &notes_h, current_page, text_h, &y);
           current_page++;
           y = 0.0;
         }
 
-      /* Beside the picture no longer, after a page break: the full column,
-       * apart from a dropped letter of its own. */
-      if (narrowed && fobj == NULL && float_page[0] != current_page && float_page[1] != current_page)
+      /* Text flow: keep with next, keep lines together, widows and orphans.
+       * Decided before any line is placed -- whether the whole paragraph
+       * goes to the next page, or where it breaks -- and on the page it
+       * will start on, from the lines as they will be set: so after the
+       * breaks above, and again when the rules themselves move it over. */
+      int flow_break_at = -1;
+      int flow_page;
+      int flow_line = -1;
+      /* A picture set over the text puts the first line under it. */
+      double lead = (fobj != NULL && fobj->wrap == W42_WRAP_TOP_BOTTOM &&
+                     !fobj->positioned) ? fh + float_gap : 0.0;
+
+      for (;;)
         {
-          wrap_w = cap_shift;
-          narrow_shift = cap_shift;
-          beside_h = cap != NULL ? cap_h : -1.0;
-          g_array_set_size (blines, 0);
-          layout_block_lines (self, block, aps, pa, text_w, prefix_w, wrap_w, beside_h, cap_bytes, blines);
-          narrowed = FALSE;
+          int n_lines, fits;
+          double fy, fnh;
+          gboolean move;
+
+          /* Beside the picture no longer, after a page break: the full
+           * column, apart from a dropped letter of its own. */
+          if (narrowed && fobj == NULL && float_page[0] != current_page &&
+              float_page[1] != current_page)
+            {
+              wrap_w = cap_shift;
+              narrow_shift = cap_shift;
+              beside_h = cap != NULL ? cap_h : -1.0;
+              g_array_set_size (blines, 0);
+              layout_block_lines (self, block, aps, pa, text_w, prefix_w,
+                                  wrap_w, beside_h, cap_bytes, blines);
+              narrowed = FALSE;
+            }
+
+          if (self->galley)
+            break;
+
+          n_lines = (int) blines->len;
+          fy = y + w42_twips_to_px (pa->space_before);
+          fnh = notes_h;
+          fits = lines_that_fit (self, aps, block, pa,
+                                 (const BlockLine *) blines->data, blines->len,
+                                 placed, text_w, text_h, lead, &fy, &fnh);
+          move = flow_rules (pa, fits, n_lines, y > 0.0, &flow_break_at);
+
+          /* Kept with the next: it goes over when what must follow it on
+           * the page will not fit there -- unless even from the top of a
+           * page it would not.  Then going over gains nothing, and the
+           * chain is set as it comes, filling its pages, with only its
+           * last link still kept: the paragraph it leads to is not left
+           * without the one before. */
+          if (!move && fits == n_lines && pa->keep_next && y > 0.0 &&
+              b >= keep_off_until &&
+              !kept_with_next (self, aps, b, &ahead, placed, text_w, text_h,
+                               fy, fnh))
+            {
+              fy = w42_twips_to_px (pa->space_before);
+              fnh = 0.0;
+              move = lines_that_fit (self, aps, block, pa,
+                                     (const BlockLine *) blines->data,
+                                     blines->len, placed, text_w, text_h,
+                                     lead, &fy, &fnh) == n_lines &&
+                     kept_with_next (self, aps, b, &ahead, placed, text_w,
+                                     text_h, fy, fnh);
+              if (!move)
+                keep_off_until = chain_last (self, aps, b);
+            }
+
+          /* Gone over, it is at the top of a page, where the rules move
+           * nothing: this goes round twice at the most. */
+          if (!move || y <= 0.0)
+            break;
+          flush_notes (self, page_notes, &notes_h, current_page, text_h, &y);
+          current_page++;
+          y = 0.0;
         }
+      flow_page = current_page;
 
       y += w42_twips_to_px (pa->space_before);
 
@@ -2774,9 +3020,12 @@ w42_layout_build_pt (W42Layout          *self,
           advance = line_advance (pa, line_h);
 
           flow_line++;
-          if (flow_line == flow_break_at && !self->galley && y > 0.0)
+          if (flow_line == flow_break_at && current_page == flow_page &&
+              !self->galley && y > 0.0)
             {
-              /* The widow rule: this line and the last go over together. */
+              /* The widow rule: this line and the last go over together.
+               * Only from the page the rule was worked out for: a page
+               * already turned has seen to it. */
               flush_notes (self, page_notes, &notes_h, current_page, text_h, &y);
               current_page++;
               y = 0.0;
@@ -2813,8 +3062,7 @@ w42_layout_build_pt (W42Layout          *self,
            * single over-tall line from looping forever on an empty page.
            * Normal view never breaks: the galley runs on. */
           if (!self->galley && y > 0.0 &&
-              y + line_h + notes_h + line_notes_h +
-                ((notes_h > 0.0 || line_notes_h > 0.0) ? NOTE_SEP : 0.0) > text_h)
+              !line_fits (y, line_h, notes_h, line_notes_h, text_h))
             {
               flush_notes (self, page_notes, &notes_h, current_page, text_h, &y);
               current_page++;
@@ -3040,6 +3288,8 @@ w42_layout_build_pt (W42Layout          *self,
   g_array_free (page_notes, TRUE);
   g_array_free (placed, TRUE);
   g_array_free (blines_scratch, TRUE);
+  g_array_free (ahead.lines, TRUE);
+  g_array_free (ahead.at, TRUE);
   g_array_free (line_notes_scratch, TRUE);
   self->n_pages = current_page + 1;
 
@@ -4105,6 +4355,35 @@ w42_layout_pos_to_caret (W42Layout *self,
   return TRUE;
 }
 
+/* The size of the shape standing for picture `idx` at `byte` on `line`,
+ * as it was given to Pango. */
+static gboolean
+shaped_object_size (PangoLayoutLine *line, gsize byte, W42ObjectIdx idx,
+                    double *w, double *h)
+{
+  for (GSList *r = line->runs; r != NULL; r = r->next)
+    {
+      const PangoItem *item = ((const PangoLayoutRun *) r->data)->item;
+
+      if (byte < (gsize) item->offset ||
+          byte >= (gsize) item->offset + (gsize) item->length)
+        continue;
+      for (GSList *a = item->analysis.extra_attrs; a != NULL; a = a->next)
+        {
+          const PangoAttribute *attr = a->data;
+          const PangoAttrShape *shape = a->data;
+
+          if (attr->klass->type != PANGO_ATTR_SHAPE ||
+              shape->data != GUINT_TO_POINTER (idx + 1))
+            continue;
+          *w = (double) shape->logical_rect.width / PANGO_SCALE;
+          *h = (double) shape->logical_rect.height / PANGO_SCALE;
+          return TRUE;
+        }
+    }
+  return FALSE;
+}
+
 gboolean
 w42_layout_object_rect (W42Layout *self, gsize pos, int *page,
                         double *x, double *y, double *width, double *height)
@@ -4113,6 +4392,7 @@ w42_layout_object_rect (W42Layout *self, gsize pos, int *page,
   const W42LineBox *box;
   const W42Block *blk;
   const W42Object *object = NULL;
+  W42ObjectIdx idx = W42_OBJECT_NONE;
   gsize byte;
   int px0 = 0, px1 = 0;
   double w, h;
@@ -4132,7 +4412,10 @@ w42_layout_object_rect (W42Layout *self, gsize pos, int *page,
       const W42Run *run = &g_array_index (blk->runs, W42Run, i);
 
       if (run->object != W42_OBJECT_NONE && run->doc_pos == pos)
-        object = w42_object_table_get (self->objects, run->object);
+        {
+          idx = run->object;
+          object = w42_object_table_get (self->objects, idx);
+        }
     }
   if (object == NULL)
     return FALSE;
@@ -4162,13 +4445,19 @@ w42_layout_object_rect (W42Layout *self, gsize pos, int *page,
 
   box = &g_array_index (self->lines, W42LineBox, line_index);
 
-  /* The same fit-to-column that build_attributes applies. */
-  w = w42_twips_to_px (CLAMP (object->width, 15, W42_OBJECT_MAX_TWIPS));
-  h = w42_twips_to_px (CLAMP (object->height, 15, W42_OBJECT_MAX_TWIPS));
-  if (w > self->text_w && self->text_w > 0)
+  /* The size the picture was shaped at, which is what the shape renderer
+   * paints: read back off the line rather than worked out again, it is
+   * right for whatever column, cell, frame or indent it was fitted to. */
+  if (!shaped_object_size (box->line, byte, idx, &w, &h))
     {
-      h = h * (self->text_w / w);
-      w = self->text_w;
+      const W42ParaFmt *pa = &w42_ap_table_get (self->aps, blk->ap)->pa;
+      double room = (box->column_w > 0 ? box->column_w : self->text_w) -
+                    w42_twips_to_px (pa->indent_left) -
+                    w42_twips_to_px (pa->indent_right);
+
+      if (byte == 0)
+        room -= MAX (w42_twips_to_px (pa->indent_first), 0.0);
+      inline_picture_size (object, MAX (room, 1.0), &w, &h);
     }
 
   pango_layout_line_index_to_x (box->line, (int) byte, FALSE, &px0);
@@ -4533,7 +4822,7 @@ w42_layout_table_content_widths (W42Layout *self, int table, GArray *out)
       pango_layout_set_font_description (layout, desc);
       pango_font_description_free (desc);
       pango_layout_set_text (layout, block->text->str, (int) block->text->len);
-      attrs = build_attributes (self, block, self->aps);
+      attrs = build_attributes (self, block, self->aps, self->text_w, 0.0);
       pango_layout_set_attributes (layout, attrs);
       pango_attr_list_unref (attrs);
       /* Unwrapped: the width the paragraph wants to be one line. */

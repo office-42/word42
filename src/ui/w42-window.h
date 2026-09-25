@@ -47,6 +47,20 @@ void       w42_window_close_discarding (W42Window *self);
  * `from` belongs to no application. */
 W42Document *w42_window_new_document (GtkWindow *from);
 
+/* A new document starts in the language Tools > Language > Default
+ * last chose: Normal is marked with it, without the document being
+ * marked as changed for it. */
+void       w42_window_apply_default_language (W42Document *doc);
+
+/* The window already showing `file`, or NULL.  Opening a file twice
+ * makes two documents of it, and whichever is saved last silently
+ * throws the other's work away; the one open is raised instead. */
+W42Window *w42_window_find_file (GtkApplication *app, GFile *file);
+
+/* Tools > Options changed how often the unsaved changes are copied:
+ * every window takes the new interval. */
+void       w42_window_autosave_changed (GtkApplication *app);
+
 /* Opens a window for every document word42 was editing when it last
  * stopped without saving -- the autosave copies -- and returns how many.
  * Called before the first ordinary window is made. */
