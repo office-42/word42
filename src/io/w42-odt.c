@@ -154,6 +154,7 @@ typedef struct {
   gboolean   has_pa, has_ch;
   gboolean   text_family;  /* a character style */
   gboolean   named;        /* waiting to join Word42's sheet */
+  gboolean   master_page;  /* it names a page style: its paragraph starts a page */
   /* The attributes of its paragraph-properties and text-properties, as
    * the file gave them: resolving puts them over the parent's values, so
    * that what the style says -- "start", "0in", "normal" included -- is
@@ -180,6 +181,11 @@ typedef struct {
 typedef struct {
   W42ListKind kind[10];
 } OdtListStyle;
+
+/* A section style's columns. */
+typedef struct {
+  int count, gap;
+} OdtColumns;
 
 typedef struct {
   W42Builder     b;
@@ -298,6 +304,15 @@ typedef struct {
   GString       *shape_text;
   gboolean       shape_primitive_known;
   char          *cur_graphic;    /* the graphic style being read */
+  char          *cur_section;    /* the section style being read */
+  GHashTable    *section_cols;   /* section style name -> OdtColumns */
+  int            section_depth;  /* text:sections open in the body */
+  gboolean       section_pending;  /* one has begun: its first paragraph starts it */
+  OdtColumns     section;          /* and its columns */
+  gboolean       section_reset;  /* one of several columns has ended: the next
+                                  * paragraph goes back to one */
+  char          *frame_first_href;  /* a frame's first picture, which a reader
+                                     * is to take when it can */
 } Odt;
 
 static void
@@ -700,6 +715,12 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
           o->cur_graphic = g_strdup (name);
           return;
         }
+      if (family != NULL && g_str_equal (family, "section") && name != NULL)
+        {
+          g_free (o->cur_section);
+          o->cur_section = g_strdup (name);
+          return;
+        }
       if (family == NULL || !(g_str_equal (family, "paragraph") || g_str_equal (family, "text")))
         return;
       if (name == NULL)
@@ -747,6 +768,11 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
           }
       }
       s->text_family = g_str_equal (family, "text");
+      {
+        const char *master = attr (an, av, "style:master-page-name");
+
+        s->master_page = master != NULL && *master != '\0';
+      }
       g_hash_table_insert (o->styles, g_strdup (name), s);
       o->cur_style = s;
       g_free (o->cur_style_name);
@@ -1051,6 +1077,17 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
       o->hf_box[o->in_hf_style - 1] = CLAMP ((height != NULL ? length_twips (height) : 0) +
                                              (gap != NULL ? length_twips (gap) : 0), 0, 31680);
     }
+  else if (g_str_equal (tag, "columns") && o->cur_section != NULL)
+    {
+      /* A section's columns, which Word42 keeps with the section break
+       * that starts it. */
+      const char *n = attr (an, av, "fo:column-count"), *gap = attr (an, av, "fo:column-gap");
+      OdtColumns *c = g_new0 (OdtColumns, 1);
+
+      c->count = n != NULL ? CLAMP (atoi (n), 1, 9) : 1;
+      c->gap = gap != NULL ? CLAMP (length_twips (gap), 0, 31680) : 0;
+      g_hash_table_insert (o->section_cols, g_strdup (o->cur_section), c);
+    }
   else if (g_str_equal (tag, "columns") && o->in_page_layout)
     {
       const char *n = attr (an, av, "fo:column-count"), *gap = attr (an, av, "fo:column-gap");
@@ -1285,6 +1322,7 @@ styles_end (Odt *o, const char *tag)
       o->cur_style = NULL;
       g_free (o->cur_col_style);
       o->cur_col_style = NULL;
+      g_clear_pointer (&o->cur_section, g_free);
     }
   else if (g_str_equal (tag, "list-style"))
     o->cur_list = NULL;
@@ -1450,6 +1488,36 @@ list_number (Odt *o, W42ListKind kind, int level)
   o->last_level = level;
 }
 
+/* A paragraph, with the style `s`, has begun: if it is the first of a
+ * text:section, it starts the section, with the section's columns.
+ * Word42 writes every section break so; another program's section is a
+ * section break when it starts a page, and otherwise just a part of the
+ * text with a name, which Word42 has no section for: it breaks no page. */
+static void
+odt_section_para (Odt *o, const OdtStyle *s)
+{
+  if (o->section_pending)
+    {
+      if (o->ours || o->b.pa.page_break_before || (s != NULL && s->master_page))
+        {
+          o->b.pa.section_break = 1;
+          o->b.pa.columns = (guint8) CLAMP (o->section.count, 1, 9);
+          o->b.pa.column_gap = o->section.gap;
+        }
+      else
+        o->section.count = 1;         /* not taken: nothing to end either */
+      o->section_pending = FALSE;
+      o->section_reset = FALSE;
+    }
+  else if (o->section_reset && o->section_depth == 0)
+    {
+      o->b.pa.section_break = 1;
+      o->b.pa.columns = 1;
+      o->b.pa.column_gap = 0;
+      o->section_reset = FALSE;
+    }
+}
+
 static void
 body_start (Odt *o, const char *tag, const char **an, const char **av)
 {
@@ -1552,6 +1620,8 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           if (o->b.pa.style == NULL)
             o->b.pa.style = def.pa.style;
         }
+      if (o->in_note == 0)
+        odt_section_para (o, s);
       if (g_str_equal (tag, "h"))
         {
           const char *lvl = attr (an, av, "text:outline-level");
@@ -1787,6 +1857,21 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
         sn = g_ptr_array_index (o->list_style_stack, o->list_style_stack->len - 1);
       g_ptr_array_add (o->list_style_stack, g_strdup (sn != NULL ? sn : ""));
     }
+  else if (g_str_equal (tag, "section"))
+    {
+      /* A section in the body -- not one in a note, a cell or a box --
+       * begins with its first paragraph, which starts it. */
+      if (o->in_note == 0 && o->in_table == 0 && o->tb_depth == 0 && o->list_depth == 0 &&
+          ++o->section_depth == 1)
+        {
+          const char *sn = attr (an, av, "text:style-name");
+          const OdtColumns *c = sn != NULL ? g_hash_table_lookup (o->section_cols, sn) : NULL;
+
+          o->section_pending = TRUE;
+          o->section.count = c != NULL ? c->count : 1;
+          o->section.gap = c != NULL ? c->gap : 0;
+        }
+    }
   else if (g_str_equal (tag, "list-item") && o->list_depth > 0)
     {
       const char *start = attr (an, av, "text:start-value");
@@ -1914,6 +1999,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
         }
       g_free (o->frame_href);
       o->frame_href = NULL;
+      g_clear_pointer (&o->frame_first_href, g_free);
     }
   else if (g_str_equal (tag, "text-box") && o->frame_pending && o->tb_depth == 0)
     {
@@ -1923,6 +2009,18 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       o->tb_side = o->frame_wrap == W42_WRAP_RIGHT ? W42_FRAME_RIGHT : W42_FRAME_LEFT;
       o->tb_width = o->frame_w;
       o->tb_saved_pa = o->b.pa;
+      if (o->tb_saved_pa.section_break && !o->b.in_para)
+        {
+          /* The paragraph the box hangs on started a section, and has
+           * nothing of its own to keep it: the box's first paragraph is
+           * the one Word42 has it on. */
+          o->section_pending = TRUE;
+          o->section.count = MAX (o->tb_saved_pa.columns, 1);
+          o->section.gap = o->tb_saved_pa.column_gap;
+          o->tb_saved_pa.section_break = 0;
+          o->tb_saved_pa.columns = 0;
+          o->tb_saved_pa.column_gap = 0;
+        }
       o->tb_saved_ch = o->para_ch;
       /* The box's text is not in the spans, the link or the list the
        * paragraph it hangs on is in; they go on after it. */
@@ -1947,8 +2045,14 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
     o->tb_depth++;                  /* a box inside a box: counted, not started */
   else if (g_str_equal (tag, "image") && o->frame_pending)
     {
+      /* A frame may hold the picture more than once: the one to use, then
+       * others for a reader that cannot use it.  The last is the one read,
+       * as it always was; the first is kept when it is a picture only it
+       * holds, a metafile beside its replacement. */
       g_free (o->frame_href);
       o->frame_href = g_strdup (attr (an, av, "xlink:href"));
+      if (o->frame_first_href == NULL && o->frame_href != NULL)
+        o->frame_first_href = g_strdup (o->frame_href);
     }
   else if (g_str_equal (tag, "alphabetical-index-mark-start"))
     {
@@ -1969,6 +2073,102 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
                : g_str_equal (tag, "file-name") ? "FILENAME" : "NUMWORDS";
       g_string_truncate (o->field_text, 0);
     }
+}
+
+/* A picture the frame names, from the package.  One the text names again
+ * and again -- a logo on every page -- is unpacked once and shared, not
+ * once a time: forty of one 20 MB part took 800 MB.  Empty when it is not
+ * there. */
+static GBytes *
+odt_picture (Odt *o, const char *href)
+{
+  GBytes *bytes = g_hash_table_lookup (o->pictures, href);
+
+  if (bytes == NULL)
+    {
+      bytes = w42_zip_read (o->zip, href);
+      if (bytes == NULL)
+        bytes = g_bytes_new (NULL, 0);      /* not there: not looked for again */
+      g_hash_table_insert (o->pictures, g_strdup (href), bytes);
+    }
+  return bytes;
+}
+
+/* The kind of picture a part is, from its name: its extension, letters
+ * and digits only, since it goes back out into a part's name and a media
+ * type; "picture" when it has none. */
+static char *
+odt_picture_kind (const char *href)
+{
+  const char *dot = strrchr (href, '.'), *slash = strrchr (href, '/');
+  GString *ext = g_string_new (NULL);
+
+  if (dot != NULL && (slash == NULL || dot > slash))
+    for (const char *q = dot + 1; *q != '\0' && ext->len < 8; q++)
+      if (g_ascii_isalnum (*q))
+        g_string_append_c (ext, g_ascii_tolower (*q));
+  if (ext->len == 0)
+    g_string_assign (ext, "picture");
+  return g_string_free (ext, FALSE);
+}
+
+/* The picture a frame holds goes in where the text has got to: the last
+ * of its pictures this machine can draw, as a frame's picture was always
+ * read.  A first one it cannot draw -- a metafile, beside its replacement
+ * or alone -- is kept as it came, for the file to have back when it is
+ * saved: behind the replacement when there is one, else behind a box with
+ * its kind written in it, as the .docx reader keeps one. */
+static void
+odt_frame_picture (Odt *o)
+{
+  GBytes *last = odt_picture (o, o->frame_href);
+  const char *first_href = o->frame_first_href != NULL && !g_str_equal (o->frame_first_href, o->frame_href)
+                             ? o->frame_first_href : o->frame_href;
+  GBytes *first = first_href != o->frame_href ? odt_picture (o, first_href) : last;
+  char *kind = odt_picture_kind (first_href);
+  int pw = 0, ph = 0;
+  const char *format = NULL;
+  GBytes *use = NULL, *kept = NULL;
+  /* Decoding a picture to learn that it is one is not free: a first one
+   * named as an ordinary picture is taken to be one. */
+  static const char *const ordinary[] = { "png", "jpg", "jpeg", "gif", "bmp", "svg", "svgz",
+                                          "webp", "tif", "tiff", "avif", NULL };
+
+  if (g_bytes_get_size (last) > 0 && w42_image_probe (last, &pw, &ph, &format))
+    use = last;
+  if (g_bytes_get_size (first) > 0 && (use == NULL || first != last))
+    {
+      if (use == NULL && first != last && w42_image_probe (first, &pw, &ph, &format))
+        use = first;
+      else if (use == NULL || !g_strv_contains (ordinary, kind))
+        kept = use == NULL || !w42_image_probe (first, NULL, NULL, NULL) ? first : NULL;
+    }
+
+  o->b.ch = current_ch (o);
+  o->b.last_object = W42_OBJECT_NONE;
+  if (use != NULL)
+    w42_builder_object (&o->b, use, format, pw, ph, o->frame_w, o->frame_h);
+  else if (kept != NULL)
+    {
+      char *label = g_strdup_printf ("%s picture", kind);
+
+      for (char *q = label; *q != '\0' && *q != ' '; q++)
+        *q = g_ascii_toupper (*q);
+      w42_builder_shape (&o->b, W42_SHAPE_RECTANGLE,
+                         o->frame_w > 0 ? o->frame_w : 1440, o->frame_h > 0 ? o->frame_h : 1440,
+                         0.75, 0x999999, FALSE, 0xFFFFFF, label);
+      g_free (label);
+    }
+  if (o->b.last_object != W42_OBJECT_NONE)
+    {
+      if (kept != NULL)
+        w42_object_table_set_original (w42_pt_object_table (o->pt), o->b.last_object, kept, kind);
+      w42_builder_object_wrap (&o->b, o->frame_wrap);
+      if (o->frame_wrap != W42_WRAP_INLINE && o->frame_positioned)
+        w42_builder_object_position (&o->b, o->frame_x, o->frame_y);
+      o->after_space = FALSE;
+    }
+  g_free (kind);
 }
 
 static void
@@ -2110,6 +2310,21 @@ body_end (Odt *o, const char *tag)
           o->after_space = FALSE;
         }
     }
+  else if (g_str_equal (tag, "section"))
+    {
+      if (o->in_note == 0 && o->in_table == 0 && o->tb_depth == 0 && o->list_depth == 0 &&
+          o->section_depth > 0 && --o->section_depth == 0)
+        {
+          /* Columns that end with their section end on the page: another
+           * program's text after it is in one column again, which Word42
+           * says with a section of one.  A file of Word42's own has every
+           * section it wants in a text:section. */
+          if (!o->section_pending && o->section.count > 1 && !o->ours)
+            o->section_reset = TRUE;
+          o->section_pending = FALSE;
+          o->section.count = 1;
+        }
+    }
   else if (g_str_equal (tag, "list"))
     {
       odt_flush (o);
@@ -2156,30 +2371,8 @@ body_end (Odt *o, const char *tag)
     {
       if (o->frame_pending && o->frame_href != NULL)
         {
-          /* A picture the text names again and again -- a logo on every
-           * page -- is unpacked once and shared, not once a time: forty
-           * of one 20 MB part took 800 MB. */
-          GBytes *bytes = g_hash_table_lookup (o->pictures, o->frame_href);
-          int pw = 0, ph = 0;
-          const char *format = NULL;
-
-          if (bytes == NULL)
-            {
-              bytes = w42_zip_read (o->zip, o->frame_href);
-              if (bytes == NULL)
-                bytes = g_bytes_new (NULL, 0);      /* not there: not looked for again */
-              g_hash_table_insert (o->pictures, g_strdup (o->frame_href), bytes);
-            }
           odt_flush (o);
-          if (g_bytes_get_size (bytes) > 0 && w42_image_probe (bytes, &pw, &ph, &format))
-            {
-              o->b.ch = current_ch (o);
-              w42_builder_object (&o->b, bytes, format, pw, ph, o->frame_w, o->frame_h);
-              w42_builder_object_wrap (&o->b, o->frame_wrap);
-              if (o->frame_wrap != W42_WRAP_INLINE && o->frame_positioned)
-                w42_builder_object_position (&o->b, o->frame_x, o->frame_y);
-              o->after_space = FALSE;
-            }
+          odt_frame_picture (o);
         }
       o->frame_pending = FALSE;
     }
@@ -2503,6 +2696,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   o.named = g_ptr_array_new_with_free_func (g_free);
   o.pictures = g_hash_table_new_full (g_str_hash, g_str_equal, g_free,
                                       (GDestroyNotify) g_bytes_unref);
+  o.section_cols = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   {
     W42Fmt def;
     w42_fmt_init_default (&def);
@@ -2570,6 +2764,9 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_free (o.pending_comment);
   g_ptr_array_free (o.named, TRUE);
   g_hash_table_destroy (o.pictures);
+  g_hash_table_destroy (o.section_cols);
+  g_free (o.cur_section);
+  g_free (o.frame_first_href);
   if (o.note_outer_spans != NULL)
     g_array_unref (o.note_outer_spans);
   if (o.tb_saved_spans != NULL)
@@ -2615,6 +2812,7 @@ typedef struct {
   int        annotation_id;
   GHashTable *cell_styles;  /* the names of the table-cell styles written */
   W42StyleSheet *styles;
+  int        n_sections;       /* text:sections written, for their names */
 } OdtWriter;
 
 /* The lists open where the text is being written -- the body, a cell, a
@@ -2623,6 +2821,8 @@ typedef struct {
   int         depth;
   W42ListKind kind[9];
   gboolean    used[9];      /* the item open at that depth has its paragraph */
+  gboolean    resume;       /* the lists were closed for a section, not
+                             * ended: the next goes on with their count */
 } OdtLists;
 
 /* The style name a paragraph's own properties get, one per distinct set. */
@@ -2995,6 +3195,35 @@ static void write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrAr
                         const W42Block *block, const W42CharFmt *para_ch,
                         OdtMarks *marks, const W42Block *next);
 
+/* The extension and the media type a picture kept as it came is filed
+ * under: its own extension, when that is a plain one, since it goes into
+ * a part's name as it stands. */
+static const char *
+odt_original_kind (const char *format, const char **mime)
+{
+  static const struct { const char *ext, *mime; } known[] = {
+    { "emf",  "image/x-emf" },
+    { "wmf",  "image/x-wmf" },
+    { "pict", "image/x-pict" },
+    { "eps",  "application/postscript" },
+    { "tif",  "image/tiff" },
+    { "tiff", "image/tiff" },
+    { "svg",  "image/svg+xml" },
+  };
+
+  for (guint i = 0; i < G_N_ELEMENTS (known); i++)
+    if (g_ascii_strcasecmp (format, known[i].ext) == 0)
+      {
+        *mime = known[i].mime;
+        return known[i].ext;
+      }
+  *mime = "application/octet-stream";
+  for (const char *q = format; *q != '\0'; q++)
+    if (!g_ascii_isalnum (*q) || q - format >= 8)
+      return "bin";
+  return *format != '\0' ? format : "bin";
+}
+
 /* The graphic style a wrapped object refers to: where the text goes. */
 static const char *
 graphic_style_name (const W42Object *object)
@@ -3238,10 +3467,29 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
         {
           const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
           const char *ext = "png", *mime = "image/png";
-          GBytes *png = object != NULL && object->shape == W42_SHAPE_PICTURE
-                          ? w42_image_for_container (object->data, &ext, &mime) : NULL;
+          GBytes *png = NULL;
+          guint fallback = 0;         /* the placeholder's picture, or 0 */
 
-          if (object != NULL && object->shape != W42_SHAPE_PICTURE)
+          if (object != NULL && object->original != NULL && object->original_format != NULL)
+            {
+              /* A picture Word42 could not draw goes out as it came: a
+               * metafile is one LibreOffice draws.  Of a kind it may not
+               * draw, the placeholder follows it in the frame, which an
+               * OpenDocument reader takes when it cannot read the first. */
+              png = g_bytes_ref (object->original);
+              ext = odt_original_kind (object->original_format, &mime);
+              if (!g_str_equal (ext, "emf") && !g_str_equal (ext, "wmf"))
+                {
+                  g_ptr_array_add (w->pictures, g_bytes_ref (object->data));
+                  g_ptr_array_add (w->picture_exts, (gpointer) "png");
+                  g_ptr_array_add (w->picture_mimes, (gpointer) "image/png");
+                  fallback = w->pictures->len;
+                }
+            }
+          else if (object != NULL && object->shape == W42_SHAPE_PICTURE)
+            png = w42_image_for_container (object->data, &ext, &mime);
+
+          if (png == NULL && object != NULL && object->shape != W42_SHAPE_PICTURE)
             write_odt_shape (w, object);
           else if (png != NULL)
             {
@@ -3275,8 +3523,14 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
               twips_out (w->body, object->width);
               g_string_append (w->body, "\" svg:height=\"");
               twips_out (w->body, object->height);
-              g_string_append_printf (w->body, "\"><draw:image xlink:href=\"Pictures/image%u.%s\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>",
+              g_string_append_printf (w->body, "\"><draw:image xlink:href=\"Pictures/image%u.%s\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>",
                                       w->pictures->len, ext);
+              if (fallback > 0)
+                g_string_append_printf (w->body,
+                                        "<draw:image xlink:href=\"Pictures/image%u.png\" xlink:type=\"simple\""
+                                        " xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>",
+                                        fallback);
+              g_string_append (w->body, "</draw:frame>");
               if (own)
                 g_string_append (w->body, "</text:span>");
             }
@@ -3470,13 +3724,18 @@ lists_to (OdtWriter *w, OdtLists *ls, const W42ParaFmt *pa, gboolean in_list)
       g_string_append (w->body, "</text:list-item>");
       list_item_open (w, pa, TRUE);
     }
+  if (want == 0)
+    ls->resume = FALSE;
   while (ls->depth < want)
     {
       int kind = pa->list < W42_LIST_KINDS ? pa->list : W42_LIST_NUMBER;
 
       /* The nested lists name their style too: one that did not took its
-       * parent's, and a bullet under a number came back numbered. */
-      g_string_append_printf (w->body, "<text:list text:style-name=\"L%d\">", kind);
+       * parent's, and a bullet under a number came back numbered.  One
+       * the last section left off goes on counting in this one. */
+      g_string_append_printf (w->body, "<text:list text:style-name=\"L%d\"%s>", kind,
+                              ls->depth == 0 && ls->resume ? " text:continue-numbering=\"true\"" : "");
+      ls->resume = FALSE;
       w->list_style_used[kind] = 1;
       list_item_open (w, pa, ls->depth + 1 == want);
       ls->kind[ls->depth] = pa->list;
@@ -3497,6 +3756,22 @@ lists_close (OdtWriter *w, OdtLists *ls)
       ls->depth--;
       g_string_append (w->body, "</text:list-item></text:list>");
     }
+}
+
+/* Whether a section can begin at block `b`: before a table, but not
+ * inside one; before a text box, but not between the paragraphs of one;
+ * anywhere else in the body. */
+static gboolean
+section_opens_here (W42ApTable *aps, GPtrArray *blocks, guint b, int table_open)
+{
+  const W42Block *block = g_ptr_array_index (blocks, b);
+  const W42Block *prev = b > 0 ? g_ptr_array_index (blocks, b - 1) : NULL;
+  guint8 side = w42_ap_table_get (aps, block->ap)->pa.frame_side;
+
+  if (block->table >= 0)
+    return block->table != table_open;
+  return side == W42_FRAME_NONE || prev == NULL || prev->table >= 0 || prev->note >= 0 ||
+         w42_ap_table_get (aps, prev->ap)->pa.frame_side != side;
 }
 
 /* The automatic style of a header's or a footer's paragraph: where it
@@ -3523,6 +3798,7 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   OdtMarks marks = { NULL, NULL, 0 };
   int table_open = -1, row_open = -1;
   gboolean cell_covered = FALSE;      /* the open cell is one a merge swallowed */
+  gboolean section_open = FALSE;      /* a text:section is open */
   W42ZipWriter *zip;
   GString *content, *stylesxml, *manifest;
   gboolean ok;
@@ -3571,6 +3847,38 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       if (block->note >= 0)
         continue;
 
+      /* A section break: a text:section of its own from here, in a
+       * section style saying its columns, as LibreOffice keeps a section
+       * with columns.  Its page break is the new page its first paragraph
+       * starts, said below with the page style.  It can open only between
+       * what a section may hold -- not inside a table, nor between the
+       * paragraphs of one text box -- and the lists close before it. */
+      if (pa->section_break && section_opens_here (aps, blocks, b, table_open))
+        {
+          int n = ++w.n_sections;
+          int cols = MAX (pa->columns, 1);
+
+          if (body_lists.depth > 0)
+            {
+              lists_close (&w, &body_lists);
+              body_lists.resume = TRUE;
+            }
+          if (section_open)
+            g_string_append (w.body, "</text:section>");
+          g_string_append_printf (w.auto_styles,
+                                  "<style:style style:name=\"Sect%d\" style:family=\"section\">"
+                                  "<style:section-properties text:dont-balance-text-columns=\"false\""
+                                  " style:editable=\"false\">"
+                                  "<style:columns fo:column-count=\"%d\" fo:column-gap=\"", n, cols);
+          /* A gap of nought is Word42's half inch, which is what another
+           * program is told when there is more than one column. */
+          twips_out (w.auto_styles, cols > 1 && pa->column_gap <= 0 ? 720 : MAX (pa->column_gap, 0));
+          g_string_append (w.auto_styles, "\"/></style:section-properties></style:style>");
+          g_string_append_printf (w.body, "<text:section text:style-name=\"Sect%d\""
+                                          " text:name=\"Section%d\">", n, n);
+          section_open = TRUE;
+        }
+
       /* Lists nest by level, in the body.  A table's cell and a text box
        * have lists of their own, and the body's close before either: a
        * list left open over a text box's frame was no XML at all. */
@@ -3585,7 +3893,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
 
           g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d\" style:family=\"table\"><style:table-properties style:width=\"", t);
           twips_out (w.auto_styles, pg.width - pg.margin_left - pg.margin_right);
-          g_string_append (w.auto_styles, "\" table:align=\"left\"/></style:style>");
+          g_string_append_printf (w.auto_styles, "\" table:align=\"left\"%s/></style:style>",
+                                  pa->section_break ? " fo:break-before=\"page\"" : "");
           for (int c = 0; c < n_cols; c++)
             {
               int width = tp != NULL && c < (int) tp->widths->len ? g_array_index (tp->widths, int, c) : 0;
@@ -3812,6 +4121,8 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       }
     }
   lists_close (&w, &body_lists);
+  if (section_open)
+    g_string_append (w.body, "</text:section>");
 
   /* content.xml: the automatic styles that the body referred to. */
   content = g_string_new ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content " ODT_NS ">");
@@ -3825,6 +4136,13 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       g_string_append_printf (content, "<style:style style:name=\"P%u\" style:family=\"paragraph\" style:parent-style-name=\"%s\"",
                               i + 1, parent);
       g_free (parent);
+      /* A section starts a page: its first paragraph starts one in the
+       * document's page style, which is how LibreOffice breaks a page for
+       * a section.  Said so, rather than with fo:break-before, the break
+       * is the section's and not the paragraph's own, which a paragraph
+       * may have as well. */
+      if (pa->section_break)
+        g_string_append (content, " style:master-page-name=\"Standard\"");
       if (pa->list != W42_LIST_NONE && pa->list < W42_LIST_KINDS)
         {
           g_string_append_printf (content, " style:list-style-name=\"L%d\"", (int) pa->list);
@@ -3903,15 +4221,12 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_string_append (stylesxml, "<office:styles>");
   g_string_append (stylesxml, "<style:default-style style:family=\"paragraph\">");
   write_para_props_xml (stylesxml, &((const W42Style *) w42_stylesheet_get (styles, 0))->pa, NULL);
-  {
-    /* Normal's text, but for its language, which Normal says for itself:
-     * a style with none of its own has the reader's, as in Word42, not
-     * Normal's by inheritance. */
-    W42CharFmt defaults = w.base_ch;
-
-    defaults.lang = NULL;
-    write_text_props_xml (stylesxml, &defaults, NULL);
-  }
+  /* Normal's text, its language included: that is the document's
+   * language, and the default style is where LibreOffice looks for it.
+   * The headings, the header's and the footer's paragraphs and every
+   * style of no parent take after this one; without the language here
+   * they were in whatever language the reader's own program is. */
+  write_text_props_xml (stylesxml, &w.base_ch, NULL);
   g_string_append (stylesxml, "</style:default-style>");
   for (guint i = 0; i < w42_stylesheet_size (styles); i++)
     {

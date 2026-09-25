@@ -21,6 +21,7 @@
 typedef struct {
   GPtrArray  *fonts;    /* interned family names, in table order */
   GArray     *colours;  /* guint32, in table order; index 0 is \cf1 */
+  int         deflang;  /* the \deflang written: Normal's language's number */
 } RtfTables;
 
 static void write_text (GString *out, const char *utf8, gsize len);
@@ -179,6 +180,25 @@ write_text (GString *out, const char *utf8, gsize len)
     }
 }
 
+/* A field's quoted argument, a link's address: a quotation mark in it is
+ * \" and a backslash \\, as Word's field syntax has them, before the
+ * whole is escaped again as RTF.  Written raw, an address holding a
+ * quotation mark ended at it. */
+static void
+write_field_arg (GString *out, const char *text)
+{
+  GString *arg = g_string_new (NULL);
+
+  for (const char *p = text; *p != '\0'; p++)
+    {
+      if (*p == '"' || *p == '\\')
+        g_string_append_c (arg, '\\');
+      g_string_append_c (arg, *p);
+    }
+  write_text (out, arg->str, arg->len);
+  g_string_free (arg, TRUE);
+}
+
 /* `over` is what the reader will already have when the run begins --
  * the paragraph's style, which Word42's reader and others put under a
  * paragraph that names it -- or NULL.  What the style turns on and the
@@ -219,17 +239,20 @@ write_char_props (GString *out, const W42CharFmt *ch, const W42CharFmt *over,
   if (ch->allcaps)   g_string_append (out, "\\caps");
   if (ch->highlight) g_string_append_printf (out, "\\highlight%d", ch->highlight);
   if (ch->spacing)   g_string_append_printf (out, "\\expndtw%d", ch->spacing);
-  if (ch->lang != NULL)
-    {
-      /* The language of the run: Word's number for it, and \noproof for
-       * a run that is not language at all. */
-      int lcid = w42_lang_to_lcid (ch->lang);
+  {
+    /* The language of the run: Word's number for it, and \noproof for a
+     * run that is not language at all.  A run in the document's own has
+     * its paragraph style's, which is said where it is not \deflang: the
+     * paragraph began with \plain, and to any other reader that is the
+     * language the run is in. */
+    const char *lang = ch->lang != NULL ? ch->lang : over != NULL ? over->lang : NULL;
+    int lcid = w42_lang_to_lcid (lang);
 
-      if (lcid > 0)
-        g_string_append_printf (out, "\\lang%d", lcid);
-      if (g_strcmp0 (ch->lang, W42_LANG_NONE) == 0)
-        g_string_append (out, "\\noproof");
-    }
+    if (lcid > 0 && (ch->lang != NULL || lcid != tables->deflang))
+      g_string_append_printf (out, "\\lang%d", lcid);
+    if (g_strcmp0 (lang, W42_LANG_NONE) == 0)
+      g_string_append (out, "\\noproof");
+  }
   if (ch->revision == 1) g_string_append (out, "\\revised\\revauth1");
   if (ch->revision == 2) g_string_append (out, "\\deleted\\revauth1");
 
@@ -395,10 +418,12 @@ write_para_body (GString *out, const W42ParaFmt *pa, const W42ParaFmt *over,
   /* RTF expresses a multiple as a negative-going \slmult1 with \sl in twips
    * of a nominal 240-twip line, which is how Word writes 1.5 and double;
    * \sl0 is single spacing, what a paragraph in a spaced style needs to
-   * say it is. */
+   * say it is.  Rounded to the nearest, as the reader rounds: truncated
+   * both ways, 108% went out as 259 and came back as 107, and lost a
+   * percent on every save. */
   if (pa->line_spacing_pct > 0 && pa->line_spacing_pct != 100)
     g_string_append_printf (out, "\\sl%d\\slmult1",
-                            (240 * pa->line_spacing_pct) / 100);
+                            (240 * pa->line_spacing_pct + 50) / 100);
   else if (pa->line_spacing > 0)
     /* Negative, because a positive \sl is "at least" to Word and the
      * model's leading is exact; the reader takes either. */
@@ -413,6 +438,34 @@ write_para_body (GString *out, const W42ParaFmt *pa, const W42ParaFmt *over,
  * PNG and JPEG go in as they are, which is what \pngblip and \jpegblip mean;
  * anything else is re-encoded as PNG, because those two are the only bitmap
  * formats every RTF reader agrees on. */
+/* The RTF picture type a picture Word42 could not decode goes out as, kept
+ * as it came, or NULL when RTF has no word for its kind.  Word's own
+ * metafiles are the ones that matter. */
+static const char *
+original_blip (const W42Object *object)
+{
+  if (object->original == NULL || object->original_format == NULL)
+    return NULL;
+  if (g_ascii_strcasecmp (object->original_format, "emf") == 0)
+    return "\\emfblip";
+  if (g_ascii_strcasecmp (object->original_format, "wmf") == 0)
+    return "\\wmetafile8";
+  return NULL;
+}
+
+/* Whether an object goes out as a picture: one that is, or a placeholder
+ * whose picture RTF can carry as it came. */
+static gboolean
+rtf_is_picture (const W42Object *object)
+{
+  return object->shape == W42_SHAPE_PICTURE || original_blip (object) != NULL;
+}
+
+/* The Aldus header a .wmf file begins with, which RTF leaves out: the
+ * picture's own words say its size. */
+#define WMF_PLACEABLE_KEY 0x9AC6CDD7u
+#define WMF_PLACEABLE_SIZE 22
+
 static void
 write_pict (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
 {
@@ -425,29 +478,48 @@ write_pict (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
   if (object == NULL)
     return;
 
-  if (g_strcmp0 (object->format, "png") == 0)
+  if ((blip = original_blip (object)) != NULL)
     {
-      data = g_bytes_ref (object->data);
-      blip = "\\pngblip";
-    }
-  else if (g_strcmp0 (object->format, "jpeg") == 0)
-    {
-      data = g_bytes_ref (object->data);
-      blip = "\\jpegblip";
+      /* A metafile's \picw and \pich are its size in hundredths of a
+       * millimetre, not pixels, as Word writes them. */
+      const guint8 *raw = g_bytes_get_data (object->original, &len);
+
+      if (g_str_equal (blip, "\\wmetafile8") && len > WMF_PLACEABLE_SIZE &&
+          (raw[0] | raw[1] << 8 | raw[2] << 16 | (guint32) raw[3] << 24) == WMF_PLACEABLE_KEY)
+        data = g_bytes_new_from_bytes (object->original, WMF_PLACEABLE_SIZE,
+                                       len - WMF_PLACEABLE_SIZE);
+      else
+        data = g_bytes_ref (object->original);
+      g_string_append_printf (out,
+        "{\\pict%s\\picw%d\\pich%d\\picwgoal%d\\pichgoal%d\n",
+        blip, (int) ((gint64) object->width * 127 / 72), (int) ((gint64) object->height * 127 / 72),
+        object->width, object->height);
     }
   else
     {
-      data = w42_image_to_png (object->data);
-      blip = "\\pngblip";
-      if (data == NULL)
-        return;
+      if (g_strcmp0 (object->format, "png") == 0)
+        {
+          data = g_bytes_ref (object->data);
+          blip = "\\pngblip";
+        }
+      else if (g_strcmp0 (object->format, "jpeg") == 0)
+        {
+          data = g_bytes_ref (object->data);
+          blip = "\\jpegblip";
+        }
+      else
+        {
+          data = w42_image_to_png (object->data);
+          blip = "\\pngblip";
+          if (data == NULL)
+            return;
+        }
+      g_string_append_printf (out,
+        "{\\pict%s\\picw%d\\pich%d\\picwgoal%d\\pichgoal%d\n",
+        blip, object->pixel_w, object->pixel_h, object->width, object->height);
     }
 
   bytes = g_bytes_get_data (data, &len);
-
-  g_string_append_printf (out,
-    "{\\pict%s\\picw%d\\pich%d\\picwgoal%d\\pichgoal%d\n",
-    blip, object->pixel_w, object->pixel_h, object->width, object->height);
 
   for (gsize i = 0; i < len; i++)
     {
@@ -494,7 +566,7 @@ write_shape (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
     "\\shpfhdr0\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr%d\\shpwrk%d\\shpfblwtxt%d\\shpz0\n",
     left, top, left + object->width, top + object->height, wr, wrk,
     object->wrap == W42_WRAP_BEHIND ? 1 : 0);
-  if (object->shape == W42_SHAPE_PICTURE)
+  if (rtf_is_picture (object))
     {
       g_string_append (out, "{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn pib}{\\sv ");
       write_pict (out, objects, idx);
@@ -522,7 +594,9 @@ write_shape (GString *out, W42ObjectTable *objects, W42ObjectIdx idx)
     g_string_append (out, "{\\sp{\\sn fPseudoInline}{\\sv 1}}");
   if (object->wrap == W42_WRAP_BEHIND)
     g_string_append (out, "{\\sp{\\sn fBehindDocument}{\\sv 1}}");
-  if (object->text != NULL)
+  /* A metafile's placeholder has its label for text; framed as the
+   * picture it stands for, it has none. */
+  if (object->text != NULL && !rtf_is_picture (object))
     {
       g_string_append (out, "{\\shptxt \\pard\\qc ");
       {
@@ -599,6 +673,170 @@ write_page_text (GString *out, const char *dest, const W42PageText *slot,
   g_string_append (out, "\\par}\n");
 }
 
+/* What a paragraph's runs are written with, the body's and a note's
+ * alike. */
+typedef struct {
+  W42PieceTable *pt;
+  W42ApTable    *aps;
+  GPtrArray     *blocks;
+  W42StyleSheet *styles;
+  RtfTables     *tables;
+  guint          annotation_n;   /* the annotations written so far */
+} RtfRuns;
+
+/* A paragraph's runs, `over` its style's character formatting.  A note's
+ * paragraphs are written with this too, so that what the body's text can
+ * hold -- a picture, a link, a bookmark, a comment, a field -- a note's
+ * text holds as well; written as bare runs, a note lost them all. */
+static void
+write_block_runs (GString *out, RtfRuns *rw, const W42Block *block,
+                  const W42CharFmt *over_ch)
+{
+  W42ApTable *aps = rw->aps;
+
+  for (guint r = 0; r < block->runs->len; r++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, r);
+      const W42Fmt *fmt = w42_ap_table_get (aps, run->ap);
+
+      if (run->object != W42_OBJECT_NONE)
+        {
+          /* The picture's run has a font and a size like any other, and
+           * the line it sits on is as tall as they make it. */
+          W42ObjectTable *objects = w42_pt_object_table (rw->pt);
+          const W42Object *object = w42_object_table_get (objects, run->object);
+
+          write_char_props (out, &fmt->ch, over_ch, rw->tables);
+          if (object != NULL && (!rtf_is_picture (object) || object->wrap != W42_WRAP_INLINE))
+            write_shape (out, objects, run->object);
+          else
+            write_pict (out, objects, run->object);
+          continue;
+        }
+
+      if (run->footnote > 0)
+        {
+          /* The mark, then the note's paragraphs as Word writes them.  A
+           * note holds no notes of its own. */
+          gboolean first = TRUE;
+
+          if (block->note >= 0)
+            continue;
+          g_string_append (out, run->endnote
+                           ? "{\\super\\chftn}{\\footnote\\ftnalt "
+                           : "{\\super\\chftn}{\\footnote ");
+          for (guint nb = 0; nb < rw->blocks->len; nb++)
+            {
+              const W42Block *note = g_ptr_array_index (rw->blocks, nb);
+              const W42Fmt *npara;
+              const W42Style *nstyle;
+
+              if (note->note != run->footnote_id)
+                continue;
+              npara = w42_ap_table_get (aps, note->ap);
+              nstyle = para_style (rw->styles, &npara->pa);
+              if (!first)
+                g_string_append (out, "\\par\n");
+              write_para_props (out, &npara->pa, rw->styles, rw->tables);
+              if (first)
+                g_string_append (out, "{\\super\\chftn }");
+              first = FALSE;
+              if (note->runs->len == 0)
+                write_char_props (out, &npara->ch, nstyle != NULL ? &nstyle->ch : NULL, rw->tables);
+              write_block_runs (out, rw, note, nstyle != NULL ? &nstyle->ch : NULL);
+            }
+          g_string_append (out, "}");
+          continue;
+        }
+
+      /* A bookmark opens before the first run that carries it and
+       * closes after the last. */
+      {
+        const char *prev_bm = r > 0
+          ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r - 1).ap)->ch.bookmark
+          : NULL;
+        if (fmt->ch.bookmark != NULL && fmt->ch.bookmark != prev_bm)
+          {
+            g_string_append (out, "{\\*\\bkmkstart ");
+            write_text (out, fmt->ch.bookmark, strlen (fmt->ch.bookmark));
+            g_string_append_c (out, '}');
+          }
+      }
+
+      /* An annotation opens before the first run that carries it and
+       * its text follows the last, as Word wrote them. */
+      {
+        const char *prev_cm = r > 0
+          ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r - 1).ap)->ch.comment
+          : NULL;
+        if (fmt->ch.comment != NULL && fmt->ch.comment != prev_cm)
+          g_string_append_printf (out, "{\\*\\atrfstart %u}", ++rw->annotation_n);
+      }
+
+      /* A link is a HYPERLINK field with the text as its result; a
+       * field is its code with the cached result. */
+      if (fmt->ch.link != NULL && fmt->ch.link[0] == '#')
+        {
+          /* A link to a bookmark is Word's \l switch and the name;
+           * "#name" would be a file of that name to Word. */
+          g_string_append (out, "{\\field{\\*\\fldinst{HYPERLINK \\\\l \"");
+          write_field_arg (out, fmt->ch.link + 1);
+          g_string_append (out, "\"}}{\\fldrslt ");
+        }
+      else if (fmt->ch.link != NULL)
+        {
+          g_string_append (out, "{\\field{\\*\\fldinst{HYPERLINK \"");
+          write_field_arg (out, fmt->ch.link);
+          g_string_append (out, "\"}}{\\fldrslt ");
+        }
+      else if (fmt->ch.field != NULL)
+        {
+          /* An XE code carries the file's own term: escaped, or a
+           * brace in it would close the group and write RTF of its
+           * own. */
+          g_string_append (out, "{\\field{\\*\\fldinst ");
+          write_text (out, fmt->ch.field, strlen (fmt->ch.field));
+          g_string_append (out, " }{\\fldrslt ");
+        }
+
+      /* Each run reopens a group, so the properties it sets fall away
+       * again at its end and cannot leak into the next one. */
+      g_string_append_c (out, '{');
+      write_char_props (out, &fmt->ch, over_ch, rw->tables);
+      write_text (out, block->text->str + run->byte_offset, run->n_bytes);
+      g_string_append_c (out, '}');
+
+      if (fmt->ch.link != NULL || fmt->ch.field != NULL)
+        g_string_append (out, "}}");
+
+      {
+        const char *next_cm = r + 1 < block->runs->len
+          ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r + 1).ap)->ch.comment
+          : NULL;
+        if (fmt->ch.comment != NULL && fmt->ch.comment != next_cm)
+          {
+            g_string_append_printf (out, "{\\*\\atrfend %u}{\\*\\atnid w42}{\\v\\chatn}"
+                                    "{\\*\\annotation{\\*\\atnref %u}\\pard\\plain ",
+                                    rw->annotation_n, rw->annotation_n);
+            write_text (out, fmt->ch.comment, strlen (fmt->ch.comment));
+            g_string_append_c (out, '}');
+          }
+      }
+
+      {
+        const char *next_bm = r + 1 < block->runs->len
+          ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r + 1).ap)->ch.bookmark
+          : NULL;
+        if (fmt->ch.bookmark != NULL && fmt->ch.bookmark != next_bm)
+          {
+            g_string_append (out, "{\\*\\bkmkend ");
+            write_text (out, fmt->ch.bookmark, strlen (fmt->ch.bookmark));
+            g_string_append_c (out, '}');
+          }
+      }
+    }
+}
+
 gboolean
 w42_rtf_save (W42PieceTable      *pt,
               const W42PageSetup *page,
@@ -621,6 +859,13 @@ w42_rtf_save (W42PieceTable      *pt,
 
   tables.fonts = g_ptr_array_new ();
   tables.colours = g_array_new (FALSE, FALSE, sizeof (guint32));
+  {
+    const W42Style *normal = w42_stylesheet_find (styles, "Normal");
+    int lcid = normal != NULL && g_strcmp0 (normal->ch.lang, W42_LANG_NONE) != 0
+                 ? w42_lang_to_lcid (normal->ch.lang) : 0;
+
+    tables.deflang = lcid > 0 ? lcid : 1033;
+  }
   /* Word's sixteen highlight colours open the table, in Word's order, as
    * Word writes it: \highlightN is an entry in this table by the
    * specification and Word's own number for the colour by habit, and
@@ -632,7 +877,20 @@ w42_rtf_save (W42PieceTable      *pt,
     table_intern_colour (&tables, page->border_color);
 
   out = g_string_new (NULL);
-  g_string_append (out, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\n");
+  /* The document's language is Normal's: every paragraph opens with
+   * \plain, which gives its text \deflang, and a hard-coded 1033 had
+   * every other program read a Norwegian book as American English.  An
+   * East Asian one is the default for East Asian text too.  With no
+   * language of its own the document says Word's default, as it did. */
+  g_string_append_printf (out, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang%d", tables.deflang);
+  {
+    const char *lang = w42_lang_from_lcid (tables.deflang);
+
+    if (lang != NULL && (g_str_has_prefix (lang, "ja") || g_str_has_prefix (lang, "zh") ||
+                         g_str_has_prefix (lang, "ko")))
+      g_string_append_printf (out, "\\deflangfe%d", tables.deflang);
+  }
+  g_string_append_c (out, '\n');
   {
     /* What the document says about itself. */
     const W42DocInfo *info = w42_pt_get_info (pt);
@@ -770,7 +1028,7 @@ w42_rtf_save (W42PieceTable      *pt,
   int list_n = 0;
   int level_n[9] = { 0 };
   W42ListKind level_kind[9] = { W42_LIST_NONE };
-  guint annotation_n = 0;
+  RtfRuns rw = { pt, aps, blocks, styles, &tables, 0 };
 
   for (guint b = 0; b < blocks->len; b++)
     {
@@ -1031,154 +1289,7 @@ w42_rtf_save (W42PieceTable      *pt,
           write_char_props (out, &para->ch, over_ch, &tables);
         }
 
-      for (guint r = 0; r < block->runs->len; r++)
-        {
-          const W42Run *run = &g_array_index (block->runs, W42Run, r);
-          const W42Fmt *fmt = w42_ap_table_get (aps, run->ap);
-
-          if (run->object != W42_OBJECT_NONE)
-            {
-              /* The picture's run has a font and a size like any other, and
-               * the line it sits on is as tall as they make it. */
-              const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
-
-              write_char_props (out, &fmt->ch, over_ch, &tables);
-              if (object != NULL && (object->shape != W42_SHAPE_PICTURE || object->wrap != W42_WRAP_INLINE))
-                write_shape (out, w42_pt_object_table (pt), run->object);
-              else
-                write_pict (out, w42_pt_object_table (pt), run->object);
-              continue;
-            }
-
-          if (run->footnote > 0)
-            {
-              /* The mark, then the note's paragraphs as Word writes them. */
-              gboolean first = TRUE;
-
-              g_string_append (out, run->endnote
-                               ? "{\\super\\chftn}{\\footnote\\ftnalt "
-                               : "{\\super\\chftn}{\\footnote ");
-              for (guint nb = 0; nb < blocks->len; nb++)
-                {
-                  const W42Block *note = g_ptr_array_index (blocks, nb);
-                  const W42Fmt *npara;
-                  const W42Style *nstyle;
-
-                  if (note->note != run->footnote_id)
-                    continue;
-                  npara = w42_ap_table_get (aps, note->ap);
-                  nstyle = para_style (styles, &npara->pa);
-                  if (!first)
-                    g_string_append (out, "\\par\n");
-                  write_para_props (out, &npara->pa, styles, &tables);
-                  if (first)
-                    g_string_append (out, "{\\super\\chftn }");
-                  first = FALSE;
-                  if (note->runs->len == 0)
-                    write_char_props (out, &npara->ch, nstyle != NULL ? &nstyle->ch : NULL, &tables);
-                  for (guint nr = 0; nr < note->runs->len; nr++)
-                    {
-                      const W42Run *run2 = &g_array_index (note->runs, W42Run, nr);
-                      const W42Fmt *fmt2 = w42_ap_table_get (aps, run2->ap);
-
-                      if (run2->object != W42_OBJECT_NONE || run2->footnote > 0)
-                        continue;
-                      g_string_append_c (out, '{');
-                      write_char_props (out, &fmt2->ch, nstyle != NULL ? &nstyle->ch : NULL, &tables);
-                      write_text (out, note->text->str + run2->byte_offset, run2->n_bytes);
-                      g_string_append_c (out, '}');
-                    }
-                }
-              g_string_append (out, "}");
-              continue;
-            }
-
-          /* A bookmark opens before the first run that carries it and
-           * closes after the last. */
-          {
-            const char *prev_bm = r > 0
-              ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r - 1).ap)->ch.bookmark
-              : NULL;
-            if (fmt->ch.bookmark != NULL && fmt->ch.bookmark != prev_bm)
-              {
-                g_string_append (out, "{\\*\\bkmkstart ");
-                write_text (out, fmt->ch.bookmark, strlen (fmt->ch.bookmark));
-                g_string_append_c (out, '}');
-              }
-          }
-
-          /* An annotation opens before the first run that carries it and
-           * its text follows the last, as Word wrote them. */
-          {
-            const char *prev_cm = r > 0
-              ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r - 1).ap)->ch.comment
-              : NULL;
-            if (fmt->ch.comment != NULL && fmt->ch.comment != prev_cm)
-              g_string_append_printf (out, "{\\*\\atrfstart %u}", ++annotation_n);
-          }
-
-          /* A link is a HYPERLINK field with the text as its result; a
-           * field is its code with the cached result. */
-          if (fmt->ch.link != NULL && fmt->ch.link[0] == '#')
-            {
-              /* A link to a bookmark is Word's \l switch and the name;
-               * "#name" would be a file of that name to Word. */
-              g_string_append (out, "{\\field{\\*\\fldinst{HYPERLINK \\\\l \"");
-              write_text (out, fmt->ch.link + 1, strlen (fmt->ch.link + 1));
-              g_string_append (out, "\"}}{\\fldrslt ");
-            }
-          else if (fmt->ch.link != NULL)
-            {
-              g_string_append (out, "{\\field{\\*\\fldinst{HYPERLINK \"");
-              write_text (out, fmt->ch.link, strlen (fmt->ch.link));
-              g_string_append (out, "\"}}{\\fldrslt ");
-            }
-          else if (fmt->ch.field != NULL)
-            {
-              /* An XE code carries the file's own term: escaped, or a
-               * brace in it would close the group and write RTF of its
-               * own. */
-              g_string_append (out, "{\\field{\\*\\fldinst ");
-              write_text (out, fmt->ch.field, strlen (fmt->ch.field));
-              g_string_append (out, " }{\\fldrslt ");
-            }
-
-          /* Each run reopens a group, so the properties it sets fall away
-           * again at its end and cannot leak into the next one. */
-          g_string_append_c (out, '{');
-          write_char_props (out, &fmt->ch, over_ch, &tables);
-          write_text (out, block->text->str + run->byte_offset, run->n_bytes);
-          g_string_append_c (out, '}');
-
-          if (fmt->ch.link != NULL || fmt->ch.field != NULL)
-            g_string_append (out, "}}");
-
-          {
-            const char *next_cm = r + 1 < block->runs->len
-              ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r + 1).ap)->ch.comment
-              : NULL;
-            if (fmt->ch.comment != NULL && fmt->ch.comment != next_cm)
-              {
-                g_string_append_printf (out, "{\\*\\atrfend %u}{\\*\\atnid w42}{\\v\\chatn}"
-                                        "{\\*\\annotation{\\*\\atnref %u}\\pard\\plain ",
-                                        annotation_n, annotation_n);
-                write_text (out, fmt->ch.comment, strlen (fmt->ch.comment));
-                g_string_append_c (out, '}');
-              }
-          }
-
-          {
-            const char *next_bm = r + 1 < block->runs->len
-              ? w42_ap_table_get (aps, g_array_index (block->runs, W42Run, r + 1).ap)->ch.bookmark
-              : NULL;
-            if (fmt->ch.bookmark != NULL && fmt->ch.bookmark != next_bm)
-              {
-                g_string_append (out, "{\\*\\bkmkend ");
-                write_text (out, fmt->ch.bookmark, strlen (fmt->ch.bookmark));
-                g_string_append_c (out, '}');
-              }
-          }
-        }
+      write_block_runs (out, &rw, block, over_ch);
 
       if (cell_end)
         {
@@ -1339,6 +1450,7 @@ struct _RtfReader {
   gboolean       page_break_pending;  /* a \page: the paragraph after it
                                        * starts a page */
   gboolean       own_file;      /* {\*\generator Word42}: the file is ours */
+  int            deflang;       /* \deflang: the language of text that names none */
   guint          upr_depth;     /* the {\upr} group's depth, or 0 */
 
   /* Collecting the font and colour tables. */
@@ -1451,6 +1563,8 @@ struct _RtfReader {
   int            pict_wgoal;     /* twips, from \picwgoal */
   int            pict_hgoal;
   int            pict_scalex, pict_scaley;   /* percent, applied to the goals */
+  int            pict_picw, pict_pich;       /* \picw, \pich: a metafile's size, in
+                                              * hundredths of a millimetre */
   GString       *pict_hex;
 };
 
@@ -1979,6 +2093,138 @@ finish_style (RtfReader *r)
   r->style_outline = 0;
 }
 
+/* A picture read: the shape's, inside a \shp group, placed when the group
+ * ends with what the group says about it; else where the text has got
+ * to. */
+static void
+place_pict (RtfReader *r, W42ObjectIdx idx)
+{
+  if (r->in_shp)
+    {
+      r->shp_pib = idx;
+      return;
+    }
+
+  /* A picture goes into the document like text does, so a cell it belongs
+   * to has to be open first -- a table whose first cell holds nothing but a
+   * picture would otherwise be opened after it, leaving the picture in a
+   * paragraph of its own above the table. */
+  table_sync (r);
+  flush_text (r);
+  w42_pt_insert_object (r->pt, r->pos, idx, reader_ap (r));
+  r->pos += 1;
+}
+
+/* A picture this machine cannot draw, a metafile: a box with its kind
+ * written in it, as Word shows a picture it cannot draw, holding the
+ * picture as it came.  The box is drawn as the .docx reader draws it. */
+static W42ObjectIdx
+rtf_placeholder (W42ObjectTable *objects, GBytes *bytes, const char *kind,
+                 int width, int height)
+{
+  char *label = g_strdup_printf ("%s picture", kind);
+  int w_px = MAX (width / 15, 2), h_px = MAX (height / 15, 2);
+  W42ObjectIdx idx;
+  GBytes *png;
+
+  for (char *q = label; *q != '\0' && *q != ' '; q++)
+    *q = g_ascii_toupper (*q);
+  png = w42_shape_render (W42_SHAPE_RECTANGLE, w_px, h_px, 0.75, 0x999999,
+                          FALSE, 0xFFFFFF, label);
+  if (png == NULL)
+    {
+      g_free (label);
+      return W42_OBJECT_NONE;
+    }
+  idx = w42_object_table_add (objects, png, g_intern_static_string ("png"),
+                              w_px, h_px, width, height);
+  g_bytes_unref (png);
+  w42_object_table_set_shape (objects, idx, W42_SHAPE_RECTANGLE, 0.75, 0x999999,
+                              FALSE, 0xFFFFFF, label);
+  w42_object_table_set_original (objects, idx, bytes, kind);
+  g_free (label);
+  return idx;
+}
+
+/* A Windows metafile as RTF holds one, without the Aldus header a .wmf
+ * file begins with, made a file again: the other formats and programs
+ * take the picture with its header on.  Its bounds are the window the
+ * metafile sets itself, and its units per inch what makes that window
+ * the size the picture is shown at; one that sets none is taken to be
+ * drawn in twips. */
+static GBytes *
+wmf_placeable (GBytes *raw, int width, int height)
+{
+  gsize len;
+  const guint8 *d = g_bytes_get_data (raw, &len);
+  int org_x = 0, org_y = 0, ext_x = width, ext_y = height;
+  gboolean have_ext = FALSE;
+  guint8 head[WMF_PLACEABLE_SIZE];
+  guint16 sum = 0;
+  int inch = 1440;
+  GByteArray *out;
+
+  if (len >= 4 && (d[0] | d[1] << 8 | d[2] << 16 | (guint32) d[3] << 24) == WMF_PLACEABLE_KEY)
+    return g_bytes_ref (raw);             /* a header already */
+  /* The records follow the 18-byte header: a size in 16-bit words, a
+   * function, and its parameters -- the window's y before its x. */
+  for (gsize at = 18; at + 6 <= len; )
+    {
+      guint32 size = d[at] | d[at + 1] << 8 | d[at + 2] << 16 | (guint32) d[at + 3] << 24;
+      guint16 func = (guint16) (d[at + 4] | d[at + 5] << 8);
+
+      if (func == 0 || size < 3 || size > (len - at) / 2)
+        break;
+      if ((func == 0x020B || func == 0x020C) && at + 10 <= len)
+        {
+          int y = (gint16) (d[at + 6] | d[at + 7] << 8);
+          int x = (gint16) (d[at + 8] | d[at + 9] << 8);
+
+          if (func == 0x020B)
+            {
+              org_x = x;
+              org_y = y;
+            }
+          else
+            {
+              ext_x = x;
+              ext_y = y;
+              have_ext = TRUE;
+            }
+        }
+      at += (gsize) size * 2;
+    }
+  if (have_ext && ext_x != 0 && width > 0)
+    inch = CLAMP ((int) ((gint64) ABS (ext_x) * 1440 / width), 1, 32767);
+
+  memset (head, 0, sizeof head);
+  head[0] = 0xD7; head[1] = 0xCD; head[2] = 0xC6; head[3] = 0x9A;
+  {
+    int box[4] = { MIN (org_x, org_x + ext_x), MIN (org_y, org_y + ext_y),
+                   MAX (org_x, org_x + ext_x), MAX (org_y, org_y + ext_y) };
+
+    for (int i = 0; i < 4; i++)
+      {
+        guint16 v = (guint16) CLAMP (box[i], -32768, 32767);
+
+        head[6 + 2 * i] = (guint8) (v & 0xFF);
+        head[7 + 2 * i] = (guint8) (v >> 8);
+      }
+  }
+  head[14] = (guint8) (inch & 0xFF);
+  head[15] = (guint8) (inch >> 8);
+  /* The checksum is the first ten words XORed together. */
+  for (int i = 0; i < 10; i++)
+    sum ^= (guint16) (head[2 * i] | head[2 * i + 1] << 8);
+  head[20] = (guint8) (sum & 0xFF);
+  head[21] = (guint8) (sum >> 8);
+
+  out = g_byte_array_sized_new ((guint) (len + sizeof head));
+  g_byte_array_append (out, head, sizeof head);
+  g_byte_array_append (out, d, (guint) len);
+  return g_byte_array_free_to_bytes (out);
+}
+
 /* The \pict group has closed: turn the hex back into bytes and put the
  * picture where the text has got to. */
 static void
@@ -2008,10 +2254,41 @@ finish_pict (RtfReader *r)
     }
   data = g_bytes_new_take (bytes, n);
 
-  /* Metafiles and the other formats gdk-pixbuf has no loader for fail the
-   * probe and are dropped, which is the honest thing to do with them. */
+  /* A metafile gdk-pixbuf cannot draw is kept as it came, behind a
+   * placeholder, as the .docx reader keeps one, so that the document
+   * gets its picture back when it is saved.  Formats with no loader that
+   * RTF has no word for fail the probe and are dropped. */
   if (!w42_image_probe (data, &pw, &ph, &format))
     {
+      const char *kind = r->pict_format;
+
+      if (kind != NULL && (g_str_equal (kind, "emf") || g_str_equal (kind, "wmf")))
+        {
+          /* The goal is the size it is shown at; a metafile's own size
+           * is in hundredths of a millimetre. */
+          width = r->pict_wgoal > 0 ? r->pict_wgoal
+                : r->pict_picw > 0 ? (int) MIN ((gint64) r->pict_picw * 72 / 127, 31680) : 1440;
+          height = r->pict_hgoal > 0 ? r->pict_hgoal
+                 : r->pict_pich > 0 ? (int) MIN ((gint64) r->pict_pich * 72 / 127, 31680) : 1440;
+          if (r->pict_scalex > 0 && r->pict_scalex != 100)
+            width = (int) ((gint64) width * r->pict_scalex / 100);
+          if (r->pict_scaley > 0 && r->pict_scaley != 100)
+            height = (int) ((gint64) height * r->pict_scaley / 100);
+          width = CLAMP (width, 15, 31680);
+          height = CLAMP (height, 15, 31680);
+          if (g_str_equal (kind, "wmf"))
+            {
+              GBytes *whole = wmf_placeable (data, width, height);
+
+              g_bytes_unref (data);
+              data = whole;
+            }
+          idx = rtf_placeholder (w42_pt_object_table (r->pt), data, kind, width, height);
+          g_bytes_unref (data);
+          if (idx != W42_OBJECT_NONE)
+            place_pict (r, idx);
+          return;
+        }
       g_bytes_unref (data);
       return;
     }
@@ -2032,23 +2309,7 @@ finish_pict (RtfReader *r)
   idx = w42_object_table_add (w42_pt_object_table (r->pt), data, format,
                               pw, ph, width, height);
   g_bytes_unref (data);
-
-  /* Inside a \shp group the picture is the shape's, placed when the group
-   * ends with what the group says about it. */
-  if (r->in_shp)
-    {
-      r->shp_pib = idx;
-      return;
-    }
-
-  /* A picture goes into the document like text does, so a cell it belongs
-   * to has to be open first -- a table whose first cell holds nothing but a
-   * picture would otherwise be opened after it, leaving the picture in a
-   * paragraph of its own above the table. */
-  table_sync (r);
-  flush_text (r);
-  w42_pt_insert_object (r->pt, r->pos, idx, reader_ap (r));
-  r->pos += 1;
+  place_pict (r, idx);
 }
 
 /* Office's colour numbers are 0x00BBGGRR. */
@@ -2211,6 +2472,11 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
   if (g_str_equal (word, "ansicpg") && has_param)
     {
       r->codepage = param;
+      return;
+    }
+  if (g_str_equal (word, "deflang") && has_param)
+    {
+      r->deflang = param;
       return;
     }
 
@@ -2800,6 +3066,10 @@ formatting:
     {
       if (g_str_equal (word, "pngblip"))       r->pict_format = "png";
       else if (g_str_equal (word, "jpegblip")) r->pict_format = "jpeg";
+      else if (g_str_equal (word, "emfblip"))  r->pict_format = "emf";
+      else if (g_str_equal (word, "wmetafile")) r->pict_format = "wmf";
+      else if (g_str_equal (word, "picw") && has_param) r->pict_picw = param;
+      else if (g_str_equal (word, "pich") && has_param) r->pict_pich = param;
       else if (g_str_equal (word, "picwgoal") && has_param) r->pict_wgoal = param;
       else if (g_str_equal (word, "pichgoal") && has_param) r->pict_hgoal = param;
       else if (g_str_equal (word, "picscalex") && has_param) r->pict_scalex = param;
@@ -2894,6 +3164,7 @@ formatting:
       r->pict_depth = r->stack->len;
       r->pict_format = NULL;
       r->pict_wgoal = r->pict_hgoal = 0;
+      r->pict_picw = r->pict_pich = 0;
       r->pict_scalex = r->pict_scaley = 100;
       g_string_truncate (r->pict_hex, 0);
       return;
@@ -3239,7 +3510,9 @@ formatting:
     {
       if (param == 1 && st->pa.line_spacing > 0)
         {
-          st->pa.line_spacing_pct = (st->pa.line_spacing * 100) / 240;
+          /* To the nearest percent, as the writer rounds to the nearest
+           * 240th: Word's 259 is 108%, not 107. */
+          st->pa.line_spacing_pct = (st->pa.line_spacing * 100 + 120) / 240;
           st->pa.line_spacing = 0;
         }
     }
@@ -3709,11 +3982,18 @@ w42_rtf_load (W42PieceTable *pt,
                         }
                       else if (*q == '"')
                         {
-                          const char *e = strchr (q + 1, '"');
+                          /* To the closing quotation mark: one written \"
+                           * is the address's own, and \\ a backslash, as
+                           * Word's field syntax has them. */
+                          GString *arg = g_string_new (NULL);
 
-                          target = e != NULL
-                                     ? g_strndup (q + 1, (gsize) (e - q - 1))
-                                     : g_strdup (q + 1);
+                          for (q++; *q != '\0' && *q != '"'; q++)
+                            {
+                              if (*q == '\\' && (q[1] == '"' || q[1] == '\\'))
+                                q++;
+                              g_string_append_c (arg, *q);
+                            }
+                          target = g_string_free (arg, FALSE);
                         }
                       else
                         q++;
@@ -4295,6 +4575,25 @@ w42_rtf_load (W42PieceTable *pt,
       gsize first = w42_pt_first_caret_pos (pt);
       if (r.pos - 1 > first)
         w42_pt_delete (pt, r.pos - 1, 1);
+    }
+
+  /* \deflang is the language of the text that names none, which is to
+   * say Normal's, when Normal's own entry did not say.  Not in a file of
+   * ours: there Normal's entry says it, and a \deflang1033 only that the
+   * document had no language to write. */
+  if (!r.own_file && r.deflang > 0)
+    {
+      W42StyleSheet *sheet = w42_pt_stylesheet (pt);
+      const W42Style *normal = w42_stylesheet_find (sheet, "Normal");
+      const char *lang = w42_lang_from_lcid (r.deflang);
+
+      if (normal != NULL && normal->ch.lang == NULL && lang != NULL)
+        {
+          W42Style copy = *normal;
+
+          copy.ch.lang = lang;
+          w42_stylesheet_set (sheet, &copy);
+        }
     }
 
   w42_pt_clear_undo (pt);
