@@ -8,6 +8,7 @@
 
 #include "w42-pptx.h"
 
+#include <glib/gi18n.h>
 #include <pango/pangocairo.h>
 
 typedef struct {
@@ -92,7 +93,8 @@ draw_slide (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer d
 
   if (show->ended || show->slides->len == 0)
     {
-      const char *done = "End of the show.  Escape closes it.";
+      /* Translators: Escape is the key on the keyboard. */
+      const char *done = _("End of the show.  Escape closes it.");
 
       cairo_set_source_rgb (cr, 0.6, 0.6, 0.6);
       draw_text (cr, done, "Arial", MAX (height / 40.0, 12.0), FALSE,
@@ -278,7 +280,7 @@ w42_slideshow_show (GtkWindow *parent, W42View *view)
   }
 
   show->window = gtk_window_new ();
-  gtk_window_set_title (GTK_WINDOW (show->window), "Slide Show");
+  gtk_window_set_title (GTK_WINDOW (show->window), _("Slide Show"));
   if (parent != NULL)
     {
       gtk_window_set_transient_for (GTK_WINDOW (show->window), parent);

@@ -4,4 +4,13 @@ data/ui/menus.ui
 src/main.c
 src/macro/w42-vba.c
 src/ui/w42-application.c
+src/ui/w42-find-dialog.c
+src/ui/w42-help.c
 src/ui/w42-macro.c
+src/ui/w42-preview.c
+src/ui/w42-print.c
+src/ui/w42-scan.c
+src/ui/w42-settings.c
+src/ui/w42-slideshow.c
+src/ui/w42-spell-dialog.c
+src/ui/w42-thesaurus-dialog.c

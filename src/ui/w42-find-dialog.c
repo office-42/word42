@@ -8,6 +8,8 @@
 
 #include "w42-search.h"
 
+#include <glib/gi18n.h>
+
 struct _W42FindDialog {
   GtkWindow  parent_instance;
 
@@ -85,7 +87,7 @@ do_find (W42FindDialog *self, gboolean quiet)
   if (doc == NULL || needle == NULL || *needle == '\0')
     {
       if (!quiet)
-        set_status (self, "Type what to look for.");
+        set_status (self, _("Type what to look for."));
       return FALSE;
     }
 
@@ -95,8 +97,8 @@ do_find (W42FindDialog *self, gboolean quiet)
                         needle, &options, &start, &end))
     {
       if (!quiet)
-        set_status (self, "Word42 has finished searching the document. "
-                          "The search item was not found.");
+        set_status (self, _("Word42 has finished searching the document. "
+                            "The search item was not found."));
       return FALSE;
     }
 
@@ -128,7 +130,7 @@ on_replace (GtkButton *button, gpointer data)
 
   if (needle == NULL || *needle == '\0')
     {
-      set_status (self, "Type what to look for.");
+      set_status (self, _("Type what to look for."));
       return;
     }
 
@@ -174,7 +176,7 @@ on_replace_all (GtkButton *button, gpointer data)
 
   if (doc == NULL || needle == NULL || *needle == '\0')
     {
-      set_status (self, "Type what to look for.");
+      set_status (self, _("Type what to look for."));
       return;
     }
 
@@ -189,10 +191,11 @@ on_replace_all (GtkButton *button, gpointer data)
       w42_document_touch (doc);
     }
 
-  message = g_strdup_printf (
-    n == 1 ? "1 replacement made." : "%" G_GSIZE_FORMAT " replacements made.",
-    n);
-  set_status (self, n > 0 ? message : "The search item was not found.");
+  message = g_strdup_printf (ngettext ("%lu replacement made.",
+                                       "%lu replacements made.",
+                                       (unsigned long) n),
+                             (unsigned long) n);
+  set_status (self, n > 0 ? message : _("The search item was not found."));
   g_free (message);
 }
 
@@ -234,7 +237,7 @@ w42_find_dialog_set_replace_mode (W42FindDialog *self, gboolean replace)
   gtk_widget_set_visible (self->replace_button, replace);
   gtk_widget_set_visible (self->replace_all_button, replace);
 
-  gtk_window_set_title (GTK_WINDOW (self), replace ? "Replace" : "Find");
+  gtk_window_set_title (GTK_WINDOW (self), replace ? _("Replace") : _("Find"));
 }
 
 static void
@@ -265,7 +268,7 @@ w42_find_dialog_init (W42FindDialog *self)
 {
   GtkWidget *box, *grid, *options, *buttons;
 
-  gtk_window_set_title (GTK_WINDOW (self), "Find");
+  gtk_window_set_title (GTK_WINDOW (self), _("Find"));
   gtk_window_set_resizable (GTK_WINDOW (self), FALSE);
   gtk_window_set_default_size (GTK_WINDOW (self), 460, -1);
 
@@ -283,16 +286,16 @@ w42_find_dialog_init (W42FindDialog *self)
   gtk_box_append (GTK_BOX (box), grid);
 
   self->find_entry = gtk_entry_new ();
-  labelled_row (grid, 0, "Fi_nd What:", self->find_entry);
+  labelled_row (grid, 0, _("Fi_nd What:"), self->find_entry);
 
   self->replace_entry = gtk_entry_new ();
-  self->replace_row = labelled_row (grid, 1, "Re_place With:",
+  self->replace_row = labelled_row (grid, 1, _("Re_place With:"),
                                     self->replace_entry);
 
   options = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
-  self->match_case = gtk_check_button_new_with_mnemonic ("Match _Case");
-  self->whole_word = gtk_check_button_new_with_mnemonic ("Find _Whole Words Only");
-  self->backwards  = gtk_check_button_new_with_mnemonic ("Search _Up");
+  self->match_case = gtk_check_button_new_with_mnemonic (_("Match _Case"));
+  self->whole_word = gtk_check_button_new_with_mnemonic (_("Find _Whole Words Only"));
+  self->backwards  = gtk_check_button_new_with_mnemonic (_("Search _Up"));
   gtk_box_append (GTK_BOX (options), self->match_case);
   gtk_box_append (GTK_BOX (options), self->whole_word);
   gtk_box_append (GTK_BOX (options), self->backwards);
@@ -309,11 +312,11 @@ w42_find_dialog_init (W42FindDialog *self)
   gtk_box_append (GTK_BOX (box), buttons);
 
   {
-    GtkWidget *find_next = gtk_button_new_with_mnemonic ("_Find Next");
-    GtkWidget *close = gtk_button_new_with_mnemonic ("Close");
+    GtkWidget *find_next = gtk_button_new_with_mnemonic (_("_Find Next"));
+    GtkWidget *close = gtk_button_new_with_mnemonic (_("Close"));
 
-    self->replace_button = gtk_button_new_with_mnemonic ("_Replace");
-    self->replace_all_button = gtk_button_new_with_mnemonic ("Replace _All");
+    self->replace_button = gtk_button_new_with_mnemonic (_("_Replace"));
+    self->replace_all_button = gtk_button_new_with_mnemonic (_("Replace _All"));
 
     gtk_widget_set_size_request (find_next, 100, 26);
     gtk_widget_set_size_request (self->replace_button, 100, 26);

@@ -12,6 +12,8 @@
 
 #include "w42-thesaurus-dialog.h"
 
+#include <glib/gi18n.h>
+
 typedef struct {
   GtkWidget    *window;
   W42View      *view;
@@ -136,7 +138,8 @@ thesaurus_look_up (ThesaurusBox *box, const char *word, gboolean remember)
   senses = w42_thesaurus_lookup (box->thesaurus, clean);
   if (senses == NULL)
     {
-      char *message = g_strdup_printf ("No entries found for \"%s\".", clean);
+      /* Translators: %s is the word looked up in the thesaurus. */
+      char *message = g_strdup_printf (_("No entries found for \"%s\"."), clean);
 
       gtk_label_set_text (GTK_LABEL (box->status), message);
       g_free (message);
@@ -282,7 +285,8 @@ w42_thesaurus_dialog_show (GtkWindow *parent, W42View *view, W42Thesaurus *thesa
   box->history = g_ptr_array_new_with_free_func (g_free);
 
   box->window = gtk_window_new ();
-  title = g_strdup_printf ("Thesaurus: %s", w42_thesaurus_language (thesaurus));
+  /* Translators: %s is the thesaurus's language code, such as en_US. */
+  title = g_strdup_printf (_("Thesaurus: %s"), w42_thesaurus_language (thesaurus));
   gtk_window_set_title (GTK_WINDOW (box->window), title);
   g_free (title);
   gtk_window_set_transient_for (GTK_WINDOW (box->window), parent);
@@ -316,14 +320,14 @@ w42_thesaurus_dialog_show (GtkWindow *parent, W42View *view, W42Thesaurus *thesa
 
   left = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
   gtk_box_append (GTK_BOX (columns), left);
-  label = gtk_label_new ("Looked Up:");
+  label = gtk_label_new (_("Looked Up:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_box_append (GTK_BOX (left), label);
   box->looked_up = gtk_label_new ("");
   gtk_label_set_xalign (GTK_LABEL (box->looked_up), 0.0);
   gtk_widget_add_css_class (box->looked_up, "w42-spell-word");
   gtk_box_append (GTK_BOX (left), box->looked_up);
-  label = gtk_label_new_with_mnemonic ("_Meanings:");
+  label = gtk_label_new_with_mnemonic (_("_Meanings:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_box_append (GTK_BOX (left), label);
   box->meanings = gtk_list_box_new ();
@@ -334,7 +338,7 @@ w42_thesaurus_dialog_show (GtkWindow *parent, W42View *view, W42Thesaurus *thesa
 
   middle = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
   gtk_box_append (GTK_BOX (columns), middle);
-  label = gtk_label_new_with_mnemonic ("Replace with _Synonym:");
+  label = gtk_label_new_with_mnemonic (_("Replace with _Synonym:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_box_append (GTK_BOX (middle), label);
   box->synonym = gtk_entry_new ();
@@ -351,13 +355,13 @@ w42_thesaurus_dialog_show (GtkWindow *parent, W42View *view, W42Thesaurus *thesa
   /* The column of buttons down the right, as Word 97 laid them out. */
   right = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
   gtk_box_append (GTK_BOX (columns), right);
-  box->replace_btn = side_button (right, "_Replace", G_CALLBACK (on_replace), box);
-  side_button (right, "_Look Up", G_CALLBACK (on_look_up), box);
-  cancel = gtk_button_new_with_mnemonic ("Cancel");
+  box->replace_btn = side_button (right, _("_Replace"), G_CALLBACK (on_replace), box);
+  side_button (right, _("_Look Up"), G_CALLBACK (on_look_up), box);
+  cancel = gtk_button_new_with_mnemonic (_("Cancel"));
   gtk_widget_set_size_request (cancel, 96, 26);
   g_signal_connect_swapped (cancel, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
   gtk_box_append (GTK_BOX (right), cancel);
-  box->previous_btn = side_button (right, "_Previous", G_CALLBACK (on_previous), box);
+  box->previous_btn = side_button (right, _("_Previous"), G_CALLBACK (on_previous), box);
   gtk_widget_set_margin_top (box->previous_btn, 8);
   gtk_widget_set_sensitive (box->previous_btn, FALSE);
 

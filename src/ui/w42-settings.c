@@ -6,6 +6,7 @@
 
 #include "w42-settings.h"
 
+#include <glib/gi18n.h>
 #include <math.h>
 
 #define GROUP "word42"
@@ -94,7 +95,8 @@ w42_settings_to_twips (double value)
 const char *
 w42_settings_unit_name (void)
 {
-  return w42_settings_get_units () == W42_UNITS_CM ? "cm" : "\"";
+  /* Translators: centimetres, as written after a measurement ("2.5cm"). */
+  return w42_settings_get_units () == W42_UNITS_CM ? _("cm") : "\"";
 }
 
 /* ---- the rest ---------------------------------------------------------- */
