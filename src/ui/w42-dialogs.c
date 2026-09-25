@@ -21,6 +21,7 @@
 #include "w42-macro.h"
 #include "w42-vba.h"
 
+#include <glib/gi18n.h>
 #include <math.h>
 #include <string.h>
 
@@ -161,14 +162,26 @@ inches_row (GtkWidget *grid, int row, int col, const char *label, double value)
   return spin;
 }
 
+/* The words of a NULL-terminated list in the user's language: they are
+ * marked N_(), or NC_() with `context` where one English word has to be
+ * told apart from the same word elsewhere. */
+static GListModel *
+translated_list (const char *context, const char * const *options)
+{
+  GtkStringList *list = gtk_string_list_new (NULL);
+
+  for (guint i = 0; options[i] != NULL; i++)
+    gtk_string_list_append (list, context != NULL ? g_dpgettext2 (NULL, context, options[i])
+                                                  : _(options[i]));
+  return G_LIST_MODEL (list);
+}
+
 static GtkWidget *
-choice_row (GtkWidget *grid, int row, int col, const char *label,
-            const char * const *options, guint selected)
+choice_row_model (GtkWidget *grid, int row, int col, const char *label,
+                  GListModel *model, guint selected)
 {
   GtkWidget *text = gtk_label_new_with_mnemonic (label);
-  GtkWidget *drop = options != NULL
-                      ? gtk_drop_down_new_from_strings (options)
-                      : gtk_drop_down_new (NULL, NULL);
+  GtkWidget *drop = gtk_drop_down_new (model, NULL);
 
   gtk_label_set_xalign (GTK_LABEL (text), 0.0);
   gtk_label_set_mnemonic_widget (GTK_LABEL (text), drop);
@@ -181,13 +194,43 @@ choice_row (GtkWidget *grid, int row, int col, const char *label,
   return drop;
 }
 
+/* A drop-down of N_()-marked words, shown translated. */
+static GtkWidget *
+choice_row (GtkWidget *grid, int row, int col, const char *label,
+            const char * const *options, guint selected)
+{
+  return choice_row_model (grid, row, col, label,
+                           options != NULL ? translated_list (NULL, options) : NULL,
+                           selected);
+}
+
+/* The same for words marked NC_() with `context`. */
+static GtkWidget *
+choice_row_ctx (GtkWidget *grid, int row, int col, const char *label,
+                const char *context, const char * const *options, guint selected)
+{
+  return choice_row_model (grid, row, col, label, translated_list (context, options),
+                           selected);
+}
+
+/* The same for names that are data -- bookmarks, a formula's functions --
+ * shown as they are. */
+static GtkWidget *
+choice_row_data (GtkWidget *grid, int row, int col, const char *label,
+                 const char * const *options, guint selected)
+{
+  return choice_row_model (grid, row, col, label,
+                           options != NULL ? G_LIST_MODEL (gtk_string_list_new (options)) : NULL,
+                           selected);
+}
+
 static GtkWidget *
 button_row (GtkWidget *parent, GtkWidget *window,
             GCallback on_ok, gpointer data)
 {
   GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  GtkWidget *ok = gtk_button_new_with_mnemonic ("_OK");
-  GtkWidget *cancel = gtk_button_new_with_mnemonic ("Cancel");
+  GtkWidget *ok = gtk_button_new_with_mnemonic (_("_OK"));
+  GtkWidget *cancel = gtk_button_new_with_mnemonic (_("Cancel"));
 
   gtk_widget_set_halign (row, GTK_ALIGN_END);
   gtk_widget_set_size_request (ok, 92, 26);
@@ -240,7 +283,7 @@ w42_message_show (GtkWindow *parent, const char *heading, const char *detail)
     }
 
   row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  ok = gtk_button_new_with_mnemonic ("_OK");
+  ok = gtk_button_new_with_mnemonic (_("_OK"));
   gtk_widget_set_halign (row, GTK_ALIGN_END);
   gtk_widget_set_size_request (ok, 92, 26);
   g_signal_connect_swapped (ok, "clicked", G_CALLBACK (gtk_window_destroy), window);
@@ -255,7 +298,8 @@ w42_message_show (GtkWindow *parent, const char *heading, const char *detail)
 /* The same, with a row of buttons: the answer comes back as the index of
  * the button pressed, and dismissing the box -- Escape, or its close
  * button -- answers with `cancel`, since a stray keypress must never be
- * taken for "yes, throw the document away". */
+ * taken for "yes, throw the document away".  The heading, the detail and
+ * the button labels come translated. */
 typedef struct {
   W42ChoiceFunc func;
   gpointer      data;
@@ -367,14 +411,16 @@ static const int PAPER_SIZES[][2] = {
 };
 
 static const char * const PAPER_NAMES[] = {
-  "Letter  8\302\275 x 11 in",
-  "Legal  8\302\275 x 14 in",
-  "A4  210 x 297 mm",
-  "A5  148 x 210 mm",
-  "Custom (as it is)", NULL
+  /* Translators: paper sizes; "in" is inches and "mm" millimetres. */
+  N_("Letter  8\302\275 x 11 in"),
+  N_("Legal  8\302\275 x 14 in"),
+  N_("A4  210 x 297 mm"),
+  N_("A5  148 x 210 mm"),
+  /* Translators: the page keeps the size it has, which is not in the list. */
+  N_("Custom (as it is)"), NULL
 };
 
-static const char * const ORIENTATIONS[] = { "Portrait", "Landscape", NULL };
+static const char * const ORIENTATIONS[] = { N_("Portrait"), N_("Landscape"), NULL };
 
 static void
 page_setup_free (gpointer data, GObject *gone)
@@ -422,8 +468,8 @@ on_page_setup_ok (GtkButton *button, gpointer data)
       page.margin_top + page.margin_bottom >= page.height - 720)
     {
       w42_message_show (GTK_WINDOW (box->window),
-                        "The margins leave no room for text: an inch or less "
-                        "each, please.", NULL);
+                        _("The margins leave no room for text: an inch or less "
+                          "each, please."), NULL);
       return;
     }
 
@@ -466,18 +512,18 @@ w42_page_setup_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (PageSetupBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Page Setup", &content, view);
+  box->window = dialog_shell (parent, _("Page Setup"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), page_setup_free, box);
 
-  margins = group (content, "Margins");
-  box->top    = inches_row (margins, 0, 0, "_Top:",    measure_from_twips (page->margin_top));
-  box->bottom = inches_row (margins, 1, 0, "_Bottom:", measure_from_twips (page->margin_bottom));
-  box->left   = inches_row (margins, 0, 1, "_Left:",   measure_from_twips (page->margin_left));
-  box->right  = inches_row (margins, 1, 1, "_Right:",  measure_from_twips (page->margin_right));
+  margins = group (content, _("Margins"));
+  box->top    = inches_row (margins, 0, 0, _("_Top:"),    measure_from_twips (page->margin_top));
+  box->bottom = inches_row (margins, 1, 0, _("_Bottom:"), measure_from_twips (page->margin_bottom));
+  box->left   = inches_row (margins, 0, 1, _("_Left:"),   measure_from_twips (page->margin_left));
+  box->right  = inches_row (margins, 1, 1, _("_Right:"),  measure_from_twips (page->margin_right));
 
-  paper = group (content, "Paper");
-  box->paper = choice_row (paper, 0, 0, "Paper _Size:", PAPER_NAMES, paper_index);
-  box->orientation = choice_row (paper, 1, 0, "Orie_ntation:", ORIENTATIONS,
+  paper = group (content, _("Paper"));
+  box->paper = choice_row (paper, 0, 0, _("Paper _Size:"), PAPER_NAMES, paper_index);
+  box->orientation = choice_row (paper, 1, 0, _("Orie_ntation:"), ORIENTATIONS,
                                  landscape ? 1 : 0);
 
   button_row (content, box->window, G_CALLBACK (on_page_setup_ok), box);
@@ -500,17 +546,22 @@ typedef struct {
 } ParagraphBox;
 
 static const char * const ALIGNMENTS[] = {
-  "Left", "Centered", "Right", "Justified", NULL
+  NC_("alignment", "Left"), NC_("alignment", "Centered"),
+  NC_("alignment", "Right"), NC_("alignment", "Justified"), NULL
 };
 
-static const char * const DIRECTIONS[] = { "Left-to-right", "Right-to-left", NULL };
+static const char * const DIRECTIONS[] = { N_("Left-to-right"), N_("Right-to-left"), NULL };
 
 static const char * const SPECIALS[] = {
-  "(none)", "First Line", "Hanging", NULL
+  /* Translators: a paragraph's special indent: none, the first line
+   * indented, or the first line hanging out to the left. */
+  N_("(none)"), N_("First Line"), N_("Hanging"), NULL
 };
 
 static const char * const SPACINGS[] = {
-  "Single", "1.5 Lines", "Double", "Exactly", "Multiple", NULL
+  NC_("line spacing", "Single"), NC_("line spacing", "1.5 Lines"),
+  NC_("line spacing", "Double"), NC_("line spacing", "Exactly"),
+  NC_("line spacing", "Multiple"), NULL
 };
 
 static const int SPACING_PCT[] = { 100, 150, 200 };
@@ -648,28 +699,31 @@ w42_paragraph_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (ParagraphBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Paragraph", &content, view);
+  box->window = dialog_shell (parent, _("Paragraph"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), paragraph_free, box);
 
-  indent = group (content, "Indentation");
-  box->align = choice_row (indent, 0, 0, "_Alignment:", ALIGNMENTS,
-                           (guint) now.align);
-  box->direction = choice_row (indent, 0, 1, "_Direction:", DIRECTIONS, now.rtl ? 1 : 0);
-  box->left  = inches_row (indent, 1, 0, "_Left:",
+  indent = group (content, _("Indentation"));
+  box->align = choice_row_ctx (indent, 0, 0, _("_Alignment:"), "alignment", ALIGNMENTS,
+                               (guint) now.align);
+  box->direction = choice_row (indent, 0, 1, _("_Direction:"), DIRECTIONS, now.rtl ? 1 : 0);
+  box->left  = inches_row (indent, 1, 0, _("_Left:"),
                            measure_from_twips (now.indent_left));
-  box->right = inches_row (indent, 2, 0, "_Right:",
+  box->right = inches_row (indent, 2, 0, _("_Right:"),
                            measure_from_twips (now.indent_right));
-  box->special = choice_row (indent, 1, 1, "_Special:", SPECIALS, special);
-  box->by = inches_row (indent, 2, 1, "B_y:", by);
+  box->special = choice_row (indent, 1, 1, _("_Special:"), SPECIALS, special);
+  /* Translators: how far the special indent reaches. */
+  box->by = inches_row (indent, 2, 1, _("B_y:"), by);
   gtk_widget_set_sensitive (box->by, special != 0);
   g_signal_connect (box->special, "notify::selected",
                     G_CALLBACK (on_special_changed), box);
 
-  spacing_group = group (content, "Spacing");
+  spacing_group = group (content, _("Spacing"));
   /* Before and After in points, as the Style box and the classics had
    * them: six points is a typical value and a tenth of an inch is not. */
-  box->before = inches_row (spacing_group, 0, 0, "Be_fore (pt):", now.space_before / 20.0);
-  box->after  = inches_row (spacing_group, 1, 0, "After (_pt):", now.space_after / 20.0);
+  /* Translators: "pt" is points, the typographic unit. */
+  box->before = inches_row (spacing_group, 0, 0, _("Be_fore (pt):"), now.space_before / 20.0);
+  /* Translators: "pt" is points, the typographic unit. */
+  box->after  = inches_row (spacing_group, 1, 0, _("After (_pt):"), now.space_after / 20.0);
   for (int k = 0; k < 2; k++)
     {
       GtkSpinButton *sp = GTK_SPIN_BUTTON (k == 0 ? box->before : box->after);
@@ -679,14 +733,16 @@ w42_paragraph_dialog_show (GtkWindow *parent, W42View *view)
       gtk_spin_button_set_digits (sp, 0);
       gtk_spin_button_set_value (sp, (k == 0 ? now.space_before : now.space_after) / 20.0);
     }
-  box->spacing = choice_row (spacing_group, 0, 1, "Li_ne Spacing:",
-                             SPACINGS, spacing_index);
+  box->spacing = choice_row_ctx (spacing_group, 0, 1, _("Li_ne Spacing:"),
+                                 "line spacing", SPACINGS, spacing_index);
   {
     /* "At:" -- points for Exactly, a multiple of the line for Multiple. */
     double at = now.line_spacing_pct > 0 && spacing_index == 4 ? now.line_spacing_pct / 100.0
               : now.line_spacing > 0 ? now.line_spacing / 20.0 : 12.0;
 
-    box->at = inches_row (spacing_group, 1, 1, "A_t:", at);
+    /* Translators: the line spacing's figure: points for Exactly, a
+     * multiple of the line for Multiple. */
+    box->at = inches_row (spacing_group, 1, 1, _("A_t:"), at);
     gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->at), 0.5, 720);
     gtk_spin_button_set_increments (GTK_SPIN_BUTTON (box->at), 0.5, 6);
     gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->at), 1);
@@ -696,12 +752,12 @@ w42_paragraph_dialog_show (GtkWindow *parent, W42View *view)
   }
 
   {
-    GtkWidget *flow = group (content, "Text Flow");
+    GtkWidget *flow = group (content, _("Text Flow"));
 
-    box->widows        = gtk_check_button_new_with_mnemonic ("_Widow/Orphan Control");
-    box->keep_together = gtk_check_button_new_with_mnemonic ("_Keep Lines Together");
-    box->keep_next     = gtk_check_button_new_with_mnemonic ("Keep with Ne_xt");
-    box->page_break    = gtk_check_button_new_with_mnemonic ("Page _Break Before");
+    box->widows        = gtk_check_button_new_with_mnemonic (_("_Widow/Orphan Control"));
+    box->keep_together = gtk_check_button_new_with_mnemonic (_("_Keep Lines Together"));
+    box->keep_next     = gtk_check_button_new_with_mnemonic (_("Keep with Ne_xt"));
+    box->page_break    = gtk_check_button_new_with_mnemonic (_("Page _Break Before"));
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->widows), now.widow_control);
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_together), now.keep_together);
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_next), now.keep_next);
@@ -754,7 +810,8 @@ style_box_current (StyleBox *box)
 }
 
 static const char * const STYLE_SPACINGS[] = {
-  "Single", "1.5 Lines", "Double", "As defined", NULL
+  NC_("line spacing", "Single"), NC_("line spacing", "1.5 Lines"),
+  NC_("line spacing", "Double"), NC_("line spacing", "As defined"), NULL
 };
 
 /* Which of STYLE_SPACINGS a definition's leading is; the last keeps a
@@ -813,9 +870,16 @@ style_box_load (StyleBox *box)
   gtk_widget_set_sensitive (box->keep_next, !style->character);
   gtk_widget_set_sensitive (box->delete_button, g_ascii_strcasecmp (style->name, "Normal") != 0);
   {
-    char *text = style->based_on != NULL
-      ? g_strdup_printf ("%s style, based on %s", style->character ? "Character" : "Paragraph", style->based_on)
-      : g_strdup_printf ("%s style", style->character ? "Character" : "Paragraph");
+    char *text;
+
+    if (style->based_on != NULL && style->character)
+      /* Translators: %s is the name of a style, as it is in the document. */
+      text = g_strdup_printf (_("Character style, based on %s"), style->based_on);
+    else if (style->based_on != NULL)
+      /* Translators: %s is the name of a style, as it is in the document. */
+      text = g_strdup_printf (_("Paragraph style, based on %s"), style->based_on);
+    else
+      text = g_strdup (style->character ? _("Character style") : _("Paragraph style"));
 
     gtk_label_set_text (GTK_LABEL (box->kind), text);
     g_free (text);
@@ -882,11 +946,11 @@ on_style_new (GtkButton *button, gpointer data)
 
   (void) button;
   nb->box = box;
-  nb->window = dialog_shell (GTK_WINDOW (box->window), "New Style", &content, box->view);
+  nb->window = dialog_shell (GTK_WINDOW (box->window), _("New Style"), &content, box->view);
   g_object_weak_ref (G_OBJECT (nb->window), style_free, nb);
 
-  grid = group (content, "New style");
-  label = gtk_label_new_with_mnemonic ("_Name:");
+  grid = group (content, _("New style"));
+  label = gtk_label_new_with_mnemonic (_("_Name:"));
   nb->name = gtk_entry_new ();
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_mnemonic_widget (GTK_LABEL (label), nb->name);
@@ -894,11 +958,12 @@ on_style_new (GtkButton *button, gpointer data)
   gtk_widget_set_size_request (nb->name, 200, -1);
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), nb->name, 1, 0, 1, 1);
-  nb->character = gtk_check_button_new_with_mnemonic ("_Character style (applies to selected text only)");
+  nb->character = gtk_check_button_new_with_mnemonic (_("_Character style (applies to selected text only)"));
   gtk_grid_attach (GTK_GRID (grid), nb->character, 0, 1, 2, 1);
   {
     const W42Style *base = style_box_current (box);
-    char *text = g_strdup_printf ("Based on %s.", base != NULL ? base->name : "Normal");
+    /* Translators: %s is the name of a style, as it is in the document. */
+    char *text = g_strdup_printf (_("Based on %s."), base != NULL ? base->name : "Normal");
 
     label = gtk_label_new (text);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -1039,7 +1104,10 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
   GtkStringList *list = gtk_string_list_new (NULL);
   W42StyleSheet *sheet;
   const char *current;
-  static const char * const aligns[] = { "Left", "Centered", "Right", "Justified", NULL };
+  static const char * const aligns[] = {
+    NC_("alignment", "Left"), NC_("alignment", "Centered"),
+    NC_("alignment", "Right"), NC_("alignment", "Justified"), NULL
+  };
 
   g_return_if_fail (W42_IS_VIEW (view));
 
@@ -1051,14 +1119,14 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (StyleBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Style", &content, view);
+  box->window = dialog_shell (parent, _("Style"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), style_free, box);
 
   for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
     gtk_string_list_append (list, w42_stylesheet_get (sheet, i)->name);
 
-  names = group (content, "Styles");
-  box->styles = choice_row (names, 0, 0, "_Style:", NULL, 0);
+  names = group (content, _("Styles"));
+  box->styles = choice_row (names, 0, 0, _("_Style:"), NULL, 0);
   box->names = list;
   gtk_drop_down_set_model (GTK_DROP_DOWN (box->styles), G_LIST_MODEL (list));
   /* The drop-down keeps the list for as long as the box lives, and
@@ -1066,9 +1134,9 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
   g_object_unref (list);
   {
     GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *new_button = gtk_button_new_with_mnemonic ("_New...");
+    GtkWidget *new_button = gtk_button_new_with_mnemonic (_("_New..."));
 
-    box->delete_button = gtk_button_new_with_mnemonic ("_Delete");
+    box->delete_button = gtk_button_new_with_mnemonic (_("_Delete"));
     g_signal_connect (new_button, "clicked", G_CALLBACK (on_style_new), box);
     g_signal_connect (box->delete_button, "clicked", G_CALLBACK (on_style_delete), box);
     gtk_box_append (GTK_BOX (row), new_button);
@@ -1083,9 +1151,9 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
     if (g_ascii_strcasecmp (w42_stylesheet_get (sheet, i)->name, current) == 0)
       gtk_drop_down_set_selected (GTK_DROP_DOWN (box->styles), i);
 
-  fields = group (content, "Definition");
+  fields = group (content, _("Definition"));
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("_Font:");
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("_Font:"));
     box->family = gtk_entry_new ();
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->family);
@@ -1093,21 +1161,24 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
     gtk_grid_attach (GTK_GRID (fields), label, 0, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (fields), box->family, 1, 0, 1, 1);
 
-    label = gtk_label_new_with_mnemonic ("Si_ze (pt):");
+    /* Translators: "pt" is points, the typographic unit. */
+    label = gtk_label_new_with_mnemonic (_("Si_ze (pt):"));
     box->size = gtk_spin_button_new_with_range (4, 144, 1);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->size);
     gtk_grid_attach (GTK_GRID (fields), label, 2, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (fields), box->size, 3, 0, 1, 1);
 
-    box->bold = gtk_check_button_new_with_mnemonic ("_Bold");
-    box->italic = gtk_check_button_new_with_mnemonic ("_Italic");
+    box->bold = gtk_check_button_new_with_mnemonic (_("_Bold"));
+    box->italic = gtk_check_button_new_with_mnemonic (_("_Italic"));
     gtk_grid_attach (GTK_GRID (fields), box->bold, 1, 1, 1, 1);
     gtk_grid_attach (GTK_GRID (fields), box->italic, 3, 1, 1, 1);
   }
-  box->align = choice_row (fields, 2, 0, "Ali_gnment:", aligns, 0);
-  box->before = inches_row (fields, 3, 0, "Space B_efore (pt):", 0.0);
-  box->after = inches_row (fields, 3, 1, "Space A_fter (pt):", 0.0);
+  box->align = choice_row_ctx (fields, 2, 0, _("Ali_gnment:"), "alignment", aligns, 0);
+  /* Translators: "pt" is points, the typographic unit. */
+  box->before = inches_row (fields, 3, 0, _("Space B_efore (pt):"), 0.0);
+  /* Translators: "pt" is points, the typographic unit. */
+  box->after = inches_row (fields, 3, 1, _("Space A_fter (pt):"), 0.0);
   gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->before), 0, 200);
   gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->after), 0, 200);
   gtk_spin_button_set_increments (GTK_SPIN_BUTTON (box->before), 6, 12);
@@ -1115,13 +1186,13 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
   gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->before), 0);
   gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->after), 0);
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("Outline le_vel:");
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("Outline le_vel:"));
     box->outline = gtk_spin_button_new_with_range (0, 9, 1);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->outline);
     gtk_widget_set_tooltip_text (box->outline,
-      "0 for body text; 1 to 9 for a heading of that level, which is what "
-      "Heading Numbering counts.");
+      _("0 for body text; 1 to 9 for a heading of that level, which is what "
+        "Heading Numbering counts."));
     gtk_grid_attach (GTK_GRID (fields), label, 0, 4, 1, 1);
     gtk_grid_attach (GTK_GRID (fields), box->outline, 1, 4, 1, 1);
   }
@@ -1130,13 +1201,17 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
    * of its own with its heading kept with the text under it. */
   box->first = inches_row (fields, 5, 0,
                            w42_settings_get_units () == W42_UNITS_CM
-                             ? "Fi_rst line (cm):" : "Fi_rst line (in):", 0.0);
+                             /* Translators: "cm" is centimetres. */
+                             ? _("Fi_rst line (cm):")
+                             /* Translators: "in" is inches. */
+                             : _("Fi_rst line (in):"), 0.0);
   gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->first), -10, 10);
-  box->spacing = choice_row (fields, 5, 1, "Line spa_cing:", STYLE_SPACINGS, 0);
-  box->page_break = gtk_check_button_new_with_mnemonic ("_Page break before");
-  box->keep_next = gtk_check_button_new_with_mnemonic ("Keep with ne_xt");
+  box->spacing = choice_row_ctx (fields, 5, 1, _("Line spa_cing:"), "line spacing",
+                                 STYLE_SPACINGS, 0);
+  box->page_break = gtk_check_button_new_with_mnemonic (_("_Page break before"));
+  box->keep_next = gtk_check_button_new_with_mnemonic (_("Keep with ne_xt"));
   gtk_widget_set_tooltip_text (box->page_break,
-    "Every paragraph in this style starts a new page: chapter headings.");
+    _("Every paragraph in this style starts a new page: chapter headings."));
   gtk_grid_attach (GTK_GRID (fields), box->page_break, 1, 6, 1, 1);
   gtk_grid_attach (GTK_GRID (fields), box->keep_next, 3, 6, 1, 1);
 
@@ -1146,16 +1221,16 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
 
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_halign (buttons, GTK_ALIGN_END);
-  apply = gtk_button_new_with_mnemonic ("_Apply");
+  apply = gtk_button_new_with_mnemonic (_("_Apply"));
   gtk_widget_set_size_request (apply, 92, 26);
-  gtk_widget_set_tooltip_text (apply, "Save the definition and apply the "
-                               "style to the selected paragraphs.");
+  gtk_widget_set_tooltip_text (apply, _("Save the definition and apply the "
+                                        "style to the selected paragraphs."));
   g_signal_connect (apply, "clicked", G_CALLBACK (on_style_apply), box);
   gtk_box_append (GTK_BOX (buttons), apply);
   gtk_box_append (GTK_BOX (content), buttons);
   {
-    GtkWidget *ok = gtk_button_new_with_mnemonic ("_OK");
-    GtkWidget *cancel = gtk_button_new_with_mnemonic ("Cancel");
+    GtkWidget *ok = gtk_button_new_with_mnemonic (_("_OK"));
+    GtkWidget *cancel = gtk_button_new_with_mnemonic (_("Cancel"));
     gtk_widget_set_size_request (ok, 92, 26);
     gtk_widget_set_size_request (cancel, 92, 26);
     g_signal_connect (ok, "clicked", G_CALLBACK (on_style_ok), box);
@@ -1192,7 +1267,9 @@ typedef struct {
   GtkWidget *even_footer, *even_footer_align;
 } HeaderFooterBox;
 
-static const char * const HF_ALIGNS[] = { "Left", "Center", "Right", NULL };
+static const char * const HF_ALIGNS[] = {
+  NC_("alignment", "Left"), NC_("alignment", "Center"), NC_("alignment", "Right"), NULL
+};
 
 static void
 hf_free (gpointer data, GObject *gone)
@@ -1284,8 +1361,8 @@ hf_kind_group (GtkWidget *content, HeaderFooterBox *box, const char *title,
   gtk_widget_set_sensitive (grid, on);
   g_signal_connect (check, "toggled", G_CALLBACK (on_hf_kind_toggled), grid);
 
-  *header_out = hf_row (grid, 0, "H_eader:", header->text, header_align_out, header->align);
-  *footer_out = hf_row (grid, 1, "F_ooter:", footer->text, footer_align_out, footer->align);
+  *header_out = hf_row (grid, 0, _("H_eader:"), header->text, header_align_out, header->align);
+  *footer_out = hf_row (grid, 1, _("F_ooter:"), footer->text, footer_align_out, footer->align);
   *check_out = check;
   return grid;
 }
@@ -1296,7 +1373,7 @@ hf_row (GtkWidget *grid, int row, const char *label, const char *text,
 {
   GtkWidget *name = gtk_label_new_with_mnemonic (label);
   GtkWidget *entry = gtk_entry_new ();
-  GtkWidget *drop = gtk_drop_down_new_from_strings (HF_ALIGNS);
+  GtkWidget *drop = gtk_drop_down_new (translated_list ("alignment", HF_ALIGNS), NULL);
 
   gtk_label_set_xalign (GTK_LABEL (name), 0.0);
   gtk_label_set_mnemonic_widget (GTK_LABEL (name), entry);
@@ -1333,27 +1410,29 @@ w42_header_footer_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (HeaderFooterBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Header and Footer", &content, view);
+  box->window = dialog_shell (parent, _("Header and Footer"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Text");
-  box->header = hf_row (grid, 0, "_Header:", header->text, &box->header_align, header->align);
-  box->footer = hf_row (grid, 1, "_Footer:", footer->text, &box->footer_align, footer->align);
+  grid = group (content, _("Text"));
+  box->header = hf_row (grid, 0, _("_Header:"), header->text, &box->header_align, header->align);
+  box->footer = hf_row (grid, 1, _("_Footer:"), footer->text, &box->footer_align, footer->align);
 
-  box->first_group = hf_kind_group (content, box, "First Page",
-                                    "_Different first page", W42_PAGE_TEXT_FIRST,
+  box->first_group = hf_kind_group (content, box, _("First Page"),
+                                    _("_Different first page"), W42_PAGE_TEXT_FIRST,
                                     w42_pt_get_title_page (pt), &box->title_page,
                                     &box->first_header, &box->first_header_align,
                                     &box->first_footer, &box->first_footer_align);
-  box->even_group = hf_kind_group (content, box, "Even Pages",
-                                   "Different odd and _even pages", W42_PAGE_TEXT_EVEN,
+  box->even_group = hf_kind_group (content, box, _("Even Pages"),
+                                   _("Different odd and _even pages"), W42_PAGE_TEXT_EVEN,
                                    w42_pt_get_facing_pages (pt), &box->facing_pages,
                                    &box->even_header, &box->even_header_align,
                                    &box->even_footer, &box->even_footer_align);
 
-  hint = gtk_label_new ("Fields: {PAGE} is the page number, {NUMPAGES} the "
-                        "number of pages, {DATE} today's date.  Headers and "
-                        "footers show in Page Layout view and in print.");
+  /* Translators: {PAGE}, {NUMPAGES} and {DATE} are typed into the header
+   * as they are: keep them in English, braces and all. */
+  hint = gtk_label_new (_("Fields: {PAGE} is the page number, {NUMPAGES} the "
+                          "number of pages, {DATE} today's date.  Headers and "
+                          "footers show in Page Layout view and in print."));
   gtk_label_set_wrap (GTK_LABEL (hint), TRUE);
   gtk_label_set_max_width_chars (GTK_LABEL (hint), 60);
   gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
@@ -1415,7 +1494,9 @@ w42_page_numbers_dialog_show (GtkWindow *parent, W42View *view)
 {
   PageNumbersBox *box;
   GtkWidget *content, *grid;
-  static const char * const positions[] = { "Top of Page (Header)", "Bottom of Page (Footer)", NULL };
+  static const char * const positions[] = {
+    N_("Top of Page (Header)"), N_("Bottom of Page (Footer)"), NULL
+  };
 
   g_return_if_fail (W42_IS_VIEW (view));
 
@@ -1424,12 +1505,12 @@ w42_page_numbers_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (PageNumbersBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Page Numbers", &content, view);
+  box->window = dialog_shell (parent, _("Page Numbers"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Position");
-  box->position = choice_row (grid, 0, 0, "_Position:", positions, 1);
-  box->align = choice_row (grid, 1, 0, "_Alignment:", HF_ALIGNS, 1);
+  grid = group (content, _("Position"));
+  box->position = choice_row (grid, 0, 0, _("_Position:"), positions, 1);
+  box->align = choice_row_ctx (grid, 1, 0, _("_Alignment:"), "alignment", HF_ALIGNS, 1);
 
   button_row (content, box->window, G_CALLBACK (on_page_numbers_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -1472,12 +1553,12 @@ w42_insert_table_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (InsertTableBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Insert Table", &content, view);
+  box->window = dialog_shell (parent, _("Insert Table"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Table Size");
+  grid = group (content, _("Table Size"));
 
-  label = gtk_label_new_with_mnemonic ("Number of _Columns:");
+  label = gtk_label_new_with_mnemonic (_("Number of _Columns:"));
   box->cols = gtk_spin_button_new_with_range (1, 20, 1);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->cols), 2);
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -1485,7 +1566,7 @@ w42_insert_table_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->cols, 1, 0, 1, 1);
 
-  label = gtk_label_new_with_mnemonic ("Number of _Rows:");
+  label = gtk_label_new_with_mnemonic (_("Number of _Rows:"));
   box->rows = gtk_spin_button_new_with_range (1, 200, 1);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->rows), 2);
   gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->rows), TRUE);
@@ -1523,7 +1604,10 @@ go_to_free (gpointer data, GObject *gone)
   g_free (box);
 }
 
-static const char * const GO_TO_KINDS[] = { "Page", "Line", "Bookmark", NULL };
+static const char * const GO_TO_KINDS[] = {
+  /* Translators: what Edit > Go To goes to. */
+  NC_("go to", "Page"), NC_("go to", "Line"), NC_("go to", "Bookmark"), NULL
+};
 
 static void
 on_go_to_ok (GtkButton *button, gpointer data)
@@ -1577,15 +1661,15 @@ w42_go_to_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (GoToBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Go To", &content, view);
+  box->window = dialog_shell (parent, _("Go To"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), go_to_free, box);
   box->bookmarks = w42_pt_bookmark_names (w42_document_pt (w42_view_get_document (view)));
 
-  grid = group (content, "Go to What");
+  grid = group (content, _("Go to What"));
 
-  box->what = choice_row (grid, 0, 0, "Go to _What:", GO_TO_KINDS, 0);
+  box->what = choice_row_ctx (grid, 0, 0, _("Go to _What:"), "go to", GO_TO_KINDS, 0);
 
-  label = gtk_label_new_with_mnemonic ("Enter _Number:");
+  label = gtk_label_new_with_mnemonic (_("Enter _Number:"));
   box->number = gtk_spin_button_new_with_range (1, 1, 1);
   gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->number), TRUE);
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -1663,12 +1747,12 @@ w42_date_time_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (DateTimeBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Date and Time", &content, view);
+  box->window = dialog_shell (parent, _("Date and Time"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Available Formats");
+  grid = group (content, _("Available Formats"));
 
-  label = gtk_label_new_with_mnemonic ("_Formats:");
+  label = gtk_label_new_with_mnemonic (_("_Formats:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
 
@@ -1758,7 +1842,7 @@ w42_symbol_dialog_show (GtkWindow *parent, W42View *view)
   if (w42_view_get_document (view) == NULL)
     return;
 
-  window = dialog_shell (parent, "Symbol", &content, view);
+  window = dialog_shell (parent, _("Symbol"), &content, view);
 
   /* Modeless, as Word 97's was: pick a symbol, type, pick another. */
   gtk_window_set_modal (GTK_WINDOW (window), FALSE);
@@ -1791,7 +1875,7 @@ w42_symbol_dialog_show (GtkWindow *parent, W42View *view)
 
   row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_halign (row, GTK_ALIGN_END);
-  close = gtk_button_new_with_mnemonic ("Close");
+  close = gtk_button_new_with_mnemonic (_("Close"));
   gtk_widget_set_size_request (close, 92, 26);
   g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), window);
   gtk_box_append (GTK_BOX (row), close);
@@ -1833,26 +1917,26 @@ w42_autocorrect_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (AutoBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "AutoCorrect", &content, view);
+  box->window = dialog_shell (parent, _("AutoCorrect"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "As You Type");
-  box->on = gtk_check_button_new_with_mnemonic ("_Correct as you type");
+  grid = group (content, _("As You Type"));
+  box->on = gtk_check_button_new_with_mnemonic (_("_Correct as you type"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->on),
                                w42_view_get_autocorrect (view));
   gtk_grid_attach (GTK_GRID (grid), box->on, 0, 0, 2, 1);
 
-  label = gtk_label_new ("Straight quotes become curly ones, two capitals at "
-                         "the start of a word become one, a sentence takes a "
-                         "capital, two hyphens become a dash, and the words "
-                         "below are put right.");
+  label = gtk_label_new (_("Straight quotes become curly ones, two capitals at "
+                           "the start of a word become one, a sentence takes a "
+                           "capital, two hyphens become a dash, and the words "
+                           "below are put right."));
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_label_set_max_width_chars (GTK_LABEL (label), 48);
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_widget_add_css_class (label, "w42-dialog-status");
   gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
 
-  grid = group (content, "Replace");
+  grid = group (content, _("Replace"));
   list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (list), GTK_SELECTION_NONE);
   for (guint i = 0; pairs[i] != NULL; i += 2)
@@ -1891,9 +1975,16 @@ typedef struct {
   W42ParaFmt  pa;          /* the stops as edited; applied by OK */
 } TabsBox;
 
-static const char * const TAB_KINDS[] = { "Left", "Center", "Right", "Decimal", NULL };
+static const char * const TAB_KINDS[] = {
+  NC_("tab stop", "Left"), NC_("tab stop", "Center"),
+  NC_("tab stop", "Right"), NC_("tab stop", "Decimal"), NULL
+};
 /* Word 97's four, in its order and drawn as it drew them. */
-static const char * const TAB_LEADERS[] = { "1  None", "2  ......", "3  ------", "4  ______", NULL };
+static const char * const TAB_LEADERS[] = {
+  /* Translators: the first of the tab leaders, numbered 1 to 4 as Word
+   * numbered them; the others are drawn with dots, hyphens and rules. */
+  N_("1  None"), "2  ......", "3  ------", "4  ______", NULL
+};
 
 static void
 tabs_refresh (TabsBox *box)
@@ -1910,7 +2001,8 @@ tabs_refresh (TabsBox *box)
       W42TabLeader lead = W42_TAB_LEADER (box->pa.tab_kind[i]);
       char *text = g_strdup_printf ("%.2f%s  %s%s", measure_from_twips (box->pa.tab_pos[i]),
                                     w42_settings_unit_name (),
-                                    TAB_KINDS[CLAMP ((int) kind, 0, 3)],
+                                    g_dpgettext2 (NULL, "tab stop",
+                                                  TAB_KINDS[CLAMP ((int) kind, 0, 3)]),
                                     LEADS[CLAMP ((int) lead, 0, 3)]);
       GtkWidget *label = gtk_label_new (text);
 
@@ -2006,13 +2098,13 @@ w42_tabs_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (TabsBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Tabs", &content, view);
+  box->window = dialog_shell (parent, _("Tabs"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
   w42_view_get_para_fmt (view, &box->pa);
 
-  grid = group (content, "Tab Stops");
+  grid = group (content, _("Tab Stops"));
 
-  label = gtk_label_new_with_mnemonic ("_Tab Stop Position:");
+  label = gtk_label_new_with_mnemonic (_("_Tab Stop Position:"));
   box->position = gtk_spin_button_new_with_range (0.0, 56.0, 0.05);
   gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->position), 2);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->position), measure_from_twips (720));
@@ -2022,8 +2114,8 @@ w42_tabs_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->position, 1, 0, 1, 1);
 
-  box->alignment = choice_row (grid, 1, 0, "_Alignment:", TAB_KINDS, 0);
-  box->leader = choice_row (grid, 2, 0, "_Leader:", TAB_LEADERS, 0);
+  box->alignment = choice_row_ctx (grid, 1, 0, _("_Alignment:"), "tab stop", TAB_KINDS, 0);
+  box->leader = choice_row (grid, 2, 0, _("_Leader:"), TAB_LEADERS, 0);
 
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
@@ -2037,9 +2129,9 @@ w42_tabs_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), scroller, 0, 3, 2, 1);
 
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  set = gtk_button_new_with_mnemonic ("_Set");
-  clear = gtk_button_new_with_mnemonic ("Cl_ear");
-  clear_all = gtk_button_new_with_mnemonic ("Clear A_ll");
+  set = gtk_button_new_with_mnemonic (_("_Set"));
+  clear = gtk_button_new_with_mnemonic (_("Cl_ear"));
+  clear_all = gtk_button_new_with_mnemonic (_("Clear A_ll"));
   g_signal_connect (set, "clicked", G_CALLBACK (on_tabs_set), box);
   g_signal_connect (clear, "clicked", G_CALLBACK (on_tabs_clear), box);
   g_signal_connect (clear_all, "clicked", G_CALLBACK (on_tabs_clear_all), box);
@@ -2073,8 +2165,10 @@ typedef struct {
   GtkWidget *autosave;      /* AutoRecover every so many minutes */
 } OptionsBox;
 
-static const char * const UNIT_NAMES[] = { "Inches", "Centimeters", NULL };
-static const char * const VIEW_NAMES[] = { "Normal", "Online Layout", "Page Layout", NULL };
+static const char * const UNIT_NAMES[] = { N_("Inches"), N_("Centimeters"), NULL };
+static const char * const VIEW_NAMES[] = {
+  NC_("view", "Normal"), NC_("view", "Online Layout"), NC_("view", "Page Layout"), NULL
+};
 static const char * const VIEW_KEYS[]  = { "normal", "online", "page-layout" };
 static const char * const ZOOM_NAMES[] = { "50%", "75%", "100%", "150%", "200%", NULL };
 static const int ZOOM_VALUES[] = { 50, 75, 100, 150, 200 };
@@ -2160,29 +2254,29 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   box = g_new0 (OptionsBox, 1);
   box->parent = parent;
   box->view = view;
-  box->window = dialog_shell (parent, "Options", &content, view);
+  box->window = dialog_shell (parent, _("Options"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "General");
-  box->units = choice_row (grid, 0, 0, "_Measurement Units:", UNIT_NAMES,
+  grid = group (content, _("General"));
+  box->units = choice_row (grid, 0, 0, _("_Measurement Units:"), UNIT_NAMES,
                            w42_settings_get_units () == W42_UNITS_CM ? 1 : 0);
 
-  grid = group (content, "View");
+  grid = group (content, _("View"));
   default_view = w42_settings_get_string ("default-view", "page-layout");
-  box->default_view = choice_row (grid, 0, 0, "Default _View:", VIEW_NAMES,
-                                  g_str_equal (default_view, "page-layout") ? 2
-                                  : g_str_equal (default_view, "online") ? 1 : 0);
+  box->default_view = choice_row_ctx (grid, 0, 0, _("Default _View:"), "view", VIEW_NAMES,
+                                      g_str_equal (default_view, "page-layout") ? 2
+                                      : g_str_equal (default_view, "online") ? 1 : 0);
   g_free (default_view);
 
   zoom = w42_settings_get_int ("zoom", 100);
   for (guint i = 0; i < G_N_ELEMENTS (ZOOM_VALUES); i++)
     if (ZOOM_VALUES[i] == zoom)
       zoom_index = i;
-  box->zoom = choice_row (grid, 1, 0, "Default _Zoom:", ZOOM_NAMES, zoom_index);
+  box->zoom = choice_row (grid, 1, 0, _("Default _Zoom:"), ZOOM_NAMES, zoom_index);
 
-  grid = group (content, "User Info");
+  grid = group (content, _("User Info"));
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("_Name:");
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("_Name:"));
     char *name = w42_settings_get_string ("user-name", "");
 
     box->user_name = gtk_entry_new ();
@@ -2196,7 +2290,7 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
     else
       gtk_editable_set_text (GTK_EDITABLE (box->user_name), name);
     g_free (name);
-    gtk_widget_set_tooltip_text (box->user_name, "Annotations and revisions carry this name in the files you save.");
+    gtk_widget_set_tooltip_text (box->user_name, _("Annotations and revisions carry this name in the files you save."));
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->user_name);
     gtk_widget_set_size_request (box->user_name, 200, -1);
@@ -2204,13 +2298,13 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
     gtk_grid_attach (GTK_GRID (grid), box->user_name, 1, 0, 1, 1);
   }
 
-  grid = group (content, "Spelling");
-  box->auto_correct = gtk_check_button_new_with_mnemonic ("Correct as you t_ype");
+  grid = group (content, _("Spelling"));
+  box->auto_correct = gtk_check_button_new_with_mnemonic (_("Correct as you t_ype"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_correct),
                                w42_settings_get_bool ("auto-correct", TRUE));
   gtk_grid_attach (GTK_GRID (grid), box->auto_correct, 0, 1, 2, 1);
 
-  box->auto_spell = gtk_check_button_new_with_mnemonic ("_Check spelling as you type");
+  box->auto_spell = gtk_check_button_new_with_mnemonic (_("_Check spelling as you type"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_spell),
                                w42_settings_get_bool ("auto-spell", TRUE));
   gtk_grid_attach (GTK_GRID (grid), box->auto_spell, 0, 0, 2, 1);
@@ -2218,17 +2312,20 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   /* Word 97's Save tab: the two things that keep a long piece of work
    * from being lost -- the file as it was before the last save, and a
    * copy of the unsaved changes every few minutes. */
-  grid = group (content, "Save");
-  box->backup = gtk_check_button_new_with_mnemonic ("Always create _backup copy");
+  /* Translators: the group of save settings, not a button. */
+  grid = group (content, C_("options", "Save"));
+  box->backup = gtk_check_button_new_with_mnemonic (_("Always create _backup copy"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->backup),
                                w42_settings_get_bool ("backup-copy", FALSE));
   gtk_widget_set_tooltip_text (box->backup,
-    "Before a file is saved over, the version it replaces is kept beside it "
-    "as \342\200\234Backup of\342\200\235 and its name.");
+    /* Translators: "Backup of" is how the backup's file name begins. */
+    _("Before a file is saved over, the version it replaces is kept beside it "
+      "as \342\200\234Backup of\342\200\235 and its name."));
   gtk_grid_attach (GTK_GRID (grid), box->backup, 0, 0, 3, 1);
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("Save _AutoRecover info every:");
-    GtkWidget *unit = gtk_label_new ("minutes");
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("Save _AutoRecover info every:"));
+    /* Translators: follows "Save AutoRecover info every:" and a number. */
+    GtkWidget *unit = gtk_label_new (_("minutes"));
 
     box->autosave = gtk_spin_button_new_with_range (1, 120, 1);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->autosave),
@@ -2272,9 +2369,12 @@ typedef struct {
 /* The sixteen colours Word 97 offered, which is what a colour is chosen from
  * anywhere in Word42. */
 static const char *const PALETTE_NAMES[] = {
-  "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
-  "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red",
-  "Dark Yellow", "Dark Gray", "Light Gray", NULL
+  NC_("colour", "Black"), NC_("colour", "Blue"), NC_("colour", "Cyan"),
+  NC_("colour", "Green"), NC_("colour", "Magenta"), NC_("colour", "Red"),
+  NC_("colour", "Yellow"), NC_("colour", "White"),
+  NC_("colour", "Dark Blue"), NC_("colour", "Dark Cyan"), NC_("colour", "Dark Green"),
+  NC_("colour", "Dark Magenta"), NC_("colour", "Dark Red"),
+  NC_("colour", "Dark Yellow"), NC_("colour", "Dark Gray"), NC_("colour", "Light Gray"), NULL
 };
 static const guint32 PALETTE_VALUES[] = {
   0x000000, 0x0000FF, 0x00FFFF, 0x00FF00, 0xFF00FF, 0xFF0000, 0xFFFF00, 0xFFFFFF,
@@ -2282,10 +2382,14 @@ static const guint32 PALETTE_VALUES[] = {
 };
 /* The same list with "None" in front, for a background that may have none. */
 static const char *const FILL_NAMES[] = {
-  "None",
-  "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
-  "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red",
-  "Dark Yellow", "Dark Gray", "Light Gray", NULL
+  /* Translators: no colour. */
+  NC_("colour", "None"),
+  NC_("colour", "Black"), NC_("colour", "Blue"), NC_("colour", "Cyan"),
+  NC_("colour", "Green"), NC_("colour", "Magenta"), NC_("colour", "Red"),
+  NC_("colour", "Yellow"), NC_("colour", "White"),
+  NC_("colour", "Dark Blue"), NC_("colour", "Dark Cyan"), NC_("colour", "Dark Green"),
+  NC_("colour", "Dark Magenta"), NC_("colour", "Dark Red"),
+  NC_("colour", "Dark Yellow"), NC_("colour", "Dark Gray"), NC_("colour", "Light Gray"), NULL
 };
 
 /* Which entry of the palette a colour is, or 0 for one that is not in it. */
@@ -2300,12 +2404,20 @@ palette_index (guint32 rgb)
 
 /* Word 97's line widths, from a quarter point to six. */
 static const char * const BORDER_WIDTHS[] = {
-  "\302\274 pt", "\302\275 pt", "\302\276 pt", "1 pt", "1\302\275 pt", "2\302\274 pt",
-  "3 pt", "4\302\275 pt", "6 pt", NULL
+  /* Translators: line widths; "pt" is points, the typographic unit. */
+  N_("\302\274 pt"), N_("\302\275 pt"), N_("\302\276 pt"), N_("1 pt"), N_("1\302\275 pt"),
+  N_("2\302\274 pt"), N_("3 pt"), N_("4\302\275 pt"), N_("6 pt"), NULL
 };
 static const int BORDER_WIDTH_TWIPS[] = { 5, 10, 15, 20, 30, 45, 60, 90, 120 };
-static const char * const BORDER_STYLES[] = { "Single", "Double", "Dashed", "Dotted", NULL };
-static const char * const APPLY_TO[] = { "Paragraph", "Cell", "Table", NULL };
+static const char * const BORDER_STYLES[] = {
+  NC_("border style", "Single"), NC_("border style", "Double"),
+  NC_("border style", "Dashed"), NC_("border style", "Dotted"), NULL
+};
+static const char * const APPLY_TO[] = {
+  /* Translators: what the borders are put on, inside a table. */
+  NC_("apply borders to", "Paragraph"), NC_("apply borders to", "Cell"),
+  NC_("apply borders to", "Table"), NULL
+};
 
 /* The entry of the width list nearest `twips`. */
 static guint
@@ -2319,7 +2431,8 @@ width_index_for (int twips)
   return best;
 }
 static const char * const SHADINGS[] = {
-  "None", "10%", "20%", "30%", "40%", "50%", "75%", "Solid (100%)", NULL
+  NC_("shading", "None"), "10%", "20%", "30%", "40%", "50%", "75%",
+  NC_("shading", "Solid (100%)"), NULL
 };
 static const int SHADING_VALUES[] = { 0, 10, 20, 30, 40, 50, 75, 100 };
 
@@ -2503,7 +2616,9 @@ static void
 on_borders_preset (GtkButton *button, gpointer data)
 {
   BordersBox *box = data;
-  gboolean all = g_str_equal (gtk_button_get_label (button), "_Box");
+  /* Which preset it is, by the mark on the button: its label is in the
+   * user's language. */
+  gboolean all = g_object_get_data (G_OBJECT (button), "w42-box-preset") != NULL;
 
   for (int i = 0; i < 4; i++)
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]), all);
@@ -2515,7 +2630,7 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
   BordersBox *box;
   GtkWidget *content, *grid, *presets, *none, *all;
   W42ParaFmt now;
-  static const char * const side_labels[4] = { "_Top", "Botto_m", "_Left", "_Right" };
+  static const char * const side_labels[4] = { N_("_Top"), N_("Botto_m"), N_("_Left"), N_("_Right") };
   static const guint8 bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM,
                                   W42_BORDER_LEFT, W42_BORDER_RIGHT };
   guint width_index = 0, shading_index = 0;
@@ -2527,15 +2642,18 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (BordersBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Borders and Shading", &content, view);
+  box->window = dialog_shell (parent, _("Borders and Shading"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
   w42_view_get_para_fmt (view, &now);
 
-  grid = group (content, "Borders");
+  grid = group (content, _("Borders"));
 
   presets = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  none = gtk_button_new_with_mnemonic ("_None");
-  all = gtk_button_new_with_mnemonic ("_Box");
+  /* Translators: the preset of no borders. */
+  none = gtk_button_new_with_mnemonic (_("_None"));
+  /* Translators: the preset of a border on all four sides. */
+  all = gtk_button_new_with_mnemonic (_("_Box"));
+  g_object_set_data (G_OBJECT (all), "w42-box-preset", GINT_TO_POINTER (1));
   g_signal_connect (none, "clicked", G_CALLBACK (on_borders_preset), box);
   g_signal_connect (all, "clicked", G_CALLBACK (on_borders_preset), box);
   gtk_box_append (GTK_BOX (presets), none);
@@ -2544,57 +2662,59 @@ w42_borders_dialog_show (GtkWindow *parent, W42View *view)
 
   for (int i = 0; i < 4; i++)
     {
-      box->sides[i] = gtk_check_button_new_with_mnemonic (side_labels[i]);
+      box->sides[i] = gtk_check_button_new_with_mnemonic (_(side_labels[i]));
       gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sides[i]),
                                    (now.border & bits[i]) != 0);
       gtk_grid_attach (GTK_GRID (grid), box->sides[i], i % 2, 1 + i / 2, 1, 1);
     }
-  box->inside = gtk_check_button_new_with_mnemonic ("_Inside (between the cells)");
+  box->inside = gtk_check_button_new_with_mnemonic (_("_Inside (between the cells)"));
   gtk_widget_set_sensitive (box->inside, FALSE);
   gtk_grid_attach (GTK_GRID (grid), box->inside, 0, 3, 2, 1);
 
   width_index = width_index_for (w42_para_fmt_border_width (&now));
-  box->style = choice_row (grid, 4, 0, "St_yle:", BORDER_STYLES,
-                           MIN (w42_para_fmt_border_style (&now), W42_BORDER_DOTTED));
-  box->width = choice_row (grid, 5, 0, "Line _Width:", BORDER_WIDTHS, width_index);
-  box->line_colour = choice_row (grid, 6, 0, "Line _Color:", PALETTE_NAMES,
-                                 palette_index (w42_para_fmt_border_color (&now)));
+  box->style = choice_row_ctx (grid, 4, 0, _("St_yle:"), "border style", BORDER_STYLES,
+                               MIN (w42_para_fmt_border_style (&now), W42_BORDER_DOTTED));
+  box->width = choice_row (grid, 5, 0, _("Line _Width:"), BORDER_WIDTHS, width_index);
+  box->line_colour = choice_row_ctx (grid, 6, 0, _("Line _Color:"), "colour", PALETTE_NAMES,
+                                     palette_index (w42_para_fmt_border_color (&now)));
   if (w42_view_in_table (view))
     {
       /* In a table, Word 97's dialog could rule the cell or the whole
        * table as well as the paragraph. */
-      box->apply_to = choice_row (grid, 7, 0, "_Apply to:", APPLY_TO, 1);
+      box->apply_to = choice_row_ctx (grid, 7, 0, _("_Apply to:"), "apply borders to",
+                                      APPLY_TO, 1);
       g_signal_connect (box->apply_to, "notify::selected", G_CALLBACK (on_borders_apply_to), box);
       on_borders_apply_to (G_OBJECT (box->apply_to), NULL, box);
     }
 
-  grid = group (content, "Shading");
+  grid = group (content, _("Shading"));
   for (guint i = 0; i < G_N_ELEMENTS (SHADING_VALUES); i++)
     if (SHADING_VALUES[i] == now.shading)
       shading_index = i;
-  box->shading = choice_row (grid, 0, 0, "_Shading:", SHADINGS, shading_index);
-  box->fill = choice_row (grid, 1, 0, "Bac_kground:", FILL_NAMES,
-                          now.has_shading_color
-                            ? palette_index (now.shading_color) + 1 : 0);
+  box->shading = choice_row_ctx (grid, 0, 0, _("_Shading:"), "shading", SHADINGS, shading_index);
+  box->fill = choice_row_ctx (grid, 1, 0, _("Bac_kground:"), "colour", FILL_NAMES,
+                              now.has_shading_color
+                                ? palette_index (now.shading_color) + 1 : 0);
 
   /* Word 97 added a Page Border tab to this box; here it is a group,
    * with the line's style, width and colour and Word's "distance from
    * edge", 24 points unless the document says otherwise. */
-  grid = group (content, "Page Border");
+  grid = group (content, _("Page Border"));
   {
     const W42PageSetup *page = w42_document_page_setup (w42_view_get_document (view));
-    GtkWidget *label = gtk_label_new_with_mnemonic ("_Distance from edge (pt):");
+    /* Translators: "pt" is points, the typographic unit. */
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("_Distance from edge (pt):"));
 
-    box->page_on = gtk_check_button_new_with_mnemonic ("A border round _every page");
+    box->page_on = gtk_check_button_new_with_mnemonic (_("A border round _every page"));
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->page_on), page->has_border != 0);
     gtk_grid_attach (GTK_GRID (grid), box->page_on, 0, 0, 2, 1);
-    box->page_style = choice_row (grid, 1, 0, "Style:", BORDER_STYLES,
-                                  MIN (page->border_style, W42_BORDER_DOTTED));
-    box->page_width = choice_row (grid, 2, 0, "Line Width:", BORDER_WIDTHS,
+    box->page_style = choice_row_ctx (grid, 1, 0, _("Style:"), "border style", BORDER_STYLES,
+                                      MIN (page->border_style, W42_BORDER_DOTTED));
+    box->page_width = choice_row (grid, 2, 0, _("Line Width:"), BORDER_WIDTHS,
                                   width_index_for (page->border_width > 0 ? page->border_width
                                                                           : W42_BORDER_HAIRLINE));
-    box->page_colour = choice_row (grid, 3, 0, "Line Color:", PALETTE_NAMES,
-                                   palette_index (page->border_color));
+    box->page_colour = choice_row_ctx (grid, 3, 0, _("Line Color:"), "colour", PALETTE_NAMES,
+                                       palette_index (page->border_color));
     box->page_space = gtk_spin_button_new_with_range (0.0, 100.0, 1.0);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->page_space),
                                page->has_border ? page->border_space / 20.0 : 24.0);
@@ -2660,12 +2780,12 @@ w42_hyperlink_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (LinkBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Hyperlink", &content, view);
+  box->window = dialog_shell (parent, _("Hyperlink"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Link");
+  grid = group (content, _("Link"));
 
-  label = gtk_label_new_with_mnemonic ("_Address:");
+  label = gtk_label_new_with_mnemonic (_("_Address:"));
   box->address = gtk_entry_new ();
   gtk_widget_set_size_request (box->address, 300, -1);
   gtk_entry_set_activates_default (GTK_ENTRY (box->address), TRUE);
@@ -2674,7 +2794,7 @@ w42_hyperlink_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->address, 1, 0, 1, 1);
 
-  label = gtk_label_new_with_mnemonic ("_Text to Display:");
+  label = gtk_label_new_with_mnemonic (_("_Text to Display:"));
   box->text = gtk_entry_new ();
   gtk_entry_set_activates_default (GTK_ENTRY (box->text), TRUE);
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -2693,7 +2813,7 @@ w42_hyperlink_dialog_show (GtkWindow *parent, W42View *view)
     }
   g_free (selected);
 
-  remove = gtk_button_new_with_mnemonic ("_Remove Link");
+  remove = gtk_button_new_with_mnemonic (_("_Remove Link"));
   gtk_widget_set_sensitive (remove, current != NULL);
   g_signal_connect (remove, "clicked", G_CALLBACK (on_hyperlink_remove), box);
   gtk_grid_attach (GTK_GRID (grid), remove, 1, 2, 1, 1);
@@ -2756,12 +2876,12 @@ on_bookmark_add (GtkButton *button, gpointer data)
 
   if (name == NULL || *name == '\0')
     {
-      gtk_label_set_text (GTK_LABEL (box->status), "Type a name for the bookmark.");
+      gtk_label_set_text (GTK_LABEL (box->status), _("Type a name for the bookmark."));
       return;
     }
   if (!w42_view_has_selection (box->view))
     {
-      gtk_label_set_text (GTK_LABEL (box->status), "Select the text to bookmark first.");
+      gtk_label_set_text (GTK_LABEL (box->status), _("Select the text to bookmark first."));
       return;
     }
 
@@ -2778,7 +2898,7 @@ on_bookmark_go_to (GtkButton *button, gpointer data)
 
   (void) button;
   if (!w42_view_go_to_bookmark (box->view, name))
-    gtk_label_set_text (GTK_LABEL (box->status), "No bookmark of that name.");
+    gtk_label_set_text (GTK_LABEL (box->status), _("No bookmark of that name."));
 }
 
 static void
@@ -2822,13 +2942,13 @@ w42_bookmark_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (BookmarkBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Bookmark", &content, view);
+  box->window = dialog_shell (parent, _("Bookmark"), &content, view);
   gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
   g_object_weak_ref (G_OBJECT (box->window), bookmark_free, box);
 
-  grid = group (content, "Bookmarks");
+  grid = group (content, _("Bookmarks"));
 
-  label = gtk_label_new_with_mnemonic ("Bookmark _Name:");
+  label = gtk_label_new_with_mnemonic (_("Bookmark _Name:"));
   box->name = gtk_entry_new ();
   gtk_widget_set_size_request (box->name, 220, -1);
   gtk_entry_set_activates_default (GTK_ENTRY (box->name), TRUE);
@@ -2849,9 +2969,9 @@ w42_bookmark_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), scroller, 0, 1, 2, 1);
 
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  add = gtk_button_new_with_mnemonic ("_Add");
-  go = gtk_button_new_with_mnemonic ("_Go To");
-  del = gtk_button_new_with_mnemonic ("_Delete");
+  add = gtk_button_new_with_mnemonic (_("_Add"));
+  go = gtk_button_new_with_mnemonic (_("_Go To"));
+  del = gtk_button_new_with_mnemonic (_("_Delete"));
   g_signal_connect (add, "clicked", G_CALLBACK (on_bookmark_add), box);
   g_signal_connect (go, "clicked", G_CALLBACK (on_bookmark_go_to), box);
   g_signal_connect (del, "clicked", G_CALLBACK (on_bookmark_delete), box);
@@ -2869,7 +2989,7 @@ w42_bookmark_dialog_show (GtkWindow *parent, W42View *view)
     GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
 
     gtk_widget_set_halign (row, GTK_ALIGN_END);
-    close = gtk_button_new_with_mnemonic ("Close");
+    close = gtk_button_new_with_mnemonic (_("Close"));
     gtk_widget_set_size_request (close, 92, 26);
     g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
     gtk_box_append (GTK_BOX (row), close);
@@ -2900,20 +3020,30 @@ typedef struct {
 /* Word 97's Font box offered these and a few more; these are the ones
  * every file format can say. */
 static const char * const UNDERLINES[] = {
-  "(none)", "Single", "Double", "Words Only", "Dotted", "Dashed", "Thick", "Wave", NULL
+  NC_("underline", "(none)"), NC_("underline", "Single"), NC_("underline", "Double"),
+  NC_("underline", "Words Only"), NC_("underline", "Dotted"), NC_("underline", "Dashed"),
+  NC_("underline", "Thick"), NC_("underline", "Wave"), NULL
 };
 
 static const char * const HIGHLIGHTS[] = {
-  "None", "Yellow", "Bright Green", "Turquoise", "Pink", "Blue", "Red",
-  "Dark Blue", "Teal", "Green", "Violet", "Dark Red", "Dark Yellow", "Gray 50%",
-  "Gray 25%", NULL
+  /* Translators: no highlight colour. */
+  NC_("colour", "None"), NC_("colour", "Yellow"), NC_("colour", "Bright Green"),
+  NC_("colour", "Turquoise"), NC_("colour", "Pink"), NC_("colour", "Blue"),
+  NC_("colour", "Red"), NC_("colour", "Dark Blue"), NC_("colour", "Teal"),
+  NC_("colour", "Green"), NC_("colour", "Violet"), NC_("colour", "Dark Red"),
+  NC_("colour", "Dark Yellow"), NC_("colour", "Gray 50%"), NC_("colour", "Gray 25%"), NULL
 };
 static const guint8 HIGHLIGHT_INDEX[] = { 0, 7, 4, 3, 5, 2, 6, 9, 10, 11, 12, 13, 14, 15, 16 };
 
 /* Word 97's sixteen colours, as its Font box listed them; Auto is black. */
 static const char *const TEXT_COLOURS[] = {
-  "Auto", "Black", "Blue", "Cyan", "Green", "Magenta", "Red", "Yellow", "White",
-  "Dark Blue", "Dark Cyan", "Dark Green", "Dark Magenta", "Dark Red", "Dark Yellow", "Dark Gray", "Light Gray", NULL
+  /* Translators: the automatic text colour, which is black. */
+  NC_("colour", "Auto"), NC_("colour", "Black"), NC_("colour", "Blue"),
+  NC_("colour", "Cyan"), NC_("colour", "Green"), NC_("colour", "Magenta"),
+  NC_("colour", "Red"), NC_("colour", "Yellow"), NC_("colour", "White"),
+  NC_("colour", "Dark Blue"), NC_("colour", "Dark Cyan"), NC_("colour", "Dark Green"),
+  NC_("colour", "Dark Magenta"), NC_("colour", "Dark Red"), NC_("colour", "Dark Yellow"),
+  NC_("colour", "Dark Gray"), NC_("colour", "Light Gray"), NULL
 };
 static const guint32 TEXT_COLOUR_VALUES[] = {
   0x000000, 0x000000, 0x0000FF, 0x00FFFF, 0x00FF00, 0xFF00FF, 0xFF0000, 0xFFFF00, 0xFFFFFF,
@@ -2984,17 +3114,17 @@ w42_effects_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (EffectsBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Font Effects", &content, view);
+  box->window = dialog_shell (parent, _("Font Effects"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
   w42_view_get_char_fmt (view, &now);
 
-  grid = group (content, "Effects");
-  box->strike    = gtk_check_button_new_with_mnemonic ("Stri_kethrough");
-  box->super     = gtk_check_button_new_with_mnemonic ("Su_perscript");
-  box->sub       = gtk_check_button_new_with_mnemonic ("Su_bscript");
-  box->smallcaps = gtk_check_button_new_with_mnemonic ("S_mall Caps");
-  box->allcaps   = gtk_check_button_new_with_mnemonic ("_All Caps");
-  box->overline  = gtk_check_button_new_with_mnemonic ("O_verline");
+  grid = group (content, _("Effects"));
+  box->strike    = gtk_check_button_new_with_mnemonic (_("Stri_kethrough"));
+  box->super     = gtk_check_button_new_with_mnemonic (_("Su_perscript"));
+  box->sub       = gtk_check_button_new_with_mnemonic (_("Su_bscript"));
+  box->smallcaps = gtk_check_button_new_with_mnemonic (_("S_mall Caps"));
+  box->allcaps   = gtk_check_button_new_with_mnemonic (_("_All Caps"));
+  box->overline  = gtk_check_button_new_with_mnemonic (_("O_verline"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->overline), now.overline);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->strike), now.strikeout);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->super), now.script > 0);
@@ -3011,11 +3141,11 @@ w42_effects_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), box->overline, 1, 2, 1, 1);
 
   /* Word 97's additions, in the order its Font box listed them. */
-  box->dstrike = gtk_check_button_new_with_mnemonic ("Dou_ble Strikethrough");
-  box->shadow  = gtk_check_button_new_with_mnemonic ("Shado_w");
-  box->outline = gtk_check_button_new_with_mnemonic ("Out_line");
-  box->emboss  = gtk_check_button_new_with_mnemonic ("Em_boss");
-  box->engrave = gtk_check_button_new_with_mnemonic ("En_grave");
+  box->dstrike = gtk_check_button_new_with_mnemonic (_("Dou_ble Strikethrough"));
+  box->shadow  = gtk_check_button_new_with_mnemonic (_("Shado_w"));
+  box->outline = gtk_check_button_new_with_mnemonic (_("Out_line"));
+  box->emboss  = gtk_check_button_new_with_mnemonic (_("Em_boss"));
+  box->engrave = gtk_check_button_new_with_mnemonic (_("En_grave"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->dstrike), now.dstrike);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->shadow), now.shadow);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->outline), now.outline);
@@ -3029,26 +3159,27 @@ w42_effects_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), box->emboss, 1, 4, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->engrave, 1, 5, 1, 1);
 
-  grid = group (content, "Underline");
-  box->underline = choice_row (grid, 0, 0, "_Underline:", UNDERLINES,
-                               MIN (now.underline, G_N_ELEMENTS (UNDERLINES) - 2));
+  grid = group (content, _("Underline"));
+  box->underline = choice_row_ctx (grid, 0, 0, _("_Underline:"), "underline", UNDERLINES,
+                                   MIN (now.underline, G_N_ELEMENTS (UNDERLINES) - 2));
 
-  grid = group (content, "Highlight");
+  grid = group (content, _("Highlight"));
   for (guint i = 0; i < G_N_ELEMENTS (HIGHLIGHT_INDEX); i++)
     if (HIGHLIGHT_INDEX[i] == now.highlight)
       h_index = i;
-  box->highlight = choice_row (grid, 0, 0, "_Highlight:", HIGHLIGHTS, h_index);
+  box->highlight = choice_row_ctx (grid, 0, 0, _("_Highlight:"), "colour", HIGHLIGHTS, h_index);
   {
     guint ci = 0;
 
     for (guint i = 1; i < G_N_ELEMENTS (TEXT_COLOUR_VALUES); i++)
       if (TEXT_COLOUR_VALUES[i] == now.color && now.color != 0) ci = i;
-    box->colour = choice_row (grid, 1, 0, "_Color:", TEXT_COLOURS, ci);
+    box->colour = choice_row_ctx (grid, 1, 0, _("_Color:"), "colour", TEXT_COLOURS, ci);
   }
 
-  grid = group (content, "Character Spacing");
+  grid = group (content, _("Character Spacing"));
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("_Expanded by (pt):");
+    /* Translators: "pt" is points, the typographic unit. */
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("_Expanded by (pt):"));
 
     box->spacing = gtk_spin_button_new_with_range (-10.0, 30.0, 0.25);
     gtk_spin_button_set_digits (GTK_SPIN_BUTTON (box->spacing), 2);
@@ -3077,9 +3208,14 @@ typedef struct {
   GtkWidget *scope;
 } ColumnsBox;
 
-static const char * const COLUMN_SCOPES[] = { "Whole document", "This section", "This point forward", NULL };
+static const char * const COLUMN_SCOPES[] = {
+  N_("Whole document"), N_("This section"), N_("This point forward"), NULL
+};
 
-static const char * const COLUMN_PRESETS[] = { "One", "Two", "Three", NULL };
+static const char * const COLUMN_PRESETS[] = {
+  /* Translators: how many columns of text. */
+  NC_("columns", "One"), NC_("columns", "Two"), NC_("columns", "Three"), NULL
+};
 
 static void
 on_columns_ok (GtkButton *button, gpointer data)
@@ -3119,21 +3255,22 @@ w42_columns_dialog_show (GtkWindow *parent, W42View *view)
   page = w42_document_page_setup (w42_view_get_document (view));
   box = g_new0 (ColumnsBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Columns", &content, view);
+  box->window = dialog_shell (parent, _("Columns"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Presets");
+  grid = group (content, _("Presets"));
   {
     int columns = 1, gap = 720;
 
     (void) page;
     w42_view_get_columns (view, &columns, &gap);
-    box->count = choice_row (grid, 0, 0, "_Number of Columns:", COLUMN_PRESETS,
-                             CLAMP (columns - 1, 0, 2));
-    box->gap = inches_row (grid, 1, 0, "_Spacing:", measure_from_twips (gap));
+    box->count = choice_row_ctx (grid, 0, 0, _("_Number of Columns:"), "columns", COLUMN_PRESETS,
+                                 CLAMP (columns - 1, 0, 2));
+    /* Translators: the space between the columns. */
+    box->gap = inches_row (grid, 1, 0, _("_Spacing:"), measure_from_twips (gap));
   }
 
-  box->scope = choice_row (grid, 2, 0, "_Apply To:", COLUMN_SCOPES, 0);
+  box->scope = choice_row (grid, 2, 0, _("_Apply To:"), COLUMN_SCOPES, 0);
 
   button_row (content, box->window, G_CALLBACK (on_columns_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -3195,7 +3332,10 @@ annotations_refresh (AnnotationsBox *box)
       GtkWidget *label;
 
       g_strdelimit (quoted, "\n\t", ' ');
-      line = g_strdup_printf ("\342\200\234%s%s\342\200\235 \342\200\224 %s", quoted,
+      /* Translators: an annotation in the list: the annotated text in
+       * quotation marks (the second %s is an ellipsis when it was cut
+       * short), a dash, and the annotation. */
+      line = g_strdup_printf (_("\342\200\234%s%s\342\200\235 \342\200\224 %s"), quoted,
                               a->end - a->start > 40 ? "\342\200\246" : "", a->text);
       label = gtk_label_new (line);
       gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -3208,7 +3348,7 @@ annotations_refresh (AnnotationsBox *box)
     }
 
   gtk_label_set_text (GTK_LABEL (box->status),
-                      box->items->len == 0 ? "No annotations in the document." : "");
+                      box->items->len == 0 ? _("No annotations in the document.") : "");
 }
 
 static void
@@ -3220,9 +3360,9 @@ on_annotation_add (GtkButton *button, gpointer data)
   (void) button;
 
   if (!w42_view_has_selection (box->view))
-    gtk_label_set_text (GTK_LABEL (box->status), "Select the text to annotate first.");
+    gtk_label_set_text (GTK_LABEL (box->status), _("Select the text to annotate first."));
   else if (*g_strstrip (text) == '\0')
-    gtk_label_set_text (GTK_LABEL (box->status), "Type the annotation first.");
+    gtk_label_set_text (GTK_LABEL (box->status), _("Type the annotation first."));
   else
     {
       w42_view_set_comment (box->view, text);
@@ -3290,13 +3430,13 @@ w42_annotations_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (AnnotationsBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Annotations", &content, view);
+  box->window = dialog_shell (parent, _("Annotations"), &content, view);
   gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
   g_object_weak_ref (G_OBJECT (box->window), annotations_free, box);
 
-  grid = group (content, "Annotation");
+  grid = group (content, _("Annotation"));
 
-  label = gtk_label_new_with_mnemonic ("_Text:");
+  label = gtk_label_new_with_mnemonic (_("_Text:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
 
@@ -3313,7 +3453,7 @@ w42_annotations_dialog_show (GtkWindow *parent, W42View *view)
   if (current != NULL)
     gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text)), current, -1);
 
-  grid = group (content, "In the Document");
+  grid = group (content, _("In the Document"));
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
   g_signal_connect (box->list, "row-selected", G_CALLBACK (on_annotation_row), box);
@@ -3332,9 +3472,9 @@ w42_annotations_dialog_show (GtkWindow *parent, W42View *view)
 
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_halign (buttons, GTK_ALIGN_END);
-  add = gtk_button_new_with_mnemonic ("_Add");
-  del = gtk_button_new_with_mnemonic ("_Delete");
-  close = gtk_button_new_with_mnemonic ("Close");
+  add = gtk_button_new_with_mnemonic (_("_Add"));
+  del = gtk_button_new_with_mnemonic (_("_Delete"));
+  close = gtk_button_new_with_mnemonic (_("Close"));
   gtk_widget_set_size_request (add, 92, 26);
   gtk_widget_set_size_request (del, 92, 26);
   gtk_widget_set_size_request (close, 92, 26);
@@ -3420,13 +3560,17 @@ merge_show_source (MergeBox *box)
                            gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), 0));
 
   {
-    char *text = g_strdup_printf ("%u record%s, %u field%s.",
-                                  box->source->rows->len,
-                                  box->source->rows->len == 1 ? "" : "s",
-                                  g_strv_length (box->source->fields),
-                                  g_strv_length (box->source->fields) == 1 ? "" : "s");
+    guint n_records = box->source->rows->len;
+    guint n_fields = g_strv_length (box->source->fields);
+    char *records = g_strdup_printf (ngettext ("%u record", "%u records", n_records), n_records);
+    char *fields = g_strdup_printf (ngettext ("%u field", "%u fields", n_fields), n_fields);
+    /* Translators: the data source's size: "12 records" and "3 fields". */
+    char *text = g_strdup_printf (_("%s, %s."), records, fields);
+
     gtk_label_set_text (GTK_LABEL (box->status), text);
     g_free (text);
+    g_free (fields);
+    g_free (records);
   }
 }
 
@@ -3476,11 +3620,11 @@ on_merge_open_source (GtkButton *button, gpointer data)
   GtkFileFilter *csv = gtk_file_filter_new ();
 
   (void) button;
-  gtk_file_filter_set_name (csv, "Comma Separated Values (*.csv)");
+  gtk_file_filter_set_name (csv, _("Comma Separated Values (*.csv)"));
   gtk_file_filter_add_pattern (csv, "*.csv");
   gtk_file_filter_add_pattern (csv, "*.txt");
   g_list_store_append (filters, csv);
-  gtk_file_dialog_set_title (dialog, "Open Data Source");
+  gtk_file_dialog_set_title (dialog, _("Open Data Source"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   g_object_ref (box->window);
   gtk_file_dialog_open (dialog, GTK_WINDOW (box->window), NULL,
@@ -3500,7 +3644,7 @@ on_merge_insert_field (GtkButton *button, gpointer data)
   (void) button;
   if (name == NULL)
     {
-      gtk_label_set_text (GTK_LABEL (box->status), "Open a data source first.");
+      gtk_label_set_text (GTK_LABEL (box->status), _("Open a data source first."));
       return;
     }
   text = w42_merge_field_text (name);
@@ -3526,8 +3670,8 @@ merge_output_file (MergeBox *box, GFile *chosen)
         file = g_object_ref (chosen);
       else
         gtk_label_set_text (GTK_LABEL (box->status),
-                            "A merge is written as Rich Text: give the file a "
-                            "name ending .rtf.");
+                            _("A merge is written as Rich Text: give the file a "
+                              "name ending .rtf."));
       g_free (lower);
     }
   else
@@ -3540,8 +3684,9 @@ merge_output_file (MergeBox *box, GFile *chosen)
       /* The file box asked about the name as it was typed, not this one. */
       if (g_file_query_exists (file, NULL))
         {
-          char *text = g_strdup_printf ("%s is there already: choose it by that "
-                                        "name to replace it, or another name.",
+          /* Translators: %s is a file name. */
+          char *text = g_strdup_printf (_("%s is there already: choose it by that "
+                                          "name to replace it, or another name."),
                                         named);
 
           gtk_label_set_text (GTK_LABEL (box->status), text);
@@ -3604,7 +3749,7 @@ on_merge_output_chosen (GObject *object, GAsyncResult *result, gpointer data)
       else
         {
           gtk_window_destroy (GTK_WINDOW (merged));
-          w42_message_show (parent, "Word42 could not open the merged document.",
+          w42_message_show (parent, _("Word42 could not open the merged document."),
                             error != NULL ? error->message : NULL);
           g_clear_error (&error);
         }
@@ -3625,24 +3770,26 @@ on_merge_run (GtkButton *button, gpointer data)
   (void) button;
   if (box->source == NULL)
     {
-      gtk_label_set_text (GTK_LABEL (box->status), "Open a data source first.");
+      gtk_label_set_text (GTK_LABEL (box->status), _("Open a data source first."));
       return;
     }
   if (box->source->rows->len == 0)
     {
-      gtk_label_set_text (GTK_LABEL (box->status), "The data source has no records.");
+      gtk_label_set_text (GTK_LABEL (box->status), _("The data source has no records."));
       return;
     }
 
   dialog = gtk_file_dialog_new ();
   filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
   rtf = gtk_file_filter_new ();
-  gtk_file_filter_set_name (rtf, "Rich Text Format (*.rtf)");
+  gtk_file_filter_set_name (rtf, _("Rich Text Format (*.rtf)"));
   gtk_file_filter_add_pattern (rtf, "*.rtf");
   g_list_store_append (filters, rtf);
-  gtk_file_dialog_set_title (dialog, "Merge to New Document");
+  gtk_file_dialog_set_title (dialog, _("Merge to New Document"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
-  gtk_file_dialog_set_initial_name (dialog, "Merged.rtf");
+  /* Translators: the name the merged document is offered under; keep
+   * the .rtf at the end. */
+  gtk_file_dialog_set_initial_name (dialog, _("Merged.rtf"));
   g_object_ref (box->window);
   gtk_file_dialog_save (dialog, GTK_WINDOW (box->window), NULL,
                         on_merge_output_chosen, box);
@@ -3664,27 +3811,28 @@ w42_mail_merge_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (MergeBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Mail Merge", &content, view);
+  box->window = dialog_shell (parent, _("Mail Merge"), &content, view);
   gtk_window_set_modal (GTK_WINDOW (box->window), FALSE);
   g_object_weak_ref (G_OBJECT (box->window), merge_free, box);
   g_signal_connect (box->window, "unrealize", G_CALLBACK (on_merge_closed), box);
 
-  grid = group (content, "Data Source");
+  grid = group (content, _("Data Source"));
 
-  label = gtk_label_new ("A CSV file whose first row names the fields.");
+  label = gtk_label_new (_("A CSV file whose first row names the fields."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
 
-  open = gtk_button_new_with_mnemonic ("_Get Data...");
+  open = gtk_button_new_with_mnemonic (_("_Get Data..."));
   g_signal_connect (open, "clicked", G_CALLBACK (on_merge_open_source), box);
-  box->path = gtk_label_new ("(none)");
+  /* Translators: no data source file has been chosen yet. */
+  box->path = gtk_label_new (C_("data source", "(none)"));
   gtk_label_set_xalign (GTK_LABEL (box->path), 0.0);
   gtk_label_set_ellipsize (GTK_LABEL (box->path), PANGO_ELLIPSIZE_MIDDLE);
   gtk_widget_set_hexpand (box->path, TRUE);
   gtk_grid_attach (GTK_GRID (grid), open, 0, 1, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->path, 1, 1, 1, 1);
 
-  grid = group (content, "Merge Fields");
+  grid = group (content, _("Merge Fields"));
 
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_SINGLE);
@@ -3697,15 +3845,17 @@ w42_mail_merge_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), scroller, 0, 0, 2, 1);
 
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  insert = gtk_button_new_with_mnemonic ("_Insert Merge Field");
-  merge = gtk_button_new_with_mnemonic ("_Merge to New Document...");
+  insert = gtk_button_new_with_mnemonic (_("_Insert Merge Field"));
+  merge = gtk_button_new_with_mnemonic (_("_Merge to New Document..."));
   g_signal_connect (insert, "clicked", G_CALLBACK (on_merge_insert_field), box);
   g_signal_connect (merge, "clicked", G_CALLBACK (on_merge_run), box);
   gtk_box_append (GTK_BOX (buttons), insert);
   gtk_box_append (GTK_BOX (buttons), merge);
   gtk_grid_attach (GTK_GRID (grid), buttons, 0, 1, 2, 1);
 
-  box->status = gtk_label_new ("Fields go into the text as \302\253Name\302\273.");
+  /* Translators: how a merge field looks in the text; "Name" stands for
+   * a field's name. */
+  box->status = gtk_label_new (_("Fields go into the text as \302\253Name\302\273."));
   gtk_label_set_xalign (GTK_LABEL (box->status), 0.0);
   gtk_widget_add_css_class (box->status, "w42-dialog-status");
   gtk_grid_attach (GTK_GRID (grid), box->status, 0, 2, 2, 1);
@@ -3714,7 +3864,7 @@ w42_mail_merge_dialog_show (GtkWindow *parent, W42View *view)
     GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
 
     gtk_widget_set_halign (row, GTK_ALIGN_END);
-    close = gtk_button_new_with_mnemonic ("Close");
+    close = gtk_button_new_with_mnemonic (_("Close"));
     gtk_widget_set_size_request (close, 92, 26);
     g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
     gtk_box_append (GTK_BOX (row), close);
@@ -3765,7 +3915,7 @@ w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view)
   XrefBox *box;
   GtkWidget *content, *grid, *label;
   W42Document *doc;
-  static const char * const kinds[] = { "Page number", "Bookmark text", NULL };
+  static const char * const kinds[] = { N_("Page number"), N_("Bookmark text"), NULL };
 
   g_return_if_fail (W42_IS_VIEW (view));
 
@@ -3776,27 +3926,28 @@ w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view)
   box = g_new0 (XrefBox, 1);
   box->view = view;
   box->names = w42_pt_bookmark_names (w42_document_pt (doc));
-  box->window = dialog_shell (parent, "Cross-reference", &content, view);
+  box->window = dialog_shell (parent, _("Cross-reference"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), xref_free, box);
 
-  grid = group (content, "Reference");
+  grid = group (content, _("Reference"));
 
   if (box->names == NULL || box->names[0] == NULL)
     {
-      label = gtk_label_new ("There are no bookmarks to refer to.\n"
-                             "Insert > Bookmark marks a place first.");
+      /* Translators: "Insert > Bookmark" is the menu command. */
+      label = gtk_label_new (_("There are no bookmarks to refer to.\n"
+                               "Insert > Bookmark marks a place first."));
       gtk_label_set_xalign (GTK_LABEL (label), 0.0);
       gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
-      box->which = choice_row (grid, 1, 0, "For which _bookmark:", NULL, 0);
+      box->which = choice_row (grid, 1, 0, _("For which _bookmark:"), NULL, 0);
       gtk_widget_set_sensitive (box->which, FALSE);
     }
   else
-    box->which = choice_row (grid, 0, 0, "For which _bookmark:",
-                             (const char * const *) box->names, 0);
-  box->kind = choice_row (grid, 2, 0, "_Insert reference to:", kinds, 0);
+    box->which = choice_row_data (grid, 0, 0, _("For which _bookmark:"),
+                                  (const char * const *) box->names, 0);
+  box->kind = choice_row (grid, 2, 0, _("_Insert reference to:"), kinds, 0);
 
-  label = gtk_label_new ("The reference is text; insert it again after the "
-                         "pages change.");
+  label = gtk_label_new (_("The reference is text; insert it again after the "
+                           "pages change."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_widget_add_css_class (label, "w42-dialog-status");
   gtk_grid_attach (GTK_GRID (grid), label, 0, 3, 2, 1);
@@ -3817,10 +3968,13 @@ typedef struct {
 } DrawingBox;
 
 static const char * const SHAPE_NAMES[] = {
-  "Line", "Arrow", "Rectangle", "Rounded Rectangle", "Ellipse", NULL
+  NC_("shape", "Line"), NC_("shape", "Arrow"), NC_("shape", "Rectangle"),
+  NC_("shape", "Rounded Rectangle"), NC_("shape", "Ellipse"), NULL
 };
 static const char * const SHAPE_COLOURS[] = {
-  "Black", "White", "Gray", "Red", "Green", "Blue", "Yellow", NULL
+  NC_("colour", "Black"), NC_("colour", "White"), NC_("colour", "Gray"),
+  NC_("colour", "Red"), NC_("colour", "Green"), NC_("colour", "Blue"),
+  NC_("colour", "Yellow"), NULL
 };
 static const guint32 SHAPE_RGB[] = {
   0x000000, 0xffffff, 0x808080, 0xc00000, 0x008000, 0x0000c0, 0xffff00
@@ -3912,19 +4066,20 @@ w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
         shown = *object;
       }
   }
-  box->window = dialog_shell (parent, box->editing ? "Format Drawing" : "Drawing", &content, view);
+  box->window = dialog_shell (parent, box->editing ? _("Format Drawing") : _("Drawing"),
+                              &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Shape");
-  box->kind   = choice_row (grid, 0, 0, "_Shape:", SHAPE_NAMES,
-                            box->editing ? (guint) MAX ((int) shown.shape - 1, 0) : 2);
-  box->width  = inches_row (grid, 1, 0, "_Width:", measure_from_twips (box->editing ? shown.width : 2 * 1440));
-  box->height = inches_row (grid, 2, 0, "_Height:", measure_from_twips (box->editing ? shown.height : 1440));
+  grid = group (content, _("Shape"));
+  box->kind   = choice_row_ctx (grid, 0, 0, _("_Shape:"), "shape", SHAPE_NAMES,
+                                box->editing ? (guint) MAX ((int) shown.shape - 1, 0) : 2);
+  box->width  = inches_row (grid, 1, 0, _("_Width:"), measure_from_twips (box->editing ? shown.width : 2 * 1440));
+  box->height = inches_row (grid, 2, 0, _("_Height:"), measure_from_twips (box->editing ? shown.height : 1440));
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("_Text:");
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("_Text:"));
 
     box->text = gtk_entry_new ();
-    gtk_entry_set_placeholder_text (GTK_ENTRY (box->text), "set in the middle of the shape");
+    gtk_entry_set_placeholder_text (GTK_ENTRY (box->text), _("set in the middle of the shape"));
     if (box->editing && shown.text != NULL)
       gtk_editable_set_text (GTK_EDITABLE (box->text), shown.text);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -3933,9 +4088,10 @@ w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
     gtk_grid_attach (GTK_GRID (grid), box->text, 1, 3, 1, 1);
   }
 
-  grid = group (content, "Line and Fill");
+  grid = group (content, _("Line and Fill"));
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("_Line Width (pt):");
+    /* Translators: "pt" is points, the typographic unit. */
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("_Line Width (pt):"));
 
     box->line = gtk_spin_button_new_with_range (0.0, 12.0, 0.25);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->line), box->editing ? shown.line_pt : 1.0);
@@ -3944,13 +4100,13 @@ w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
     gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (grid), box->line, 1, 0, 1, 1);
   }
-  box->line_colour = choice_row (grid, 1, 0, "Line _Color:", SHAPE_COLOURS,
-                                 box->editing ? shape_colour_index (shown.line_rgb) : 0);
-  box->filled = gtk_check_button_new_with_mnemonic ("_Filled");
+  box->line_colour = choice_row_ctx (grid, 1, 0, _("Line _Color:"), "colour", SHAPE_COLOURS,
+                                     box->editing ? shape_colour_index (shown.line_rgb) : 0);
+  box->filled = gtk_check_button_new_with_mnemonic (_("_Filled"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->filled), box->editing && shown.filled);
   gtk_grid_attach (GTK_GRID (grid), box->filled, 0, 2, 2, 1);
-  box->fill_colour = choice_row (grid, 3, 0, "Fill Colo_r:", SHAPE_COLOURS,
-                                 box->editing ? shape_colour_index (shown.fill_rgb) : 6);
+  box->fill_colour = choice_row_ctx (grid, 3, 0, _("Fill Colo_r:"), "colour", SHAPE_COLOURS,
+                                     box->editing ? shape_colour_index (shown.fill_rgb) : 6);
 
   button_row (content, box->window, G_CALLBACK (on_drawing_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -3971,9 +4127,11 @@ typedef struct {
 
 /* In the order of W42ListKind. */
 static const char * const LIST_KIND_NAMES[] = {
-  "None", "\342\200\242 Bullet", "1. 2. 3.", "a. b. c.", "A. B. C.",
-  "i. ii. iii.", "I. II. III.", "\342\227\246 Circle", "\342\226\252 Square",
-  "\342\200\223 Dash", NULL
+  /* Translators: kinds of list; the numbered kinds are shown as they
+   * number, and the bullets are drawn before their names. */
+  NC_("list", "None"), NC_("list", "\342\200\242 Bullet"), "1. 2. 3.", "a. b. c.", "A. B. C.",
+  "i. ii. iii.", "I. II. III.", NC_("list", "\342\227\246 Circle"),
+  NC_("list", "\342\226\252 Square"), NC_("list", "\342\200\223 Dash"), NULL
 };
 
 static void
@@ -4025,16 +4183,16 @@ w42_list_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (ListBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Bullets and Numbering", &content, view);
+  box->window = dialog_shell (parent, _("Bullets and Numbering"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
   w42_view_get_para_fmt (view, &now);
 
-  grid = group (content, "List");
-  box->kind = choice_row (grid, 0, 0, "_Kind:", LIST_KIND_NAMES,
-                          MIN (now.list, W42_LIST_KINDS - 1));
+  grid = group (content, _("List"));
+  box->kind = choice_row_ctx (grid, 0, 0, _("_Kind:"), "list", LIST_KIND_NAMES,
+                              MIN (now.list, W42_LIST_KINDS - 1));
 
   {
-    GtkWidget *lvl_label = gtk_label_new_with_mnemonic ("_Level:");
+    GtkWidget *lvl_label = gtk_label_new_with_mnemonic (_("_Level:"));
 
     box->level = gtk_spin_button_new_with_range (1, 9, 1);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->level), now.list_level + 1);
@@ -4043,15 +4201,15 @@ w42_list_dialog_show (GtkWindow *parent, W42View *view)
     gtk_grid_attach (GTK_GRID (grid), lvl_label, 0, 3, 1, 1);
     gtk_grid_attach (GTK_GRID (grid), box->level, 1, 3, 1, 1);
   }
-  box->restart = gtk_check_button_new_with_mnemonic ("_Restart numbering at:");
+  box->restart = gtk_check_button_new_with_mnemonic (_("_Restart numbering at:"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->restart), now.list_start > 0);
   box->start = gtk_spin_button_new_with_range (1, 255, 1);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->start), now.list_start > 0 ? now.list_start : 1);
   gtk_grid_attach (GTK_GRID (grid), box->restart, 0, 1, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->start, 1, 1, 1, 1);
 
-  label = gtk_label_new ("Numbering continues from the item before unless restarted.\n"
-                         "Tab and Shift+Tab at the start of an item change its level.");
+  label = gtk_label_new (_("Numbering continues from the item before unless restarted.\n"
+                           "Tab and Shift+Tab at the start of an item change its level."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_widget_add_css_class (label, "w42-dialog-status");
   gtk_grid_attach (GTK_GRID (grid), label, 0, 4, 2, 1);
@@ -4083,7 +4241,10 @@ typedef struct {
   gboolean   have_cell;
 } TablePropsBox;
 
-static const char * const VALIGN_NAMES[] = { "Top", "Center", "Bottom", NULL };
+static const char * const VALIGN_NAMES[] = {
+  NC_("vertical alignment", "Top"), NC_("vertical alignment", "Center"),
+  NC_("vertical alignment", "Bottom"), NULL
+};
 
 /* An inches (or cm) spinner's value in twips. */
 static int
@@ -4170,49 +4331,50 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (TablePropsBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Table Properties", &content, view);
+  box->window = dialog_shell (parent, _("Table Properties"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
   w42_view_get_para_fmt (view, &now);
 
-  grid = group (content, "Table");
-  box->borders = gtk_check_button_new_with_mnemonic ("_Borders around every cell");
+  /* Translators: the group of settings for the whole table. */
+  grid = group (content, C_("table properties", "Table"));
+  box->borders = gtk_check_button_new_with_mnemonic (_("_Borders around every cell"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->borders), w42_view_table_get_borders (view));
   gtk_grid_attach (GTK_GRID (grid), box->borders, 0, 0, 2, 1);
-  box->header = gtk_check_button_new_with_mnemonic ("_Repeat the first row at the top of each page");
+  box->header = gtk_check_button_new_with_mnemonic (_("_Repeat the first row at the top of each page"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->header), w42_view_table_get_header_rows (view) > 0);
   gtk_grid_attach (GTK_GRID (grid), box->header, 0, 1, 2, 1);
 
-  grid = group (content, "This Row");
+  grid = group (content, _("This Row"));
   {
     double unit = w42_settings_get_units () == W42_UNITS_CM ? 2.54 : 1.0;
 
-    box->row_height = inches_row (grid, 0, 0, "Height at _least:",
+    box->row_height = inches_row (grid, 0, 0, _("Height at _least:"),
                                   w42_view_table_get_row_height (view) / 1440.0 * unit);
   }
 
-  grid = group (content, "This Cell");
+  grid = group (content, _("This Cell"));
   for (guint i = 0; i < G_N_ELEMENTS (SHADING_VALUES); i++)
     if (SHADING_VALUES[i] == now.shading)
       shading_index = i;
-  box->shading = choice_row (grid, 0, 0, "_Shading:", SHADINGS, shading_index);
+  box->shading = choice_row_ctx (grid, 0, 0, _("_Shading:"), "shading", SHADINGS, shading_index);
   {
     guint32 fill_rgb = 0;
     gboolean has_fill = w42_view_cell_get_fill (view, &fill_rgb);
 
-    box->fill = choice_row (grid, 1, 0, "Bac_kground:", FILL_NAMES,
-                            has_fill ? palette_index (fill_rgb) + 1 : 0);
+    box->fill = choice_row_ctx (grid, 1, 0, _("Bac_kground:"), "colour", FILL_NAMES,
+                                has_fill ? palette_index (fill_rgb) + 1 : 0);
   }
   {
-    static const char *const names[4] = { "_Top", "Botto_m", "Le_ft", "Ri_ght" };
+    static const char *const names[4] = { N_("_Top"), N_("Botto_m"), N_("Le_ft"), N_("Ri_ght") };
     static const int bits[4] = { W42_BORDER_TOP, W42_BORDER_BOTTOM, W42_BORDER_LEFT, W42_BORDER_RIGHT };
-    GtkWidget *label = gtk_label_new ("Borders:");
+    GtkWidget *label = gtk_label_new (_("Borders:"));
 
     box->sides_before = w42_view_cell_get_borders (view);
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 1, 1);
     for (int i = 0; i < 4; i++)
       {
-        box->side[i] = gtk_check_button_new_with_mnemonic (names[i]);
+        box->side[i] = gtk_check_button_new_with_mnemonic (_(names[i]));
         gtk_check_button_set_active (GTK_CHECK_BUTTON (box->side[i]), (box->sides_before & bits[i]) != 0);
         gtk_grid_attach (GTK_GRID (grid), box->side[i], 1 + i % 2, 2 + i / 2, 1, 1);
       }
@@ -4228,13 +4390,15 @@ w42_table_properties_dialog_show (GtkWindow *parent, W42View *view)
     if ((box->cell_before.edge[0].width == 0 && box->cell_before.edge[0].style == 0) &&
         w42_view_table_get_edges (view, edges))
       lead = &edges[W42_EDGE_TOP];
-    box->style = choice_row (grid, 4, 0, "Line st_yle:", BORDER_STYLES,
-                             lead->style <= W42_BORDER_DOTTED ? lead->style : 0);
-    box->width = choice_row (grid, 5, 0, "Line _width:", BORDER_WIDTHS,
+    box->style = choice_row_ctx (grid, 4, 0, _("Line st_yle:"), "border style", BORDER_STYLES,
+                                 lead->style <= W42_BORDER_DOTTED ? lead->style : 0);
+    box->width = choice_row (grid, 5, 0, _("Line _width:"), BORDER_WIDTHS,
                              width_index_for (W42_EDGE_WIDTH (lead)));
-    box->colour = choice_row (grid, 6, 0, "Line _color:", PALETTE_NAMES, palette_index (lead->color));
-    box->valign = choice_row (grid, 7, 0, "_Vertical alignment:", VALIGN_NAMES,
-                              MIN (box->cell_before.cell_valign, W42_CELL_VALIGN_BOTTOM));
+    box->colour = choice_row_ctx (grid, 6, 0, _("Line _color:"), "colour", PALETTE_NAMES,
+                                  palette_index (lead->color));
+    box->valign = choice_row_ctx (grid, 7, 0, _("_Vertical alignment:"), "vertical alignment",
+                                  VALIGN_NAMES,
+                                  MIN (box->cell_before.cell_valign, W42_CELL_VALIGN_BOTTOM));
   }
 
   button_row (content, box->window, G_CALLBACK (on_table_props_ok), box);
@@ -4283,9 +4447,11 @@ on_formula_ok (GtkButton *button, gpointer data)
   if (!w42_view_table_formula (box->view, text))
     {
       w42_message_show (GTK_WINDOW (box->window),
-                        "The formula must be a function of the cells in one direction: "
-                        "=SUM(ABOVE), =AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), "
-                        "=MIN(ABOVE) or =PRODUCT(LEFT).", NULL);
+                        /* Translators: the formulas are typed as they are
+                         * here: keep =SUM(ABOVE) and the rest in English. */
+                        _("The formula must be a function of the cells in one direction: "
+                          "=SUM(ABOVE), =AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), "
+                          "=MIN(ABOVE) or =PRODUCT(LEFT)."), NULL);
       return;
     }
   gtk_window_destroy (GTK_WINDOW (box->window));
@@ -4306,7 +4472,7 @@ w42_formula_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (FormulaBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Formula", &content, view);
+  box->window = dialog_shell (parent, _("Formula"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
   /* Word 97 guessed: numbers above the cell mean SUM(ABOVE), otherwise
@@ -4324,19 +4490,21 @@ w42_formula_dialog_show (GtkWindow *parent, W42View *view)
       }
   }
 
-  grid = group (content, "Formula");
-  label = gtk_label_new_with_mnemonic ("_Formula:");
+  grid = group (content, _("Formula"));
+  label = gtk_label_new_with_mnemonic (_("_Formula:"));
   box->formula = gtk_entry_new ();
   gtk_editable_set_text (GTK_EDITABLE (box->formula), numbers_above ? "=SUM(ABOVE)" : "=SUM(LEFT)");
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->formula);
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->formula, 1, 0, 1, 1);
-  box->function = choice_row (grid, 1, 0, "_Paste function:", FORMULA_FUNCTIONS, 0);
+  box->function = choice_row_data (grid, 1, 0, _("_Paste function:"), FORMULA_FUNCTIONS, 0);
   g_signal_connect (box->function, "notify::selected", G_CALLBACK (on_formula_function), box);
 
-  label = gtk_label_new ("ABOVE, BELOW, LEFT or RIGHT: the cells in that direction,\n"
-                         "up to the first that holds no number.  The result is a field.");
+  /* Translators: ABOVE, BELOW, LEFT and RIGHT are typed into formulas as
+   * they are: keep them in English. */
+  label = gtk_label_new (_("ABOVE, BELOW, LEFT or RIGHT: the cells in that direction,\n"
+                           "up to the first that holds no number.  The result is a field."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_widget_add_css_class (label, "w42-dialog-status");
   gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 2, 1);
@@ -4391,12 +4559,15 @@ on_document_autoformat_ok (GtkButton *button, gpointer data)
    * says what it did, and Ctrl+Z takes the lot back. */
   {
     char *detail = changed > 0
-      ? g_strdup_printf ("%d paragraph%s changed.  Undo takes the whole "
-                         "thing back in one step.", changed, changed == 1 ? "" : "s")
-      : g_strdup ("Nothing needed changing.");
+      ? g_strdup_printf (ngettext ("%d paragraph changed.  Undo takes the whole "
+                                   "thing back in one step.",
+                                   "%d paragraphs changed.  Undo takes the whole "
+                                   "thing back in one step.", (unsigned long) changed),
+                         changed)
+      : g_strdup (_("Nothing needed changing."));
 
     w42_message_show (gtk_window_get_transient_for (GTK_WINDOW (box->window)),
-                      "AutoFormat", detail);
+                      _("AutoFormat"), detail);
     g_free (detail);
   }
 }
@@ -4414,21 +4585,21 @@ w42_autoformat_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (AutoFormatDialog, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "AutoFormat", &content, view);
+  box->window = dialog_shell (parent, _("AutoFormat"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), autoformat_dialog_free, box);
 
-  label = gtk_label_new ("Word42 will look over the whole document and put "
-                         "right what was typed as though on a typewriter.");
+  label = gtk_label_new (_("Word42 will look over the whole document and put "
+                           "right what was typed as though on a typewriter."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_widget_set_size_request (label, 330, -1);
   gtk_box_append (GTK_BOX (content), label);
 
-  grid = group (content, "Apply");
-  box->headings = gtk_check_button_new_with_mnemonic ("_Headings: short lines that stand alone");
-  box->lists = gtk_check_button_new_with_mnemonic ("_Lists: lines that start with a dash or a number");
-  box->quotes = gtk_check_button_new_with_mnemonic ("_Quotes and dashes as a printer sets them");
-  box->blanks = gtk_check_button_new_with_mnemonic ("_Empty paragraphs: a run of them becomes one");
+  grid = group (content, _("Apply"));
+  box->headings = gtk_check_button_new_with_mnemonic (_("_Headings: short lines that stand alone"));
+  box->lists = gtk_check_button_new_with_mnemonic (_("_Lists: lines that start with a dash or a number"));
+  box->quotes = gtk_check_button_new_with_mnemonic (_("_Quotes and dashes as a printer sets them"));
+  box->blanks = gtk_check_button_new_with_mnemonic (_("_Empty paragraphs: a run of them becomes one"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->headings),
                                w42_settings_get_bool ("autoformat-headings", TRUE));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->lists),
@@ -4489,21 +4660,23 @@ w42_index_entry_dialog_show (GtkWindow *parent, W42View *view)
   selected = w42_view_get_selected_text (view);
   if (selected == NULL || *selected == '\0')
     {
-      w42_message_show (parent, "Select the words to put in the index first.",
-                        "Insert \342\226\270 Index Entry marks what is selected; "
-                        "Insert \342\226\270 Index then gathers the marked words "
-                        "and the pages they are on.");
+      w42_message_show (parent, _("Select the words to put in the index first."),
+                        /* Translators: "Insert > Index Entry" and "Insert >
+                         * Index" are the menu commands. */
+                        _("Insert \342\226\270 Index Entry marks what is selected; "
+                          "Insert \342\226\270 Index then gathers the marked words "
+                          "and the pages they are on."));
       g_free (selected);
       return;
     }
 
   box = g_new0 (IndexEntryBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Index Entry", &content, view);
+  box->window = dialog_shell (parent, _("Index Entry"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), index_entry_free, box);
 
-  grid = group (content, "Mark the selected words");
-  label = gtk_label_new_with_mnemonic ("_File it under:");
+  grid = group (content, _("Mark the selected words"));
+  label = gtk_label_new_with_mnemonic (_("_File it under:"));
   box->term = gtk_entry_new ();
   gtk_editable_set_text (GTK_EDITABLE (box->term), selected);
   gtk_entry_set_activates_default (GTK_ENTRY (box->term), TRUE);
@@ -4513,8 +4686,8 @@ w42_index_entry_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->term, 1, 0, 1, 1);
 
-  label = gtk_label_new ("The words stay as they are and read as they did; "
-                         "the index says which pages they are on.");
+  label = gtk_label_new (_("The words stay as they are and read as they did; "
+                           "the index says which pages they are on."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_widget_set_size_request (label, 320, -1);
@@ -4562,10 +4735,10 @@ template_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
     return;
   which = gtk_list_box_row_get_index (row);
   if (which < n)
-    gtk_label_set_text (GTK_LABEL (box->hint), templates[which].hint);
+    gtk_label_set_text (GTK_LABEL (box->hint), _(templates[which].hint));
   else
     gtk_label_set_text (GTK_LABEL (box->hint),
-                        "A document of your own, kept in the templates folder.");
+                        _("A document of your own, kept in the templates folder."));
 }
 
 static void
@@ -4611,7 +4784,7 @@ on_template_ok (GtkButton *button, gpointer data)
         }
       else
         {
-          w42_message_show (parent, "Word42 could not open that template.",
+          w42_message_show (parent, _("Word42 could not open that template."),
                             error != NULL ? error->message : NULL);
         }
       g_clear_error (&error);
@@ -4637,15 +4810,15 @@ w42_template_dialog_show (GtkWindow *parent, W42View *view)
   box->view = view;
   box->n_built_in = n;
   box->files = w42_template_files ();
-  box->window = dialog_shell (parent, "New from Template", &content, view);
+  box->window = dialog_shell (parent, _("New from Template"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), template_free, box);
 
-  grid = group (content, "Templates");
+  grid = group (content, _("Templates"));
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
   for (int i = 0; i < n; i++)
     {
-      GtkWidget *label = gtk_label_new (templates[i].name);
+      GtkWidget *label = gtk_label_new (_(templates[i].name));
 
       gtk_label_set_xalign (GTK_LABEL (label), 0.0);
       gtk_widget_set_margin_start (label, 6);
@@ -4699,7 +4872,7 @@ typedef struct {
   GtkWidget *label_all;
 } EnvelopeBox;
 
-static const char * const ENVELOPE_OR_LABELS[] = { "Envelope", "Labels", NULL };
+static const char * const ENVELOPE_OR_LABELS[] = { N_("Envelope"), N_("Labels"), NULL };
 
 static void
 envelope_free (gpointer data, GObject *where)
@@ -4801,15 +4974,15 @@ w42_envelope_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (EnvelopeBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Envelopes and Labels", &content, view);
+  box->window = dialog_shell (parent, _("Envelopes and Labels"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), envelope_free, box);
 
-  grid = group (content, "What to make");
-  box->what = choice_row (grid, 0, 0, "_Make:", ENVELOPE_OR_LABELS, 0);
+  grid = group (content, _("What to make"));
+  box->what = choice_row (grid, 0, 0, _("_Make:"), ENVELOPE_OR_LABELS, 0);
 
-  grid = group (content, "Addresses");
-  address_box (grid, 0, "_Delivery address:", &box->delivery);
-  address_box (grid, 1, "_Return address:", &box->sender);
+  grid = group (content, _("Addresses"));
+  address_box (grid, 0, _("_Delivery address:"), &box->delivery);
+  address_box (grid, 1, _("_Return address:"), &box->sender);
 
   /* An address is often already in the document: the selection is the
    * likeliest one, as Word 97 took it. */
@@ -4830,27 +5003,27 @@ w42_envelope_dialog_show (GtkWindow *parent, W42View *view)
     g_free (me);
   }
 
-  grid = group (content, "Sizes");
+  grid = group (content, _("Sizes"));
   env_names = g_new0 (const char *, n_env + 1);
   for (int i = 0; i < n_env; i++)
     env_names[i] = envs[i].name;
-  box->envelope_size = choice_row (grid, 0, 0, "_Envelope:", env_names, 0);
+  box->envelope_size = choice_row (grid, 0, 0, _("_Envelope:"), env_names, 0);
   gtk_widget_set_size_request (box->envelope_size, 250, -1);
   g_free (env_names);
 
   sheet_names = g_new0 (const char *, n_lab + 1);
   for (int i = 0; i < n_lab; i++)
     sheet_names[i] = sheets[i].name;
-  box->label_sheet = choice_row (grid, 1, 0, "_Label sheet:", sheet_names, 0);
+  box->label_sheet = choice_row (grid, 1, 0, _("_Label sheet:"), sheet_names, 0);
   gtk_widget_set_size_request (box->label_sheet, 250, -1);
   g_free (sheet_names);
 
-  box->label_all = gtk_check_button_new_with_mnemonic ("The same on _every label");
+  box->label_all = gtk_check_button_new_with_mnemonic (_("The same on _every label"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->label_all), TRUE);
   gtk_grid_attach (GTK_GRID (grid), box->label_all, 0, 2, 2, 1);
 
-  label = gtk_label_new ("The envelope or the sheet of labels is made as a "
-                         "document of its own, in a new window.");
+  label = gtk_label_new (_("The envelope or the sheet of labels is made as a "
+                           "document of its own, in a new window."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_widget_set_size_request (label, 360, -1);
@@ -4875,9 +5048,12 @@ typedef struct {
 
 /* White paper and the fifteen colours the Font box offers. */
 static const char * const PAGE_COLOURS[] = {
-  "None (white paper)", "Light Gray", "Dark Gray", "Yellow", "Cyan", "Green",
-  "Magenta", "Red", "Blue", "Dark Blue", "Dark Cyan", "Dark Green",
-  "Dark Magenta", "Dark Red", "Dark Yellow", "Black", NULL
+  NC_("colour", "None (white paper)"), NC_("colour", "Light Gray"), NC_("colour", "Dark Gray"),
+  NC_("colour", "Yellow"), NC_("colour", "Cyan"), NC_("colour", "Green"),
+  NC_("colour", "Magenta"), NC_("colour", "Red"), NC_("colour", "Blue"),
+  NC_("colour", "Dark Blue"), NC_("colour", "Dark Cyan"), NC_("colour", "Dark Green"),
+  NC_("colour", "Dark Magenta"), NC_("colour", "Dark Red"), NC_("colour", "Dark Yellow"),
+  NC_("colour", "Black"), NULL
 };
 static const guint32 PAGE_COLOUR_VALUES[] = {
   0xFFFFFF, 0xC0C0C0, 0x808080, 0xFFFFC0, 0xC0FFFF, 0xC0FFC0,
@@ -4973,7 +5149,7 @@ w42_background_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (BackgroundBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Background", &content, view);
+  box->window = dialog_shell (parent, _("Background"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), background_free, box);
 
   page = w42_document_page_setup (w42_view_get_document (view));
@@ -4982,8 +5158,8 @@ w42_background_dialog_show (GtkWindow *parent, W42View *view)
       if (PAGE_COLOUR_VALUES[i] == (page->background & 0xFFFFFF))
         selected = i;
 
-  grid = group (content, "The colour behind the page");
-  box->colour = choice_row (grid, 0, 0, "_Color:", PAGE_COLOURS, selected);
+  grid = group (content, _("The colour behind the page"));
+  box->colour = choice_row_ctx (grid, 0, 0, _("_Color:"), "colour", PAGE_COLOURS, selected);
   g_signal_connect (box->colour, "notify::selected",
                     G_CALLBACK (on_background_changed), box);
 
@@ -4993,8 +5169,8 @@ w42_background_dialog_show (GtkWindow *parent, W42View *view)
                                   draw_background_sample, box, NULL);
   gtk_grid_attach (GTK_GRID (grid), box->sample, 0, 1, 2, 1);
 
-  label = gtk_label_new ("The colour is shown on the screen and in Print "
-                         "Preview; printing leaves the paper as it is.");
+  label = gtk_label_new (_("The colour is shown on the screen and in Print "
+                           "Preview; printing leaves the paper as it is."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_widget_set_size_request (label, 300, -1);
@@ -5100,13 +5276,14 @@ on_autotext_add (GtkButton *button, gpointer data)
   if (text == NULL || *text == '\0')
     {
       gtk_label_set_text (GTK_LABEL (box->preview),
-                          "Select the text to keep, then Add.");
+                          /* Translators: "Add" is the button. */
+                          _("Select the text to keep, then Add."));
       g_free (text);
       return;
     }
   if (name == NULL || *name == '\0')
     {
-      gtk_label_set_text (GTK_LABEL (box->preview), "Give the entry a name.");
+      gtk_label_set_text (GTK_LABEL (box->preview), _("Give the entry a name."));
       g_free (text);
       return;
     }
@@ -5161,12 +5338,12 @@ w42_autotext_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (AutoTextBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "AutoText", &content, view);
+  box->window = dialog_shell (parent, _("AutoText"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), autotext_free, box);
 
-  grid = group (content, "Entries");
+  grid = group (content, _("Entries"));
 
-  label = gtk_label_new_with_mnemonic ("_Name:");
+  label = gtk_label_new_with_mnemonic (_("_Name:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   box->name = gtk_entry_new ();
   gtk_entry_set_activates_default (GTK_ENTRY (box->name), TRUE);
@@ -5190,10 +5367,10 @@ w42_autotext_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), box->preview, 0, 2, 2, 1);
 
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  box->add = gtk_button_new_with_mnemonic ("_Add");
-  box->insert = gtk_button_new_with_mnemonic ("_Insert");
-  box->delete = gtk_button_new_with_mnemonic ("_Delete");
-  close = gtk_button_new_with_mnemonic ("_Close");
+  box->add = gtk_button_new_with_mnemonic (_("_Add"));
+  box->insert = gtk_button_new_with_mnemonic (_("_Insert"));
+  box->delete = gtk_button_new_with_mnemonic (_("_Delete"));
+  close = gtk_button_new_with_mnemonic (_("_Close"));
   gtk_widget_set_size_request (box->add, 84, 26);
   gtk_widget_set_size_request (box->insert, 84, 26);
   gtk_widget_set_size_request (box->delete, 84, 26);
@@ -5223,7 +5400,8 @@ w42_autotext_dialog_show (GtkWindow *parent, W42View *view)
       if (suggestion != NULL)
         gtk_editable_set_text (GTK_EDITABLE (box->name), suggestion);
       gtk_label_set_text (GTK_LABEL (box->preview),
-                          "Add keeps the selected text under that name.");
+                          /* Translators: "Add" is the button. */
+                          _("Add keeps the selected text under that name."));
       gtk_window_set_default_widget (GTK_WINDOW (box->window), box->add);
       g_free (suggestion);
     }
@@ -5252,7 +5430,8 @@ typedef struct {
 } CountBox;
 
 static const char * const COUNT_NAMES[6] = {
-  "Pages", "Words", "Characters", "Characters (no spaces)", "Paragraphs", "Lines"
+  N_("Pages"), N_("Words"), N_("Characters"), N_("Characters (no spaces)"),
+  N_("Paragraphs"), N_("Lines")
 };
 
 static void
@@ -5351,14 +5530,18 @@ w42_word_count_dialog_show (GtkWindow *parent, W42View *view)
   box = g_new0 (CountBox, 1);
   box->view = view;
   box->has_selection = w42_view_has_selection (view);
-  box->window = dialog_shell (parent, "Word Count", &content, view);
+  box->window = dialog_shell (parent, _("Word Count"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), count_free, box);
 
-  grid = group (content, box->has_selection ? "Counts" : "Statistics");
+  grid = group (content, box->has_selection ? _("Counts") : _("Statistics"));
   if (box->has_selection)
     {
-      GtkWidget *a = gtk_label_new ("Document");
-      GtkWidget *b = gtk_label_new ("Selection");
+      /* Translators: the heading of the column of counts for the whole
+       * document. */
+      GtkWidget *a = gtk_label_new (_("Document"));
+      /* Translators: the heading of the column of counts for the
+       * selected text. */
+      GtkWidget *b = gtk_label_new (_("Selection"));
 
       gtk_label_set_xalign (GTK_LABEL (a), 1.0);
       gtk_label_set_xalign (GTK_LABEL (b), 1.0);
@@ -5367,7 +5550,7 @@ w42_word_count_dialog_show (GtkWindow *parent, W42View *view)
     }
   for (int i = 0; i < 6; i++)
     {
-      GtkWidget *name = gtk_label_new (COUNT_NAMES[i]);
+      GtkWidget *name = gtk_label_new (_(COUNT_NAMES[i]));
 
       gtk_label_set_xalign (GTK_LABEL (name), 0.0);
       box->value[i] = gtk_label_new ("0");
@@ -5384,7 +5567,7 @@ w42_word_count_dialog_show (GtkWindow *parent, W42View *view)
         }
     }
 
-  box->notes = gtk_check_button_new_with_mnemonic ("Include _footnotes and endnotes");
+  box->notes = gtk_check_button_new_with_mnemonic (_("Include _footnotes and endnotes"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->notes), TRUE);
   g_signal_connect (box->notes, "toggled", G_CALLBACK (on_count_notes), box);
   gtk_box_append (GTK_BOX (content), box->notes);
@@ -5392,7 +5575,7 @@ w42_word_count_dialog_show (GtkWindow *parent, W42View *view)
   count_fill (box);
 
   /* One button: there is nothing here to undo or apply. */
-  close = gtk_button_new_with_mnemonic ("_Close");
+  close = gtk_button_new_with_mnemonic (_("_Close"));
   gtk_widget_set_halign (close, GTK_ALIGN_END);
   gtk_widget_set_size_request (close, 92, 26);
   g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy), box->window);
@@ -5445,11 +5628,11 @@ w42_goal_dialog_show (GtkWindow *parent, W42View *view, int goal,
   box = g_new0 (GoalBox, 1);
   box->done = done;
   box->data = data;
-  box->window = dialog_shell (parent, "Word Count Goal", &content, view);
+  box->window = dialog_shell (parent, _("Word Count Goal"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), goal_free, box);
 
-  grid = group (content, "Goal");
-  label = gtk_label_new_with_mnemonic ("_Words to reach:");
+  grid = group (content, _("Goal"));
+  label = gtk_label_new_with_mnemonic (_("_Words to reach:"));
   box->goal = gtk_spin_button_new_with_range (0, 10000000, 1000);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->goal), goal);
   gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->goal), TRUE);
@@ -5460,9 +5643,17 @@ w42_goal_dialog_show (GtkWindow *parent, W42View *view, int goal,
   gtk_grid_attach (GTK_GRID (grid), box->goal, 1, 0, 1, 1);
 
   text = session >= 0
-    ? g_strdup_printf ("The document has %" G_GSIZE_FORMAT " words; %" G_GSSIZE_FORMAT
-                       " of them were written since it was opened.", words, session)
-    : g_strdup_printf ("The document has %" G_GSIZE_FORMAT " words.", words);
+    /* Translators: the plural follows the first number, the words in the
+     * document; the second is how many of them are new since it was
+     * opened, and may be put so that it needs no plural of its own. */
+    ? g_strdup_printf (ngettext ("The document has %lu word; %ld of them were written "
+                                 "since it was opened.",
+                                 "The document has %lu words; %ld of them were written "
+                                 "since it was opened.", (unsigned long) words),
+                       (unsigned long) words, (long) session)
+    : g_strdup_printf (ngettext ("The document has %lu word.",
+                                 "The document has %lu words.", (unsigned long) words),
+                       (unsigned long) words);
   label = gtk_label_new (text);
   g_free (text);
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
@@ -5470,8 +5661,8 @@ w42_goal_dialog_show (GtkWindow *parent, W42View *view, int goal,
   gtk_label_set_max_width_chars (GTK_LABEL (label), 44);
   gtk_widget_set_size_request (label, 300, -1);
   gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
-  label = gtk_label_new ("The status bar counts toward the goal as you write. "
-                         "0 means no goal.");
+  label = gtk_label_new (_("The status bar counts toward the goal as you write. "
+                           "0 means no goal."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_label_set_max_width_chars (GTK_LABEL (label), 44);
@@ -5517,16 +5708,16 @@ language_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
   box->chosen = gtk_list_box_row_get_index (row) - 1;    /* row 0 is "own" */
   if (box->chosen < 0)
     gtk_label_set_text (GTK_LABEL (box->note),
-                        "The text is checked with the document's own dictionary.");
+                        _("The text is checked with the document's own dictionary."));
   else if (g_strcmp0 (langs[box->chosen].tag, W42_LANG_NONE) == 0)
     gtk_label_set_text (GTK_LABEL (box->note),
-                        "The text is not checked at all.");
+                        _("The text is not checked at all."));
   else if (box->spell != NULL &&
            w42_spell_has_language (box->spell, langs[box->chosen].tag))
-    gtk_label_set_text (GTK_LABEL (box->note), "A dictionary for this is installed.");
+    gtk_label_set_text (GTK_LABEL (box->note), _("A dictionary for this is installed."));
   else
     gtk_label_set_text (GTK_LABEL (box->note),
-                        "No dictionary for this is installed: the words are not checked.");
+                        _("No dictionary for this is installed: the words are not checked."));
 }
 
 static void
@@ -5585,15 +5776,15 @@ w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
   box->view = view;
   box->spell = spell;
   box->chosen = -1;
-  box->window = dialog_shell (parent, "Language", &content, view);
+  box->window = dialog_shell (parent, _("Language"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), language_free, box);
 
-  grid = group (content, "Mark the selected text as");
+  grid = group (content, _("Mark the selected text as"));
 
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
   {
-    GtkWidget *own = gtk_label_new ("(the document's own language)");
+    GtkWidget *own = gtk_label_new (_("(the document's own language)"));
 
     gtk_label_set_xalign (GTK_LABEL (own), 0.0);
     gtk_widget_set_margin_start (own, 6);
@@ -5605,7 +5796,7 @@ w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
       /* A tick for the languages there is a dictionary for, as the
        * classic box marked them. */
       gboolean have = spell != NULL && w42_spell_has_language (spell, langs[i].tag);
-      char *text = g_strdup_printf ("%s%s", have ? "\342\234\223 " : "   ", langs[i].name);
+      char *text = g_strdup_printf ("%s%s", have ? "\342\234\223 " : "   ", _(langs[i].name));
       GtkWidget *item = gtk_label_new (text);
 
       gtk_label_set_xalign (GTK_LABEL (item), 0.0);
@@ -5634,12 +5825,14 @@ w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
     char *text;
 
     if (doc != NULL)
-      text = g_strdup_printf ("The document is in %s.", w42_lang_name (doc));
+      /* Translators: %s is the name of a language. */
+      text = g_strdup_printf (_("The document is in %s."), w42_lang_name (doc));
     else if (spell != NULL && w42_spell_language (spell) != NULL)
-      text = g_strdup_printf ("The document's own dictionary is %s.",
+      /* Translators: %s is a dictionary's language code, such as en_US. */
+      text = g_strdup_printf (_("The document's own dictionary is %s."),
                               w42_spell_language (spell));
     else
-      text = g_strdup ("No dictionary was found on this machine.");
+      text = g_strdup (_("No dictionary was found on this machine."));
     label = gtk_label_new (text);
     g_free (text);
   }
@@ -5653,11 +5846,11 @@ w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
   {
     GtkWidget *ok = button_row (content, box->window, G_CALLBACK (on_language_ok), box);
     GtkWidget *row = gtk_widget_get_parent (ok);
-    GtkWidget *def = gtk_button_new_with_mnemonic ("_Default");
+    GtkWidget *def = gtk_button_new_with_mnemonic (_("_Default"));
 
     gtk_widget_set_size_request (def, 92, 26);
-    gtk_widget_set_tooltip_text (def, "Make this the document's language, "
-                                 "and the one new documents start in.");
+    gtk_widget_set_tooltip_text (def, _("Make this the document's language, "
+                                        "and the one new documents start in."));
     g_signal_connect (def, "clicked", G_CALLBACK (on_language_default), box);
     gtk_box_append (GTK_BOX (row), def);
   }
@@ -5760,7 +5953,7 @@ autoformat_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
   if (row == NULL)
     return;
   box->chosen = CLAMP (gtk_list_box_row_get_index (row), 0, n - 1);
-  gtk_label_set_text (GTK_LABEL (box->hint), formats[box->chosen].hint);
+  gtk_label_set_text (GTK_LABEL (box->hint), _(formats[box->chosen].hint));
   gtk_widget_queue_draw (box->preview);
 }
 
@@ -5802,16 +5995,16 @@ w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (AutoFormatBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Table AutoFormat", &content, view);
+  box->window = dialog_shell (parent, _("Table AutoFormat"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), autoformat_free, box);
 
-  grid = group (content, "Formats");
+  grid = group (content, _("Formats"));
 
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
   for (int i = 0; i < n; i++)
     {
-      GtkWidget *item = gtk_label_new (formats[i].name);
+      GtkWidget *item = gtk_label_new (_(formats[i].name));
 
       gtk_label_set_xalign (GTK_LABEL (item), 0.0);
       gtk_widget_set_margin_start (item, 6);
@@ -5835,9 +6028,9 @@ w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view)
   gtk_label_set_xalign (GTK_LABEL (box->hint), 0.0);
   gtk_grid_attach (GTK_GRID (grid), box->hint, 0, 1, 2, 1);
 
-  grid = group (content, "Apply");
-  box->heading = gtk_check_button_new_with_mnemonic ("_Heading row");
-  box->first_column = gtk_check_button_new_with_mnemonic ("First _column");
+  grid = group (content, _("Apply"));
+  box->heading = gtk_check_button_new_with_mnemonic (_("_Heading row"));
+  box->first_column = gtk_check_button_new_with_mnemonic (_("First _column"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->heading), TRUE);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->first_column), TRUE);
   gtk_grid_attach (GTK_GRID (grid), box->heading, 0, 0, 1, 1);
@@ -5845,7 +6038,7 @@ w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view)
   g_signal_connect (box->heading, "toggled", G_CALLBACK (autoformat_switched), box);
   g_signal_connect (box->first_column, "toggled", G_CALLBACK (autoformat_switched), box);
 
-  label = gtk_label_new ("The look goes on the table the caret is in.");
+  label = gtk_label_new (_("The look goes on the table the caret is in."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_box_append (GTK_BOX (content), label);
 
@@ -5870,7 +6063,8 @@ typedef struct {
 } FieldBox;
 
 static const char * const FIELD_NAMES[] = {
-  "Page number", "Number of pages", "Date", "Time", "File name", "Word count", NULL
+  N_("Page number"), N_("Number of pages"), N_("Date"), N_("Time"), N_("File name"),
+  N_("Word count"), NULL
 };
 static const char * const FIELD_CODES[] = {
   "PAGE", "NUMPAGES", "DATE", "TIME", "FILENAME", "NUMWORDS"
@@ -5900,13 +6094,13 @@ w42_field_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (FieldBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Field", &content, view);
+  box->window = dialog_shell (parent, _("Field"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
-  grid = group (content, "Field");
-  box->kind = choice_row (grid, 0, 0, "_Insert:", FIELD_NAMES, 0);
-  label = gtk_label_new ("A field shows its result, shaded grey. F9 updates every field;\n"
-                         "printing and exporting update them too.");
+  grid = group (content, _("Field"));
+  box->kind = choice_row (grid, 0, 0, _("_Insert:"), FIELD_NAMES, 0);
+  label = gtk_label_new (_("A field shows its result, shaded grey. F9 updates every field;\n"
+                           "printing and exporting update them too."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_widget_add_css_class (label, "w42-dialog-status");
   gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
@@ -5945,8 +6139,9 @@ void
 w42_picture_dialog_show (GtkWindow *parent, W42View *view)
 {
   static const char *const wraps[] = {
-    "In line with text", "Left, text to the right", "Right, text to the left",
-    "Top and bottom", "In front of text", "Behind text", NULL
+    NC_("wrapping", "In line with text"), NC_("wrapping", "Left, text to the right"),
+    NC_("wrapping", "Right, text to the left"), NC_("wrapping", "Top and bottom"),
+    NC_("wrapping", "In front of text"), NC_("wrapping", "Behind text"), NULL
   };
   PictureBox *box;
   GtkWidget *content, *grid;
@@ -5958,22 +6153,23 @@ w42_picture_dialog_show (GtkWindow *parent, W42View *view)
   if (!w42_view_get_picture (view, &width, &height, &wrap))
     {
       w42_message_show (parent,
-                        "Select a picture first: click it once, so that its "
-                        "handles show.", NULL);
+                        _("Select a picture first: click it once, so that its "
+                          "handles show."), NULL);
       return;
     }
 
   box = g_new0 (PictureBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Picture", &content, view);
+  box->window = dialog_shell (parent, _("Picture"), &content, view);
   g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
 
-  grid = group (content, "Size");
-  box->width = inches_row (grid, 0, 0, "_Width:", width / 1440.0 * unit);
-  box->height = inches_row (grid, 1, 0, "_Height:", height / 1440.0 * unit);
+  grid = group (content, _("Size"));
+  box->width = inches_row (grid, 0, 0, _("_Width:"), width / 1440.0 * unit);
+  box->height = inches_row (grid, 1, 0, _("_Height:"), height / 1440.0 * unit);
 
-  grid = group (content, "Text wrapping");
-  box->wrap = choice_row (grid, 0, 0, "_Position:", wraps, MIN ((guint) wrap, 5));
+  grid = group (content, _("Text wrapping"));
+  box->wrap = choice_row_ctx (grid, 0, 0, _("_Position:"), "wrapping", wraps,
+                              MIN ((guint) wrap, 5));
 
   button_row (content, box->window, G_CALLBACK (picture_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -6013,19 +6209,20 @@ drop_cap_ok (GtkButton *button, gpointer data)
 void
 w42_drop_cap_dialog_show (GtkWindow *parent, W42View *view)
 {
-  static const char *const positions[] = { "None", "Dropped", NULL };
+  static const char *const positions[] = { NC_("drop cap", "None"), NC_("drop cap", "Dropped"), NULL };
   FrameBox *box = g_new0 (FrameBox, 1);
   GtkWidget *content, *grid, *label;
   W42ParaFmt now;
 
   w42_view_get_para_fmt (view, &now);
   box->view = view;
-  box->window = dialog_shell (parent, "Drop Cap", &content, view);
+  box->window = dialog_shell (parent, _("Drop Cap"), &content, view);
   g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
 
-  grid = group (content, "Position");
-  box->position = choice_row (grid, 0, 0, "_Position:", positions, now.drop_cap > 0 ? 1 : 0);
-  label = gtk_label_new_with_mnemonic ("_Lines to drop:");
+  grid = group (content, _("Position"));
+  box->position = choice_row_ctx (grid, 0, 0, _("_Position:"), "drop cap", positions,
+                                  now.drop_cap > 0 ? 1 : 0);
+  label = gtk_label_new_with_mnemonic (_("_Lines to drop:"));
   box->lines = gtk_spin_button_new_with_range (1, 10, 1);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->lines), now.drop_cap > 0 ? now.drop_cap : 3);
   gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->lines), TRUE);
@@ -6054,7 +6251,11 @@ frame_ok (GtkButton *button, gpointer data)
 void
 w42_frame_dialog_show (GtkWindow *parent, W42View *view)
 {
-  static const char *const positions[] = { "None", "Left, text to the right", "Right, text to the left", NULL };
+  static const char *const positions[] = {
+    /* Translators: no frame, the paragraph in the run of the text. */
+    NC_("wrapping", "None"), NC_("wrapping", "Left, text to the right"),
+    NC_("wrapping", "Right, text to the left"), NULL
+  };
   FrameBox *box = g_new0 (FrameBox, 1);
   GtkWidget *content, *grid;
   W42ParaFmt now;
@@ -6062,12 +6263,13 @@ w42_frame_dialog_show (GtkWindow *parent, W42View *view)
 
   w42_view_get_para_fmt (view, &now);
   box->view = view;
-  box->window = dialog_shell (parent, "Frame", &content, view);
+  box->window = dialog_shell (parent, _("Frame"), &content, view);
   g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
 
-  grid = group (content, "Frame");
-  box->position = choice_row (grid, 0, 0, "_Position:", positions, MIN (now.frame_side, 2));
-  box->width = inches_row (grid, 1, 0, "_Width:", (now.frame_width > 0 ? now.frame_width : 2880) / 1440.0 * unit);
+  grid = group (content, _("Frame"));
+  box->position = choice_row_ctx (grid, 0, 0, _("_Position:"), "wrapping", positions,
+                                  MIN (now.frame_side, 2));
+  box->width = inches_row (grid, 1, 0, _("_Width:"), (now.frame_width > 0 ? now.frame_width : 2880) / 1440.0 * unit);
 
   button_row (content, box->window, G_CALLBACK (frame_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -6116,7 +6318,9 @@ summary_ok (GtkButton *button, gpointer data)
 void
 w42_summary_dialog_show (GtkWindow *parent, W42View *view)
 {
-  static const char *const labels[] = { "_Title:", "_Subject:", "_Author:", "_Keywords:", "_Comments:" };
+  static const char *const labels[] = {
+    N_("_Title:"), N_("_Subject:"), N_("_Author:"), N_("_Keywords:"), N_("_Comments:")
+  };
   SummaryBox *box;
   GtkWidget *content, *grid;
   const W42DocInfo *info;
@@ -6135,13 +6339,13 @@ w42_summary_dialog_show (GtkWindow *parent, W42View *view)
 
   box = g_new0 (SummaryBox, 1);
   box->view = view;
-  box->window = dialog_shell (parent, "Summary Info", &content, view);
+  box->window = dialog_shell (parent, _("Summary Info"), &content, view);
   g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
 
-  grid = group (content, "This document");
+  grid = group (content, _("This document"));
   for (int i = 0; i < 5; i++)
     {
-      GtkWidget *label = gtk_label_new_with_mnemonic (labels[i]);
+      GtkWidget *label = gtk_label_new_with_mnemonic (_(labels[i]));
       char *name;
 
       box->field[i] = gtk_entry_new ();
@@ -6227,20 +6431,23 @@ zoom_ok (GtkButton *button, gpointer data)
 void
 w42_zoom_dialog_show (GtkWindow *parent, W42View *view)
 {
-  static const char *const names[] = { "_200%", "_100%", "_75%", "Page _Width", "W_hole Page", "_Percent:" };
+  /* The percentages are shown as they are; the words are N_()-marked. */
+  static const char *const names[] = {
+    "_200%", "_100%", "_75%", N_("Page _Width"), N_("W_hole Page"), N_("_Percent:")
+  };
   ZoomBox *box = g_new0 (ZoomBox, 1);
   GtkWidget *content, *grid;
   double zoom = w42_view_get_zoom (view);
   guint chosen = 5;
 
   box->view = view;
-  box->window = dialog_shell (parent, "Zoom", &content, view);
+  box->window = dialog_shell (parent, _("Zoom"), &content, view);
   g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
 
-  grid = group (content, "Zoom To");
+  grid = group (content, _("Zoom To"));
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
     {
-      box->radios[i] = gtk_check_button_new_with_mnemonic (names[i]);
+      box->radios[i] = gtk_check_button_new_with_mnemonic (_(names[i]));
       if (i > 0)
         gtk_check_button_set_group (GTK_CHECK_BUTTON (box->radios[i]),
                                     GTK_CHECK_BUTTON (box->radios[0]));
@@ -6339,7 +6546,7 @@ macro_editor_save (MacroEditor *ed)
 
   if (!ok)
     {
-      macro_editor_say (ed, error != NULL ? error->message : "The macro could not be saved.");
+      macro_editor_say (ed, error != NULL ? error->message : _("The macro could not be saved."));
       g_clear_error (&error);
     }
   g_free (source);
@@ -6354,7 +6561,7 @@ on_macro_editor_save (GtkButton *button, gpointer data)
 
   (void) button;
   if (macro_editor_save (ed))
-    macro_editor_say (ed, "Saved.");
+    macro_editor_say (ed, _("Saved."));
 }
 
 /* A macro runs to its end on the main loop, and a MsgBox in it runs the
@@ -6399,14 +6606,17 @@ on_macro_editor_run (GtkButton *button, gpointer data)
     sub = gtk_string_object_get_string (GTK_STRING_OBJECT (item));
   if (sub == NULL)
     {
-      macro_editor_say (ed, "There is no Sub to run: write one, Sub Main() ... End Sub.");
+      /* Translators: "Sub", "Sub Main()" and "End Sub" are the macro
+       * language's own words: keep them in English. */
+      macro_editor_say (ed, _("There is no Sub to run: write one, Sub Main() ... End Sub."));
       return;
     }
   /* The list of Subs is the editor's, and goes with it. */
   sub_name = g_strdup (sub);
   source = macro_editor_source (ed);
   {
-    char *line = g_strdup_printf ("Running %s...", sub_name);
+    /* Translators: %s is the name of the Sub, the macro, being run. */
+    char *line = g_strdup_printf (_("Running %s..."), sub_name);
 
     macro_editor_say (ed, line);
     g_free (line);
@@ -6424,9 +6634,9 @@ on_macro_editor_run (GtkButton *button, gpointer data)
       if (output->len > 0)
         macro_editor_say (ed, output->str);
       if (ok)
-        macro_editor_say (ed, "Done.");
+        macro_editor_say (ed, _("Done."));
       else
-        macro_editor_say (ed, error != NULL ? error : "The macro stopped.");
+        macro_editor_say (ed, error != NULL ? error : _("The macro stopped."));
     }
   g_object_unref (window);
   g_free (error);
@@ -6479,12 +6689,13 @@ w42_macro_editor_show (GtkWindow *parent, W42View *view, const char *name)
   ed->view = view;
   ed->parent = parent;
   ed->name = g_strdup (name);
-  ed->window = dialog_shell (parent, "Macro Editor", &content, view);
+  ed->window = dialog_shell (parent, _("Macro Editor"), &content, view);
   g_object_set_data_full (G_OBJECT (ed->window), "w42-box", ed, macro_editor_free);
   gtk_window_set_modal (GTK_WINDOW (ed->window), FALSE);
   gtk_window_set_resizable (GTK_WINDOW (ed->window), TRUE);
   gtk_window_set_default_size (GTK_WINDOW (ed->window), 640, 520);
-  title = g_strdup_printf ("Macro Editor - %s", name);
+  /* Translators: the editor's title; %s is the name of the macro. */
+  title = g_strdup_printf (_("Macro Editor - %s"), name);
   gtk_window_set_title (GTK_WINDOW (ed->window), title);
   g_free (title);
 
@@ -6507,18 +6718,19 @@ w42_macro_editor_show (GtkWindow *parent, W42View *view, const char *name)
   gtk_box_append (GTK_BOX (content), scroller);
 
   row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-  label = gtk_label_new_with_mnemonic ("_Sub to run:");
+  /* Translators: "Sub" is the macro language's word for a macro. */
+  label = gtk_label_new_with_mnemonic (_("_Sub to run:"));
   ed->subs = gtk_drop_down_new (NULL, NULL);
   gtk_label_set_mnemonic_widget (GTK_LABEL (label), ed->subs);
   gtk_box_append (GTK_BOX (row), label);
   gtk_box_append (GTK_BOX (row), ed->subs);
-  button = gtk_button_new_with_mnemonic ("_Run (F5)");
+  button = gtk_button_new_with_mnemonic (_("_Run (F5)"));
   g_signal_connect (button, "clicked", G_CALLBACK (on_macro_editor_run), ed);
   gtk_box_append (GTK_BOX (row), button);
-  button = gtk_button_new_with_mnemonic ("_Save");
+  button = gtk_button_new_with_mnemonic (_("_Save"));
   g_signal_connect (button, "clicked", G_CALLBACK (on_macro_editor_save), ed);
   gtk_box_append (GTK_BOX (row), button);
-  button = gtk_button_new_with_mnemonic ("_Close");
+  button = gtk_button_new_with_mnemonic (_("_Close"));
   gtk_widget_set_halign (button, GTK_ALIGN_END);
   gtk_widget_set_hexpand (button, TRUE);
   g_signal_connect (button, "clicked", G_CALLBACK (on_macro_editor_close), ed);
@@ -6718,14 +6930,16 @@ on_macros_run (GtkButton *button, gpointer data)
     {
       if (!ok)
         {
-          char *heading = g_strdup_printf ("The macro %s stopped.", file);
+          /* Translators: %s is the name of the macro. */
+          char *heading = g_strdup_printf (_("The macro %s stopped."), file);
 
           w42_message_show (parent, heading, error);
           g_free (heading);
         }
       else if (W42_IS_WINDOW (parent))
         {
-          char *line = g_strdup_printf ("Macro %s ran.", file);
+          /* Translators: %s is the name of the macro. */
+          char *line = g_strdup_printf (_("Macro %s ran."), file);
 
           w42_window_flash_status (W42_WINDOW (parent), line);
           g_free (line);
@@ -6776,14 +6990,17 @@ static void
 on_macros_delete (GtkButton *button, gpointer data)
 {
   MacrosBox *box = data;
-  static const char *const labels[] = { "_Delete", "Cancel", NULL };
+  const char *const labels[] = { _("_Delete"), _("Cancel"), NULL };
   char *file, *sub, *heading;
 
   (void) button;
   if (!macros_named (box, &file, &sub))
     return;
-  heading = g_strdup_printf ("Delete the macro %s?", file);
-  w42_choice_show (GTK_WINDOW (box->window), heading, "Every Sub in it goes with it.",
+  /* Translators: %s is the name of the macro. */
+  heading = g_strdup_printf (_("Delete the macro %s?"), file);
+  w42_choice_show (GTK_WINDOW (box->window), heading,
+                   /* Translators: "Sub" is the macro language's word for a macro. */
+                   _("Every Sub in it goes with it."),
                    labels, 1, 1, on_macros_delete_choice, box);
   g_free (heading);
   g_free (file);
@@ -6807,14 +7024,14 @@ w42_macros_dialog_show (GtkWindow *parent, W42View *view)
 
   box->view = view;
   box->parent = parent;
-  box->window = dialog_shell (parent, "Macro", &content, view);
+  box->window = dialog_shell (parent, _("Macro"), &content, view);
   g_object_set_data_full (G_OBJECT (box->window), "w42-box", box, g_free);
 
   grid = gtk_grid_new ();
   gtk_grid_set_row_spacing (GTK_GRID (grid), 6);
   gtk_grid_set_column_spacing (GTK_GRID (grid), 10);
 
-  label = gtk_label_new_with_mnemonic ("_Macro name:");
+  label = gtk_label_new_with_mnemonic (_("_Macro name:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   box->entry = gtk_entry_new ();
   gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->entry);
@@ -6832,11 +7049,11 @@ w42_macros_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), scroller, 0, 2, 1, 1);
 
   buttons = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
-  box->run = gtk_button_new_with_mnemonic ("_Run");
-  box->create = gtk_button_new_with_mnemonic ("_Create");
-  box->edit = gtk_button_new_with_mnemonic ("_Edit");
-  box->delete = gtk_button_new_with_mnemonic ("_Delete");
-  close = gtk_button_new_with_mnemonic ("Close");
+  box->run = gtk_button_new_with_mnemonic (_("_Run"));
+  box->create = gtk_button_new_with_mnemonic (_("_Create"));
+  box->edit = gtk_button_new_with_mnemonic (_("_Edit"));
+  box->delete = gtk_button_new_with_mnemonic (_("_Delete"));
+  close = gtk_button_new_with_mnemonic (_("Close"));
   g_signal_connect (box->run, "clicked", G_CALLBACK (on_macros_run), box);
   g_signal_connect (box->create, "clicked", G_CALLBACK (on_macros_edit), box);
   g_signal_connect (box->edit, "clicked", G_CALLBACK (on_macros_edit), box);
@@ -6851,8 +7068,9 @@ w42_macros_dialog_show (GtkWindow *parent, W42View *view)
   gtk_grid_attach (GTK_GRID (grid), buttons, 1, 1, 1, 2);
   gtk_box_append (GTK_BOX (content), grid);
 
-  label = gtk_label_new ("Macros are Word42 Basic files in the macros folder of your data directory.\n"
-                         "Type a new name and press Create to write one; Help > Contents describes the language.");
+  /* Translators: "Create" is the button, "Help > Contents" the menu command. */
+  label = gtk_label_new (_("Macros are Word42 Basic files in the macros folder of your data directory.\n"
+                           "Type a new name and press Create to write one; Help > Contents describes the language."));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_wrap (GTK_LABEL (label), TRUE);
   gtk_box_append (GTK_BOX (content), label);

@@ -19,6 +19,7 @@ src/model/w42-envelope.c
 src/model/w42-tableformat.c
 src/model/w42-template.c
 src/ui/w42-application.c
+src/ui/w42-dialogs.c
 src/ui/w42-docmap.c
 src/ui/w42-find-dialog.c
 src/ui/w42-help.c
