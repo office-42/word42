@@ -38,6 +38,108 @@ write_to_stream (void *closure, const unsigned char *data, unsigned int length)
   return CAIRO_STATUS_SUCCESS;
 }
 
+/* The Summary Info goes into the PDF's own, which is what a reader shows
+ * as the title of the window and a shop takes the book's name from. */
+static void
+pdf_metadata (cairo_surface_t *surface, W42PieceTable *pt)
+{
+  const W42DocInfo *info = w42_pt_get_info (pt);
+
+  if (info->title != NULL && *info->title != '\0')
+    cairo_pdf_surface_set_metadata (surface, CAIRO_PDF_METADATA_TITLE, info->title);
+  if (info->author != NULL && *info->author != '\0')
+    cairo_pdf_surface_set_metadata (surface, CAIRO_PDF_METADATA_AUTHOR, info->author);
+  if (info->subject != NULL && *info->subject != '\0')
+    cairo_pdf_surface_set_metadata (surface, CAIRO_PDF_METADATA_SUBJECT, info->subject);
+  if (info->keywords != NULL && *info->keywords != '\0')
+    cairo_pdf_surface_set_metadata (surface, CAIRO_PDF_METADATA_KEYWORDS, info->keywords);
+  cairo_pdf_surface_set_metadata (surface, CAIRO_PDF_METADATA_CREATOR, "Word42");
+}
+
+/* The headings as the PDF's bookmarks, nested by their outline level, each
+ * going to where its first line is: a book's parts and chapters in the
+ * reader's side panel, as the Document Map shows them in Word42. */
+static void
+pdf_outline (cairo_surface_t *surface, W42PieceTable *pt, W42Layout *layout)
+{
+  const GArray *lines = w42_layout_lines (layout);
+  GPtrArray *blocks = w42_layout_blocks (layout);
+  W42StyleSheet *styles = w42_pt_stylesheet (pt);
+  W42ApTable *aps = w42_pt_ap_table (pt);
+  int parent[10] = { 0 };
+  int last_block = -1;
+
+  if (blocks == NULL)
+    return;
+
+  for (guint i = 0; i < lines->len; i++)
+    {
+      const W42LineBox *box = &g_array_index (lines, W42LineBox, i);
+      const W42Block *block;
+      const char *style;
+      int level;
+      GString *name;
+      char *link;
+      int id;
+
+      if (box->block == last_block || box->block < 0 || (guint) box->block >= blocks->len)
+        continue;
+      last_block = box->block;
+      block = g_ptr_array_index (blocks, box->block);
+      if (block->note >= 0 || block->table >= 0)
+        continue;
+      style = w42_ap_table_get (aps, block->ap)->pa.style;
+      level = style != NULL ? w42_stylesheet_outline (styles, style) : 0;
+      if (level < 1 || level > 9)
+        continue;
+
+      /* The heading's text on one line: its line breaks, tabs and
+       * pictures are nothing to a bookmark. */
+      name = g_string_new (NULL);
+      for (const char *c = block->text->str; *c != '\0'; c = g_utf8_next_char (c))
+        {
+          gunichar u = g_utf8_get_char (c);
+
+          if (u == 0xFFFC || u == 0x00AD)
+            continue;
+          if (u == 0x2028 || u == '\t' || u == '\n' || u == '\v')
+            u = ' ';
+          if (u == ' ' && (name->len == 0 || name->str[name->len - 1] == ' '))
+            continue;
+          g_string_append_unichar (name, u);
+        }
+      while (name->len > 0 && name->str[name->len - 1] == ' ')
+        g_string_truncate (name, name->len - 1);
+      if (name->len == 0)
+        {
+          g_string_free (name, TRUE);
+          continue;
+        }
+
+      /* Nested under the nearest shallower heading, as a document's
+       * outline is. */
+      {
+        int up = CAIRO_PDF_OUTLINE_ROOT;
+
+        for (int l = level - 1; l >= 1; l--)
+          if (parent[l] != 0)
+            {
+              up = parent[l];
+              break;
+            }
+        link = g_strdup_printf ("page=%d pos=[%g %g]", box->page + 1,
+                                box->x * PX_TO_POINTS, box->y * PX_TO_POINTS);
+        id = cairo_pdf_surface_add_outline (surface, up, name->str, link,
+                                            level == 1 ? CAIRO_PDF_OUTLINE_FLAG_OPEN : 0);
+        g_free (link);
+      }
+      parent[level] = id;
+      for (int l = level + 1; l < 10; l++)
+        parent[l] = 0;
+      g_string_free (name, TRUE);
+    }
+}
+
 gboolean
 w42_pdf_export (W42PieceTable      *pt,
                 const W42PageSetup *page,
@@ -69,6 +171,7 @@ w42_pdf_export (W42PieceTable      *pt,
                                                  page->width / 20.0,
                                                  page->height / 20.0);
   cr = cairo_create (surface);
+  pdf_metadata (surface, pt);
 
   lines = w42_layout_lines (layout);
   n_pages = w42_layout_n_pages (layout);
@@ -105,6 +208,7 @@ w42_pdf_export (W42PieceTable      *pt,
       ok = FALSE;
     }
 
+  pdf_outline (surface, pt, layout);
   cairo_destroy (cr);
   /* Finishing writes most of the file -- the fonts, the page tree, the
    * cross-reference table -- so a full disk shows here, not before. */

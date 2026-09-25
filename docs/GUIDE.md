@@ -1083,7 +1083,10 @@ is the same layout engine that draws the document, so the preview is the
 print.
 
 **File ▸ Export as PDF** writes the document as a PDF, pictures, notes and
-all.
+all, with its headings as the PDF's bookmarks — a book's parts and
+chapters in the reader's side panel — and the Summary Info's title,
+author, subject and keywords as the PDF's own. A JPEG picture goes in as
+the JPEG it is, so an illustrated book stays a few megabytes.
 
 **File ▸ Export as Web Page** writes one self-contained HTML file:
 headings, paragraphs with their alignment and indents, runs with their
