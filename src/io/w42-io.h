@@ -27,16 +27,18 @@ typedef enum {
   W42_FORMAT_DOCX,     /* .docx, Word's XML format; read and written */
   W42_FORMAT_ABW,      /* AbiWord, plain or gzipped; read and written */
   W42_FORMAT_ODT,      /* OpenDocument text; read and written */
-  W42_FORMAT_PPTX      /* slides: PowerPoint's presentation, read and written */
+  W42_FORMAT_PPTX,     /* slides: PowerPoint's presentation, read and written */
+  W42_FORMAT_EPUB      /* an e-book; written only */
 } W42Format;
 
 W42Format w42_io_guess_format (GFile *file);
 
 /* Whether a document read from `file` and written back to it comes out
- * as it went in.  Word 97 .doc is not written at all; a PDF, a web page
- * and a presentation are written as a rendering of the document, which
- * reading back does not undo.  A document from one of those is saved
- * somewhere else, and one saved to one of those has been exported. */
+ * as it went in.  Word 97 .doc is not written at all; a PDF, a web page,
+ * a presentation and an e-book are written as a rendering of the
+ * document, which reading back does not undo -- an e-book is not read
+ * back at all.  A document from one of those is saved somewhere else,
+ * and one saved to one of those has been exported. */
 gboolean  w42_io_format_round_trips (GFile *file);
 
 /* Clamps a page setup to what can be laid out; every reader's result

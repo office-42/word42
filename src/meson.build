@@ -23,6 +23,7 @@ w42_core_sources = files(
   'io/w42-pdf.c',
   'io/w42-doc.c',
   'io/w42-html.c',
+  'io/w42-epub.c',
   'io/w42-htmlin.c',
   'io/w42-merge.c',
   'io/w42-zip.c',
