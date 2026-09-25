@@ -2307,6 +2307,21 @@ span_comment (lxb_dom_element_t *el)
 
 static void read_note (Html *h, const Note *note, gsize body);
 
+/* An element keeps whitespace once, however many ways it says so -- a
+ * <pre>, white-space:pre in its style, or both -- and its end gives
+ * back exactly that one level.  A styled <pre> gave back two, and the
+ * text after it, still inside another element that kept whitespace,
+ * had its spaces run together. */
+static void
+note_pre (Html *h, int pre_before, guint8 *flags)
+{
+  if (h->pre_depth > pre_before)
+    {
+      h->pre_depth = pre_before + 1;
+      *flags |= FLAG_PRE;
+    }
+}
+
 static WalkEnter
 element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
 {
@@ -2445,6 +2460,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
       if (g_str_equal (name, "pre"))
         {
           h->pre_depth++;
+          note_pre (h, pre_before, flags);
           h->ch[h->depth].family = g_intern_string ("Courier New");
         }
       if ((style = elem_style (h, el)) != NULL)
@@ -2452,8 +2468,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
           StyleShows hidden = apply_style (h, style, TRUE);
 
           g_free (style);
-          if (h->pre_depth > pre_before)
-            *flags |= FLAG_PRE;
+          note_pre (h, pre_before, flags);
           if (hidden != STYLE_SHOWN)
             {
               /* Not shown: not read.  The paragraph it would have been
@@ -2655,8 +2670,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
               if (h->pa.cell_valign != W42_CELL_VALIGN_TOP)
                 w42_pt_cell_set_valign_at (h->pt, cell_pos, h->pa.cell_valign);
             }
-          if (h->pre_depth > pre_before)
-            *flags |= FLAG_PRE;
+          note_pre (h, pre_before, flags);
           /* The alignment is every paragraph's in the cell, without
            * making a paragraph of its own. */
           h->cell_align = h->pa.align;
@@ -2928,8 +2942,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
       StyleShows hidden = apply_style (h, style, FALSE);
 
       g_free (style);
-      if (h->pre_depth > pre_before)
-        *flags |= FLAG_PRE;
+      note_pre (h, pre_before, flags);
       if (hidden != STYLE_SHOWN)
         {
           /* Word's list marker: the number is the paragraph's, in text. */
@@ -2973,8 +2986,6 @@ element_end (Html *h, const char *name, guint8 flags)
   if (block_element (name))
     {
       end_paragraph (h);
-      if (g_str_equal (name, "pre") && h->pre_depth > 0)
-        h->pre_depth--;
       if (flags & FLAG_CHAR)
         pop_char (h);
       return;

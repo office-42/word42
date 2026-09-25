@@ -386,17 +386,14 @@ typedef struct {
   guint         chpx_len;
 } DocStyle;
 
-/* Resolved paragraph properties, Word's names for them. */
+/* A row's shape, from the table sprms on its row-end mark: its cells'
+ * edges, sides, lines, merges and backgrounds, and the table's own
+ * lines.  Nearly three kilobytes, and only a row-end mark has one, so a
+ * paragraph gets it when a table sprm first comes along rather than
+ * every paragraph carrying it: carried by all of them, a 268 KB file of
+ * nothing but paragraph marks took 860 MB to open, where it takes 143
+ * MB now. */
 typedef struct {
-  int      istd;
-  int      jc;
-  int      dxa_left, dxa_right, dxa_left1;
-  int      dya_before, dya_after;
-  int      dya_line;
-  int      f_mult;
-  gboolean in_table, ttp, page_break;
-  gboolean keep_next, keep_together, widow, bidi;
-  int      ilfo, ilvl;
   int      itc_mac;         /* columns, from a row-end TDefTable */
   int      cellx[64];
   guint8   cell_sides[64];  /* each cell's ruled sides, from its TC80 */
@@ -408,6 +405,20 @@ typedef struct {
   gboolean has_tbl_edge;
   int      dya_row_height;  /* sprmTDyaRowHeight; negative is "exactly" */
   gboolean table_header;    /* sprmTTableHeader */
+} RowShape;
+
+/* Resolved paragraph properties, Word's names for them. */
+typedef struct {
+  int      istd;
+  int      jc;
+  int      dxa_left, dxa_right, dxa_left1;
+  int      dya_before, dya_after;
+  int      dya_line;
+  int      f_mult;
+  gboolean in_table, ttp, page_break;
+  gboolean keep_next, keep_together, widow, bidi;
+  int      ilfo, ilvl;
+  RowShape *row;            /* owned; NULL until a table sprm */
   guint8   n_tabs;                    /* sprmPChgTabsPapx */
   int      tab_pos[W42_MAX_TABS];
   guint8   tab_kind[W42_MAX_TABS];    /* kind and leader, as the model packs them */
@@ -1024,6 +1035,15 @@ apply_toggle (int *flag, guint8 v)
     *flag = !*flag;
 }
 
+/* The paragraph's row shape, made when a table sprm first needs it. */
+static RowShape *
+para_row (Para *pa)
+{
+  if (pa->row == NULL)
+    pa->row = g_new0 (RowShape, 1);
+  return pa->row;
+}
+
 static void
 apply_papx (const guint8 *grpprl, guint len, Para *pa)
 {
@@ -1178,12 +1198,12 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
         case 0x9407:
           /* sprmTDyaRowHeight: the row's height, negative for "exactly". */
           if (olen >= 2)
-            pa->dya_row_height = rd16s (op);
+            para_row (pa)->dya_row_height = rd16s (op);
           break;
         case 0x3404:
           /* sprmTTableHeader: the row repeats at the top of every page. */
           if (olen >= 1)
-            pa->table_header = op[0] != 0;
+            para_row (pa)->table_header = op[0] != 0;
           break;
         case 0xD605:
           /* sprmTTableBorders80: six BRC80s, top, left, bottom, right,
@@ -1192,10 +1212,11 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
             {
               static const int EDGES[6] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
                                             W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+              RowShape *row = para_row (pa);
 
               for (int e = 0; e < 6; e++)
-                brc80_edge (op + 1 + 4 * e, &pa->tbl_edge[EDGES[e]]);
-              pa->has_tbl_edge = TRUE;
+                brc80_edge (op + 1 + 4 * e, &row->tbl_edge[EDGES[e]]);
+              row->has_tbl_edge = TRUE;
             }
           break;
         case 0xD613:
@@ -1204,10 +1225,11 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
             {
               static const int EDGES[6] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
                                             W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+              RowShape *row = para_row (pa);
 
               for (int e = 0; e < 6; e++)
-                brc_edge (op + 1 + 8 * e, &pa->tbl_edge[EDGES[e]]);
-              pa->has_tbl_edge = TRUE;
+                brc_edge (op + 1 + 8 * e, &row->tbl_edge[EDGES[e]]);
+              row->has_tbl_edge = TRUE;
             }
           break;
         case 0xD620: case 0xD62F:
@@ -1217,6 +1239,7 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
             {
               int first = op[1], lim = op[2];
               guint grf = op[3];
+              RowShape *row = para_row (pa);
               W42BorderEdge edge;
               gboolean on = sprm == 0xD620 ? (olen >= 8 && brc80_edge (op + 4, &edge))
                                            : (olen >= 12 && brc_edge (op + 4, &edge));
@@ -1231,11 +1254,11 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                       continue;
                     if (on)
                       {
-                        pa->cell_sides[c] |= (guint8) (1 << EDGES[side]);
-                        pa->cell_edge[c][EDGES[side]] = edge;
+                        row->cell_sides[c] |= (guint8) (1 << EDGES[side]);
+                        row->cell_edge[c][EDGES[side]] = edge;
                       }
                     else
-                      pa->cell_sides[c] &= (guint8) ~(1 << EDGES[side]);
+                      row->cell_sides[c] &= (guint8) ~(1 << EDGES[side]);
                   }
             }
           break;
@@ -1282,14 +1305,15 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
             {
               int itc = op[2];
               guint edges;
+              RowShape *row = para_row (pa);
 
               if (itc > 63) itc = 63;
               edges = 3u + 2u * ((guint) itc + 1);
               if (olen >= edges)
                 {
-                  pa->itc_mac = itc;
+                  row->itc_mac = itc;
                   for (int c = 0; c <= itc; c++)
-                    pa->cellx[c] = rd16s (op + 3 + 2 * c);
+                    row->cellx[c] = rd16s (op + 3 + 2 * c);
                 }
               for (int c = 0; c < itc && olen >= edges + 20u * (guint) (c + 1); c++)
                 {
@@ -1297,13 +1321,13 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                                                W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
                   const guint8 *tc = op + edges + 20 * c;
 
-                  pa->cell_flags[c] = rd16 (tc);
+                  row->cell_flags[c] = rd16 (tc);
                   for (int side = 0; side < 4; side++)
                     {
                       const guint8 *brc = tc + 4 + 4 * side;
 
-                      if (brc80_edge (brc, &pa->cell_edge[c][EDGES[side]]))
-                        pa->cell_sides[c] |= (guint8) (1 << EDGES[side]);
+                      if (brc80_edge (brc, &row->cell_edge[c][EDGES[side]]))
+                        row->cell_sides[c] |= (guint8) (1 << EDGES[side]);
                     }
                 }
             }
@@ -1327,10 +1351,12 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                  * "automatic"; the model wants 0x00RRGGBB. */
                 if ((back >> 24) != 0xFF)
                   {
-                    pa->cell_shade[c] = ((back & 0xFF) << 16) |
-                                        (back & 0xFF00) |
-                                        ((back >> 16) & 0xFF);
-                    pa->has_cell_shade[c] = 1;
+                    RowShape *row = para_row (pa);
+
+                    row->cell_shade[c] = ((back & 0xFF) << 16) |
+                                         (back & 0xFF00) |
+                                         ((back >> 16) & 0xFF);
+                    row->has_cell_shade[c] = 1;
                   }
               }
           }
@@ -1681,6 +1707,12 @@ typedef struct {
 } DocPara;
 
 static void
+doc_para_clear (gpointer data)
+{
+  g_free (((DocPara *) data)->pa.row);
+}
+
+static void
 para_defaults (Para *pa)
 {
   memset (pa, 0, sizeof *pa);
@@ -1945,6 +1977,7 @@ collect_paragraphs (Doc *doc)
   gboolean break_here = FALSE;    /* the paragraph being read starts a page */
   gboolean break_next = FALSE;    /* and the one after it will */
 
+  g_array_set_clear_func (paras, doc_para_clear);
   for (guint32 cp = 0; (gint32) cp < doc->ccp_text; cp++)
     {
       gunichar c = char_at (doc, cp);
@@ -2007,9 +2040,9 @@ collect_paragraphs (Doc *doc)
           g_array_append_val (paras, dp);
           start = cp + 1;
 
-          /* Each entry is the better part of a kilobyte, and a file that
-           * is nothing but paragraph marks buys one per byte: past any
-           * document's worth of them, the rest run on as the last one. */
+          /* A file that is nothing but paragraph marks buys one per
+           * byte: past any document's worth of them, the rest run on as
+           * the last one. */
           if (paras->len >= 262144)
             {
               g_array_index (paras, DocPara, paras->len - 1).cp_end =
@@ -2198,6 +2231,11 @@ typedef struct {
   W42ApIdx       run_ap;
   GArray        *note_ids;    /* the footnotes made, in reference order */
   GArray        *end_ids;     /* and the endnotes */
+  /* What row_shape found last, and the paragraphs it looked through to
+   * find it, [shape_from, shape_to): asked from any of them, the answer
+   * is the same. */
+  guint          shape_from, shape_to;
+  const RowShape *shape;
 } Builder;
 
 static void
@@ -2464,22 +2502,43 @@ apply_para (Builder *b, const DocPara *dp)
                          W42_PARA_ALL, &fmt.pa);
 }
 
+static gboolean
+has_row_shape (const Para *pa)
+{
+  return pa->ttp && pa->row != NULL && pa->row->itc_mac > 0;
+}
+
 /* A row's shape -- its columns, their widths and each cell's borders and
  * background -- is in the row-end paragraph that follows its cells, so it
- * has to be looked ahead for. */
-static const Para *
-row_shape (GArray *paras, guint index)
+ * has to be looked ahead for.  It is asked for at every cell, so what the
+ * last look found is kept: every paragraph it passed over has the same
+ * answer.  Looked for afresh each time, cells marked as in a table with
+ * no row end after them were each a walk to the end of the document, and
+ * 40 000 of them took eleven seconds to open; they take 20 ms now. */
+static const RowShape *
+row_shape (Builder *b, GArray *paras, guint index)
 {
-  for (guint k = index; k < paras->len; k++)
+  guint k;
+
+  if (index >= b->shape_from && index < b->shape_to)
+    return b->shape;
+
+  b->shape = NULL;
+  for (k = index; k < paras->len; k++)
     {
       const DocPara *q = &g_array_index (paras, DocPara, k);
 
-      if (q->pa.ttp && q->pa.itc_mac > 0)
-        return &q->pa;
+      if (has_row_shape (&q->pa))
+        {
+          b->shape = q->pa.row;
+          break;
+        }
       if (!q->pa.in_table)
         break;
     }
-  return NULL;
+  b->shape_from = index;
+  b->shape_to = k + 1;
+  return b->shape;
 }
 
 /* The column a row's cell edge falls on in the table's grid: the
@@ -2498,7 +2557,7 @@ grid_column (const Builder *b, int edge)
 static void
 open_table (Builder *b, GArray *paras, guint index)
 {
-  const Para *shape = row_shape (paras, index);
+  const RowShape *shape = row_shape (b, paras, index);
   int n_cols = 1;
   int widths[64] = { 0 };
 
@@ -2514,11 +2573,11 @@ open_table (Builder *b, GArray *paras, guint index)
 
         if (!q->pa.in_table)
           break;
-        if (!q->pa.ttp || q->pa.itc_mac <= 0)
+        if (!has_row_shape (&q->pa))
           continue;
-        for (int c = 0; c <= q->pa.itc_mac && c < 65; c++)
+        for (int c = 0; c <= q->pa.row->itc_mac && c < 65; c++)
           {
-            int edge = q->pa.cellx[c];
+            int edge = q->pa.row->cellx[c];
             int at = 0;
 
             while (at < n_edges && b->grid[at] < edge - 10)
@@ -2624,7 +2683,7 @@ row_is_last (GArray *paras, guint index)
  * its sides and their lines, its background, where its text sits, and
  * the merge downwards it starts or carries on. */
 static void
-doc_apply_cell (Builder *b, GArray *paras, guint index, const Para *shape, gsize cell_pos)
+doc_apply_cell (Builder *b, GArray *paras, guint index, const RowShape *shape, gsize cell_pos)
 {
   int col = b->cell_index;
   guint8 sides = shape->cell_sides[col];
@@ -2825,7 +2884,7 @@ build_document (Doc *doc, W42PieceTable *pt)
             open_table (&b, paras, i);
           if (!b.in_cell)
             {
-              const Para *shape = row_shape (paras, i);
+              const RowShape *shape = row_shape (&b, paras, i);
               gsize cell_pos = b.pos;
 
               /* A cell merged into the one before it: that one grows
@@ -3016,6 +3075,7 @@ story_align (Doc *doc, guint32 cp)
       resolve_style (doc, rd16 (papx), &pa, NULL, 0);
       apply_papx (papx + 2, len - 2, &pa);
     }
+  g_free (pa.row);
   switch (pa.jc)
     {
     case 1:  return W42_ALIGN_CENTER;
