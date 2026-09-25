@@ -16,6 +16,8 @@
 #include "w42-document.h"
 #include "w42-style.h"
 
+#include <string.h>
+
 typedef struct {
   GtkWidget   *list;            /* the GtkListBox */
   W42View     *view;
@@ -85,6 +87,59 @@ docmap_clear (DocMap *self)
   g_array_set_size (self->starts, 0);
 }
 
+/* The words of a paragraph: runs of text with a letter or a digit in
+ * them, so that a dialogue dash or a scene break's stars are not words. */
+static gsize
+docmap_words (const char *text)
+{
+  gsize n = 0;
+  gboolean in_word = FALSE, counted = FALSE;
+
+  for (const char *p = text; ; p = g_utf8_next_char (p))
+    {
+      gunichar c = g_utf8_get_char (p);
+
+      if (c == 0 || g_unichar_isspace (c))
+        {
+          if (in_word && counted)
+            n++;
+          in_word = counted = FALSE;
+          if (c == 0)
+            break;
+          continue;
+        }
+      in_word = TRUE;
+      if (g_unichar_isalnum (c))
+        counted = TRUE;
+    }
+  return n;
+}
+
+typedef struct {
+  guint       block;
+  int         level;      /* how deep the map shows it */
+  const char *number;     /* "3.1 ", owned by `numbers`, or NULL */
+  gsize       words;      /* in its section, down to the next heading
+                           * at its level or above */
+} MapEntry;
+
+static char *
+docmap_count_text (gsize n)
+{
+  char *digits = g_strdup_printf ("%" G_GSIZE_FORMAT, n);
+  GString *out = g_string_new (NULL);
+  gsize len = strlen (digits);
+
+  for (gsize i = 0; i < len; i++)
+    {
+      if (i > 0 && (len - i) % 3 == 0)
+        g_string_append_c (out, ',');
+      g_string_append_c (out, digits[i]);
+    }
+  g_free (digits);
+  return g_string_free (out, FALSE);
+}
+
 static gboolean
 docmap_rebuild (gpointer data)
 {
@@ -96,6 +151,8 @@ docmap_rebuild (gpointer data)
   GPtrArray *blocks;
   gboolean numbering;
   int counters[10] = { 0 };
+  GArray *entries;
+  GPtrArray *numbers;
 
   self->rebuild_id = 0;
 
@@ -118,46 +175,97 @@ docmap_rebuild (gpointer data)
   numbering = w42_stylesheet_get_number_headings (styles);
   blocks = w42_pt_snapshot_blocks (pt);
 
+  /* First the headings and what each section comes to: a novelist
+   * weighs one chapter against the next by its length. */
+  entries = g_array_new (FALSE, FALSE, sizeof (MapEntry));
+  numbers = g_ptr_array_new_with_free_func (g_free);
   for (guint b = 0; b < blocks->len; b++)
     {
       const W42Block *block = g_ptr_array_index (blocks, b);
       const W42Fmt *fmt = w42_ap_table_get (aps, block->ap);
       const char *style = fmt->pa.style;
       int level = style != NULL ? w42_stylesheet_outline (styles, style) : 0;
-      GString *text;
-      GtkWidget *label;
-      GtkWidget *row;
+      gboolean title = FALSE;
+      MapEntry entry = { b, 0, NULL, 0 };
 
-      /* Notes and the insides of tables are not part of the outline, and
-       * the Title is its top, as the slide show and the outline files
-       * have it. */
-      if (block->note >= 0 || block->table >= 0)
+      if (block->note >= 0)
         continue;
-      if (level == 0 && style != NULL && g_ascii_strcasecmp (style, "Title") == 0)
-        level = 1;
-      if (level <= 0 || level >= 10)
-        continue;
-
-      /* The counters run over empty headings too, as the layout's do, so
-       * the numbers here are the numbers on the page. */
-      counters[level]++;
-      for (int l = level + 1; l < 10; l++)
-        counters[l] = 0;
-
-      text = g_string_new (NULL);
-      if (numbering)
+      if (block->table < 0 && level == 0 && style != NULL &&
+          g_ascii_strcasecmp (style, "Title") == 0)
+        title = TRUE;
+      if (block->table >= 0 || ((level <= 0 || level >= 10) && !title))
         {
-          for (int l = 1; l <= level; l++)
-            g_string_append_printf (text, l > 1 ? ".%d" : "%d", counters[l]);
-          g_string_append_c (text, ' ');
+          gsize words = docmap_words (block->text->str);
+
+          /* Body text: it belongs to every heading still open above it. */
+          for (guint e = 0; e < entries->len; e++)
+            if (g_array_index (entries, MapEntry, e).level > 0)
+              g_array_index (entries, MapEntry, e).words += words;
+          continue;
         }
+
+      /* A new heading closes the sections at its level and below. */
+      for (guint e = entries->len; e > 0; e--)
+        {
+          MapEntry *open = &g_array_index (entries, MapEntry, e - 1);
+
+          if (open->level >= (title ? 1 : level))
+            open->level = -open->level;     /* closed: counted no more */
+        }
+
+      /* The Title heads the map, as the slide show and the outline files
+       * have it; the layout gives it no number, and neither does this,
+       * so the numbers here are the numbers on the page.  The counters
+       * run over empty headings too, as the layout's do. */
+      if (title)
+        entry.level = 1;
+      else
+        {
+          entry.level = level;
+          counters[level]++;
+          for (int l = level + 1; l < 10; l++)
+            counters[l] = 0;
+          if (numbering)
+            {
+              GString *number = g_string_new (NULL);
+
+              for (int l = 1; l <= level; l++)
+                g_string_append_printf (number, l > 1 ? ".%d" : "%d", counters[l]);
+              g_string_append_c (number, ' ');
+              entry.number = number->str;
+              g_ptr_array_add (numbers, g_string_free (number, FALSE));
+            }
+        }
+      g_array_append_val (entries, entry);
+    }
+  /* Those still open, and those closed, both count what they had. */
+  for (guint e = 0; e < entries->len; e++)
+    {
+      MapEntry *entry = &g_array_index (entries, MapEntry, e);
+
+      entry->level = ABS (entry->level);
+    }
+
+  for (guint e = 0; e < entries->len; e++)
+    {
+      const MapEntry *entry = &g_array_index (entries, MapEntry, e);
+      const W42Block *block = g_ptr_array_index (blocks, entry->block);
+      int level = entry->level;
+      GString *text;
+      GtkWidget *label, *count, *box;
+      GtkWidget *row;
+      char *words, *tip;
+
+      text = g_string_new (entry->number);
       for (const char *p = block->text->str; *p; p = g_utf8_next_char (p))
         {
           gunichar c = g_utf8_get_char (p);
 
           if (c == 0xFFFC)
             continue;
-          g_string_append_unichar (text, c == '\t' ? ' ' : c);
+          /* A tab or a line break in a heading is a space in the map,
+           * whose rows are one line each. */
+          g_string_append_unichar (text, c == '\t' || c == 0x2028 || c == '\v' ? ' ' : c);
         }
       if (g_strstrip (text->str)[0] == '\0')
         {
@@ -168,19 +276,36 @@ docmap_rebuild (gpointer data)
       label = gtk_label_new (text->str);
       gtk_label_set_xalign (GTK_LABEL (label), 0.0);
       gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+      gtk_widget_set_hexpand (label, TRUE);
       gtk_widget_set_margin_start (label, 6 + (level - 1) * 14);
-      gtk_widget_set_margin_end (label, 6);
-      gtk_widget_set_margin_top (label, 2);
-      gtk_widget_set_margin_bottom (label, 2);
-      gtk_widget_set_tooltip_text (label, text->str);
+
+      /* The section's length at the right, small and grey. */
+      words = docmap_count_text (entry->words);
+      count = gtk_label_new (words);
+      gtk_widget_add_css_class (count, "dim-label");
+      gtk_label_set_xalign (GTK_LABEL (count), 1.0);
+      tip = g_strdup_printf ("%s\n%s %s", text->str, words,
+                             entry->words == 1 ? "word" : "words");
+
+      box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+      gtk_widget_set_margin_end (box, 6);
+      gtk_widget_set_margin_top (box, 2);
+      gtk_widget_set_margin_bottom (box, 2);
+      gtk_box_append (GTK_BOX (box), label);
+      gtk_box_append (GTK_BOX (box), count);
+      gtk_widget_set_tooltip_text (box, tip);
 
       row = gtk_list_box_row_new ();
-      gtk_list_box_row_set_child (GTK_LIST_BOX_ROW (row), label);
+      gtk_list_box_row_set_child (GTK_LIST_BOX_ROW (row), box);
       gtk_list_box_append (GTK_LIST_BOX (self->list), row);
       g_array_append_val (self->starts, block->start_pos);
       g_string_free (text, TRUE);
+      g_free (words);
+      g_free (tip);
     }
 
+  g_array_free (entries, TRUE);
+  g_ptr_array_free (numbers, TRUE);
   g_ptr_array_free (blocks, TRUE);
   docmap_show_caret (map);
   return G_SOURCE_REMOVE;

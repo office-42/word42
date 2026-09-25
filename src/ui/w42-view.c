@@ -7,6 +7,7 @@
 #include "w42-view.h"
 
 #include "w42-autocorrect.h"
+#include "w42-lang.h"
 #include "w42-autotext.h"
 #include "w42-index.h"
 #include "w42-compare.h"
@@ -32,6 +33,10 @@ struct _W42View {
   char      *tip_text;       /* the AutoText entry the tip offers */
   gsize      tip_back;       /* the characters typed of its name */
   gboolean   autocorrect;    /* Tools > Options: correct as you type */
+  gboolean   typewriter;     /* View > Typewriter Scrolling: the line being
+                              * written stays in the middle of the window */
+  GtkAdjustment *vadj;       /* the scrolled window's, whose moves redraw:
+                              * only the part on screen is drawn */
 
   W42Document   *doc;
   W42Layout     *layout;
@@ -392,6 +397,17 @@ view_scroll_to_caret (W42View *self)
   top    = view_page_origin_y (self, page) + y * self->zoom;
   bottom = top + h * self->zoom;
 
+  /* A typewriter's line stays where the eye is: the page moves up under
+   * the caret, which never wanders down to the window's foot. */
+  if (self->typewriter)
+    {
+      double want = (top + bottom) / 2.0 - page_size / 2.0;
+      double upper = gtk_adjustment_get_upper (vadj) - page_size;
+
+      gtk_adjustment_set_value (vadj, CLAMP (want, 0.0, MAX (upper, 0.0)));
+      return;
+    }
+
   if (top < value)
     gtk_adjustment_set_value (vadj, MAX (0.0, top - PAGE_GAP));
   else if (bottom > value + page_size)
@@ -401,6 +417,96 @@ view_scroll_to_caret (W42View *self)
 /* ---------------------------------------------------------------------- */
 /* Formatting                                                              */
 /* ---------------------------------------------------------------------- */
+
+void
+w42_view_set_typewriter (W42View *self, gboolean on)
+{
+  g_return_if_fail (W42_IS_VIEW (self));
+  self->typewriter = on;
+  if (on)
+    view_scroll_to_caret (self);
+}
+
+gboolean
+w42_view_get_typewriter (W42View *self)
+{
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  return self->typewriter;
+}
+
+const char *
+w42_view_get_document_language (W42View *self)
+{
+  W42PieceTable *pt;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), NULL);
+
+  pt = view_pt (self);
+  return pt != NULL ? w42_stylesheet_language (w42_pt_stylesheet (pt)) : NULL;
+}
+
+const char *
+w42_view_get_language (W42View *self)
+{
+  W42CharFmt now;
+  const char *lang;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), NULL);
+
+  w42_view_get_char_fmt (self, &now);
+  if (now.lang != NULL && *now.lang != '\0')
+    return now.lang;
+  lang = w42_view_get_document_language (self);
+  return lang != NULL ? lang : w42_lang_default ();
+}
+
+/* Word 97's Default button: the language goes on Normal, and so on
+ * every style built on it, which makes it the language of all the text
+ * not marked with one of its own -- what the spelling, the quotes and
+ * the hyphenation then go by. */
+void
+w42_view_set_document_language (W42View *self, const char *lang)
+{
+  W42PieceTable *pt;
+  W42StyleSheet *sheet;
+  const W42Style *normal;
+  W42Style changed;
+
+  g_return_if_fail (W42_IS_VIEW (self));
+
+  pt = view_pt (self);
+  if (pt == NULL)
+    return;
+  sheet = w42_pt_stylesheet (pt);
+  normal = w42_stylesheet_find (sheet, "Normal");
+  if (normal == NULL)
+    return;
+  lang = lang != NULL && *lang != '\0' ? g_intern_string (lang) : NULL;
+  if (g_strcmp0 (normal->ch.lang, lang) == 0)
+    return;
+
+  changed = *normal;
+  changed.ch.lang = lang;
+  w42_stylesheet_set (sheet, &changed);
+  for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
+    {
+      const W42Style *style = w42_stylesheet_get (sheet, i);
+
+      /* Styles of a file's own may stand on no base; they speak the
+       * document's language all the same. */
+      if (!style->character && style != w42_stylesheet_find (sheet, "Normal") &&
+          style->based_on == NULL)
+        {
+          W42Style follow = *style;
+
+          follow.ch.lang = lang;
+          w42_stylesheet_set (sheet, &follow);
+        }
+    }
+  w42_stylesheet_follow (sheet, "Normal");
+  w42_document_mark_unsaved (self->doc);
+  w42_document_touch (self->doc);
+}
 
 void
 w42_view_get_char_fmt (W42View *self, W42CharFmt *out)
@@ -1398,10 +1504,22 @@ w42_view_go_to_page (W42View *self, int page)
 
   g_return_if_fail (W42_IS_VIEW (self));
 
+  W42Layout *layout, *paged = NULL;
+
   if (view_pt (self) == NULL)
     return;
 
-  lines = w42_layout_lines (self->layout);
+  /* The printed page, in every view: Normal and Online Layout are one
+   * long galley, so the pages are worked out beside it. */
+  layout = self->layout;
+  if (w42_layout_get_galley (layout))
+    {
+      paged = w42_layout_new ();
+      w42_layout_build (paged, self->doc);
+      layout = paged;
+    }
+
+  lines = w42_layout_lines (layout);
   for (guint i = 0; i < lines->len; i++)
     {
       const W42LineBox *box = &g_array_index (lines, W42LineBox, i);
@@ -1415,7 +1533,25 @@ w42_view_go_to_page (W42View *self, int page)
     }
 
   if (hit != NULL)
-    view_set_caret (self, line_box_pos (self->layout, hit), FALSE);
+    view_set_caret (self, line_box_pos (layout, hit), FALSE);
+  g_clear_pointer (&paged, w42_layout_free);
+}
+
+int
+w42_view_page_count (W42View *self)
+{
+  W42Layout *paged;
+  int n;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), 1);
+
+  if (self->doc == NULL || !w42_layout_get_galley (self->layout))
+    return MAX (w42_layout_n_pages (self->layout), 1);
+  paged = w42_layout_new ();
+  w42_layout_build (paged, self->doc);
+  n = w42_layout_n_pages (paged);
+  w42_layout_free (paged);
+  return MAX (n, 1);
 }
 
 void
@@ -3245,7 +3381,9 @@ w42_view_hyphenate (W42View *self, gboolean remove)
     n = w42_pt_unhyphenate (pt);
   else
     {
-      W42Hyphenator *hyph = w42_hyphenator_new ();
+      /* The document's language's patterns: a Norwegian novel written
+       * on an English desktop is broken where Norwegian words break. */
+      W42Hyphenator *hyph = w42_hyphenator_new_for (w42_view_get_document_language (self));
 
       if (hyph == NULL)
         return -1;
@@ -3299,6 +3437,27 @@ view_insert_paragraph (W42View *self)
       w42_view_set_list (self, W42_LIST_NONE);
       return;
     }
+
+  /* What starts a paragraph stays with the paragraph it starts: a page or
+   * section break, a list numbered afresh and a dropped capital are its
+   * own, and Word gives the paragraph after it none of them.  Copied on,
+   * a chapter heading's page break put every paragraph typed under it on
+   * a page of its own. */
+  {
+    W42Fmt next = *w42_ap_table_get (w42_pt_ap_table (pt), ap);
+
+    if (next.pa.page_break_before || next.pa.section_break ||
+        next.pa.list_start > 0 || next.pa.drop_cap > 0)
+      {
+        next.pa.page_break_before = 0;
+        next.pa.section_break = 0;
+        next.pa.columns = 0;
+        next.pa.column_gap = 0;
+        next.pa.list_start = 0;
+        next.pa.drop_cap = 0;
+        ap = w42_ap_table_intern (w42_pt_ap_table (pt), &next);
+      }
+  }
 
   w42_pt_begin_group (pt);
 
@@ -4047,7 +4206,7 @@ autocorrect_after_typing (W42View *self, const char *typed)
   if (before == NULL)
     return;
 
-  fix = w42_autocorrect (before, c);
+  fix = w42_autocorrect (before, c, w42_view_get_language (self));
   g_free (before);
 
   if (fix.back == 0 || fix.text == NULL || fix.back > self->caret)
@@ -4134,7 +4293,10 @@ view_offer_tip (W42View *self)
     word = g_utf8_prev_char (word);
   if (*word != '\0')
     entry = w42_autotext_complete (word, &name);
-  if (entry == NULL && *word != '\0')
+  /* The months and days are English ones: offered in Norwegian text,
+   * "februar" and Enter became "February". */
+  if (entry == NULL && *word != '\0' &&
+      g_ascii_strncasecmp (w42_view_get_language (self), "en", 2) == 0)
     entry = date_complete (word);
   if (entry == NULL)
     {
@@ -5294,6 +5456,7 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
 
   gboolean paged = (self->mode == W42_VIEW_PAGE_LAYOUT);
   double paper_r = 1.0, paper_g = 1.0, paper_b = 1.0;
+  double clip_top = 0, clip_bottom = height;
 
   {
     /* Format > Background: the colour the paper is, white unless the
@@ -5326,13 +5489,24 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
   if (blocks == NULL)
     return;
 
+  {
+    double x1, x2;
+
+    cairo_clip_extents (cr, &x1, &clip_top, &x2, &clip_bottom);
+    if (clip_bottom <= clip_top)
+      {
+        clip_top = 0;
+        clip_bottom = height;
+      }
+  }
+
   for (int p = 0; p < n_pages; p++)
     {
       double oy = view_page_origin_y (self, p);
       double pw = page_w * zoom;
       double ph = page_h * zoom;
 
-      if (oy > height || oy + ph < 0)
+      if (oy > clip_bottom || oy + ph < clip_top)
         continue;
 
       if (paged)
@@ -5448,19 +5622,64 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
     }
 }
 
+/* The part of the view the window shows, with half a screen to spare
+ * each way.  The view is as tall as the document, so drawing all of it
+ * drew every page of a novel on every keystroke and every blink of the
+ * caret; what is scrolled into sight is drawn when it comes, since a
+ * move of the scroll bar redraws. */
+static void
+view_visible_band (W42View *self, int height, double *top, double *bottom)
+{
+  GtkWidget *sw = gtk_widget_get_ancestor (GTK_WIDGET (self), GTK_TYPE_SCROLLED_WINDOW);
+  GtkAdjustment *vadj = sw != NULL
+    ? gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (sw)) : NULL;
+  double value, size;
+
+  *top = 0;
+  *bottom = height;
+  if (vadj == NULL)
+    return;
+
+  if (vadj != self->vadj)
+    {
+      if (self->vadj != NULL)
+        g_signal_handlers_disconnect_by_data (self->vadj, self);
+      g_set_object (&self->vadj, vadj);
+      g_signal_connect_object (vadj, "value-changed",
+                               G_CALLBACK (gtk_widget_queue_draw), self,
+                               G_CONNECT_SWAPPED);
+    }
+
+  value = gtk_adjustment_get_value (vadj);
+  size = gtk_adjustment_get_page_size (vadj);
+  if (size <= 0)
+    return;
+  *top = MAX (0.0, floor (value - size / 2));
+  *bottom = MIN ((double) height, ceil (value + size * 1.5));
+  if (*bottom <= *top)
+    {
+      *top = 0;
+      *bottom = height;
+    }
+}
+
 static void
 w42_view_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
   W42View *self = W42_VIEW (widget);
   int width  = gtk_widget_get_width (widget);
   int height = gtk_widget_get_height (widget);
+  double top, bottom;
   cairo_t *cr;
 
   if (self->doc == NULL || width <= 0 || height <= 0)
     return;
 
+  view_visible_band (self, height, &top, &bottom);
   cr = gtk_snapshot_append_cairo (snapshot,
-                                  &GRAPHENE_RECT_INIT (0, 0, width, height));
+                                  &GRAPHENE_RECT_INIT (0, top, width, bottom - top));
+  cairo_rectangle (cr, 0, top, width, bottom - top);
+  cairo_clip (cr);
 
   view_draw (self, cr, width, height);
 
@@ -5622,6 +5841,11 @@ w42_view_dispose (GObject *object)
   g_clear_object (&self->doc);
   g_clear_object (&self->im);
   g_clear_pointer (&self->layout, w42_layout_free);
+  if (self->vadj != NULL)
+    {
+      g_signal_handlers_disconnect_by_data (self->vadj, self);
+      g_clear_object (&self->vadj);
+    }
 
   if (self->repeat_text != NULL)
     {
@@ -5922,8 +6146,15 @@ w42_view_fit_zoom (W42View *self, gboolean whole_page)
 
   page_w = w42_layout_page_width (self->layout);
   page_h = w42_layout_page_height (self->layout);
-  width  = gtk_widget_get_width (GTK_WIDGET (self)) - 2 * PAGE_GAP;
-  height = gtk_widget_get_height (GTK_WIDGET (self)) - 2 * PAGE_GAP;
+  /* The window onto the view, not the view: that is as big as the
+   * document, and a two-page document never fitted on screen. */
+  {
+    GtkWidget *sw = gtk_widget_get_ancestor (GTK_WIDGET (self), GTK_TYPE_SCROLLED_WINDOW);
+    GtkWidget *frame = sw != NULL ? sw : GTK_WIDGET (self);
+
+    width  = gtk_widget_get_width (frame) - 2 * PAGE_GAP;
+    height = gtk_widget_get_height (frame) - 2 * PAGE_GAP;
+  }
   if (page_w <= 0.0 || width <= 0.0)
     return self->zoom;
 

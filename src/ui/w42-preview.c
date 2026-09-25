@@ -173,13 +173,17 @@ draw_preview (GtkDrawingArea *area, cairo_t *cr, int width, int height,
   (void) area;
 
   {
-    double x1, y1, x2, y2;
+    /* The clip is the whole area too, so the band is the scrolled
+     * window's, with a little to spare; a scroll redraws. */
+    GtkAdjustment *vadj =
+      gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->scrolled));
+    double value = gtk_adjustment_get_value (vadj);
+    double size = gtk_adjustment_get_page_size (vadj);
 
-    cairo_clip_extents (cr, &x1, &y1, &x2, &y2);
-    if (y2 > y1)
+    if (size > 0)
       {
-        top = y1;
-        bottom = y2;
+        top = MAX (0.0, value - size / 2);
+        bottom = MIN ((double) height, value + size * 1.5);
       }
   }
 
@@ -456,8 +460,11 @@ on_close (GtkButton *b, gpointer data)
 static void
 on_scrolled (GtkAdjustment *adj, gpointer data)
 {
+  W42Preview *self = data;
+
   (void) adj;
-  update_page_label (data);
+  update_page_label (self);
+  gtk_widget_queue_draw (self->area);
 }
 
 static void

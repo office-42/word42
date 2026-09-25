@@ -74,6 +74,10 @@
           <attribute name="action">win.export-html</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">Export as _E-book...</attribute>
+          <attribute name="action">win.export-epub</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Web Pa_ge Preview</attribute>
           <attribute name="action">win.web-preview</attribute>
         </item>
@@ -198,6 +202,10 @@
         <item>
           <attribute name="label" translatable="yes">_Full Screen</attribute>
           <attribute name="action">win.full-screen</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">T_ypewriter Scrolling</attribute>
+          <attribute name="action">win.typewriter</attribute>
         </item>
         <item>
           <attribute name="label" translatable="yes">Slide Sho_w</attribute>
@@ -558,6 +566,10 @@
         <item>
           <attribute name="label" translatable="yes">_Word Count...</attribute>
           <attribute name="action">win.word-count</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Word Count _Goal...</attribute>
+          <attribute name="action">win.word-goal</attribute>
         </item>
       </section>
       <section>

@@ -24,6 +24,7 @@
 #include "w42-image.h"
 #include "w42-io.h"
 #include "w42-html.h"
+#include "w42-epub.h"
 #include "w42-pdf.h"
 #include "w42-print.h"
 #include "w42-scan.h"
@@ -99,6 +100,9 @@ struct _W42Window {
   GtkWidget   *status_at;
   GtkWidget   *status_ln;
   GtkWidget   *status_col;
+  GtkWidget   *status_pages;    /* "3/152": the page and how many, as Word
+                                 * 97's status bar showed where one stood */
+  GtkWidget   *status_words;    /* the running count, toward the goal */
   GtkWidget   *status_mod;
   char        *status_flash;    /* a message shown in place of "Modified" */
   guint        status_flash_id;
@@ -125,6 +129,23 @@ struct _W42Window {
   GtkWidget   *spell_dialog;  /* likewise */
   W42Spell    *spell;         /* NULL when there is no dictionary */
   W42Thesaurus *thesaurus;    /* made when first asked for; NULL until then */
+  const char  *spell_lang;    /* the document language the checker was
+                               * last set to, interned; NULL for none */
+
+  /* The words and pages the status bar shows.  Counting reads the whole
+   * document, so it waits until the typing stops; the undo state says
+   * whether anything has changed since the last count. */
+  guint        count_id;
+  gboolean     count_valid;
+  gsize        count_undo_pos;
+  guint64      count_serial;
+  gsize        words;
+  gssize       words_at_open;  /* the count when the document was opened,
+                                * for what this session has written; -1
+                                * before the first count */
+  int          goal;           /* the words the author means to reach; 0 none */
+  W42Layout   *count_layout;   /* the printed pages, when the view is a galley */
+  int          n_pages;
   GtkWidget   *title_label;   /* word42 draws its own title bar */
 };
 
@@ -132,6 +153,8 @@ G_DEFINE_FINAL_TYPE (W42Window, w42_window, GTK_TYPE_APPLICATION_WINDOW)
 
 static void window_sync_state (W42Window *self);
 static void on_view_state_changed (W42View *view, gpointer data);
+static void window_load_goal (W42Window *self);
+static void window_store_goal (W42Window *self);
 
 /* Commands that can do nothing at all -- no fields to update, no
  * revisions to accept -- say so in the status bar rather than looking
@@ -310,7 +333,7 @@ w42_window_name_has_extension (const char *name)
 {
   static const char * const known[] = { ".rtf", ".docx", ".doc", ".odt", ".abw",
                                         ".zabw", ".txt", ".text", ".html", ".htm",
-                                        ".pdf", ".pptx", ".ppsx", NULL };
+                                        ".pdf", ".pptx", ".ppsx", ".epub", NULL };
   char *lower;
   gboolean yes = FALSE;
 
@@ -418,17 +441,28 @@ autosave_path_for (W42Window *self)
 }
 
 static void
+autosave_unlink (const char *path)
+{
+  char *meta = g_strconcat (path, ".txt", NULL);
+
+  g_unlink (path);
+  g_unlink (meta);
+  g_free (meta);
+}
+
+/* The copy goes: the one this window wrote, and the one the document's
+ * name would give, which another window on the same file may have
+ * written. */
+static void
 autosave_remove (W42Window *self)
 {
-  if (self->autosave_path != NULL)
-    {
-      char *meta = g_strconcat (self->autosave_path, ".txt", NULL);
+  char *path = autosave_path_for (self);
 
-      g_unlink (self->autosave_path);
-      g_unlink (meta);
-      g_free (meta);
-      g_clear_pointer (&self->autosave_path, g_free);
-    }
+  if (self->autosave_path != NULL)
+    autosave_unlink (self->autosave_path);
+  autosave_unlink (path);
+  g_free (path);
+  g_clear_pointer (&self->autosave_path, g_free);
 }
 
 static gboolean
@@ -439,15 +473,18 @@ on_autosave (gpointer data)
   GFile *file, *orig;
   GError *error = NULL;
 
-  if (!self->autosave_dirty || !w42_document_get_modified (self->doc))
+  /* Undone back to the saved text, or reverted: a copy of what was
+   * thrown away would come back as "recovered" after a crash. */
+  if (!w42_document_get_modified (self->doc))
+    {
+      if (self->autosave_path != NULL)
+        autosave_remove (self);
+      return G_SOURCE_CONTINUE;
+    }
+  if (!self->autosave_dirty)
     return G_SOURCE_CONTINUE;
 
-  /* The document may have been saved under a new name since. */
   path = autosave_path_for (self);
-  if (self->autosave_path != NULL && !g_str_equal (path, self->autosave_path))
-    autosave_remove (self);
-  g_free (self->autosave_path);
-  self->autosave_path = path;
 
   dir = autosave_dir ();
   g_mkdir_with_parents (dir, 0700);
@@ -457,6 +494,14 @@ on_autosave (gpointer data)
   if (w42_rtf_save (w42_document_pt (self->doc), w42_document_page_setup (self->doc),
                     file, &error))
     {
+      /* The document may have been saved under a new name since, or be
+       * a recovered one still under the name it was recovered from: the
+       * old copy goes once the new one is safely written, never before. */
+      if (self->autosave_path != NULL && !g_str_equal (path, self->autosave_path))
+        autosave_unlink (self->autosave_path);
+      g_free (self->autosave_path);
+      self->autosave_path = g_strdup (path);
+
       /* Beside it, where the document really lives, for the recovery. */
       meta = g_strconcat (path, ".txt", NULL);
       orig = w42_document_get_file (self->doc);
@@ -475,7 +520,73 @@ on_autosave (gpointer data)
     g_clear_error (&error);
 
   g_object_unref (file);
+  g_free (path);
   return G_SOURCE_CONTINUE;
+}
+
+/* Every so many minutes -- two, unless Tools > Options says otherwise,
+ * or the environment does, which the tests use. */
+static void
+window_start_autosave (W42Window *self)
+{
+  const char *env = g_getenv ("W42_AUTOSAVE_SECONDS");
+  guint seconds = env != NULL
+    ? (guint) MAX (atoi (env), 1)
+    : (guint) CLAMP (w42_settings_get_int ("autosave-minutes", 2), 1, 120) * 60;
+
+  if (self->autosave_id != 0)
+    g_source_remove (self->autosave_id);
+  self->autosave_id = g_timeout_add_seconds (seconds, on_autosave, self);
+}
+
+void
+w42_window_autosave_changed (GtkApplication *app)
+{
+  for (GList *l = app != NULL ? gtk_application_get_windows (app) : NULL;
+       l != NULL; l = l->next)
+    if (W42_IS_WINDOW (l->data))
+      window_start_autosave (W42_WINDOW (l->data));
+}
+
+/* Tools > Options > Always create backup copy: the file about to be
+ * written over is kept beside it first, as "Backup of" and its name, so
+ * that a save regretted -- a chapter deleted, a wrong format chosen --
+ * can be had back.  Word 97 kept a .wbk; the name here keeps the file's
+ * own extension, so the copy opens as what it is. */
+static void
+window_backup_before_save (GFile *file)
+{
+  GFile *parent, *backup;
+  char *name, *backup_name;
+
+  if (!w42_settings_get_bool ("backup-copy", FALSE) ||
+      !g_file_query_exists (file, NULL))
+    return;
+
+  parent = g_file_get_parent (file);
+  name = g_file_get_basename (file);
+  if (parent == NULL || name == NULL)
+    {
+      g_clear_object (&parent);
+      g_free (name);
+      return;
+    }
+  backup_name = g_strconcat ("Backup of ", name, NULL);
+  backup = g_file_get_child (parent, backup_name);
+  /* Best effort: a copy that cannot be made must not stop the save. */
+  g_file_copy (file, backup, G_FILE_COPY_OVERWRITE, NULL, NULL, NULL, NULL);
+
+  g_object_unref (backup);
+  g_free (backup_name);
+  g_free (name);
+  g_object_unref (parent);
+}
+
+static gboolean
+window_save_document (W42Document *doc, GFile *file, GError **error)
+{
+  window_backup_before_save (file);
+  return w42_document_save (doc, file, error);
 }
 
 int
@@ -545,9 +656,11 @@ w42_window_recover_all (GtkApplication *app)
             first = window;
           recovered++;
 
-          /* Recovered, the copy has done what it can. */
-          g_unlink (path);
-          g_unlink (meta);
+          /* The copy stays until the recovered document is saved, closed
+           * or copied again: until then it is the only one there is, and
+           * a second crash must not lose it. */
+          window->autosave_path = g_strdup (path);
+          window->autosave_dirty = TRUE;
         }
       else
         {
@@ -692,6 +805,12 @@ w42_window_load (W42Window *self, GFile *file, GError **error)
     if (views[i] != NULL)
       w42_view_select_range (views[i], first, first);
 
+  /* Another document: its own count, session and goal. */
+  self->count_valid = FALSE;
+  self->words_at_open = -1;
+  self->goal = 0;
+  window_load_goal (self);
+
   window_note_recent (self, file);
   window_update_title (self);
   window_sync_state (self);
@@ -715,6 +834,48 @@ w42_window_open (W42Window *self, GFile *file)
   return TRUE;
 }
 
+void
+w42_window_apply_default_language (W42Document *doc)
+{
+  char *lang;
+  W42StyleSheet *sheet;
+  const W42Style *normal;
+
+  g_return_if_fail (W42_IS_DOCUMENT (doc));
+
+  lang = w42_settings_get_string ("default-language", "");
+  sheet = w42_pt_stylesheet (w42_document_pt (doc));
+  normal = w42_stylesheet_find (sheet, "Normal");
+  if (lang != NULL && *lang != '\0' && normal != NULL)
+    {
+      W42Style with = *normal;
+
+      with.ch.lang = g_intern_string (lang);
+      w42_stylesheet_set (sheet, &with);
+      w42_stylesheet_follow (sheet, "Normal");
+    }
+  g_free (lang);
+}
+
+W42Window *
+w42_window_find_file (GtkApplication *app, GFile *file)
+{
+  g_return_val_if_fail (G_IS_FILE (file), NULL);
+
+  for (GList *l = app != NULL ? gtk_application_get_windows (app) : NULL;
+       l != NULL; l = l->next)
+    {
+      GFile *has;
+
+      if (!W42_IS_WINDOW (l->data))
+        continue;
+      has = w42_document_get_file (W42_WINDOW (l->data)->doc);
+      if (has != NULL && g_file_equal (has, file))
+        return W42_WINDOW (l->data);
+    }
+  return NULL;
+}
+
 /* File > Open and Open Recent never throw work away: a document with
  * changes, or one already on disk, keeps its window, and the file opens
  * in a new one.  That window is shown only once the file is in it, and
@@ -726,7 +887,13 @@ window_open_file (W42Window *self, GFile *file)
 {
   W42Window *target = self;
   GError *error = NULL;
+  W42Window *open = w42_window_find_file (gtk_window_get_application (GTK_WINDOW (self)), file);
 
+  if (open != NULL)
+    {
+      gtk_window_present (GTK_WINDOW (open));
+      return;
+    }
   if (w42_document_get_modified (self->doc) || w42_document_get_file (self->doc) != NULL)
     target = W42_WINDOW (w42_window_new (gtk_window_get_application (GTK_WINDOW (self))));
 
@@ -780,7 +947,7 @@ w42_window_save_to (W42Window *self, GFile *file, GError **error)
   if (!w42_io_format_round_trips (file))
     return window_export (self, file, error);
 
-  ok = w42_document_save (self->doc, file, error);
+  ok = window_save_document (self->doc, file, error);
   window_saved (self, ok);
   return ok;
 }
@@ -835,7 +1002,9 @@ on_revert_choice (int choice, gpointer data)
     {
       GFile *file = g_object_ref (w42_document_get_file (self->doc));
 
-      w42_window_open (self, file);
+      /* The changes thrown away must not come back as recovered. */
+      if (w42_window_open (self, file))
+        autosave_remove (self);
       g_object_unref (file);
     }
   g_object_unref (self);
@@ -901,6 +1070,10 @@ window_saved (W42Window *self, gboolean succeeded)
     window_note_recent (self, w42_document_get_file (self->doc));
   if (succeeded)
     autosave_remove (self);
+  /* A goal set on an untitled document, or before Save As, goes with
+   * the file it now has. */
+  if (succeeded && self->goal > 0)
+    window_store_goal (self);
 
   window_update_title (self);
   window_sync_state (self);
@@ -1005,7 +1178,7 @@ save_as_finish (W42Window *self, GFile *file)
     }
   else if (file != NULL)
     {
-      saved = w42_document_save (self->doc, file, &error);
+      saved = window_save_document (self->doc, file, &error);
       if (!saved)
         show_error (self, "Word42 could not save that file.", error);
     }
@@ -1106,7 +1279,7 @@ action_save (GSimpleAction *action, GVariant *param, gpointer data)
       return;
     }
 
-  saved = w42_document_save (self->doc, file, &error);
+  saved = window_save_document (self->doc, file, &error);
   if (!saved)
     {
       show_error (self, "Word42 could not save that file.", error);
@@ -1399,6 +1572,7 @@ window_set_split (W42Window *self, gboolean split)
       w42_view_set_track_changes (view, w42_view_get_track_changes (self->view1));
       w42_view_set_show_marks (view, window_action_state (self, "show-marks"));
       w42_view_set_gridlines (view, window_action_state (self, "gridlines"));
+      w42_view_set_typewriter (view, window_action_state (self, "typewriter"));
       if (self->spell != NULL && window_action_state (self, "auto-spell"))
         w42_view_set_spell (view, self->spell);
 
@@ -1776,6 +1950,24 @@ action_toggle_ruler (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_set_visible (self->ruler, visible);
   g_simple_action_set_state (action, g_variant_new_boolean (visible));
   w42_settings_set_bool ("show-ruler", visible);
+}
+
+/* View > Typewriter Scrolling: the line being written stays at the
+ * middle of the window, in every pane, and the choice is remembered. */
+static void
+action_typewriter (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GVariant *state = g_action_get_state (G_ACTION (action));
+  gboolean on = !g_variant_get_boolean (state);
+
+  (void) param;
+  g_variant_unref (state);
+  g_simple_action_set_state (action, g_variant_new_boolean (on));
+  w42_view_set_typewriter (self->view1, on);
+  if (self->view2 != NULL)
+    w42_view_set_typewriter (self->view2, on);
+  w42_settings_set_bool ("typewriter", on);
 }
 
 /* View > Document Map */
@@ -2196,6 +2388,68 @@ action_export_html (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
                         on_export_html_response, g_object_ref (self));
+
+  g_free (suggested);
+  g_free (name);
+  g_object_unref (filters);
+  g_object_unref (dialog);
+}
+
+/* File > Export as E-book: the document as an EPUB 3 book, a chapter to
+ * a file, for a reader's device or a shop.  Like the other exports it
+ * leaves the document what and where it was. */
+static void
+on_export_epub_response (GObject *source, GAsyncResult *result, gpointer data)
+{
+  W42Window *self = data;
+  GError *error = NULL;
+  GFile *file;
+
+  file = gtk_file_dialog_save_finish (GTK_FILE_DIALOG (source), result, &error);
+
+  if (window_gone (self))
+    g_clear_object (&file);
+  else if (file != NULL)
+    {
+      w42_view_update_fields (self->view);
+      if (!w42_epub_export (w42_document_pt (self->doc),
+                            w42_document_page_setup (self->doc), file, &error))
+        show_error (self, "Word42 could not export the e-book.", error);
+      else
+        window_flash (self, "The e-book is written.");
+      g_object_unref (file);
+    }
+  else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
+                                              GTK_DIALOG_ERROR_DISMISSED))
+    show_error (self, "Word42 could not export the e-book.", error);
+
+  g_clear_error (&error);
+  g_object_unref (self);
+}
+
+static void
+action_export_epub (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
+  GListStore *filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
+  static const char * const epub[] = { "*.epub", NULL };
+  char *name = w42_document_get_title (self->doc);
+  char *dot = strrchr (name, '.');
+  char *suggested;
+
+  (void) action; (void) param;
+
+  if (dot != NULL)
+    *dot = '\0';
+  suggested = g_strconcat (name, ".epub", NULL);
+
+  append_filter (filters, named_filter ("E-books (*.epub)", epub));
+  gtk_file_dialog_set_title (dialog, "Export as E-book");
+  gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
+  gtk_file_dialog_set_initial_name (dialog, suggested);
+  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
+                        on_export_epub_response, g_object_ref (self));
 
   g_free (suggested);
   g_free (name);
@@ -3103,13 +3357,34 @@ action_thesaurus (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
 
-  if (self->thesaurus == NULL)
-    self->thesaurus = w42_thesaurus_new ();
+  /* The thesaurus of the language being written in: a Norwegian word
+   * looked up in an English thesaurus is looked up in vain. */
+  {
+    const char *lang = w42_view_get_language (self->view);
+    const char *have = w42_thesaurus_language (self->thesaurus);
+
+    if (self->thesaurus != NULL && have != NULL && lang != NULL &&
+        g_ascii_strncasecmp (have, lang, 2) != 0)
+      {
+        W42Thesaurus *other = w42_thesaurus_new_for (lang);
+
+        if (other != NULL && g_ascii_strncasecmp (w42_thesaurus_language (other), lang, 2) == 0)
+          {
+            w42_thesaurus_free (self->thesaurus);
+            self->thesaurus = other;
+          }
+        else
+          w42_thesaurus_free (other);
+      }
+    if (self->thesaurus == NULL)
+      self->thesaurus = w42_thesaurus_new_for (lang);
+  }
   if (self->thesaurus == NULL)
     {
       show_message (self, "No thesaurus was found.",
-                    "The thesaurus needs a MyThes file for your language -- "
-                    "th_en_US_v2.dat and its .idx, the ones LibreOffice uses -- "
+                    "The thesaurus needs a MyThes file for the language of the "
+                    "text -- th_en_US_v2.dat and its .idx for English, "
+                    "th_nb_NO_v2 for Norwegian, the ones LibreOffice uses -- "
                     "in the mythes folder.");
       return;
     }
@@ -4043,6 +4318,8 @@ build_status_bar (W42Window *self)
   self->status_at   = gtk_label_new ("At 1.0\"");
   self->status_ln   = gtk_label_new ("Ln 1");
   self->status_col  = gtk_label_new ("Col 1");
+  self->status_pages = gtk_label_new ("1/1");
+  self->status_words = gtk_label_new ("");
   self->status_mod  = gtk_label_new ("");
 
   gtk_widget_set_hexpand (self->status_mod, TRUE);
@@ -4050,8 +4327,9 @@ build_status_bar (W42Window *self)
 
   /* Each reading sits in its own sunken well, as Word 97's readings did. */
   {
-    GtkWidget *cells[] = { self->status_page, self->status_at,
-                           self->status_ln, self->status_col,
+    GtkWidget *cells[] = { self->status_page, self->status_pages,
+                           self->status_at, self->status_ln,
+                           self->status_col, self->status_words,
                            self->status_mod };
 
     for (guint i = 0; i < G_N_ELEMENTS (cells); i++)
@@ -4059,13 +4337,204 @@ build_status_bar (W42Window *self)
         gtk_widget_add_css_class (cells[i], "w42-status-cell");
         gtk_label_set_xalign (GTK_LABEL (cells[i]), 0.0);
         gtk_widget_set_size_request (cells[i],
-                                     cells[i] == self->status_mod ? -1 : 66,
+                                     cells[i] == self->status_mod ? -1
+                                     : cells[i] == self->status_words ? 150 : 66,
                                      -1);
         gtk_box_append (GTK_BOX (bar), cells[i]);
       }
   }
 
   return bar;
+}
+
+/* ---------------------------------------------------------------------- */
+/* The count of words and pages                                            */
+/* ---------------------------------------------------------------------- */
+
+/* 45000 as 45,000: a count an author reads at a glance. */
+static char *
+count_text (gsize n)
+{
+  char *digits = g_strdup_printf ("%" G_GSIZE_FORMAT, n);
+  GString *out = g_string_new (NULL);
+  gsize len = strlen (digits);
+
+  for (gsize i = 0; i < len; i++)
+    {
+      if (i > 0 && (len - i) % 3 == 0)
+        g_string_append_c (out, ',');
+      g_string_append_c (out, digits[i]);
+    }
+  g_free (digits);
+  return g_string_free (out, FALSE);
+}
+
+/* A goal belongs with its manuscript, and is remembered by the file's
+ * path; an untitled document keeps its goal in the window until it has
+ * one. */
+static char *
+goal_key (GFile *file)
+{
+  char *path = file != NULL ? g_file_get_path (file) : NULL;
+  char *key = path != NULL ? g_strdup_printf ("goal-%08x", g_str_hash (path)) : NULL;
+
+  g_free (path);
+  return key;
+}
+
+static void
+window_load_goal (W42Window *self)
+{
+  char *key = goal_key (w42_document_get_file (self->doc));
+
+  if (key != NULL)
+    self->goal = MAX (w42_settings_get_int (key, 0), 0);
+  g_free (key);
+}
+
+static void
+window_store_goal (W42Window *self)
+{
+  char *key = goal_key (w42_document_get_file (self->doc));
+
+  if (key != NULL)
+    w42_settings_set_int (key, self->goal);
+  g_free (key);
+}
+
+static void
+window_show_counts (W42Window *self)
+{
+  char *words, *text, *tip;
+
+  if (!self->count_valid || self->status_words == NULL)
+    return;
+
+  words = count_text (self->words);
+  if (self->goal > 0)
+    {
+      char *goal = count_text ((gsize) self->goal);
+
+      text = g_strdup_printf ("%s of %s words", words, goal);
+      g_free (goal);
+    }
+  else
+    text = g_strdup_printf ("%s %s", words, self->words == 1 ? "word" : "words");
+  gtk_label_set_text (GTK_LABEL (self->status_words), text);
+
+  {
+    GString *t = g_string_new (NULL);
+
+    if (self->goal > 0)
+      g_string_append_printf (t, "%d%% of the goal. ",
+                              (int) MIN (self->words * 100 / (gsize) self->goal, 999));
+    if (self->words_at_open >= 0)
+      {
+        gssize session = (gssize) self->words - self->words_at_open;
+
+        g_string_append_printf (t, "Written since the document was opened: %"
+                                G_GSSIZE_FORMAT " words.", session);
+      }
+    g_string_append (t, "\nTools \342\226\270 Word Count Goal sets the goal.");
+    tip = g_string_free (t, FALSE);
+  }
+  gtk_widget_set_tooltip_text (self->status_words, tip);
+  g_free (tip);
+  g_free (text);
+  g_free (words);
+}
+
+static gboolean
+on_count (gpointer data)
+{
+  W42Window *self = data;
+  W42PieceTable *pt = w42_document_pt (self->doc);
+  W42Stats stats;
+
+  self->count_id = 0;
+  w42_pt_undo_state (pt, &self->count_undo_pos, &self->count_serial);
+  w42_pt_statistics (pt, FALSE, &stats);
+  self->words = stats.words;
+  if (self->words_at_open < 0)
+    self->words_at_open = (gssize) stats.words;
+  self->count_valid = TRUE;
+
+  /* Normal and Online Layout show one long galley; the page a writer is
+   * on, and how many there are, are the printed ones, so a paginated
+   * layout is kept beside it.  It keeps its own shaped paragraphs, so
+   * after the first count it costs what a keystroke costs. */
+  if (w42_layout_get_galley (w42_view_get_layout (self->view)))
+    {
+      if (self->count_layout == NULL)
+        self->count_layout = w42_layout_new ();
+      w42_layout_build (self->count_layout, self->doc);
+      self->n_pages = w42_layout_n_pages (self->count_layout);
+    }
+  else
+    {
+      g_clear_pointer (&self->count_layout, w42_layout_free);
+      self->n_pages = w42_layout_n_pages (w42_view_get_layout (self->view));
+    }
+
+  window_show_counts (self);
+  window_sync_state (self);
+  return G_SOURCE_REMOVE;
+}
+
+/* Counts again once the typing has paused, if anything has changed. */
+static void
+window_schedule_count (W42Window *self)
+{
+  gsize pos;
+  guint64 serial;
+
+  w42_pt_undo_state (w42_document_pt (self->doc), &pos, &serial);
+  if (self->count_valid && pos == self->count_undo_pos && serial == self->count_serial &&
+      (self->count_layout != NULL) == w42_layout_get_galley (w42_view_get_layout (self->view)))
+    return;
+  if (self->count_id != 0)
+    g_source_remove (self->count_id);
+  self->count_id = g_timeout_add (self->count_valid ? 700 : 50, on_count, self);
+}
+
+static void
+on_goal_set (int goal, gpointer data)
+{
+  W42Window *self = data;
+
+  self->goal = MAX (goal, 0);
+  window_store_goal (self);
+  window_show_counts (self);
+}
+
+static void
+action_word_goal (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_goal_dialog_show (GTK_WINDOW (self), self->view, self->goal,
+                        self->count_valid ? self->words : 0,
+                        self->count_valid && self->words_at_open >= 0
+                          ? (gssize) self->words - self->words_at_open : -1,
+                        on_goal_set, self);
+}
+
+/* The spelling follows the document's language: Normal's, set with
+ * Tools > Language > Default, else the desktop's. */
+static void
+window_sync_language (W42Window *self)
+{
+  const char *lang = w42_stylesheet_language (w42_pt_stylesheet (w42_document_pt (self->doc)));
+
+  if (self->spell == NULL || lang == self->spell_lang)
+    return;
+  self->spell_lang = lang;
+  w42_spell_set_language (self->spell, lang);
+  if (self->view1 != NULL)
+    w42_view_spell_refresh (self->view1);
+  if (self->view2 != NULL)
+    w42_view_spell_refresh (self->view2);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -4205,7 +4674,7 @@ action_save_all (GSimpleAction *action, GVariant *param, gpointer data)
       {
         GError *error = NULL;
 
-        if (w42_document_save (w->doc, file, &error))
+        if (window_save_document (w->doc, file, &error))
           {
             window_saved (w, TRUE);
             saved++;
@@ -4634,8 +5103,22 @@ window_sync_state (W42Window *self)
   w42_layout_describe_pos (layout, w42_view_get_caret (self->view),
                            &page, &line, &column);
 
+  /* In a galley the page is the printed one, from the layout kept for
+   * counting. */
+  if (self->count_layout != NULL && w42_layout_get_galley (layout))
+    {
+      int pline = 1, pcolumn = 1;
+
+      w42_layout_describe_pos (self->count_layout, w42_view_get_caret (self->view),
+                               &page, &pline, &pcolumn);
+    }
   g_snprintf (buffer, sizeof buffer, "Page %d", page);
   gtk_label_set_text (GTK_LABEL (self->status_page), buffer);
+  g_snprintf (buffer, sizeof buffer, "%d/%d", page,
+              MAX (self->n_pages > 0 ? self->n_pages : w42_layout_n_pages (layout), page));
+  gtk_label_set_text (GTK_LABEL (self->status_pages), buffer);
+  window_schedule_count (self);
+  window_sync_language (self);
   g_snprintf (buffer, sizeof buffer, "Ln %d", line);
   gtk_label_set_text (GTK_LABEL (self->status_ln), buffer);
   g_snprintf (buffer, sizeof buffer, "Col %d", column);
@@ -4841,6 +5324,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "insert-index",  action_insert_index,  NULL, NULL, NULL, { 0 } },
   { "open-recent",   action_open_recent,   "s",  NULL, NULL, { 0 } },
   { "export-html",   action_export_html,   NULL, NULL, NULL, { 0 } },
+  { "export-epub",   action_export_epub,   NULL, NULL, NULL, { 0 } },
   { "web-preview",   action_web_preview,   NULL, NULL, NULL, { 0 } },
   { "table-of-figures", action_table_of_figures, NULL, NULL, NULL, { 0 } },
   { "compare-documents", action_compare_documents, NULL, NULL, NULL, { 0 } },
@@ -4887,8 +5371,10 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "list-numbers", action_list, NULL, "false", NULL, { 0 } },
   { "paragraph",  action_paragraph,  NULL, NULL,    NULL, { 0 } },
   { "word-count", action_word_count, NULL, NULL,    NULL, { 0 } },
+  { "word-goal",  action_word_goal,  NULL, NULL,    NULL, { 0 } },
   { "about",      action_about,      NULL, NULL,    NULL, { 0 } },
   { "ruler",       action_toggle_ruler,   NULL, "true", NULL, { 0 } },
+  { "typewriter",  action_typewriter,     NULL, "false", NULL, { 0 } },
   { "document-map", action_document_map,  NULL, "false", NULL, { 0 } },
   { "show-marks",  action_show_marks,     NULL, "false", NULL, { 0 } },
   { "column-break", action_column_break,  NULL, NULL, NULL, { 0 } },
@@ -4955,10 +5441,32 @@ w42_window_dispose (GObject *object)
       g_source_remove (self->autosave_id);
       self->autosave_id = 0;
     }
-  /* A window that closes in the ordinary way needs no recovering. */
-  autosave_remove (self);
+  if (self->count_id != 0)
+    {
+      g_source_remove (self->count_id);
+      self->count_id = 0;
+    }
+  g_clear_pointer (&self->count_layout, w42_layout_free);
+  /* A window that closes in the ordinary way needs no recovering -- but
+   * a document still open in another window does, and the copy on disk
+   * may be the one they share.  That window writes its own on its next
+   * turn. */
+  if (self->doc != NULL && window_document_shared (self))
+    {
+      GtkApplication *app = gtk_window_get_application (GTK_WINDOW (self));
+
+      for (GList *l = app != NULL ? gtk_application_get_windows (app) : NULL;
+           l != NULL; l = l->next)
+        if (l->data != self && W42_IS_WINDOW (l->data) &&
+            W42_WINDOW (l->data)->doc == self->doc)
+          W42_WINDOW (l->data)->autosave_dirty = TRUE;
+      g_clear_pointer (&self->autosave_path, g_free);
+    }
+  else if (self->doc != NULL)
+    autosave_remove (self);
 
   g_clear_object (&self->recent_menu);
+  g_clear_object (&self->style_list);   /* the drop-down has its own */
 
   g_clear_object (&self->window_list);
   g_clear_pointer (&self->family_index, g_hash_table_destroy);
@@ -4986,6 +5494,9 @@ w42_window_init (W42Window *self)
   self->serial = ++next_serial;
   self->doc = w42_document_new ();
   w42_pt_set_author (w42_document_pt (self->doc), window_author_name ());
+  self->words_at_open = -1;
+
+  w42_window_apply_default_language (self->doc);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), WINDOW_ACTIONS,
                                    G_N_ELEMENTS (WINDOW_ACTIONS), self);
@@ -5039,6 +5550,16 @@ w42_window_init (W42Window *self)
   w42_view_set_autocorrect (self->view, w42_settings_get_bool ("auto-correct", TRUE));
 
   {
+    /* View > Typewriter Scrolling, as it was left last time. */
+    gboolean on = w42_settings_get_bool ("typewriter", FALSE);
+    GAction *typewriter = g_action_map_lookup_action (G_ACTION_MAP (self), "typewriter");
+
+    w42_view_set_typewriter (self->view, on);
+    if (typewriter != NULL)
+      g_simple_action_set_state (G_SIMPLE_ACTION (typewriter), g_variant_new_boolean (on));
+  }
+
+  {
     /* Table > Table Gridlines, as it was left last time. */
     gboolean on = w42_settings_get_bool ("gridlines", FALSE);
     GAction *gridlines = g_action_map_lookup_action (G_ACTION_MAP (self), "gridlines");
@@ -5074,14 +5595,7 @@ w42_window_init (W42Window *self)
     }
 
 
-  {
-    /* Every two minutes, unless the environment says otherwise (which the
-     * tests do). */
-    const char *env = g_getenv ("W42_AUTOSAVE_SECONDS");
-    guint seconds = env != NULL ? (guint) MAX (atoi (env), 1) : 120;
-
-    self->autosave_id = g_timeout_add_seconds (seconds, on_autosave, self);
-  }
+  window_start_autosave (self);
 
   self->format_bar = build_format_bar (self);
   gtk_box_append (GTK_BOX (box), self->format_bar);

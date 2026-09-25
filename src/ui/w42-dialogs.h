@@ -40,6 +40,14 @@ void w42_formula_dialog_show (GtkWindow *parent, W42View *view);
 void w42_table_autoformat_dialog_show (GtkWindow *parent, W42View *view);
 void w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell);
 void w42_word_count_dialog_show (GtkWindow *parent, W42View *view);
+/* Tools > Word Count Goal: the number of words the author means the
+ * document to reach, which the status bar counts toward.  `words` is
+ * the count now and `session` what was written since the document was
+ * opened (-1 when not known); `done` is told the goal, 0 for none. */
+typedef void (*W42GoalDone) (int goal, gpointer data);
+void w42_goal_dialog_show (GtkWindow *parent, W42View *view, int goal,
+                           gsize words, gssize session,
+                           W42GoalDone done, gpointer data);
 void w42_autotext_dialog_show (GtkWindow *parent, W42View *view);
 void w42_background_dialog_show (GtkWindow *parent, W42View *view);
 void w42_envelope_dialog_show (GtkWindow *parent, W42View *view);

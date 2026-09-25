@@ -495,7 +495,7 @@ typedef struct {
   GtkWidget *direction;
   GtkWidget *left, *right, *special, *by;
   GtkWidget *before, *after, *spacing;
-  GtkWidget *keep_next, *keep_together, *widows;
+  GtkWidget *keep_next, *keep_together, *widows, *page_break;
   GtkWidget *at;
 } ParagraphBox;
 
@@ -598,13 +598,14 @@ on_paragraph_ok (GtkButton *button, gpointer data)
   want.keep_next     = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->keep_next)) ? 1 : 0;
   want.keep_together = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->keep_together)) ? 1 : 0;
   want.widow_control = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->widows)) ? 1 : 0;
+  want.page_break_before = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->page_break)) ? 1 : 0;
 
   w42_view_apply_para_fmt (box->view,
                            W42_PARA_ALIGN | W42_PARA_INDENT_LEFT |
                            W42_PARA_INDENT_RIGHT | W42_PARA_INDENT_FIRST |
                            W42_PARA_SPACE_BEFORE | W42_PARA_SPACE_AFTER |
                            W42_PARA_LINE_SPACING | W42_PARA_LINE_SPACING_PCT |
-                           W42_PARA_FLOW,
+                           W42_PARA_FLOW | W42_PARA_PAGE_BREAK,
                            &want);
 
   gtk_window_destroy (GTK_WINDOW (box->window));
@@ -700,12 +701,15 @@ w42_paragraph_dialog_show (GtkWindow *parent, W42View *view)
     box->widows        = gtk_check_button_new_with_mnemonic ("_Widow/Orphan Control");
     box->keep_together = gtk_check_button_new_with_mnemonic ("_Keep Lines Together");
     box->keep_next     = gtk_check_button_new_with_mnemonic ("Keep with Ne_xt");
+    box->page_break    = gtk_check_button_new_with_mnemonic ("Page _Break Before");
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->widows), now.widow_control);
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_together), now.keep_together);
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_next), now.keep_next);
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->page_break), now.page_break_before);
     gtk_grid_attach (GTK_GRID (flow), box->widows, 0, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (flow), box->keep_together, 1, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (flow), box->keep_next, 0, 1, 1, 1);
+    gtk_grid_attach (GTK_GRID (flow), box->page_break, 1, 1, 1, 1);
   }
 
   button_row (content, box->window, G_CALLBACK (on_paragraph_ok), box);
@@ -722,6 +726,7 @@ typedef struct {
   GtkWidget *styles;       /* the drop-down of names */
   GtkStringList *names;
   GtkWidget *family, *size, *bold, *italic, *align, *before, *after, *outline;
+  GtkWidget *first, *spacing, *page_break, *keep_next;
   GtkWidget *kind;         /* "Paragraph style, based on X" */
   GtkWidget *delete_button;
   gboolean   loading;
@@ -748,6 +753,25 @@ style_box_current (StyleBox *box)
   return w42_stylesheet_get (style_box_sheet (box), index);
 }
 
+static const char * const STYLE_SPACINGS[] = {
+  "Single", "1.5 Lines", "Double", "As defined", NULL
+};
+
+/* Which of STYLE_SPACINGS a definition's leading is; the last keeps a
+ * leading the box has no word for -- Exactly 14 pt, or 115% -- as it is. */
+static guint
+style_spacing_index (const W42ParaFmt *pa)
+{
+  if (pa->line_spacing_pct == 150)
+    return 1;
+  if (pa->line_spacing_pct == 200)
+    return 2;
+  if (pa->line_spacing_pct == 100 ||
+      (pa->line_spacing_pct == 0 && pa->line_spacing == 0))
+    return 0;
+  return 3;
+}
+
 /* The fields show the selected style's definition. */
 static void
 style_box_load (StyleBox *box)
@@ -769,12 +793,24 @@ style_box_load (StyleBox *box)
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->after),
                              style->pa.space_after / 20.0);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->outline), style->outline);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->first),
+                             measure_from_twips (style->pa.indent_first));
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (box->spacing),
+                              style_spacing_index (&style->pa));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->page_break),
+                               style->pa.page_break_before);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->keep_next),
+                               style->pa.keep_next);
 
   /* A character style has no paragraph half to edit. */
   gtk_widget_set_sensitive (box->align, !style->character);
   gtk_widget_set_sensitive (box->before, !style->character);
   gtk_widget_set_sensitive (box->after, !style->character);
   gtk_widget_set_sensitive (box->outline, !style->character);
+  gtk_widget_set_sensitive (box->first, !style->character);
+  gtk_widget_set_sensitive (box->spacing, !style->character);
+  gtk_widget_set_sensitive (box->page_break, !style->character);
+  gtk_widget_set_sensitive (box->keep_next, !style->character);
   gtk_widget_set_sensitive (box->delete_button, g_ascii_strcasecmp (style->name, "Normal") != 0);
   {
     char *text = style->based_on != NULL
@@ -912,6 +948,7 @@ style_box_store (StyleBox *box)
   const W42Style *current = style_box_current (box);
   W42Style style;
   W42PieceTable *pt = w42_document_pt (w42_view_get_document (box->view));
+  W42StyleSheet *before;
 
   if (current == NULL)
     return;
@@ -925,6 +962,24 @@ style_box_store (StyleBox *box)
   style.pa.space_before = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->before)) * 20.0);
   style.pa.space_after  = (int) lround (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->after)) * 20.0);
   style.outline   = (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->outline));
+  style.pa.indent_first =
+    (int) lround (twips_from_measure (gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->first))));
+  {
+    guint spacing = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->spacing));
+    static const int pct[] = { 100, 150, 200 };
+
+    /* Single stays unset when it was, so that opening the box and
+     * pressing OK changes nothing. */
+    if (spacing < G_N_ELEMENTS (pct) && spacing != style_spacing_index (&current->pa))
+      {
+        style.pa.line_spacing = 0;
+        style.pa.line_spacing_pct = pct[spacing];
+      }
+  }
+  style.pa.page_break_before =
+    gtk_check_button_get_active (GTK_CHECK_BUTTON (box->page_break)) ? 1 : 0;
+  style.pa.keep_next =
+    gtk_check_button_get_active (GTK_CHECK_BUTTON (box->keep_next)) ? 1 : 0;
 
   /* Nothing changed: leave the paragraphs be, since restyling them puts
    * the style's character formatting over any of their own. */
@@ -941,9 +996,13 @@ style_box_store (StyleBox *box)
     style.pa_own = pa_own | (style.pa_own & ~W42_STYLE_PA_ALL);
     style.ch_own = ch_own;
   }
+  /* What the styles were, so that the text keeps what was put on it by
+   * hand: the italics of a novel survive its body style changing face. */
+  before = w42_stylesheet_copy (style_box_sheet (box));
   w42_stylesheet_set (style_box_sheet (box), &style);
   w42_stylesheet_follow (style_box_sheet (box), style.name);
-  w42_pt_restyle_tree (pt, style.name);
+  w42_pt_restyle_tree (pt, style.name, before);
+  w42_stylesheet_free (before);
   w42_document_mark_unsaved (w42_view_get_document (box->view));
   w42_document_touch (w42_view_get_document (box->view));
 }
@@ -1002,6 +1061,9 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
   box->styles = choice_row (names, 0, 0, "_Style:", NULL, 0);
   box->names = list;
   gtk_drop_down_set_model (GTK_DROP_DOWN (box->styles), G_LIST_MODEL (list));
+  /* The drop-down keeps the list for as long as the box lives, and
+   * box->names borrows it for that long. */
+  g_object_unref (list);
   {
     GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *new_button = gtk_button_new_with_mnemonic ("_New...");
@@ -1063,6 +1125,20 @@ w42_style_dialog_show (GtkWindow *parent, W42View *view)
     gtk_grid_attach (GTK_GRID (fields), label, 0, 4, 1, 1);
     gtk_grid_attach (GTK_GRID (fields), box->outline, 1, 4, 1, 1);
   }
+  /* What a novel's body text and its chapter headings need: the first
+   * line of every paragraph set in, a leading, and each chapter on a page
+   * of its own with its heading kept with the text under it. */
+  box->first = inches_row (fields, 5, 0,
+                           w42_settings_get_units () == W42_UNITS_CM
+                             ? "Fi_rst line (cm):" : "Fi_rst line (in):", 0.0);
+  gtk_spin_button_set_range (GTK_SPIN_BUTTON (box->first), -10, 10);
+  box->spacing = choice_row (fields, 5, 1, "Line spa_cing:", STYLE_SPACINGS, 0);
+  box->page_break = gtk_check_button_new_with_mnemonic ("_Page break before");
+  box->keep_next = gtk_check_button_new_with_mnemonic ("Keep with ne_xt");
+  gtk_widget_set_tooltip_text (box->page_break,
+    "Every paragraph in this style starts a new page: chapter headings.");
+  gtk_grid_attach (GTK_GRID (fields), box->page_break, 1, 6, 1, 1);
+  gtk_grid_attach (GTK_GRID (fields), box->keep_next, 3, 6, 1, 1);
 
   g_signal_connect (box->styles, "notify::selected",
                     G_CALLBACK (on_style_choice), box);
@@ -1478,9 +1554,8 @@ static void
 on_go_to_kind (GObject *drop, GParamSpec *pspec, gpointer data)
 {
   GoToBox *box = data;
-  W42Layout *layout = w42_view_get_layout (box->view);
   guint kind = gtk_drop_down_get_selected (GTK_DROP_DOWN (drop));
-  int top = kind == 0 ? w42_layout_n_pages (layout)
+  int top = kind == 0 ? w42_view_page_count (box->view)
                       : w42_view_line_count (box->view);
 
   (void) pspec;
@@ -1994,6 +2069,8 @@ typedef struct {
   GtkWidget *auto_spell;
   GtkWidget *auto_correct;
   GtkWidget *user_name;
+  GtkWidget *backup;        /* Always create backup copy */
+  GtkWidget *autosave;      /* AutoRecover every so many minutes */
 } OptionsBox;
 
 static const char * const UNIT_NAMES[] = { "Inches", "Centimeters", NULL };
@@ -2055,6 +2132,13 @@ on_options_ok (GtkButton *button, gpointer data)
       if (on != want_spell)
         g_action_activate (spell_action, NULL);
     }
+
+  w42_settings_set_bool ("backup-copy",
+                         gtk_check_button_get_active (GTK_CHECK_BUTTON (box->backup)));
+  w42_settings_set_int ("autosave-minutes",
+                        (int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->autosave)));
+  if (W42_IS_WINDOW (box->parent))
+    w42_window_autosave_changed (gtk_window_get_application (box->parent));
 
   /* The ruler draws in the new unit. */
   gtk_widget_queue_draw (GTK_WIDGET (box->parent));
@@ -2130,6 +2214,32 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->auto_spell),
                                w42_settings_get_bool ("auto-spell", TRUE));
   gtk_grid_attach (GTK_GRID (grid), box->auto_spell, 0, 0, 2, 1);
+
+  /* Word 97's Save tab: the two things that keep a long piece of work
+   * from being lost -- the file as it was before the last save, and a
+   * copy of the unsaved changes every few minutes. */
+  grid = group (content, "Save");
+  box->backup = gtk_check_button_new_with_mnemonic ("Always create _backup copy");
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->backup),
+                               w42_settings_get_bool ("backup-copy", FALSE));
+  gtk_widget_set_tooltip_text (box->backup,
+    "Before a file is saved over, the version it replaces is kept beside it "
+    "as \342\200\234Backup of\342\200\235 and its name.");
+  gtk_grid_attach (GTK_GRID (grid), box->backup, 0, 0, 3, 1);
+  {
+    GtkWidget *label = gtk_label_new_with_mnemonic ("Save _AutoRecover info every:");
+    GtkWidget *unit = gtk_label_new ("minutes");
+
+    box->autosave = gtk_spin_button_new_with_range (1, 120, 1);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->autosave),
+                               CLAMP (w42_settings_get_int ("autosave-minutes", 2), 1, 120));
+    gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->autosave), TRUE);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->autosave);
+    gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), box->autosave, 1, 1, 1, 1);
+    gtk_grid_attach (GTK_GRID (grid), unit, 2, 1, 1, 1);
+  }
 
   button_row (content, box->window, G_CALLBACK (on_options_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
@@ -4478,6 +4588,7 @@ on_template_ok (GtkButton *button, gpointer data)
       W42PageSetup page = *w42_document_page_setup (doc);
 
       w42_template_make (w42_document_pt (doc), &page, which);
+      w42_window_apply_default_language (doc);
       w42_document_set_page_setup (doc, &page);
       w42_document_set_modified (doc, which != 0);
       w42_document_touch (doc);
@@ -4558,7 +4669,11 @@ w42_template_dialog_show (GtkWindow *parent, W42View *view)
   box->hint = gtk_label_new ("");
   gtk_label_set_xalign (GTK_LABEL (box->hint), 0.0);
   gtk_label_set_wrap (GTK_LABEL (box->hint), TRUE);
-  gtk_widget_set_size_request (box->hint, 280, -1);
+  /* A wrapping label asks for all of its text on one line unless told
+   * otherwise, and the box, which does not resize, would grow to it. */
+  gtk_label_set_max_width_chars (GTK_LABEL (box->hint), 40);
+  gtk_label_set_lines (GTK_LABEL (box->hint), 3);
+  gtk_widget_set_size_request (box->hint, 280, 48);
   gtk_grid_attach (GTK_GRID (grid), box->hint, 0, 1, 1, 1);
 
   g_signal_connect (box->list, "row-selected", G_CALLBACK (template_chosen), box);
@@ -5149,9 +5264,8 @@ count_free (gpointer data, GObject *where)
 
 /* How many lines the layout has laid out, notes and all. */
 static gsize
-count_lines (W42View *view)
+count_lines (W42Layout *layout)
 {
-  W42Layout *layout = w42_view_get_layout (view);
   const GArray *lines = layout != NULL ? w42_layout_lines (layout) : NULL;
 
   return lines != NULL ? lines->len : 0;
@@ -5165,17 +5279,29 @@ count_fill (CountBox *box)
   gboolean with_notes = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->notes));
   W42Stats doc;
   gsize counts[6];
+  W42Layout *layout = w42_view_get_layout (box->view);
+  W42Layout *paged = NULL;
 
   if (pt == NULL)
     return;
 
+  /* Normal and Online Layout are one long galley; the pages and lines
+   * are the printed ones, so they are counted on those. */
+  if (layout != NULL && w42_layout_get_galley (layout))
+    {
+      paged = w42_layout_new ();
+      w42_layout_build (paged, w42_view_get_document (box->view));
+      layout = paged;
+    }
+
   w42_pt_statistics (pt, with_notes, &doc);
-  counts[0] = (gsize) MAX (w42_layout_n_pages (w42_view_get_layout (box->view)), 1);
+  counts[0] = (gsize) MAX (layout != NULL ? w42_layout_n_pages (layout) : 1, 1);
   counts[1] = doc.words;
   counts[2] = doc.characters;
   counts[3] = doc.characters_no_spaces;
   counts[4] = doc.paragraphs;
-  counts[5] = count_lines (box->view);
+  counts[5] = count_lines (layout);
+  g_clear_pointer (&paged, w42_layout_free);
   for (int i = 0; i < 6; i++)
     {
       char *text = g_strdup_printf ("%" G_GSIZE_FORMAT, counts[i]);
@@ -5277,6 +5403,88 @@ w42_word_count_dialog_show (GtkWindow *parent, W42View *view)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Tools > Word Count Goal                                                 */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget  *window;
+  GtkWidget  *goal;
+  W42GoalDone done;
+  gpointer    data;
+} GoalBox;
+
+static void
+goal_free (gpointer data, GObject *gone)
+{
+  (void) gone;
+  g_free (data);
+}
+
+static void
+on_goal_ok (GtkButton *button, gpointer data)
+{
+  GoalBox *box = data;
+
+  (void) button;
+  box->done ((int) gtk_spin_button_get_value (GTK_SPIN_BUTTON (box->goal)), box->data);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_goal_dialog_show (GtkWindow *parent, W42View *view, int goal,
+                      gsize words, gssize session,
+                      W42GoalDone done, gpointer data)
+{
+  GoalBox *box;
+  GtkWidget *content, *grid, *label;
+  char *text;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+  g_return_if_fail (done != NULL);
+
+  box = g_new0 (GoalBox, 1);
+  box->done = done;
+  box->data = data;
+  box->window = dialog_shell (parent, "Word Count Goal", &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), goal_free, box);
+
+  grid = group (content, "Goal");
+  label = gtk_label_new_with_mnemonic ("_Words to reach:");
+  box->goal = gtk_spin_button_new_with_range (0, 10000000, 1000);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->goal), goal);
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->goal), TRUE);
+  gtk_widget_set_size_request (box->goal, 110, -1);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->goal);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->goal, 1, 0, 1, 1);
+
+  text = session >= 0
+    ? g_strdup_printf ("The document has %" G_GSIZE_FORMAT " words; %" G_GSSIZE_FORMAT
+                       " of them were written since it was opened.", words, session)
+    : g_strdup_printf ("The document has %" G_GSIZE_FORMAT " words.", words);
+  label = gtk_label_new (text);
+  g_free (text);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 44);
+  gtk_widget_set_size_request (label, 300, -1);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
+  label = gtk_label_new ("The status bar counts toward the goal as you write. "
+                         "0 means no goal.");
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 44);
+  gtk_widget_set_size_request (label, 300, -1);
+  gtk_widget_add_css_class (label, "dim-label");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 2, 2, 1);
+
+  button_row (content, box->window, G_CALLBACK (on_goal_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->goal);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Tools > Language                                                        */
 /* ---------------------------------------------------------------------- */
 
@@ -5334,6 +5542,27 @@ on_language_ok (GtkButton *button, gpointer data)
   want.lang = box->chosen >= 0 && box->chosen < n
                 ? g_intern_static_string (langs[box->chosen].tag) : NULL;
   w42_view_apply_char_fmt (box->view, W42_CHAR_LANG, &want);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+/* Word 97's Default...: the language chosen becomes the document's own
+ * -- Normal's, so all the text not marked otherwise is in it -- and the
+ * language new documents start in.  A novel written in Norwegian on a
+ * machine set up in English is then checked, quoted and hyphenated as
+ * Norwegian without marking a word of it. */
+static void
+on_language_default (GtkButton *button, gpointer data)
+{
+  LanguageBox *box = data;
+  int n = 0;
+  const W42Language *langs = w42_languages (&n);
+  const char *tag = box->chosen >= 0 && box->chosen < n ? langs[box->chosen].tag : NULL;
+
+  (void) button;
+  if (g_strcmp0 (tag, W42_LANG_NONE) == 0)
+    tag = NULL;                 /* not language: no document is that */
+  w42_view_set_document_language (box->view, tag);
+  w42_settings_set_string ("default-language", tag != NULL ? tag : "");
   gtk_window_destroy (GTK_WINDOW (box->window));
 }
 
@@ -5396,15 +5625,21 @@ w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
   box->note = gtk_label_new ("");
   gtk_label_set_xalign (GTK_LABEL (box->note), 0.0);
   gtk_label_set_wrap (GTK_LABEL (box->note), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (box->note), 40);
   gtk_widget_set_size_request (box->note, 280, -1);
   gtk_grid_attach (GTK_GRID (grid), box->note, 0, 1, 1, 1);
 
   {
-    char *text = spell != NULL && w42_spell_language (spell) != NULL
-                   ? g_strdup_printf ("The document's own dictionary is %s.",
-                                      w42_spell_language (spell))
-                   : g_strdup ("No dictionary was found on this machine.");
+    const char *doc = w42_view_get_document_language (view);
+    char *text;
 
+    if (doc != NULL)
+      text = g_strdup_printf ("The document is in %s.", w42_lang_name (doc));
+    else if (spell != NULL && w42_spell_language (spell) != NULL)
+      text = g_strdup_printf ("The document's own dictionary is %s.",
+                              w42_spell_language (spell));
+    else
+      text = g_strdup ("No dictionary was found on this machine.");
     label = gtk_label_new (text);
     g_free (text);
   }
@@ -5415,7 +5650,17 @@ w42_language_dialog_show (GtkWindow *parent, W42View *view, W42Spell *spell)
   gtk_list_box_select_row (GTK_LIST_BOX (box->list),
                            gtk_list_box_get_row_at_index (GTK_LIST_BOX (box->list), selected));
 
-  button_row (content, box->window, G_CALLBACK (on_language_ok), box);
+  {
+    GtkWidget *ok = button_row (content, box->window, G_CALLBACK (on_language_ok), box);
+    GtkWidget *row = gtk_widget_get_parent (ok);
+    GtkWidget *def = gtk_button_new_with_mnemonic ("_Default");
+
+    gtk_widget_set_size_request (def, 92, 26);
+    gtk_widget_set_tooltip_text (def, "Make this the document's language, "
+                                 "and the one new documents start in.");
+    g_signal_connect (def, "clicked", G_CALLBACK (on_language_default), box);
+    gtk_box_append (GTK_BOX (row), def);
+  }
   gtk_window_present (GTK_WINDOW (box->window));
 }
 

@@ -1428,36 +1428,57 @@ block_new_reusing (GPtrArray *pool, guint *taken, gsize start_pos, W42ApIdx ap)
 }
 
 /* What one stretch of text comes to.  A word is a run of anything that
- * is not white space; the object mark a picture or a note reference
- * stands in for is not a character at all. */
+ * is not white space with a letter or a digit in it: the dash that opens
+ * a line of dialogue stands on its own and is not a word.  The object
+ * mark a picture or a note reference stands in for is not a character
+ * at all, and nor is a soft hyphen, which Tools > Hyphenation put there
+ * and nobody typed.  Most text is ASCII, and this runs over the whole
+ * document whenever the counts are shown, so ASCII is taken without
+ * decoding it. */
 static void
 count_text (const char *text, gsize len, W42Stats *out)
 {
   const char *stop = text + len;
-  gboolean in_word = FALSE;
+  gboolean counted = FALSE;     /* this run of non-space has made its word */
 
-  for (const char *p = text; p < stop; p = g_utf8_next_char (p))
+  for (const char *p = text; p < stop;)
     {
-      gunichar c = g_utf8_get_char (p);
+      guchar b = (guchar) *p;
+      gboolean space, word;
 
-      if (c == 0xFFFC)
+      if (b < 0x80)
         {
-          in_word = FALSE;      /* a picture: not a character, not a word */
-          continue;
-        }
-      out->characters++;
-      if (g_unichar_isspace (c))
-        {
-          in_word = FALSE;
+          p++;
+          space = g_unichar_isspace (b);
+          word = g_ascii_isalnum (b);
         }
       else
         {
-          out->characters_no_spaces++;
-          if (!in_word)
+          gunichar c = g_utf8_get_char (p);
+
+          p = g_utf8_next_char (p);
+          if (c == 0xFFFC)
             {
-              in_word = TRUE;
-              out->words++;
+              counted = FALSE;  /* a picture: not a character, not a word */
+              continue;
             }
+          if (c == 0x00AD)
+            continue;
+          space = g_unichar_isspace (c);
+          word = !space && g_unichar_isalnum (c);
+        }
+
+      out->characters++;
+      if (space)
+        {
+          counted = FALSE;
+          continue;
+        }
+      out->characters_no_spaces++;
+      if (word && !counted)
+        {
+          counted = TRUE;
+          out->words++;
         }
     }
 }
@@ -2314,7 +2335,53 @@ para_fmt_apply_mask (W42ParaFmt *fmt, W42ParaMask mask, const W42ParaFmt *value)
  * list of APs it should end up with, then hand that list to the primitive
  * that swaps them in and hands back the old ones for undo.  Positions the
  * caller's mask does not apply to keep the AP they already had. */
-typedef enum { FMT_CHAR, FMT_PARA } FmtKind;
+typedef enum { FMT_CHAR, FMT_PARA, FMT_RESTYLE } FmtKind;
+
+/* What a paragraph style gives its text, going from the style `was` to
+ * the style `now`: a font, size, weight or slant the text had from `was`
+ * becomes `now`'s, and one that differs from `was` was put there by hand
+ * -- the title of a ship in italics in a Normal paragraph -- and stays.
+ * Replacing them all would take every italic out of a novel the moment
+ * its body style was given another face. */
+typedef struct {
+  const W42CharFmt *was;
+  const W42CharFmt *now;
+  guint             force;    /* RESTYLE_* bits replaced whatever they are */
+} Restyle;
+
+enum {
+  RESTYLE_FAMILY = 1 << 0,
+  RESTYLE_SIZE   = 1 << 1,
+  RESTYLE_BOLD   = 1 << 2,
+  RESTYLE_ITALIC = 1 << 3,
+  RESTYLE_ALL    = (1 << 4) - 1
+};
+
+/* Which of the four settings a run has otherwise than the style says. */
+static guint
+char_fmt_differs (const W42CharFmt *fmt, const W42CharFmt *was)
+{
+  guint d = 0;
+
+  if (was == NULL)
+    return RESTYLE_ALL;
+  if (g_strcmp0 (fmt->family, was->family) != 0) d |= RESTYLE_FAMILY;
+  if (fmt->size != was->size)                     d |= RESTYLE_SIZE;
+  if (fmt->bold != was->bold)                     d |= RESTYLE_BOLD;
+  if (fmt->italic != was->italic)                 d |= RESTYLE_ITALIC;
+  return d;
+}
+
+static void
+char_fmt_restyle (W42CharFmt *fmt, const Restyle *r)
+{
+  guint keep = char_fmt_differs (fmt, r->was) & ~r->force;
+
+  if (!(keep & RESTYLE_FAMILY)) fmt->family = r->now->family;
+  if (!(keep & RESTYLE_SIZE))   fmt->size = r->now->size;
+  if (!(keep & RESTYLE_BOLD))   fmt->bold = r->now->bold;
+  if (!(keep & RESTYLE_ITALIC)) fmt->italic = r->now->italic;
+}
 
 static void
 pt_apply_fmt (W42PieceTable *pt,
@@ -2352,7 +2419,7 @@ pt_apply_fmt (W42PieceTable *pt,
        * mark carries too, as Word's did: a paragraph put back by Compare
        * Documents is deleted whole, mark and all, when the change is
        * accepted. */
-      touched = (kind == FMT_CHAR)
+      touched = (kind == FMT_CHAR || kind == FMT_RESTYLE)
                   ? (piece->type == W42_PIECE_TEXT ||
                      (mask == W42_CHAR_REVISION && piece->type == W42_PIECE_STRUX &&
                       (W42StruxType) piece->strux == W42_STRUX_BLOCK))
@@ -2368,6 +2435,8 @@ pt_apply_fmt (W42PieceTable *pt,
 
           if (kind == FMT_CHAR)
             char_fmt_apply_mask (&fmt.ch, mask, value);
+          else if (kind == FMT_RESTYLE)
+            char_fmt_restyle (&fmt.ch, value);
           else
             para_fmt_apply_mask (&fmt.pa, mask, value);
 
@@ -3720,27 +3789,88 @@ pt_block_end (W42PieceTable *pt, gsize block)
   return MIN (p, pt->length);
 }
 
-static void
-pt_style_block (W42PieceTable *pt, gsize block, const W42Style *style)
+/* Word's rule for a style applied to a paragraph: formatting of the
+ * text's own that covers more than half of it is not taken to be the
+ * writer's emphasis but the paragraph's old look, and goes; a word or a
+ * phrase in italics stays.  The settings for which that is so. */
+static guint
+pt_majority_differs (W42PieceTable *pt, gsize pos, gsize n, const W42CharFmt *was)
 {
+  gsize counts[4] = { 0, 0, 0, 0 }, total = 0;
+  gsize p = pos, end = MIN (pos + n, pt->length);
+  guint force = 0;
+
+  while (p < end)
+    {
+      gsize offset = 0;
+      W42Piece *piece = pt_find (pt, p, &offset);
+      gsize take;
+
+      if (piece == NULL)
+        break;
+      take = MIN (piece->length - offset, end - p);
+      if (piece->type == W42_PIECE_TEXT)
+        {
+          guint d = char_fmt_differs (&w42_ap_table_get (pt->aps, piece->ap)->ch, was);
+
+          for (int bit = 0; bit < 4; bit++)
+            if (d & (1u << bit))
+              counts[bit] += take;
+          total += take;
+        }
+      p += take;
+    }
+  for (int bit = 0; bit < 4; bit++)
+    if (total > 0 && counts[bit] * 2 > total)
+      force |= 1u << bit;
+  return force;
+}
+
+/* `was` is the style the paragraph's text was formatted by, when its
+ * definition has just been changed -- the text keeps everything that
+ * differs from it; or NULL when the style is being applied, and the
+ * paragraph's own style as it is defined now is what the text had. */
+static void
+pt_style_block (W42PieceTable *pt, gsize block, const W42Style *style,
+                const W42Style *was)
+{
+  gboolean applying = was == NULL;
   gsize end = pt_block_end (pt, block);
+  guint mask = W42_PARA_STYLE | W42_PARA_ALIGN | W42_PARA_INDENT_LEFT |
+               W42_PARA_INDENT_RIGHT | W42_PARA_INDENT_FIRST |
+               W42_PARA_SPACE_BEFORE | W42_PARA_SPACE_AFTER |
+               W42_PARA_LINE_SPACING | W42_PARA_LINE_SPACING_PCT |
+               W42_PARA_FLOW;
+  Restyle chars;
 
-  w42_pt_apply_para_fmt (pt, block, 0,
-                         W42_PARA_STYLE | W42_PARA_ALIGN | W42_PARA_INDENT_LEFT |
-                         W42_PARA_INDENT_RIGHT | W42_PARA_INDENT_FIRST |
-                         W42_PARA_SPACE_BEFORE | W42_PARA_SPACE_AFTER |
-                         W42_PARA_LINE_SPACING | W42_PARA_LINE_SPACING_PCT |
-                         W42_PARA_FLOW,
-                         &style->pa);
+  if (was == NULL)
+    {
+      const char *name = w42_ap_table_get (pt->aps, w42_pt_block_ap_at (pt, block))->pa.style;
 
-  /* The style's character formatting goes on the text as a base.  Word
-   * keeps direct formatting on top of a style; here it is replaced, which
-   * is simpler and rarely what anyone notices. */
+      was = w42_stylesheet_find (pt->styles, name != NULL ? name : "Normal");
+    }
+
+  /* A page break is the style's to give, and to take back only where it
+   * gave it: a chapter heading's style starts every chapter on a page of
+   * its own, and the break goes when the paragraph stops being a heading,
+   * but one typed with Ctrl+Enter survives the paragraph being restyled. */
+  if (style->pa.page_break_before || (was != NULL && was->pa.page_break_before))
+    mask |= W42_PARA_PAGE_BREAK;
+
+  w42_pt_apply_para_fmt (pt, block, 0, mask, &style->pa);
+
+  /* The style's character formatting goes on the text where the text
+   * had the old style's, and what was put on by hand stays, as Word
+   * keeps direct formatting on top of a style. */
+  chars.was = was != NULL ? &was->ch : NULL;
+  chars.now = &style->ch;
+  chars.force = 0;
   if (end > block + 1)
-    w42_pt_apply_char_fmt (pt, block + 1, end - block - 1,
-                           W42_CHAR_FAMILY | W42_CHAR_SIZE |
-                           W42_CHAR_BOLD | W42_CHAR_ITALIC,
-                           &style->ch);
+    {
+      if (applying)
+        chars.force = pt_majority_differs (pt, block + 1, end - block - 1, chars.was);
+      pt_apply_fmt (pt, block + 1, end - block - 1, FMT_RESTYLE, 0, &chars);
+    }
 }
 
 void
@@ -3769,7 +3899,7 @@ w42_pt_apply_style (W42PieceTable *pt, gsize pos, gsize n, const char *name)
     {
       gsize next = pt_block_end (pt, block);
 
-      pt_style_block (pt, block, style);
+      pt_style_block (pt, block, style, NULL);
       block = next;
     }
 
@@ -3778,7 +3908,7 @@ w42_pt_apply_style (W42PieceTable *pt, gsize pos, gsize n, const char *name)
 }
 
 void
-w42_pt_restyle (W42PieceTable *pt, const char *name)
+w42_pt_restyle (W42PieceTable *pt, const char *name, const W42Style *was)
 {
   const W42Style *style;
   GArray *blocks;
@@ -3808,7 +3938,7 @@ w42_pt_restyle (W42PieceTable *pt, const char *name)
 
   w42_pt_begin_group (pt);
   for (guint i = 0; i < blocks->len; i++)
-    pt_style_block (pt, g_array_index (blocks, gsize, i), style);
+    pt_style_block (pt, g_array_index (blocks, gsize, i), style, was);
   w42_pt_end_group (pt);
 
   g_array_free (blocks, TRUE);
@@ -3862,7 +3992,7 @@ w42_pt_replace_style (W42PieceTable *pt, const char *from, const char *to)
 
   w42_pt_begin_group (pt);
   for (guint i = 0; i < blocks->len; i++)
-    pt_style_block (pt, g_array_index (blocks, gsize, i), style);
+    pt_style_block (pt, g_array_index (blocks, gsize, i), style, NULL);
   w42_pt_end_group (pt);
   g_array_free (blocks, TRUE);
   pt->coalescing = FALSE;
@@ -4847,7 +4977,7 @@ w42_pt_insert_fragment (W42PieceTable *pt, gsize pos, W42PieceTable *frag)
 }
 
 void
-w42_pt_restyle_tree (W42PieceTable *pt, const char *name)
+w42_pt_restyle_tree (W42PieceTable *pt, const char *name, W42StyleSheet *before)
 {
   const char **kids;
 
@@ -4855,10 +4985,12 @@ w42_pt_restyle_tree (W42PieceTable *pt, const char *name)
   g_return_if_fail (name != NULL);
 
   w42_pt_begin_group (pt);
-  w42_pt_restyle (pt, name);
+  w42_pt_restyle (pt, name,
+                  before != NULL ? w42_stylesheet_find (before, name) : NULL);
   kids = w42_stylesheet_descendants (pt->styles, name);
   for (guint i = 0; kids != NULL && kids[i] != NULL; i++)
-    w42_pt_restyle (pt, kids[i]);
+    w42_pt_restyle (pt, kids[i],
+                    before != NULL ? w42_stylesheet_find (before, kids[i]) : NULL);
   g_free (kids);
   w42_pt_end_group (pt);
 }

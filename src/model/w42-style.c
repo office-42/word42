@@ -34,6 +34,9 @@ style_new (const char *name, const char *family, int size,
   style->pa.style  = style->name;
   style->pa.space_before = space_before;
   style->pa.space_after  = space_after;
+  /* A heading stays on the page with the text under it, as Word's do:
+   * nobody wants a chapter's title alone at the foot of a page. */
+  style->pa.keep_next = outline > 0 ? 1 : 0;
   style->outline = outline;
   /* The built-in styles are defined in full. */
   style->pa_own = W42_STYLE_PA_ALL;
@@ -86,6 +89,22 @@ w42_stylesheet_reset (W42StyleSheet *sheet)
   g_ptr_array_set_size (sheet->styles, 0);
   add_defaults (sheet);
   sheet->number_headings = FALSE;
+}
+
+W42StyleSheet *
+w42_stylesheet_copy (W42StyleSheet *sheet)
+{
+  W42StyleSheet *copy;
+
+  g_return_val_if_fail (sheet != NULL, NULL);
+
+  copy = g_new0 (W42StyleSheet, 1);
+  copy->styles = g_ptr_array_new_with_free_func (g_free);
+  for (guint i = 0; i < sheet->styles->len; i++)
+    g_ptr_array_add (copy->styles,
+                     g_memdup2 (g_ptr_array_index (sheet->styles, i), sizeof (W42Style)));
+  copy->number_headings = sheet->number_headings;
+  return copy;
 }
 
 void
@@ -353,6 +372,19 @@ w42_style_own_from_base (const W42Style *style, const W42Style *base,
   if (style->ch.color != base->ch.color)         c |= W42_STYLE_CH_COLOR;
   *pa_own = p;
   *ch_own = c;
+}
+
+const char *
+w42_stylesheet_language (W42StyleSheet *sheet)
+{
+  const W42Style *normal;
+
+  g_return_val_if_fail (sheet != NULL, NULL);
+
+  normal = w42_stylesheet_find (sheet, "Normal");
+  if (normal == NULL || normal->ch.lang == NULL || *normal->ch.lang == '\0')
+    return NULL;
+  return normal->ch.lang;
 }
 
 const char **

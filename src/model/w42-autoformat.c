@@ -6,6 +6,9 @@
 
 #include "w42-autoformat.h"
 
+#include "w42-autocorrect.h"
+#include "w42-lang.h"
+
 #include <string.h>
 
 void
@@ -19,16 +22,43 @@ w42_autoformat_defaults (W42AutoFormat *what)
   what->blanks = TRUE;
 }
 
+/* A scene break: a line of nothing but asterisks, or the asterism, with
+ * spaces between -- "* * *" -- which is not a list of empty items. */
+static gboolean
+is_scene_break (const char *text)
+{
+  gboolean mark = FALSE;
+
+  for (const char *p = text; *p != '\0'; p = g_utf8_next_char (p))
+    {
+      gunichar c = g_utf8_get_char (p);
+
+      if (c == '*' || c == 0x2042 || c == '#')
+        mark = TRUE;
+      else if (!g_unichar_isspace (c))
+        return FALSE;
+    }
+  return mark;
+}
+
 /* How many characters of a bullet's marker a line starts with, or 0.
- * "- ", "* " and the bullet characters themselves count. */
+ * "- ", "* " and the bullet characters themselves count -- but not in a
+ * language whose novels open a line of dialogue with a dash, where "- "
+ * is a line someone says. */
 static int
-bullet_marker (const char *text)
+bullet_marker (const char *text, const W42Typography *t)
 {
   static const char *const marks[] = { "- ", "* ", "\342\200\242 ", "\302\267 ", "o " };
 
+  if (is_scene_break (text))
+    return 0;
   for (guint i = 0; i < G_N_ELEMENTS (marks); i++)
     if (g_str_has_prefix (text, marks[i]))
-      return (int) g_utf8_strlen (marks[i], -1);
+      {
+        if (i == 0 && t->dialogue != 0)
+          return 0;
+        return (int) g_utf8_strlen (marks[i], -1);
+      }
   return 0;
 }
 
@@ -95,7 +125,7 @@ typedef struct {
  * character it replaces: replacing the whole text would flatten its runs
  * and lose the pictures and note marks standing in it. */
 static GArray *
-printers_mark_edits (const char *text)
+printers_mark_edits (const char *text, const W42Typography *t)
 {
   GArray *edits = g_array_new (FALSE, FALSE, sizeof (MarkEdit));
   const char *p = text;
@@ -111,11 +141,30 @@ printers_mark_edits (const char *text)
       if (c == '"' || c == '\'')
         {
           gboolean opening = before == ' ' || before == '\t' || before == '(' ||
-                             before == '[' || before == '{' || before == 0x2018 ||
-                             before == 0x201C || p == text;
+                             before == '[' || before == '{' || before == t->open ||
+                             before == t->open2 || before == 0x2013 ||
+                             before == 0x2014 || p == text;
 
-          edit.to = (c == '"') ? (opening ? 0x201C : 0x201D)
-                               : (opening ? 0x2018 : 0x2019);
+          /* A single quote inside a word is an apostrophe, whatever the
+           * language's closing inner quote looks like. */
+          if (c == '\'' && !opening && g_unichar_isalpha (before) &&
+              g_unichar_isalpha (g_utf8_get_char (next)))
+            edit.to = 0x2019;
+          else
+            edit.to = (c == '"') ? (opening ? t->open : t->close)
+                                 : (opening ? t->open2 : t->close2);
+          g_array_append_val (edits, edit);
+        }
+      else if (c == '-' && p == text && *next == ' ' && t->dialogue != 0)
+        {
+          /* "- " opening a line of dialogue. */
+          edit.to = t->dialogue;
+          g_array_append_val (edits, edit);
+        }
+      else if (c == '-' && before == ' ' && *next == ' ' && p > text)
+        {
+          /* A hyphen between spaces is a dash. */
+          edit.to = 0x2013;
           g_array_append_val (edits, edit);
         }
       else if (c == '-' && *next == '-')
@@ -155,11 +204,17 @@ w42_pt_autoformat (W42PieceTable *pt, const W42AutoFormat *what)
 {
   GPtrArray *blocks;
   int changed = 0;
+  const W42Typography *t;
 
   g_return_val_if_fail (pt != NULL, 0);
   g_return_val_if_fail (what != NULL, 0);
 
   blocks = w42_pt_snapshot_blocks (pt);
+  {
+    const char *lang = w42_stylesheet_language (w42_pt_stylesheet (pt));
+
+    t = w42_typography_for (lang != NULL ? lang : w42_lang_default ());
+  }
   w42_pt_begin_group (pt);
 
   /* Back to front, so that a change never moves a paragraph that has
@@ -194,7 +249,7 @@ w42_pt_autoformat (W42PieceTable *pt, const W42AutoFormat *what)
       /* The quotes and dashes, wherever they are. */
       if (what->quotes)
         {
-          GArray *edits = printers_mark_edits (text);
+          GArray *edits = printers_mark_edits (text, t);
 
           if (edits != NULL)
             {
@@ -222,7 +277,7 @@ w42_pt_autoformat (W42PieceTable *pt, const W42AutoFormat *what)
       marker = 0;
       if (what->lists && block->table < 0 && fmt->pa.list == W42_LIST_NONE)
         {
-          marker = bullet_marker (text);
+          marker = bullet_marker (text, t);
           if (marker > 0)
             kind = W42_LIST_BULLET;
           else
@@ -250,7 +305,7 @@ w42_pt_autoformat (W42PieceTable *pt, const W42AutoFormat *what)
           (fmt->pa.style == NULL || g_ascii_strcasecmp (fmt->pa.style, "Normal") == 0) &&
           next != NULL && next->text->len > 0 &&
           (previous == NULL || previous->text->len == 0) &&
-          looks_like_a_heading (text, chars))
+          !is_scene_break (text) && looks_like_a_heading (text, chars))
         {
           w42_pt_apply_style (pt, start, chars,
                               fmt->pa.indent_left >= 360 ? "Heading 2" : "Heading 1");
