@@ -17,62 +17,258 @@
 
 #include <string.h>
 
-/* The longest common subsequence of two lists of strings, as pairs of
- * indexes in order.  Lists too long for the table are matched in
- * lockstep instead: a document of ten thousand paragraphs against
- * another is compared paragraph for paragraph, which is what a small
- * change to a long report needs anyway. */
+/* The most cells the exact table may have: 16 MB of it, and about two
+ * thousand by two thousand. */
+#define TABLE_LIMIT 4000000
+
+/* A stretch of each list still to be matched: [alo, ahi) of one against
+ * [blo, bhi) of the other. */
+typedef struct {
+  guint alo, ahi, blo, bhi;
+} Gap;
+
+static void
+add_pair (GArray *pairs, guint i, guint j)
+{
+  guint pair[2] = { i, j };
+
+  g_array_append_val (pairs, pair);
+}
+
+static int
+pair_cmp (gconstpointer pa, gconstpointer pb)
+{
+  const guint *a = pa, *b = pb;
+
+  return a[0] < b[0] ? -1 : a[0] > b[0];
+}
+
+/* The exact longest common subsequence of a gap, by the table. */
+static void
+table_pairs (const guint *a, const guint *b, Gap g, GArray *pairs)
+{
+  guint na = g.ahi - g.alo, nb = g.bhi - g.blo;
+  guint *table = g_new0 (guint, (gsize) (na + 1) * (nb + 1));
+  guint i = 0, j = 0;
+
+#define AT(i, j) table[(gsize) (i) * (nb + 1) + (j)]
+  for (guint x = na; x-- > 0;)
+    for (guint y = nb; y-- > 0;)
+      {
+        if (a[g.alo + x] == b[g.blo + y])
+          AT (x, y) = AT (x + 1, y + 1) + 1;
+        else
+          AT (x, y) = MAX (AT (x + 1, y), AT (x, y + 1));
+      }
+  while (i < na && j < nb)
+    {
+      if (a[g.alo + i] == b[g.blo + j])
+        {
+          add_pair (pairs, g.alo + i, g.blo + j);
+          i++;
+          j++;
+        }
+      else if (AT (i + 1, j) >= AT (i, j + 1))
+        i++;
+      else
+        j++;
+    }
+#undef AT
+  g_free (table);
+}
+
+/* Patience diff's anchors: the strings that occur exactly once in each
+ * side of the gap, paired, and of those pairs the longest chain in order
+ * on both sides.  The paragraphs of a book are nearly all different, so
+ * the anchors pin nearly everything down and what is left between them
+ * is small.  `count_a`, `count_b` and `where_b` are indexed by string;
+ * the counts are zero on the way in and are left so on the way out. */
 static GArray *
-lcs_pairs (GPtrArray *a, GPtrArray *b)
+anchors (const guint *a, const guint *b, Gap g,
+         guint *count_a, guint *count_b, guint *where_b)
+{
+  GArray *cand = g_array_new (FALSE, FALSE, sizeof (guint) * 2);
+  GArray *chain = g_array_new (FALSE, FALSE, sizeof (guint) * 2);
+  guint *tails, *prev;
+  guint n_tails = 0;
+
+  for (guint i = g.alo; i < g.ahi; i++)
+    count_a[a[i]]++;
+  for (guint j = g.blo; j < g.bhi; j++)
+    {
+      count_b[b[j]]++;
+      where_b[b[j]] = j;
+    }
+  for (guint i = g.alo; i < g.ahi; i++)
+    if (count_a[a[i]] == 1 && count_b[a[i]] == 1)
+      add_pair (cand, i, where_b[a[i]]);
+  for (guint i = g.alo; i < g.ahi; i++)
+    count_a[a[i]] = 0;
+  for (guint j = g.blo; j < g.bhi; j++)
+    count_b[b[j]] = 0;
+
+  if (cand->len == 0)
+    {
+      g_array_free (cand, TRUE);
+      return chain;
+    }
+
+  /* The candidates are in order on the first side; the longest run of
+   * them in order on the second is the longest increasing subsequence
+   * of their second indexes, found by patience sorting: tails[k] is the
+   * candidate with the smallest second index that ends a run of k + 1. */
+  tails = g_new (guint, cand->len);
+  prev = g_new (guint, cand->len);
+  for (guint c = 0; c < cand->len; c++)
+    {
+      guint j = g_array_index (cand, guint, 2 * c + 1);
+      guint lo = 0, hi = n_tails;
+
+      while (lo < hi)
+        {
+          guint mid = lo + (hi - lo) / 2;
+
+          if (g_array_index (cand, guint, 2 * tails[mid] + 1) < j)
+            lo = mid + 1;
+          else
+            hi = mid;
+        }
+      prev[c] = lo > 0 ? tails[lo - 1] : G_MAXUINT;
+      tails[lo] = c;
+      if (lo == n_tails)
+        n_tails++;
+    }
+  g_array_set_size (chain, n_tails);
+  for (guint c = tails[n_tails - 1], k = n_tails; k-- > 0; c = prev[c])
+    {
+      guint *to = &g_array_index (chain, guint, 2 * k);
+      const guint *from = &g_array_index (cand, guint, 2 * c);
+
+      to[0] = from[0];
+      to[1] = from[1];
+    }
+
+  g_free (tails);
+  g_free (prev);
+  g_array_free (cand, TRUE);
+  return chain;
+}
+
+/* The longest common subsequence of two lists of strings, as pairs of
+ * indexes in order -- exactly while the lists are small enough for the
+ * table, and after that as patience diff finds it.  What the two ends
+ * share is matched first, which is all a paragraph put in at the top of
+ * a novel needs; what is left is taken by the table when it fits, and
+ * otherwise split at the anchors and each piece taken the same way.  A
+ * piece too big for the table with no anchor in it at all -- the same
+ * few lines over and over -- is matched in lockstep, which is not the
+ * best answer but is a bounded one. */
+static GArray *
+lcs_pairs (GPtrArray *sa, GPtrArray *sb)
 {
   GArray *pairs = g_array_new (FALSE, FALSE, sizeof (guint) * 2);
-  guint na = a->len, nb = b->len;
-  guint *table;
+  guint na = sa->len, nb = sb->len;
+  GHashTable *ids;
+  guint *a, *b, *count_a, *count_b, *where_b;
+  guint n_ids = 0;
+  GArray *todo;
 
   if (na == 0 || nb == 0)
     return pairs;
 
-  if ((gsize) (na + 1) * (nb + 1) > 4000000)
+  /* Each distinct string gets a number, so that everything after this
+   * compares numbers rather than whole paragraphs. */
+  ids = g_hash_table_new (g_str_hash, g_str_equal);
+  a = g_new (guint, na);
+  b = g_new (guint, nb);
+  for (guint k = 0; k < na + nb; k++)
     {
-      for (guint i = 0; i < MIN (na, nb); i++)
-        if (g_str_equal (g_ptr_array_index (a, i), g_ptr_array_index (b, i)))
-          {
-            guint pair[2] = { i, i };
-            g_array_append_val (pairs, pair);
-          }
-      return pairs;
+      const char *s = k < na ? g_ptr_array_index (sa, k)
+                             : g_ptr_array_index (sb, k - na);
+      gpointer id;
+
+      if (!g_hash_table_lookup_extended (ids, s, NULL, &id))
+        {
+          id = GUINT_TO_POINTER (n_ids++);
+          g_hash_table_insert (ids, (gpointer) s, id);
+        }
+      if (k < na)
+        a[k] = GPOINTER_TO_UINT (id);
+      else
+        b[k - na] = GPOINTER_TO_UINT (id);
+    }
+  g_hash_table_destroy (ids);
+  count_a = g_new0 (guint, n_ids);
+  count_b = g_new0 (guint, n_ids);
+  where_b = g_new0 (guint, n_ids);
+
+  /* Every piece yields pairs of its own, so the pieces can be taken in
+   * any order and the pairs put in order at the end. */
+  todo = g_array_new (FALSE, FALSE, sizeof (Gap));
+  {
+    Gap whole = { 0, na, 0, nb };
+
+    g_array_append_val (todo, whole);
+  }
+  while (todo->len > 0)
+    {
+      Gap g = g_array_index (todo, Gap, todo->len - 1);
+      GArray *chain;
+
+      g_array_set_size (todo, todo->len - 1);
+
+      while (g.alo < g.ahi && g.blo < g.bhi && a[g.alo] == b[g.blo])
+        add_pair (pairs, g.alo++, g.blo++);
+      while (g.alo < g.ahi && g.blo < g.bhi && a[g.ahi - 1] == b[g.bhi - 1])
+        add_pair (pairs, --g.ahi, --g.bhi);
+      if (g.alo == g.ahi || g.blo == g.bhi)
+        continue;
+
+      if ((gsize) (g.ahi - g.alo + 1) * (g.bhi - g.blo + 1) <= TABLE_LIMIT)
+        {
+          table_pairs (a, b, g, pairs);
+          continue;
+        }
+
+      chain = anchors (a, b, g, count_a, count_b, where_b);
+      if (chain->len == 0)
+        {
+          for (guint k = 0; k < MIN (g.ahi - g.alo, g.bhi - g.blo); k++)
+            if (a[g.alo + k] == b[g.blo + k])
+              add_pair (pairs, g.alo + k, g.blo + k);
+        }
+      else
+        {
+          Gap piece = g;
+
+          for (guint k = 0; k < chain->len; k++)
+            {
+              guint i = g_array_index (chain, guint, 2 * k);
+              guint j = g_array_index (chain, guint, 2 * k + 1);
+
+              piece.ahi = i;
+              piece.bhi = j;
+              if (piece.alo < piece.ahi && piece.blo < piece.bhi)
+                g_array_append_val (todo, piece);
+              add_pair (pairs, i, j);
+              piece.alo = i + 1;
+              piece.blo = j + 1;
+            }
+          piece.ahi = g.ahi;
+          piece.bhi = g.bhi;
+          if (piece.alo < piece.ahi && piece.blo < piece.bhi)
+            g_array_append_val (todo, piece);
+        }
+      g_array_free (chain, TRUE);
     }
 
-  table = g_new0 (guint, (gsize) (na + 1) * (nb + 1));
-#define AT(i, j) table[(gsize) (i) * (nb + 1) + (j)]
-  for (guint i = na; i-- > 0;)
-    for (guint j = nb; j-- > 0;)
-      {
-        if (g_str_equal (g_ptr_array_index (a, i), g_ptr_array_index (b, j)))
-          AT (i, j) = AT (i + 1, j + 1) + 1;
-        else
-          AT (i, j) = MAX (AT (i + 1, j), AT (i, j + 1));
-      }
-  {
-    guint i = 0, j = 0;
-
-    while (i < na && j < nb)
-      {
-        if (g_str_equal (g_ptr_array_index (a, i), g_ptr_array_index (b, j)))
-          {
-            guint pair[2] = { i, j };
-            g_array_append_val (pairs, pair);
-            i++;
-            j++;
-          }
-        else if (AT (i + 1, j) >= AT (i, j + 1))
-          i++;
-        else
-          j++;
-      }
-  }
-#undef AT
-  g_free (table);
+  g_array_sort (pairs, pair_cmp);
+  g_array_free (todo, TRUE);
+  g_free (count_a);
+  g_free (count_b);
+  g_free (where_b);
+  g_free (a);
+  g_free (b);
   return pairs;
 }
 

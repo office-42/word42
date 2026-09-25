@@ -8,21 +8,47 @@
 
 #include <string.h>
 
+/* Tools > Hyphenation puts one inside words, where nobody can see it, so a
+ * search looks straight through it: "vanskelige" finds "van-ske-lige". */
+#define SOFT_HYPHEN 0x00AD
+
+static const char *
+skip_soft_hyphens (const char *p)
+{
+  while (g_utf8_get_char (p) == SOFT_HYPHEN)
+    p = g_utf8_next_char (p);
+  return p;
+}
+
+/* A needle of nothing but soft hyphens would match nothing everywhere. */
+static gboolean
+needle_is_empty (const char *needle)
+{
+  return *skip_soft_hyphens (needle) == '\0';
+}
+
 /* Compares character by character rather than casefolding both strings first,
  * because casefolding can change a string's length and the caller needs byte
  * offsets back that still index the original text.  The cost is that the
- * one-to-many foldings -- Eszett against "ss" and its kin -- do not match. */
+ * one-to-many foldings -- Eszett against "ss" and its kin -- do not match.
+ * Soft hyphens are passed over on both sides; the match starts on a real
+ * character, and one inside it is part of it, so replacing it replaces the
+ * lot. */
 static gboolean
 match_at (const char *hay, const char *needle, gboolean match_case,
           const char **end_out)
 {
   const char *h = hay;
-  const char *n = needle;
+  const char *n = skip_soft_hyphens (needle);
+
+  if (g_utf8_get_char (h) == SOFT_HYPHEN)
+    return FALSE;
 
   while (*n != '\0')
     {
       gunichar hc, nc;
 
+      h = skip_soft_hyphens (h);
       if (*h == '\0')
         return FALSE;
 
@@ -39,7 +65,7 @@ match_at (const char *hay, const char *needle, gboolean match_case,
         return FALSE;
 
       h = g_utf8_next_char (h);
-      n = g_utf8_next_char (n);
+      n = skip_soft_hyphens (g_utf8_next_char (n));
     }
 
   *end_out = h;
@@ -52,16 +78,29 @@ is_word_char (gunichar c)
   return g_unichar_isalnum (c) || c == '_';
 }
 
+/* A soft hyphen is inside a word, not the end of one: "vanske" is not a
+ * whole word of "van-ske-lige". */
 static gboolean
 on_word_boundary (const char *text, const char *start, const char *end)
 {
-  if (start > text)
+  const char *prev = start;
+
+  while (prev > text)
     {
-      const char *prev = g_utf8_find_prev_char (text, start);
-      if (prev != NULL && is_word_char (g_utf8_get_char (prev)))
+      gunichar c;
+
+      prev = g_utf8_find_prev_char (text, prev);
+      if (prev == NULL)
+        break;
+      c = g_utf8_get_char (prev);
+      if (c == SOFT_HYPHEN)
+        continue;
+      if (is_word_char (c))
         return FALSE;
+      break;
     }
 
+  end = skip_soft_hyphens (end);
   if (*end != '\0' && is_word_char (g_utf8_get_char (end)))
     return FALSE;
 
@@ -148,6 +187,23 @@ block_pos_to_byte (const W42Block *block, gsize pos)
 }
 
 gboolean
+w42_search_is_match (const char             *text,
+                     const char             *needle,
+                     const W42SearchOptions *options)
+{
+  const char *end = NULL;
+
+  g_return_val_if_fail (options != NULL, FALSE);
+
+  if (text == NULL || needle == NULL || needle_is_empty (needle))
+    return FALSE;
+
+  text = skip_soft_hyphens (text);
+  return match_at (text, needle, options->match_case, &end) &&
+         *skip_soft_hyphens (end) == '\0';
+}
+
+gboolean
 w42_search_find (W42PieceTable          *pt,
                  gsize                   from,
                  const char             *needle,
@@ -162,7 +218,7 @@ w42_search_find (W42PieceTable          *pt,
   g_return_val_if_fail (pt != NULL, FALSE);
   g_return_val_if_fail (options != NULL, FALSE);
 
-  if (needle == NULL || *needle == '\0')
+  if (needle == NULL || needle_is_empty (needle))
     return FALSE;
 
   blocks = w42_pt_snapshot_blocks (pt);
@@ -257,7 +313,7 @@ w42_search_replace_all (W42PieceTable          *pt,
   g_return_val_if_fail (pt != NULL, 0);
   g_return_val_if_fail (options != NULL, 0);
 
-  if (needle == NULL || *needle == '\0')
+  if (needle == NULL || needle_is_empty (needle))
     return 0;
 
   if (replacement == NULL)

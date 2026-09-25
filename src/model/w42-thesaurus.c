@@ -179,8 +179,44 @@ read_index (W42Thesaurus *self, const char *path)
 W42Thesaurus *
 w42_thesaurus_new (void)
 {
+  return w42_thesaurus_new_for (NULL);
+}
+
+W42Thesaurus *
+w42_thesaurus_new_for (const char *want)
+{
   GPtrArray *langs = candidate_languages ();
   W42Thesaurus *self = NULL;
+
+  /* The document's language first, spelt the way the files are named:
+   * "nb-NO" is th_nb_NO; Norwegian written "no" is Bokmål. */
+  if (want != NULL && *want != '\0')
+    {
+      char *tag = g_strdup (want);
+      char *dash;
+
+      for (char *p = tag; *p != '\0'; p++)
+        if (*p == '-')
+          *p = '_';
+      if (g_ascii_strcasecmp (tag, "no") == 0 || g_ascii_strcasecmp (tag, "no_NO") == 0)
+        {
+          g_free (tag);
+          tag = g_strdup ("nb_NO");
+        }
+      dash = strchr (tag, '_');
+      if (dash == NULL)
+        {
+          /* A language without its country: its own country's file,
+           * nb_NO for nb, de_DE for de. */
+          char *upper = g_ascii_strup (tag, -1);
+          char *full = g_strdup_printf ("%s_%s", tag, upper);
+
+          g_free (upper);
+          g_free (tag);
+          tag = full;
+        }
+      g_ptr_array_insert (langs, 0, tag);
+    }
 
   for (guint i = 0; i < langs->len && self == NULL; i++)
     {

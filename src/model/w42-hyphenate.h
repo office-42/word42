@@ -18,8 +18,13 @@ G_BEGIN_DECLS
 
 typedef struct _W42Hyphenator W42Hyphenator;
 
-/* NULL when this build has no libhyphen or no dictionary was found. */
+/* NULL when this build has no libhyphen or no dictionary was found.
+ * w42_hyphenator_new() takes the patterns for the desktop's language, or
+ * English; w42_hyphenator_new_for() those for `lang`, a BCP-47 tag such
+ * as the document's own "nb-NO" ("no" finds Bokmål's), and the desktop's
+ * when `lang` is NULL or there are none for it. */
 W42Hyphenator *w42_hyphenator_new  (void);
+W42Hyphenator *w42_hyphenator_new_for (const char *lang);
 void           w42_hyphenator_free (W42Hyphenator *hyph);
 const char    *w42_hyphenator_language (W42Hyphenator *hyph);
 

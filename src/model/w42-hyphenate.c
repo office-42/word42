@@ -5,6 +5,7 @@
  */
 
 #include "w42-hyphenate.h"
+#include "w42-lang.h"
 
 #include <string.h>
 
@@ -17,6 +18,11 @@
 struct _W42Hyphenator {
 #ifdef HAVE_HYPHEN
   HyphenDict *dict;
+  /* Many of the pattern files are not UTF-8 -- the Norwegian ones are
+   * ISO8859-1 -- and libhyphen matches bytes, so a word goes to the
+   * dictionary in the dictionary's own charset.  (GIConv) -1 when that
+   * is UTF-8 already. */
+  GIConv      to_dict;
 #endif
   char *language;
 };
@@ -66,38 +72,107 @@ find_dictionary (const char *language)
   return found;
 }
 
+/* The converter from UTF-8 to the charset the first line of the pattern
+ * file names.  FALSE when the C library cannot convert to it, which makes
+ * the dictionary no use to us. */
+static gboolean
+open_converter (HyphenDict *dict, GIConv *to_dict)
+{
+  char *cset;
+
+  *to_dict = (GIConv) -1;
+  if (dict->utf8)
+    return TRUE;
+
+  cset = g_strstrip (g_strdup (dict->cset));
+  if (*cset != '\0')
+    *to_dict = g_iconv_open (cset, "UTF-8");
+  g_free (cset);
+  return *to_dict != (GIConv) -1;
+}
+
+#endif
+
+#ifdef HAVE_HYPHEN
+
+/* Takes `name`, spelt the way the dictionaries' files are ("nb_NO"). */
+static void
+add_candidate (GPtrArray *candidates, char *name)
+{
+  g_strdelimit (name, "-", '_');
+  for (guint i = 0; i < candidates->len; i++)
+    if (g_str_equal (g_ptr_array_index (candidates, i), name))
+      {
+        g_free (name);
+        return;
+      }
+  g_ptr_array_add (candidates, name);
+}
+
+/* The names a dictionary for `tag` -- "nb-NO", or the C library's
+ * "nb_NO.UTF-8" -- may be filed under: the tag and its language on its
+ * own, then the same for the tag the language table has for it, which
+ * is what turns a bare "nb" into nb_NO, and "no" -- Norwegian, which in
+ * practice means Bokmål -- into nb_NO and nb. */
+static void
+add_candidates (GPtrArray *candidates, const char *tag)
+{
+  char *name = g_strdup (tag);
+  char *dot = strchr (name, '.');
+  const char *usual;
+
+  if (dot != NULL)
+    *dot = '\0';
+  usual = w42_lang_normalise (name);
+  for (int pass = 0; pass < 2; pass++)
+    {
+      char *sep;
+
+      if (strlen (name) >= 2 && !g_str_equal (name, "C") &&
+          !g_str_equal (name, "POSIX"))
+        {
+          add_candidate (candidates, g_strdup (name));
+          if ((sep = strpbrk (name, "-_")) != NULL)
+            add_candidate (candidates, g_strndup (name, (gsize) (sep - name)));
+        }
+      g_free (name);
+      if (pass == 1 || usual == NULL)
+        return;
+      name = g_strdup (usual);
+    }
+}
+
 #endif
 
 W42Hyphenator *
 w42_hyphenator_new (void)
+{
+  return w42_hyphenator_new_for (NULL);
+}
+
+W42Hyphenator *
+w42_hyphenator_new_for (const char *lang)
 {
 #ifdef HAVE_HYPHEN
   const char * const *langs = g_get_language_names ();
   GPtrArray *candidates = g_ptr_array_new_with_free_func (g_free);
   W42Hyphenator *hyph = NULL;
 
-  /* The user's language, its country-less form with the country the
-   * dictionaries are named by, then English. */
+  /* The document's language; then the desktop's, which is all there was
+   * before the document said; then English. */
+  if (lang != NULL && g_strcmp0 (lang, W42_LANG_NONE) != 0)
+    add_candidates (candidates, lang);
   for (guint i = 0; langs != NULL && langs[i] != NULL; i++)
-    {
-      char *lang = g_strdup (langs[i]);
-      char *dot = strchr (lang, '.');
-
-      if (dot != NULL)
-        *dot = '\0';
-      if (strlen (lang) >= 2 && !g_str_equal (lang, "C"))
-        g_ptr_array_add (candidates, lang);
-      else
-        g_free (lang);
-    }
-  g_ptr_array_add (candidates, g_strdup ("en_US"));
-  g_ptr_array_add (candidates, g_strdup ("en_GB"));
+    add_candidates (candidates, langs[i]);
+  add_candidate (candidates, g_strdup ("en_US"));
+  add_candidate (candidates, g_strdup ("en_GB"));
 
   for (guint i = 0; i < candidates->len && hyph == NULL; i++)
     {
       const char *language = g_ptr_array_index (candidates, i);
       char *path = find_dictionary (language);
       HyphenDict *dict;
+      GIConv to_dict;
 
       if (path == NULL)
         continue;
@@ -105,15 +180,22 @@ w42_hyphenator_new (void)
       g_free (path);
       if (dict == NULL)
         continue;
+      if (!open_converter (dict, &to_dict))
+        {
+          hnj_hyphen_free (dict);
+          continue;
+        }
 
       hyph = g_new0 (W42Hyphenator, 1);
       hyph->dict = dict;
+      hyph->to_dict = to_dict;
       hyph->language = g_strdup (language);
     }
 
   g_ptr_array_free (candidates, TRUE);
   return hyph;
 #else
+  (void) lang;
   return NULL;
 #endif
 }
@@ -125,6 +207,8 @@ w42_hyphenator_free (W42Hyphenator *hyph)
     return;
 #ifdef HAVE_HYPHEN
   hnj_hyphen_free (hyph->dict);
+  if (hyph->to_dict != (GIConv) -1)
+    g_iconv_close (hyph->to_dict);
 #endif
   g_free (hyph->language);
   g_free (hyph);
@@ -143,15 +227,15 @@ static int
 break_points (W42Hyphenator *hyph, const char *word, GArray *out)
 {
 #ifdef HAVE_HYPHEN
-  gsize bytes = strlen (word);
   glong n_chars = g_utf8_strlen (word, -1);
-  char *hyphens, *hyphword;
+  gsize bytes;
+  char *hyphens;
   char **rep = NULL;
   int *pos = NULL, *cut = NULL;
   char *lower;
   int rc;
 
-  if (n_chars < 5 || bytes == 0)
+  if (n_chars < 5)
     return -1;
 
   /* The patterns are for lower case; a word whose lower case has a
@@ -163,24 +247,44 @@ break_points (W42Hyphenator *hyph, const char *word, GArray *out)
       return -1;
     }
   bytes = strlen (lower);
-  hyphens = g_malloc0 (bytes + 5);
-  hyphword = g_malloc0 (bytes * 2 + 5);
 
-  rc = hnj_hyphen_hyphenate2 (hyph->dict, lower, (int) bytes, hyphens, hyphword,
+  if (hyph->to_dict != (GIConv) -1)
+    {
+      /* A word with a letter the dictionary's charset has no byte for
+       * cannot match its patterns, and is left alone.  The charsets the
+       * pattern files use have one byte to a character, so the bytes
+       * number the characters; one that does not is not ours to map. */
+      gsize written = 0;
+      char *converted = g_convert_with_iconv (lower, (gssize) bytes,
+                                              hyph->to_dict, NULL, &written,
+                                              NULL);
+
+      g_free (lower);
+      if (converted == NULL || written != (gsize) n_chars)
+        {
+          g_free (converted);
+          return -1;
+        }
+      lower = converted;
+      bytes = written;
+    }
+  hyphens = g_malloc0 (bytes + 5);
+
+  rc = hnj_hyphen_hyphenate2 (hyph->dict, lower, (int) bytes, hyphens, NULL,
                               &rep, &pos, &cut);
 
-  if (rc == 0)
+  /* hyphens[] holds a digit per character, odd for a break after it:
+   * libhyphen folds a UTF-8 dictionary's bytes into characters itself,
+   * and in a single-byte charset they are the same thing.  Anything else
+   * means the two have come apart, and no break is safer than a wrong
+   * one. */
+  if (rc == 0 && strlen (hyphens) == (gsize) n_chars)
     {
-      /* hyphens[] is per byte of the word; odd means a break after that
-       * byte.  Count characters as we go so the index is a character
-       * index, and keep Word's two-before, three-after minimum. */
-      const char *p = lower;
-      int ci = 0;
-
-      while (*p != '\0')
+      /* Keep Word's two-before, three-after minimum.  A break that
+       * changes the letters around it ("Schiff=fahrt") is not one a soft
+       * hyphen can make. */
+      for (int ci = 0; ci < (int) n_chars; ci++)
         {
-          const char *next = g_utf8_next_char (p);
-          /* libhyphen reports by character, not by byte. */
           gboolean odd = (hyphens[ci] & 1) != 0;
           gboolean standard = rep == NULL || rep[ci] == NULL;
 
@@ -189,21 +293,18 @@ break_points (W42Hyphenator *hyph, const char *word, GArray *out)
               int after = ci + 1;
               g_array_append_val (out, after);
             }
-          ci++;
-          p = next;
         }
     }
 
   if (rep != NULL)
     {
       for (gsize i = 0; i < bytes; i++)
-        g_free (rep[i]);
+        free (rep[i]);
       free (rep);
     }
   free (pos);
   free (cut);
   g_free (hyphens);
-  g_free (hyphword);
   g_free (lower);
   return rc == 0 ? (int) n_chars : -1;
 #else

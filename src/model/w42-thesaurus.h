@@ -28,6 +28,9 @@ typedef struct {
 
 /* NULL when no thesaurus file was found. */
 W42Thesaurus *w42_thesaurus_new  (void);
+/* The one for a language, a BCP-47 tag such as "nb-NO", before the
+ * desktop's; NULL takes the desktop's alone. */
+W42Thesaurus *w42_thesaurus_new_for (const char *lang);
 void          w42_thesaurus_free (W42Thesaurus *self);
 const char   *w42_thesaurus_language (W42Thesaurus *self);
 

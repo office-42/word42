@@ -135,19 +135,10 @@ on_replace (GtkButton *button, gpointer data)
   dialog_options (self, &options);
   selected = w42_view_get_selected_text (self->view);
 
+  /* Compared the way the search compares, so that a word Find Next
+   * selected across its soft hyphens is the word looked for. */
   if (selected != NULL)
-    {
-      if (options.match_case)
-        matches = g_strcmp0 (selected, needle) == 0;
-      else
-        {
-          char *a = g_utf8_casefold (selected, -1), *b = g_utf8_casefold (needle, -1);
-
-          matches = g_strcmp0 (a, b) == 0;
-          g_free (a);
-          g_free (b);
-        }
-    }
+    matches = w42_search_is_match (selected, needle, &options);
 
   g_free (selected);
 
