@@ -298,8 +298,16 @@ A style is a name for a `W42CharFmt` and a `W42ParaFmt` together with an
 outline level. The stylesheet lives beside the AP table in the piece table.
 Applying a style writes the paragraph half onto the paragraph mark — which
 is where `pa.style` lives — and the font, size, weight and slant onto the
-paragraph's runs. Word keeps direct formatting on top of a style; Word42
-replaces it, which is simpler and rarely what anyone notices.
+paragraph's runs. The model does not record which of a run's settings
+came from its style and which were put on by hand, so it works it out, the
+way Word does: a run's setting that differs from what its old style says
+is direct formatting — the word in italics — and stays. When a style is
+*applied*, a difference that covers more than half the paragraph is taken
+for the paragraph's old look instead, and goes; when a style's
+*definition* changes, `w42_pt_restyle_tree` is handed a copy of the
+stylesheet from before the change, so every difference stays. A page
+break before is the style's to give and to take back only where it gave
+it, so one typed with Ctrl+Enter survives a restyle.
 
 Section numbers are not text. The layout engine walks the blocks with one
 counter per outline level, resets the deeper counters whenever a shallower

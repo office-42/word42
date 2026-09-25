@@ -20,6 +20,19 @@ Early, but real. Word42 today is a working word processor:
   Numbering numbers the sections — 1, 1.1, 1.2, 2 — from the outline levels,
   the way the classic ones did. The stylesheet round-trips through RTF, and Word's
   own `heading 1` lands on Word42's Heading 1.
+- **For writers** — AutoCorrect in the typography of the text's
+  language: « » and ‘ ’ in Norwegian, „ “ in German, dialogue dashes
+  (`- hei` becomes `– Hei`), ordinals and abbreviations that do not start
+  a sentence. Tools ▸ Language ▸ Default gives a document its language,
+  which the spelling, the thesaurus, the hyphenation and the quotes then
+  follow. A running word count and "page 13/152" in the status bar, Tools
+  ▸ Word Count Goal, the words of every chapter beside it in the Document
+  Map, View ▸ Typewriter Scrolling, Novel and Manuscript templates, page
+  break before and keep-with-next in styles, and italics that survive a
+  change of style. Backup copies and a chosen AutoRecover interval in
+  Tools ▸ Options, File ▸ Export as E-book (EPUB 3), and `word42
+  --convert-to=pdf roman.odt` to make proofs and e-books without a window.
+  [docs/morild](morild/) is a 150-page novel written this way.
 - **Headers, footers and page breaks** — View ▸ Header and Footer sets a
   line of text at the top and bottom of every page, with `{PAGE}`,
   `{NUMPAGES}` and `{DATE}` fields; Insert ▸ Page Numbers is the shortcut for
