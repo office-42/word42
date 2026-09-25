@@ -6,66 +6,70 @@
 
 #include "w42-lang.h"
 
+#include <glib/gi18n.h>
 #include <stdlib.h>
 #include <string.h>
 
 /* The languages a word processor of this size is likely to be asked
  * for, with the numbers Word's formats use for them.  The numbers are
  * the well-known Windows language identifiers, published by Microsoft
- * and used by every program that reads or writes RTF. */
+ * and used by every program that reads or writes RTF.  The names are
+ * marked for translation; w42_lang_name() gives them translated. */
 static const W42Language LANGUAGES[] = {
-  { W42_LANG_NONE, "(no proofing)",              1024 },
-  { "en-US", "English (United States)",          1033 },
-  { "en-GB", "English (United Kingdom)",         2057 },
-  { "en-AU", "English (Australia)",              3081 },
-  { "en-CA", "English (Canada)",                 4105 },
-  { "nb-NO", "Norwegian (Bokm\303\245l)",        1044 },
-  { "nn-NO", "Norwegian (Nynorsk)",              2068 },
-  { "da-DK", "Danish",                           1030 },
-  { "sv-SE", "Swedish",                          1053 },
-  { "fi-FI", "Finnish",                          1035 },
-  { "is-IS", "Icelandic",                        1039 },
-  { "de-DE", "German (Germany)",                 1031 },
-  { "de-AT", "German (Austria)",                 3079 },
-  { "de-CH", "German (Switzerland)",             2055 },
-  { "fr-FR", "French (France)",                  1036 },
-  { "fr-CA", "French (Canada)",                  3084 },
-  { "es-ES", "Spanish (Spain)",                  3082 },
-  { "es-MX", "Spanish (Mexico)",                 2058 },
-  { "pt-PT", "Portuguese (Portugal)",            2070 },
-  { "pt-BR", "Portuguese (Brazil)",              1046 },
-  { "it-IT", "Italian",                          1040 },
-  { "nl-NL", "Dutch (Netherlands)",              1043 },
-  { "nl-BE", "Dutch (Belgium)",                  2067 },
-  { "pl-PL", "Polish",                           1045 },
-  { "cs-CZ", "Czech",                            1029 },
-  { "sk-SK", "Slovak",                           1051 },
-  { "hu-HU", "Hungarian",                        1038 },
-  { "ro-RO", "Romanian",                         1048 },
-  { "bg-BG", "Bulgarian",                        1026 },
-  { "el-GR", "Greek",                            1032 },
-  { "ru-RU", "Russian",                          1049 },
-  { "uk-UA", "Ukrainian",                        1058 },
-  { "tr-TR", "Turkish",                          1055 },
-  { "he-IL", "Hebrew",                           1037 },
-  { "ar-SA", "Arabic (Saudi Arabia)",            1025 },
-  { "fa-IR", "Persian",                          1065 },
-  { "hi-IN", "Hindi",                            1081 },
-  { "th-TH", "Thai",                             1054 },
-  { "vi-VN", "Vietnamese",                       1066 },
-  { "id-ID", "Indonesian",                       1057 },
-  { "ja-JP", "Japanese",                         1041 },
-  { "ko-KR", "Korean",                           1042 },
-  { "zh-CN", "Chinese (Simplified)",             2052 },
-  { "zh-TW", "Chinese (Traditional)",            1028 },
-  { "ca-ES", "Catalan",                          1027 },
-  { "et-EE", "Estonian",                         1061 },
-  { "lv-LV", "Latvian",                          1062 },
-  { "lt-LT", "Lithuanian",                       1063 },
-  { "sl-SI", "Slovenian",                        1060 },
-  { "hr-HR", "Croatian",                         1050 },
-  { "sr-RS", "Serbian",                          2074 },
-  { "af-ZA", "Afrikaans",                        1078 },
+  /* Translators: the language of text that is not to be spell-checked
+   * at all, as Tools > Language lists it. */
+  { W42_LANG_NONE, N_("(no proofing)"),          1024 },
+  { "en-US", N_("English (United States)"),      1033 },
+  { "en-GB", N_("English (United Kingdom)"),     2057 },
+  { "en-AU", N_("English (Australia)"),          3081 },
+  { "en-CA", N_("English (Canada)"),             4105 },
+  { "nb-NO", N_("Norwegian (Bokm\303\245l)"),    1044 },
+  { "nn-NO", N_("Norwegian (Nynorsk)"),          2068 },
+  { "da-DK", N_("Danish"),                       1030 },
+  { "sv-SE", N_("Swedish"),                      1053 },
+  { "fi-FI", N_("Finnish"),                      1035 },
+  { "is-IS", N_("Icelandic"),                    1039 },
+  { "de-DE", N_("German (Germany)"),             1031 },
+  { "de-AT", N_("German (Austria)"),             3079 },
+  { "de-CH", N_("German (Switzerland)"),         2055 },
+  { "fr-FR", N_("French (France)"),              1036 },
+  { "fr-CA", N_("French (Canada)"),              3084 },
+  { "es-ES", N_("Spanish (Spain)"),              3082 },
+  { "es-MX", N_("Spanish (Mexico)"),             2058 },
+  { "pt-PT", N_("Portuguese (Portugal)"),        2070 },
+  { "pt-BR", N_("Portuguese (Brazil)"),          1046 },
+  { "it-IT", N_("Italian"),                      1040 },
+  { "nl-NL", N_("Dutch (Netherlands)"),          1043 },
+  { "nl-BE", N_("Dutch (Belgium)"),              2067 },
+  { "pl-PL", N_("Polish"),                       1045 },
+  { "cs-CZ", N_("Czech"),                        1029 },
+  { "sk-SK", N_("Slovak"),                       1051 },
+  { "hu-HU", N_("Hungarian"),                    1038 },
+  { "ro-RO", N_("Romanian"),                     1048 },
+  { "bg-BG", N_("Bulgarian"),                    1026 },
+  { "el-GR", N_("Greek"),                        1032 },
+  { "ru-RU", N_("Russian"),                      1049 },
+  { "uk-UA", N_("Ukrainian"),                    1058 },
+  { "tr-TR", N_("Turkish"),                      1055 },
+  { "he-IL", N_("Hebrew"),                       1037 },
+  { "ar-SA", N_("Arabic (Saudi Arabia)"),        1025 },
+  { "fa-IR", N_("Persian"),                      1065 },
+  { "hi-IN", N_("Hindi"),                        1081 },
+  { "th-TH", N_("Thai"),                         1054 },
+  { "vi-VN", N_("Vietnamese"),                   1066 },
+  { "id-ID", N_("Indonesian"),                   1057 },
+  { "ja-JP", N_("Japanese"),                     1041 },
+  { "ko-KR", N_("Korean"),                       1042 },
+  { "zh-CN", N_("Chinese (Simplified)"),         2052 },
+  { "zh-TW", N_("Chinese (Traditional)"),        1028 },
+  { "ca-ES", N_("Catalan"),                      1027 },
+  { "et-EE", N_("Estonian"),                     1061 },
+  { "lv-LV", N_("Latvian"),                      1062 },
+  { "lt-LT", N_("Lithuanian"),                   1063 },
+  { "sl-SI", N_("Slovenian"),                    1060 },
+  { "hr-HR", N_("Croatian"),                     1050 },
+  { "sr-RS", N_("Serbian"),                      2074 },
+  { "af-ZA", N_("Afrikaans"),                    1078 },
 };
 
 const W42Language *
@@ -135,11 +139,11 @@ const char *
 w42_lang_name (const char *tag)
 {
   if (tag == NULL)
-    return "(document default)";
+    return _("(document default)");
 
   for (guint i = 0; i < G_N_ELEMENTS (LANGUAGES); i++)
     if (g_ascii_strcasecmp (LANGUAGES[i].tag, tag) == 0)
-      return LANGUAGES[i].name;
+      return _(LANGUAGES[i].name);
   return tag;
 }
 

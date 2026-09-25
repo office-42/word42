@@ -11,6 +11,8 @@
 
 #include "w42-window.h"
 
+#include <glib/gi18n.h>
+
 #ifdef G_OS_WIN32
 #include <gdk/win32/gdkwin32.h>
 #include <windows.h>
@@ -254,6 +256,25 @@ static void
 w42_application_startup (GApplication *app)
 {
   G_APPLICATION_CLASS (w42_application_parent_class)->startup (app);
+
+  /* Arabic and Urdu are read from the right, and the window is laid out
+   * from the right for them.  GTK decides that from its own translations,
+   * which a bundle may not carry, so Word42's translators say it too. */
+  /* Translators: "default:RTL" for a language written from right to
+   * left, such as Arabic or Urdu; "default:LTR" otherwise. */
+  if (g_str_equal (_("default:LTR"), "default:RTL"))
+    gtk_widget_set_default_direction (GTK_TEXT_DIR_RTL);
+
+#ifdef __APPLE__
+  {
+    /* The macOS app carries GTK's translations beside Word42's, where
+     * GTK would not look on its own. */
+    const char *dir = g_getenv ("W42_LOCALE_DIR");
+
+    if (dir != NULL && *dir != '\0')
+      bindtextdomain ("gtk40", dir);
+  }
+#endif
 
   w42_settings_load ();
 

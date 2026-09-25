@@ -9,6 +9,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include <glib/gi18n.h>
 
 #include "w42-build.h"
 #include "w42-image.h"
@@ -1618,7 +1619,8 @@ abw_gunzip (char **contents, gsize *length, GError **error)
       if (res == G_CONVERTER_ERROR)
         {
           g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                       "The compressed AbiWord file is damaged: %s", err->message);
+                       /* Translators: %s says what the fault is. */
+                       _("The compressed AbiWord file is damaged: %s"), err->message);
           g_error_free (err);
           break;
         }
@@ -1626,7 +1628,7 @@ abw_gunzip (char **contents, gsize *length, GError **error)
         {
           /* A small file that would unpack without end. */
           g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                               "The compressed AbiWord file unpacks to more than 256 MB.");
+                               _("The compressed AbiWord file unpacks to more than 256 MB."));
           break;
         }
       if (res == G_CONVERTER_FINISHED)
@@ -1643,7 +1645,7 @@ abw_gunzip (char **contents, gsize *length, GError **error)
       if (read == 0 && written == 0)
         {
           g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                               "The compressed AbiWord file is cut short.");
+                               _("The compressed AbiWord file is cut short."));
           break;
         }
     }
@@ -2923,7 +2925,7 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
               g_propagate_error (error, err);
             else
               g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                                   "The document could not be compressed.");
+                                   _("The document could not be compressed."));
             ok = FALSE;
           }
         else

@@ -18,6 +18,8 @@
 
 #include <string.h>
 
+#include <glib/gi18n.h>
+
 typedef struct {
   GtkWidget   *list;            /* the GtkListBox */
   W42View     *view;
@@ -284,8 +286,12 @@ docmap_rebuild (gpointer data)
       count = gtk_label_new (words);
       gtk_widget_add_css_class (count, "dim-label");
       gtk_label_set_xalign (GTK_LABEL (count), 1.0);
-      tip = g_strdup_printf ("%s\n%s %s", text->str, words,
-                             entry->words == 1 ? "word" : "words");
+      /* Translators: the tooltip of a heading in the Document Map: the
+       * first %s is the heading, the second the number of words in its
+       * section, with thousands separators. */
+      tip = g_strdup_printf (ngettext ("%s\n%s word", "%s\n%s words",
+                                       (unsigned long) entry->words),
+                             text->str, words);
 
       box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
       gtk_widget_set_margin_end (box, 6);

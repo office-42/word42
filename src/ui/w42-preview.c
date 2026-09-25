@@ -9,6 +9,7 @@
 #include "w42-layout.h"
 #include "w42-print.h"
 
+#include <glib/gi18n.h>
 #include <math.h>
 
 #define PAGE_GAP 24.0
@@ -114,12 +115,19 @@ update_page_label (W42Preview *self)
   int row = CLAMP ((int) floor ((middle - PAGE_GAP) / page_h), 0, MAX (preview_rows (self) - 1, 0));
   int page = CLAMP (row * self->columns, 0, n - 1);
   char text[64];
+  char *pages;
 
+  /* Built to its length, not into `text`: a translation may be longer. */
   if (self->columns > 1 && row * self->columns + self->columns <= n)
-    g_snprintf (text, sizeof text, "Pages %d-%d of %d", page + 1, page + self->columns, n);
+    /* Translators: print preview, several pages side by side: the
+     * first and last page shown, then the number of pages. */
+    pages = g_strdup_printf (_("Pages %d-%d of %d"), page + 1, page + self->columns, n);
   else
-    g_snprintf (text, sizeof text, "Page %d of %d", page + 1, n);
-  gtk_label_set_text (GTK_LABEL (self->page_label), text);
+    /* Translators: print preview: the page shown, then the number of
+     * pages. */
+    pages = g_strdup_printf (_("Page %d of %d"), page + 1, n);
+  gtk_label_set_text (GTK_LABEL (self->page_label), pages);
+  g_free (pages);
 
   g_snprintf (text, sizeof text, "%d%%", (int) (zoom * 100 + 0.5));
   gtk_label_set_text (GTK_LABEL (self->zoom_label), text);
@@ -287,10 +295,11 @@ on_zoom_out (GtkButton *b, gpointer data)
 }
 
 /* The zoom box: the percentages, then Page Width, Whole Page and Two
- * Pages, as Word 97's preview offered. */
+ * Pages, as Word 97's preview offered.  Shown through gettext, which
+ * leaves the percentages as they are. */
 static const char *const ZOOM_CHOICES[] = {
   "25%", "35%", "50%", "65%", "80%", "100%", "125%", "150%", "200%",
-  "Page Width", "Whole Page", "Two Pages", NULL
+  N_("Page Width"), N_("Whole Page"), N_("Two Pages"), NULL
 };
 
 static void
@@ -550,7 +559,7 @@ w42_preview_init (W42Preview *self)
   self->fit = FIT_WHOLE_PAGE;
   self->columns = 1;
 
-  gtk_window_set_title (GTK_WINDOW (self), "Print Preview");
+  gtk_window_set_title (GTK_WINDOW (self), _("Print Preview"));
   gtk_window_set_default_size (GTK_WINDOW (self), 760, 820);
   gtk_widget_add_css_class (GTK_WIDGET (self), "w42");
 
@@ -561,25 +570,31 @@ w42_preview_init (W42Preview *self)
    * One Page, Multiple Pages, the zoom box, the page count, Close. */
   bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
   gtk_widget_add_css_class (bar, "w42-toolbar");
-  gtk_box_append (GTK_BOX (bar), bar_button ("_Print...", G_CALLBACK (on_print), self));
-  gtk_box_append (GTK_BOX (bar), bar_button ("_One Page", G_CALLBACK (on_one_page), self));
-  gtk_box_append (GTK_BOX (bar), bar_button ("_Multiple Pages", G_CALLBACK (on_multiple_pages), self));
-  gtk_box_append (GTK_BOX (bar), bar_button ("Zoom _Out", G_CALLBACK (on_zoom_out), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("_Print..."), G_CALLBACK (on_print), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("_One Page"), G_CALLBACK (on_one_page), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("_Multiple Pages"), G_CALLBACK (on_multiple_pages), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("Zoom _Out"), G_CALLBACK (on_zoom_out), self));
   self->zoom_label = gtk_label_new ("65%");
   gtk_widget_set_size_request (self->zoom_label, 44, -1);
   gtk_box_append (GTK_BOX (bar), self->zoom_label);
-  gtk_box_append (GTK_BOX (bar), bar_button ("Zoom _In", G_CALLBACK (on_zoom_in), self));
-  self->zoom_drop = gtk_drop_down_new_from_strings (ZOOM_CHOICES);
+  gtk_box_append (GTK_BOX (bar), bar_button (_("Zoom _In"), G_CALLBACK (on_zoom_in), self));
+  {
+    GtkStringList *choices = gtk_string_list_new (NULL);
+
+    for (guint i = 0; ZOOM_CHOICES[i] != NULL; i++)
+      gtk_string_list_append (choices, _(ZOOM_CHOICES[i]));
+    self->zoom_drop = gtk_drop_down_new (G_LIST_MODEL (choices), NULL);
+  }
   gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), G_N_ELEMENTS (ZOOMS) + 1);
   gtk_widget_set_focusable (self->zoom_drop, FALSE);
   g_signal_connect (self->zoom_drop, "notify::selected", G_CALLBACK (on_zoom_chosen), self);
   gtk_box_append (GTK_BOX (bar), self->zoom_drop);
-  gtk_box_append (GTK_BOX (bar), bar_button ("Pre_vious", G_CALLBACK (on_prev_page), self));
-  gtk_box_append (GTK_BOX (bar), bar_button ("_Next", G_CALLBACK (on_next_page), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("Pre_vious"), G_CALLBACK (on_prev_page), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("_Next"), G_CALLBACK (on_next_page), self));
   self->page_label = gtk_label_new ("");
   gtk_widget_set_hexpand (self->page_label, TRUE);
   gtk_box_append (GTK_BOX (bar), self->page_label);
-  gtk_box_append (GTK_BOX (bar), bar_button ("_Close", G_CALLBACK (on_close), self));
+  gtk_box_append (GTK_BOX (bar), bar_button (_("_Close"), G_CALLBACK (on_close), self));
   gtk_box_append (GTK_BOX (box), bar);
 
   self->scrolled = gtk_scrolled_window_new ();

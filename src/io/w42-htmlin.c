@@ -14,6 +14,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include <glib/gi18n.h>
 
 #include <lexbor/dom/dom.h>
 #include <lexbor/html/html.h>
@@ -3564,7 +3565,9 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
     {
       g_free (contents);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The page nests its elements too deeply to be a document.");
+                   /* Translators: "the page" is the web page (HTML file)
+                    * being opened. */
+                   _("The page nests its elements too deeply to be a document."));
       return FALSE;
     }
 
@@ -3576,7 +3579,9 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
         lxb_html_document_destroy (ldoc);
       g_free (contents);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The page could not be parsed.");
+                   /* Translators: "the page" is the web page (HTML file)
+                    * being opened. */
+                   _("The page could not be parsed."));
       return FALSE;
     }
 

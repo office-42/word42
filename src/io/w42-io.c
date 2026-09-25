@@ -18,6 +18,7 @@
 #include "w42-rtf.h"
 
 #include <string.h>
+#include <glib/gi18n.h>
 
 W42Format
 w42_io_guess_format (GFile *file)
@@ -220,7 +221,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
   if (w42_io_guess_format (file) == W42_FORMAT_EPUB)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                   "Word42 writes EPUB but does not read it.");
+                   _("Word42 writes EPUB but does not read it."));
       return FALSE;
     }
 
@@ -270,7 +271,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
   if (utf8 == NULL)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The file is not text in any encoding Word42 recognises.");
+                   _("The file is not text in any encoding Word42 recognises."));
       return FALSE;
     }
 
@@ -312,8 +313,8 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
       return w42_odt_save (pt, page, file, error);
     case W42_FORMAT_DOC:
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                   "Word42 reads Word .doc files but does not write them. "
-                   "Save as RTF or .docx, which other word processors read.");
+                   _("Word42 reads Word .doc files but does not write them. "
+                     "Save as RTF or .docx, which other word processors read."));
       return FALSE;
     default:
       break;

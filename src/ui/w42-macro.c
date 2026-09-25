@@ -26,6 +26,7 @@
 #include "w42-io.h"
 #include "my_basic.h"
 
+#include <glib/gi18n.h>
 #include <glib/gstdio.h>
 #include <string.h>
 #include <math.h>
@@ -331,7 +332,7 @@ modal_run (Ctx *c, Modal *m, const char *title, const char *prompt,
   gtk_widget_set_halign (row, GTK_ALIGN_END);
   for (int i = 0; i < n_buttons; i++)
     {
-      GtkWidget *b = gtk_button_new_with_mnemonic (buttons[i]);
+      GtkWidget *b = gtk_button_new_with_mnemonic (_(buttons[i]));
 
       gtk_widget_set_size_request (b, 80, -1);
       g_object_set_data (G_OBJECT (b), "w42-result", GINT_TO_POINTER (results[i]));
@@ -363,8 +364,10 @@ NATIVE (n_msgbox)
   int buttons;
   Modal m = { NULL, NULL, NULL, 2, NULL };
   static const char *const sets[][3] = {
-    { "_OK", NULL, NULL }, { "_OK", "Cancel", NULL }, { "_Abort", "_Retry", "_Ignore" },
-    { "_Yes", "_No", "Cancel" }, { "_Yes", "_No", NULL }, { "_Retry", "Cancel", NULL }
+    { N_("_OK"), NULL, NULL }, { N_("_OK"), N_("Cancel"), NULL },
+    { N_("_Abort"), N_("_Retry"), N_("_Ignore") },
+    { N_("_Yes"), N_("_No"), N_("Cancel") }, { N_("_Yes"), N_("_No"), NULL },
+    { N_("_Retry"), N_("Cancel"), NULL }
   };
   static const int codes[][3] = {
     { 1, 0, 0 }, { 1, 2, 0 }, { 3, 4, 5 }, { 6, 7, 2 }, { 6, 7, 0 }, { 4, 2, 0 }
@@ -387,7 +390,7 @@ NATIVE (n_msgbox)
   g_free (prompt);
   g_free (title);
   if (c->gone)
-    return fail (s, l, "The document was closed while the macro ran");
+    return fail (s, l, _("The document was closed while the macro ran"));
   return mb_push_int (s, l, m.result);
 }
 
@@ -396,7 +399,7 @@ NATIVE (n_inputbox)
 {
   Ctx *c = ctx_of (s);
   char *prompt, *title, *initial;
-  static const char *const buttons[] = { "_OK", "Cancel" };
+  static const char *const buttons[] = { N_("_OK"), N_("Cancel") };
   static const int codes[] = { 1, 2 };
   Modal m = { NULL, NULL, NULL, 2, NULL };
   int rc;
@@ -411,7 +414,7 @@ NATIVE (n_inputbox)
     modal_run (c, &m, *title != '\0' ? title : "Word42", prompt,
                buttons, codes, 2, initial);
   if (c->gone)
-    rc = fail (s, l, "The document was closed while the macro ran");
+    rc = fail (s, l, _("The document was closed while the macro ran"));
   else
     rc = push_string (s, l, m.result == 1 && m.text != NULL ? m.text : "");
   g_free (m.text);
@@ -478,10 +481,11 @@ NATIVE (n_idiv)
   mb_check (arg_int (s, l, &b, 1));
   CLOSE ();
   if (b == 0)
-    return fail (s, l, "Division by zero");
+    return fail (s, l, _("Division by zero"));
   /* The one quotient an int cannot hold, and the processor traps on it. */
   if (a == G_MININT && b == -1)
-    return fail (s, l, "Overflow");
+    /* Translators: a calculation in a macro gave a number too big to hold. */
+    return fail (s, l, _("Overflow"));
   return mb_push_int (s, l, a / b);
 }
 
@@ -1297,8 +1301,10 @@ NATIVE (n_sel_insertbreak)
       w42_view_insert_section_break (c->view);
       break;
     default:
-      return fail (s, l, "Word42 inserts a wdPageBreak or a wdSectionBreakNextPage, "
-                         "and no other kind of break");
+      /* Translators: wdPageBreak and wdSectionBreakNextPage are names in
+       * the macro language: keep them in English. */
+      return fail (s, l, _("Word42 inserts a wdPageBreak or a wdSectionBreakNextPage, "
+                           "and no other kind of break"));
     }
   return MB_FUNC_OK;
 }
@@ -1774,10 +1780,11 @@ NATIVE (n_sel_style_set)
         }
     }
   if (name == NULL)
-    return fail (s, l, "There is no such style");
+    return fail (s, l, _("There is no such style"));
   if (w42_stylesheet_find (w42_pt_stylesheet (pt_of (c)), name) == NULL)
     {
-      owned = g_strdup_printf ("There is no style named %s", name);
+      /* Translators: %s is the name of a style. */
+      owned = g_strdup_printf (_("There is no style named %s"), name);
       {
         int rc = fail (s, l, owned);
 
@@ -2101,16 +2108,20 @@ NATIVE (n_doc_save)
   OPEN (); CLOSE ();
   file = doc_file (c);
   if (file == NULL || !W42_IS_WINDOW (c->parent))
-    return fail (s, l, "The document has never been saved: use ActiveDocument.SaveAs \"name\"");
+    /* Translators: ActiveDocument.SaveAs is macro code: keep it in
+     * English. */
+    return fail (s, l, _("The document has never been saved: use ActiveDocument.SaveAs \"name\""));
   /* As File > Save: written back to a .doc, a PDF, a web page or a
    * presentation, the file it was read from would be replaced by
    * Word42's rendering of it. */
   if (!w42_io_format_round_trips (file))
-    return fail (s, l, "The document came from a format Word42 does not write "
-                       "back as it was: use ActiveDocument.SaveAs \"name\"");
+    /* Translators: ActiveDocument.SaveAs is macro code: keep it in
+     * English. */
+    return fail (s, l, _("The document came from a format Word42 does not write "
+                         "back as it was: use ActiveDocument.SaveAs \"name\""));
   if (!w42_window_save_to (W42_WINDOW (c->parent), file, &error))
     {
-      int rc = fail (s, l, error != NULL ? error->message : "The document could not be saved");
+      int rc = fail (s, l, error != NULL ? error->message : _("The document could not be saved"));
 
       g_clear_error (&error);
       return rc;
@@ -2136,7 +2147,9 @@ NATIVE (n_doc_saveas)
   if (*name == '\0' || !W42_IS_WINDOW (c->parent))
     {
       g_free (name);
-      return fail (s, l, "SaveAs needs a file name");
+      /* Translators: "SaveAs" is a name in the macro language: keep it in
+       * English. */
+      return fail (s, l, _("SaveAs needs a file name"));
     }
   {
     char *base = g_path_get_basename (name);
@@ -2160,7 +2173,7 @@ NATIVE (n_doc_saveas)
   g_free (name);
   if (!ok)
     {
-      int rc = fail (s, l, error != NULL ? error->message : "The document could not be saved");
+      int rc = fail (s, l, error != NULL ? error->message : _("The document could not be saved"));
 
       g_clear_error (&error);
       return rc;
@@ -2202,11 +2215,13 @@ NATIVE (n_doc_close)
       GError *error = NULL;
 
       if (file == NULL || !W42_IS_WINDOW (c->parent) || !w42_io_format_round_trips (file))
-        return fail (s, l, "The document has no file to be saved to: use "
-                           "ActiveDocument.SaveAs \"name\" first");
+        /* Translators: ActiveDocument.SaveAs is macro code: keep it in
+         * English. */
+        return fail (s, l, _("The document has no file to be saved to: use "
+                             "ActiveDocument.SaveAs \"name\" first"));
       if (!w42_window_save_to (W42_WINDOW (c->parent), file, &error))
         {
-          int rc = fail (s, l, error != NULL ? error->message : "The document could not be saved");
+          int rc = fail (s, l, error != NULL ? error->message : _("The document could not be saved"));
 
           g_clear_error (&error);
           return rc;
@@ -2429,7 +2444,7 @@ NATIVE (n_documents_add)
   CLOSE ();
   doc = w42_window_new_document (c->parent);
   if (doc == NULL)
-    return fail (s, l, "A new document could not be made");
+    return fail (s, l, _("A new document could not be made"));
   /* The new document is the active one: Selection and ActiveDocument
    * go on in its window. */
   app = gtk_window_get_application (c->parent);
@@ -2464,13 +2479,16 @@ NATIVE (n_documents_open)
   if (*name == '\0' || app == NULL)
     {
       g_free (name);
-      return fail (s, l, "Open needs a file name");
+      /* Translators: "Open" is Documents.Open, a name in the macro
+       * language: keep it in English. */
+      return fail (s, l, _("Open needs a file name"));
     }
   file = g_path_is_absolute (name) ? g_file_new_for_path (name)
        : g_file_new_build_filename (g_get_home_dir (), name, NULL);
   if (!g_file_query_exists (file, NULL))
     {
-      char *msg = g_strdup_printf ("There is no file %s", name);
+      /* Translators: %s is a file name. */
+      char *msg = g_strdup_printf (_("There is no file %s"), name);
       int rc = fail (s, l, msg);
 
       g_free (msg);
@@ -2481,7 +2499,7 @@ NATIVE (n_documents_open)
   window = w42_window_new (app);
   if (!w42_window_load (W42_WINDOW (window), file, &error))
     {
-      int rc = fail (s, l, error != NULL ? error->message : "The file could not be opened");
+      int rc = fail (s, l, error != NULL ? error->message : _("The file could not be opened"));
 
       gtk_window_destroy (GTK_WINDOW (window));
       g_clear_error (&error);
@@ -2641,7 +2659,7 @@ on_error (struct mb_interpreter_t *s, mb_error_e e, const char *m, const char *f
   if (e == SE_NO_ERR || c == NULL)
     return;
   if (c->error == NULL)
-    c->error = g_strdup (m != NULL ? m : "Error");
+    c->error = g_strdup (m != NULL ? m : _("Error"));
   if (c->error_row == 0)
     c->error_row = row;
 }
@@ -2661,10 +2679,10 @@ on_step (struct mb_interpreter_t *s, void **l, const char *f, int p,
   if (c->steps > STEP_LIMIT)
     {
       c->runaway = TRUE;
-      return fail (s, l, "The macro ran too long and was stopped");
+      return fail (s, l, _("The macro ran too long and was stopped"));
     }
   if (c->gone)
-    return fail (s, l, "The document was closed while the macro ran");
+    return fail (s, l, _("The document was closed while the macro ran"));
   return MB_FUNC_OK;
 }
 
@@ -2709,7 +2727,7 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
   if (running)
     {
       if (error != NULL)
-        *error = g_strdup ("A macro is running already: answer its box first.");
+        *error = g_strdup (_("A macro is running already: answer its box first."));
       return FALSE;
     }
 
@@ -2767,7 +2785,8 @@ w42_macro_run (GtkWindow *parent, W42View *view, const char *source,
       const char *what = ctx.error != NULL ? ctx.error : mb_get_error_desc (mb_get_last_error (bas, NULL, NULL, NULL, NULL));
 
       if (error != NULL)
-        *error = line > 0 ? g_strdup_printf ("Line %d: %s", line, what)
+        /* Translators: %d is a line of the macro, %s what is wrong with it. */
+        *error = line > 0 ? g_strdup_printf (_("Line %d: %s"), line, what)
                           : g_strdup_printf ("%s", what);
       ok = FALSE;
     }
@@ -2905,7 +2924,8 @@ w42_macro_delete (const char *name, GError **error)
   ok = g_unlink (path) == 0;
   if (!ok)
     g_set_error (error, G_FILE_ERROR, g_file_error_from_errno (errno),
-                 "The macro %s could not be deleted.", name);
+                 /* Translators: %s is the macro's name. */
+                 _("The macro %s could not be deleted."), name);
   g_free (path);
   return ok;
 }

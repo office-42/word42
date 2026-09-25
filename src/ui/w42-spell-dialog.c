@@ -8,6 +8,8 @@
 
 #include "w42-search.h"
 
+#include <glib/gi18n.h>
+
 struct _W42SpellDialog {
   GtkWindow  parent_instance;
 
@@ -98,7 +100,7 @@ present_word (W42SpellDialog *self, gsize start, gsize end)
     gtk_list_box_select_row (GTK_LIST_BOX (self->suggestions),
                              gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->suggestions), 0));
   else
-    set_status (self, "(no suggestions)");
+    set_status (self, _("(no suggestions)"));
 
   g_strfreev (suggestions);
   set_buttons_sensitive (self, TRUE);
@@ -113,7 +115,7 @@ finish (W42SpellDialog *self)
   clear_suggestions (self);
   gtk_editable_set_text (GTK_EDITABLE (self->change_entry), "");
   set_buttons_sensitive (self, FALSE);
-  set_status (self, "The spelling check is complete.");
+  set_status (self, _("The spelling check is complete."));
 }
 
 /* On to the next word the dictionary does not know, from the caret; round
@@ -314,7 +316,7 @@ w42_spell_dialog_init (W42SpellDialog *self)
   GtkWidget *box, *grid, *columns, *left, *right, *scroller, *label, *close;
   GtkEventController *key;
 
-  gtk_window_set_title (GTK_WINDOW (self), "Spelling");
+  gtk_window_set_title (GTK_WINDOW (self), _("Spelling"));
   gtk_window_set_resizable (GTK_WINDOW (self), FALSE);
 
   key = gtk_event_controller_key_new ();
@@ -341,7 +343,7 @@ w42_spell_dialog_init (W42SpellDialog *self)
   gtk_grid_set_column_spacing (GTK_GRID (grid), 10);
   gtk_box_append (GTK_BOX (left), grid);
 
-  label = gtk_label_new ("Not in Dictionary:");
+  label = gtk_label_new (_("Not in Dictionary:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   self->word_label = gtk_label_new ("");
   gtk_label_set_xalign (GTK_LABEL (self->word_label), 0.0);
@@ -350,7 +352,7 @@ w42_spell_dialog_init (W42SpellDialog *self)
   gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), self->word_label, 1, 0, 1, 1);
 
-  label = gtk_label_new_with_mnemonic ("Change _To:");
+  label = gtk_label_new_with_mnemonic (_("Change _To:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   self->change_entry = gtk_entry_new ();
   gtk_label_set_mnemonic_widget (GTK_LABEL (label), self->change_entry);
@@ -358,7 +360,7 @@ w42_spell_dialog_init (W42SpellDialog *self)
   gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), self->change_entry, 1, 1, 1, 1);
 
-  label = gtk_label_new_with_mnemonic ("Suggestio_ns:");
+  label = gtk_label_new_with_mnemonic (_("Suggestio_ns:"));
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_box_append (GTK_BOX (left), label);
 
@@ -390,13 +392,13 @@ w42_spell_dialog_init (W42SpellDialog *self)
   right = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
   gtk_box_append (GTK_BOX (columns), right);
 
-  self->ignore_btn     = side_button (right, "_Ignore",     G_CALLBACK (on_ignore),     self);
-  self->ignore_all_btn = side_button (right, "I_gnore All", G_CALLBACK (on_ignore_all), self);
-  self->change_btn     = side_button (right, "_Change",     G_CALLBACK (on_change),     self);
-  self->change_all_btn = side_button (right, "Change A_ll", G_CALLBACK (on_change_all), self);
-  self->add_btn        = side_button (right, "_Add",        G_CALLBACK (on_add),        self);
+  self->ignore_btn     = side_button (right, _("_Ignore"),     G_CALLBACK (on_ignore),     self);
+  self->ignore_all_btn = side_button (right, _("I_gnore All"), G_CALLBACK (on_ignore_all), self);
+  self->change_btn     = side_button (right, _("_Change"),     G_CALLBACK (on_change),     self);
+  self->change_all_btn = side_button (right, _("Change A_ll"), G_CALLBACK (on_change_all), self);
+  self->add_btn        = side_button (right, _("_Add"),        G_CALLBACK (on_add),        self);
 
-  close = gtk_button_new_with_mnemonic ("Close");
+  close = gtk_button_new_with_mnemonic (_("Close"));
   gtk_widget_set_size_request (close, 96, 26);
   gtk_widget_set_margin_top (close, 8);
   g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_close), self);

@@ -9,6 +9,7 @@
 #include <math.h>
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <glib/gi18n.h>
 #include <string.h>
 
 /* A picture that would decode to more than 40 million pixels is scaled
@@ -149,8 +150,8 @@ w42_image_load_file (GFile       *file,
     {
       g_bytes_unref (data);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "That file is not a picture in any format Word42 "
-                   "can read.");
+                   _("That file is not a picture in any format Word42 "
+                     "can read."));
       return NULL;
     }
 

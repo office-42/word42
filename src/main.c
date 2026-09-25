@@ -21,8 +21,56 @@
 #include "w42-document.h"
 #include "w42-io.h"
 
+#include <glib/gi18n.h>
+#include <locale.h>
 #include <stdio.h>
 #include <string.h>
+
+/* The translations are looked for where W42_LOCALE_DIR says (the macOS
+ * app's launcher sets it), then beside the program (the Windows bundle),
+ * then where this build installs them.  Only the messages follow the
+ * user's locale here; GTK takes the rest of it when it starts, and the
+ * converter below does without. */
+static void
+init_translations (void)
+{
+  const char *env = g_getenv ("W42_LOCALE_DIR");
+  char *dir;
+
+  if (env != NULL && *env != '\0')
+    dir = g_strdup (env);
+  else
+    {
+#ifdef G_OS_WIN32
+      char *base = g_win32_get_package_installation_directory_of_module (NULL);
+
+      dir = g_build_filename (base, "share", "locale", NULL);
+      g_free (base);
+#else
+      dir = g_strdup (W42_LOCALE_DIR);
+#endif
+    }
+
+#ifdef LC_MESSAGES
+  setlocale (LC_MESSAGES, "");
+#endif
+#if defined (G_OS_WIN32) && defined (LIBINTL_VERSION) && LIBINTL_VERSION >= 0x001500
+  {
+    /* The folder may be under a user name with an Ø in it, which the
+     * narrow call would read in the local code page. */
+    gunichar2 *wdir = g_utf8_to_utf16 (dir, -1, NULL, NULL, NULL);
+
+    if (wdir != NULL)
+      wbindtextdomain (GETTEXT_PACKAGE, (const wchar_t *) wdir);
+    g_free (wdir);
+  }
+#else
+  bindtextdomain (GETTEXT_PACKAGE, dir);
+#endif
+  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+  textdomain (GETTEXT_PACKAGE);
+  g_free (dir);
+}
 
 /* word42 --convert-to=pdf roman.odt: the document read and written again
  * in another format, with no window, no display and no questions -- what
@@ -63,9 +111,10 @@ convert_main (int argc, char *argv[])
     format++;
   if (*format == '\0' || files->len == 0)
     {
-      fprintf (stderr, "Usage: word42 --convert-to=FORMAT [--outdir=DIR] FILE...\n"
-                       "FORMAT is the extension to write: pdf, epub, odt, docx, "
-                       "rtf, html, txt or abw.\n");
+      fprintf (stderr, "%s\n%s\n",
+               _("Usage: word42 --convert-to=FORMAT [--outdir=DIR] FILE..."),
+               _("FORMAT is the extension to write: pdf, epub, odt, docx, "
+                 "rtf, html, txt or abw."));
       g_ptr_array_free (files, TRUE);
       return 2;
     }
@@ -74,7 +123,7 @@ convert_main (int argc, char *argv[])
    * expects of an output folder. */
   if (outdir != NULL && g_mkdir_with_parents (outdir, 0755) != 0)
     {
-      fprintf (stderr, "word42: %s: the folder could not be made\n", outdir);
+      fprintf (stderr, "word42: %s: %s\n", outdir, _("the folder could not be made"));
       g_ptr_array_free (files, TRUE);
       return 1;
     }
@@ -107,7 +156,7 @@ convert_main (int argc, char *argv[])
 
       if (g_file_equal (in, out))
         {
-          fprintf (stderr, "word42: %s: already in that format\n", out_path);
+          fprintf (stderr, "word42: %s: %s\n", out_path, _("already in that format"));
           failed++;
         }
       else if (!w42_document_load (doc, in, &error) ||
@@ -117,7 +166,7 @@ convert_main (int argc, char *argv[])
           char *shown = g_file_get_parse_name (in);
 
           fprintf (stderr, "word42: %s: %s\n", shown,
-                   error != NULL ? error->message : "could not be converted");
+                   error != NULL ? error->message : _("could not be converted"));
           g_free (shown);
           failed++;
         }
@@ -142,6 +191,8 @@ main (int argc, char *argv[])
 {
   W42Application *app;
   int status;
+
+  init_translations ();
 
 #ifdef G_OS_WIN32
   {

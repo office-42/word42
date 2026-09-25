@@ -1,0 +1,5378 @@
+# Bengali translation of Word42.
+# This file is distributed under the same license as the word42 package (GPL-3.0-or-later).
+msgid ""
+msgstr ""
+"Project-Id-Version: word42\n"
+"Report-Msgid-Bugs-To: https://github.com/office-42/word42/issues\n"
+"POT-Creation-Date: 2026-09-25 20:15+0000\n"
+"PO-Revision-Date: 2026-09-25 12:00+0000\n"
+"Last-Translator: Word42 translators\n"
+"Language-Team: Bengali\n"
+"Language: bn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: data/org.word42.word42.desktop.in:4
+msgid "word42"
+msgstr "word42"
+
+#: data/org.word42.word42.desktop.in:5
+msgid "Word Processor"
+msgstr "ওয়ার্ড প্রসেসর"
+
+#: data/org.word42.word42.desktop.in:6
+msgid "A classic word processor: menus, toolbars, a ruler and a page"
+msgstr "একটি ক্লাসিক ওয়ার্ড প্রসেসর: মেনু, সরঞ্জামদণ্ড, একটি রুলার ও একটি পৃষ্ঠা"
+
+#: data/ui/menus.ui:10
+msgid "_File"
+msgstr "ফাইল(_F)"
+
+#: data/ui/menus.ui:13
+msgid "_New"
+msgstr "নতুন(_N)"
+
+#: data/ui/menus.ui:17
+msgid "New from Te_mplate..."
+msgstr "টেমপ্লেট থেকে নতুন(_M)..."
+
+#: data/ui/menus.ui:21
+msgid "_Open..."
+msgstr "খুলুন(_O)..."
+
+#: data/ui/menus.ui:25 src/ui/w42-dialogs.c:5373 src/ui/w42-dialogs.c:5578
+#: src/ui/w42-dialogs.c:6733 src/ui/w42-help.c:676 src/ui/w42-preview.c:597
+msgid "_Close"
+msgstr "বন্ধ করুন(_C)"
+
+#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6730 src/ui/w42-window.c:1448
+msgid "_Save"
+msgstr "সংরক্ষণ করুন(_S)"
+
+#: data/ui/menus.ui:35
+msgid "Save _As..."
+msgstr "এই হিসাবে সংরক্ষণ করুন(_A)..."
+
+#: data/ui/menus.ui:39
+msgid "Save as Temp_late..."
+msgstr "টেমপ্লেট হিসাবে সংরক্ষণ করুন(_L)..."
+
+#: data/ui/menus.ui:43 src/ui/w42-window.c:1036
+msgid "_Revert"
+msgstr "প্রত্যাবর্তন করুন(_R)"
+
+#: data/ui/menus.ui:47
+msgid "Sav_e All"
+msgstr "সব সংরক্ষণ করুন(_E)"
+
+#: data/ui/menus.ui:51
+msgid "Summary _Info..."
+msgstr "সারাংশ তথ্য(_I)..."
+
+#: data/ui/menus.ui:57 src/ui/w42-preview.c:573
+msgid "_Print..."
+msgstr "মুদ্রণ(_P)..."
+
+#: data/ui/menus.ui:61
+msgid "Print Pre_view"
+msgstr "মুদ্রণ পূর্বরূপ(_V)"
+
+#: data/ui/menus.ui:65
+msgid "Page Set_up..."
+msgstr "পৃষ্ঠা সেটআপ(_U)..."
+
+#: data/ui/menus.ui:69
+msgid "Export as P_DF..."
+msgstr "PDF হিসাবে রপ্তানি করুন(_D)..."
+
+#: data/ui/menus.ui:73
+msgid "Export as _Web Page..."
+msgstr "ওয়েব পৃষ্ঠা হিসাবে রপ্তানি করুন(_W)..."
+
+#: data/ui/menus.ui:77
+msgid "Export as _E-book..."
+msgstr "ই-বুক হিসাবে রপ্তানি করুন(_E)..."
+
+#: data/ui/menus.ui:81
+msgid "Web Pa_ge Preview"
+msgstr "ওয়েব পৃষ্ঠার পূর্বরূপ(_G)"
+
+#: data/ui/menus.ui:85
+msgid "Export as Presen_tation..."
+msgstr "উপস্থাপনা হিসাবে রপ্তানি করুন(_T)..."
+
+#: data/ui/menus.ui:93
+msgid "E_xit"
+msgstr "প্রস্থান(_X)"
+
+#: data/ui/menus.ui:100 src/ui/w42-dialogs.c:7054
+msgid "_Edit"
+msgstr "সম্পাদনা(_E)"
+
+#: data/ui/menus.ui:103
+msgid "_Undo"
+msgstr "পূর্বাবস্থায় ফেরান(_U)"
+
+#: data/ui/menus.ui:107
+msgid "Re_do"
+msgstr "পুনরায় করুন(_D)"
+
+#: data/ui/menus.ui:111
+msgid "_Repeat"
+msgstr "পুনরাবৃত্তি করুন(_R)"
+
+#: data/ui/menus.ui:117 src/ui/w42-view.c:5931
+msgid "Cu_t"
+msgstr "কাটুন(_T)"
+
+#: data/ui/menus.ui:121
+msgid "C_opy"
+msgstr "অনুলিপি করুন(_O)"
+
+#: data/ui/menus.ui:125
+msgid "P_aste"
+msgstr "আটকান(_A)"
+
+#: data/ui/menus.ui:129
+msgid "_Paste Special"
+msgstr "বিশেষ আটকান(_P)"
+
+#: data/ui/menus.ui:133
+msgid "_Clear"
+msgstr "সাফ করুন(_C)"
+
+#: data/ui/menus.ui:137
+msgid "AutoTe_xt..."
+msgstr "স্বতঃপাঠ্য(_X)..."
+
+#: data/ui/menus.ui:143
+msgid "Se_lect All"
+msgstr "সব নির্বাচন করুন(_L)"
+
+#: data/ui/menus.ui:149
+msgid "_Find..."
+msgstr "খুঁজুন(_F)..."
+
+#: data/ui/menus.ui:153
+msgid "R_eplace..."
+msgstr "প্রতিস্থাপন করুন(_E)..."
+
+#: data/ui/menus.ui:157
+msgid "_Go To..."
+msgstr "এতে যান(_G)..."
+
+#: data/ui/menus.ui:164
+msgid "_View"
+msgstr "দেখুন(_V)"
+
+#: data/ui/menus.ui:167
+msgid "_Normal"
+msgstr "সাধারণ(_N)"
+
+#: data/ui/menus.ui:172
+msgid "_Online Layout"
+msgstr "অনলাইন বিন্যাস(_O)"
+
+#: data/ui/menus.ui:177
+msgid "_Page Layout"
+msgstr "পৃষ্ঠা বিন্যাস(_P)"
+
+#: data/ui/menus.ui:184
+msgid "_Toolbars"
+msgstr "সরঞ্জামদণ্ড(_T)"
+
+#: data/ui/menus.ui:186
+msgid "_Standard"
+msgstr "মানক(_S)"
+
+#: data/ui/menus.ui:190
+msgid "_Formatting"
+msgstr "বিন্যাসকরণ(_F)"
+
+#: data/ui/menus.ui:195
+msgid "_Ruler"
+msgstr "রুলার(_R)"
+
+#: data/ui/menus.ui:199
+msgid "_Document Map"
+msgstr "নথি মানচিত্র(_D)"
+
+#: data/ui/menus.ui:203
+msgid "_Full Screen"
+msgstr "পূর্ণ স্ক্রিন(_F)"
+
+#: data/ui/menus.ui:207
+msgid "T_ypewriter Scrolling"
+msgstr "টাইপরাইটার স্ক্রোলিং(_Y)"
+
+#: data/ui/menus.ui:211
+msgid "Slide Sho_w"
+msgstr "স্লাইড শো(_W)"
+
+#: data/ui/menus.ui:215
+msgid "Show Formatting _Marks"
+msgstr "বিন্যাসকরণ চিহ্ন দেখান(_M)"
+
+#: data/ui/menus.ui:221
+msgid "_Header and Footer..."
+msgstr "শীর্ষলেখ ও পাদলেখ(_H)..."
+
+#: data/ui/menus.ui:227
+msgid "_Zoom"
+msgstr "জুম(_Z)"
+
+#: data/ui/menus.ui:229
+msgid "_75%"
+msgstr "_75%"
+
+#: data/ui/menus.ui:234
+msgid "_100%"
+msgstr "_100%"
+
+#: data/ui/menus.ui:239
+msgid "1_50%"
+msgstr "1_50%"
+
+#: data/ui/menus.ui:244
+msgid "_200%"
+msgstr "_200%"
+
+#: data/ui/menus.ui:249 src/ui/w42-dialogs.c:6436
+msgid "Page _Width"
+msgstr "পৃষ্ঠার প্রস্থ(_W)"
+
+#: data/ui/menus.ui:254 src/ui/w42-dialogs.c:6436
+msgid "W_hole Page"
+msgstr "সম্পূর্ণ পৃষ্ঠা(_H)"
+
+#: data/ui/menus.ui:259
+msgid "_Zoom..."
+msgstr "জুম(_Z)..."
+
+#: data/ui/menus.ui:267 data/ui/menus.ui:637 src/ui/w42-dialogs.c:5371
+msgid "_Insert"
+msgstr "সন্নিবেশ(_I)"
+
+#: data/ui/menus.ui:270
+msgid "Page _Break"
+msgstr "পৃষ্ঠা বিরতি(_B)"
+
+#: data/ui/menus.ui:274
+msgid "Co_lumn Break"
+msgstr "কলাম বিরতি(_L)"
+
+#: data/ui/menus.ui:278
+msgid "_Section Break"
+msgstr "বিভাগ বিরতি(_S)"
+
+#: data/ui/menus.ui:282
+msgid "_Page Numbers..."
+msgstr "পৃষ্ঠা নম্বর(_P)..."
+
+#: data/ui/menus.ui:286
+msgid "F_ield..."
+msgstr "ক্ষেত্র(_I)..."
+
+#: data/ui/menus.ui:290
+msgid "_Update Fields"
+msgstr "ক্ষেত্র হালনাগাদ করুন(_U)"
+
+#: data/ui/menus.ui:294
+msgid "Date and Ti_me..."
+msgstr "তারিখ ও সময়(_M)..."
+
+#: data/ui/menus.ui:300
+msgid "S_ymbol..."
+msgstr "প্রতীক(_Y)..."
+
+#: data/ui/menus.ui:304
+msgid "F_ootnote"
+msgstr "পাদটীকা(_O)"
+
+#: data/ui/menus.ui:308
+msgid "_Endnote"
+msgstr "প্রান্তটীকা(_E)"
+
+#: data/ui/menus.ui:312
+msgid "_Go to Note"
+msgstr "টীকায় যান(_G)"
+
+#: data/ui/menus.ui:318
+msgid "Boo_kmark..."
+msgstr "বুকমার্ক(_K)..."
+
+#: data/ui/menus.ui:322 src/ui/w42-view.c:5940
+msgid "_Hyperlink..."
+msgstr "হাইপারলিঙ্ক(_H)..."
+
+#: data/ui/menus.ui:326
+msgid "Inde_x and Tables"
+msgstr "সূচি ও সারণী(_X)"
+
+#: data/ui/menus.ui:329
+msgid "_Table of Contents"
+msgstr "সূচিপত্র(_T)"
+
+#: data/ui/menus.ui:333
+msgid "_Update Table of Contents"
+msgstr "সূচিপত্র হালনাগাদ করুন(_U)"
+
+#: data/ui/menus.ui:339
+msgid "_Mark Index Entry..."
+msgstr "সূচি ভুক্তি চিহ্নিত করুন(_M)..."
+
+#: data/ui/menus.ui:343 data/ui/menus.ui:818 src/ui/w42-help.c:625
+msgid "_Index"
+msgstr "সূচি(_I)"
+
+#: data/ui/menus.ui:349
+msgid "Table of _Figures"
+msgstr "চিত্রের সারণী(_F)"
+
+#: data/ui/menus.ui:355
+msgid "Cross-_reference..."
+msgstr "ক্রস-রেফারেন্স(_R)..."
+
+#: data/ui/menus.ui:359
+msgid "C_aption"
+msgstr "ক্যাপশন(_A)"
+
+#: data/ui/menus.ui:363
+msgid "Comme_nt..."
+msgstr "মন্তব্য(_N)..."
+
+#: data/ui/menus.ui:367
+msgid "Pi_cture"
+msgstr "ছবি(_C)"
+
+#: data/ui/menus.ui:370
+msgid "From _File..."
+msgstr "ফাইল থেকে(_F)..."
+
+#: data/ui/menus.ui:374
+msgid "From _Scanner or Camera..."
+msgstr "স্ক্যানার বা ক্যামেরা থেকে(_S)..."
+
+#: data/ui/menus.ui:378
+msgid "_AutoShape..."
+msgstr "স্বতঃআকৃতি(_A)..."
+
+#: data/ui/menus.ui:384
+msgid "_File..."
+msgstr "ফাইল(_F)..."
+
+#: data/ui/menus.ui:391
+msgid "F_ormat"
+msgstr "বিন্যাস(_O)"
+
+#: data/ui/menus.ui:394 src/ui/w42-view.c:5937
+msgid "_Font..."
+msgstr "ফন্ট(_F)..."
+
+#: data/ui/menus.ui:398 src/ui/w42-view.c:5938
+msgid "P_aragraph..."
+msgstr "অনুচ্ছেদ(_A)..."
+
+#: data/ui/menus.ui:402
+msgid "Font _Effects..."
+msgstr "ফন্ট প্রভাব(_E)..."
+
+#: data/ui/menus.ui:406
+msgid "_Tabs..."
+msgstr "ট্যাব(_T)..."
+
+#: data/ui/menus.ui:410
+msgid "_Picture..."
+msgstr "ছবি(_P)..."
+
+#: data/ui/menus.ui:414
+msgid "_Drop Cap..."
+msgstr "ড্রপ ক্যাপ(_D)..."
+
+#: data/ui/menus.ui:418
+msgid "F_rame..."
+msgstr "ফ্রেম(_R)..."
+
+#: data/ui/menus.ui:422
+msgid "C_hange Case"
+msgstr "কেস পরিবর্তন করুন(_H)"
+
+#: data/ui/menus.ui:425
+msgid "_Sentence case"
+msgstr "বাক্য কেস(_S)"
+
+#: data/ui/menus.ui:430
+msgid "_lowercase"
+msgstr "ছোট হাতের অক্ষর(_L)"
+
+#: data/ui/menus.ui:435
+msgid "_UPPERCASE"
+msgstr "বড় হাতের অক্ষর(_U)"
+
+#: data/ui/menus.ui:440
+msgid "_Title Case"
+msgstr "শিরোনাম কেস(_T)"
+
+#: data/ui/menus.ui:445
+msgid "t_OGGLE cASE"
+msgstr "কেস টগল করুন(_O)"
+
+#: data/ui/menus.ui:452
+msgid "AutoFormat the _Whole Document..."
+msgstr "সম্পূর্ণ নথি স্বতঃবিন্যাস করুন(_W)..."
+
+#: data/ui/menus.ui:456
+msgid "Bac_kground..."
+msgstr "পটভূমি(_K)..."
+
+#: data/ui/menus.ui:460
+msgid "Borders and _Shading..."
+msgstr "সীমানা ও ছায়াকরণ(_S)..."
+
+#: data/ui/menus.ui:464
+msgid "Colu_mns..."
+msgstr "কলাম(_M)..."
+
+#: data/ui/menus.ui:470
+msgid "B_old"
+msgstr "গাঢ়(_O)"
+
+#: data/ui/menus.ui:474 src/ui/w42-dialogs.c:1173
+msgid "_Italic"
+msgstr "তির্যক(_I)"
+
+#: data/ui/menus.ui:478
+msgid "U_nderline"
+msgstr "নিম্নরেখা(_N)"
+
+#: data/ui/menus.ui:484
+msgid "Align _Left"
+msgstr "বামে সারিবদ্ধ করুন(_L)"
+
+#: data/ui/menus.ui:489
+msgid "_Center"
+msgstr "কেন্দ্রে সারিবদ্ধ করুন(_C)"
+
+#: data/ui/menus.ui:494
+msgid "Ali_gn Right"
+msgstr "ডানে সারিবদ্ধ করুন(_G)"
+
+#: data/ui/menus.ui:499
+msgid "_Justify"
+msgstr "উভয় প্রান্তে সারিবদ্ধ করুন(_J)"
+
+#: data/ui/menus.ui:506
+msgid "B_ullets"
+msgstr "বুলেট(_U)"
+
+#: data/ui/menus.ui:510
+msgid "Num_bering"
+msgstr "নম্বরকরণ(_B)"
+
+#: data/ui/menus.ui:514
+msgid "Bullets and Numbering..."
+msgstr "বুলেট ও নম্বরকরণ..."
+
+#: data/ui/menus.ui:518
+msgid "St_yle..."
+msgstr "শৈলী(_Y)..."
+
+#: data/ui/menus.ui:522
+msgid "Heading Numbering"
+msgstr "শিরোনাম নম্বরকরণ"
+
+#: data/ui/menus.ui:529
+msgid "_Tools"
+msgstr "সরঞ্জাম(_T)"
+
+#: data/ui/menus.ui:532
+msgid "_Spelling..."
+msgstr "বানান(_S)..."
+
+#: data/ui/menus.ui:536
+msgid "_Automatic Spell Checking"
+msgstr "স্বয়ংক্রিয় বানান পরীক্ষা(_A)"
+
+#: data/ui/menus.ui:540
+msgid "A_utoCorrect..."
+msgstr "স্বতঃসংশোধন(_U)..."
+
+#: data/ui/menus.ui:544
+msgid "_Language"
+msgstr "ভাষা(_L)"
+
+#: data/ui/menus.ui:547
+msgid "_Set Language..."
+msgstr "ভাষা নির্ধারণ করুন(_S)..."
+
+#: data/ui/menus.ui:551
+msgid "_Thesaurus..."
+msgstr "সমার্থশব্দকোষ(_T)..."
+
+#: data/ui/menus.ui:557
+msgid "_Hyphenate Document"
+msgstr "নথিতে হাইফেন যোগ করুন(_H)"
+
+#: data/ui/menus.ui:561
+msgid "Remo_ve Hyphenation"
+msgstr "হাইফেনেশন সরান(_V)"
+
+#: data/ui/menus.ui:567
+msgid "_Word Count..."
+msgstr "শব্দ গণনা(_W)..."
+
+#: data/ui/menus.ui:571
+msgid "Word Count _Goal..."
+msgstr "শব্দ গণনার লক্ষ্য(_G)..."
+
+#: data/ui/menus.ui:577
+msgid "_Track Changes"
+msgstr "পরিবর্তন ট্র্যাক করুন(_T)"
+
+#: data/ui/menus.ui:580
+msgid "_Highlight Changes"
+msgstr "পরিবর্তন হাইলাইট করুন(_H)"
+
+#: data/ui/menus.ui:586
+msgid "Acce_pt All Changes"
+msgstr "সব পরিবর্তন গ্রহণ করুন(_P)"
+
+#: data/ui/menus.ui:590
+msgid "Re_ject All Changes"
+msgstr "সব পরিবর্তন প্রত্যাখ্যান করুন(_J)"
+
+#: data/ui/menus.ui:596
+msgid "_Compare Documents..."
+msgstr "নথি তুলনা করুন(_C)..."
+
+#: data/ui/menus.ui:602
+msgid "En_velopes and Labels..."
+msgstr "খাম ও লেবেল(_V)..."
+
+#: data/ui/menus.ui:606
+msgid "Mail Mer_ge..."
+msgstr "মেল মার্জ(_G)..."
+
+#: data/ui/menus.ui:612
+msgid "Mac_ro"
+msgstr "ম্যাক্রো(_R)"
+
+#: data/ui/menus.ui:614
+msgid "_Macros..."
+msgstr "ম্যাক্রো(_M)..."
+
+#: data/ui/menus.ui:618
+msgid "Macro _Editor..."
+msgstr "ম্যাক্রো সম্পাদক(_E)..."
+
+#: data/ui/menus.ui:625
+msgid "_Options..."
+msgstr "বিকল্প(_O)..."
+
+#: data/ui/menus.ui:632
+msgid "T_able"
+msgstr "সারণী(_A)"
+
+#: data/ui/menus.ui:640
+msgid "_Table..."
+msgstr "সারণী(_T)..."
+
+#: data/ui/menus.ui:646
+msgid "Columns to the _Left"
+msgstr "বামে কলাম(_L)"
+
+#: data/ui/menus.ui:650
+msgid "Columns to the _Right"
+msgstr "ডানে কলাম(_R)"
+
+#: data/ui/menus.ui:654
+msgid "Rows _Above"
+msgstr "উপরে সারি(_A)"
+
+#: data/ui/menus.ui:658
+msgid "Rows _Below"
+msgstr "নিচে সারি(_B)"
+
+#: data/ui/menus.ui:664 src/ui/w42-dialogs.c:1139 src/ui/w42-dialogs.c:2974
+#: src/ui/w42-dialogs.c:3476 src/ui/w42-dialogs.c:5372
+#: src/ui/w42-dialogs.c:6993 src/ui/w42-dialogs.c:7055
+msgid "_Delete"
+msgstr "মুছুন(_D)"
+
+#: data/ui/menus.ui:667 data/ui/menus.ui:684
+msgid "_Table"
+msgstr "সারণী(_T)"
+
+#: data/ui/menus.ui:671
+msgid "_Columns"
+msgstr "কলাম(_C)"
+
+#: data/ui/menus.ui:675
+msgid "_Rows"
+msgstr "সারি(_R)"
+
+#: data/ui/menus.ui:681
+msgid "Se_lect"
+msgstr "নির্বাচন করুন(_L)"
+
+#: data/ui/menus.ui:689
+msgid "_Column"
+msgstr "কলাম(_C)"
+
+#: data/ui/menus.ui:694
+msgid "_Row"
+msgstr "সারি(_R)"
+
+#: data/ui/menus.ui:699
+msgid "C_ell"
+msgstr "কক্ষ(_E)"
+
+#: data/ui/menus.ui:708
+msgid "_Merge Cells"
+msgstr "কক্ষ একত্রিত করুন(_M)"
+
+#: data/ui/menus.ui:712
+msgid "Split C_ells"
+msgstr "কক্ষ বিভক্ত করুন(_E)"
+
+#: data/ui/menus.ui:716
+msgid "Split _Table"
+msgstr "সারণী বিভক্ত করুন(_T)"
+
+#: data/ui/menus.ui:722
+msgid "Table Auto_Format..."
+msgstr "সারণী স্বতঃবিন্যাস(_F)..."
+
+#: data/ui/menus.ui:726
+msgid "_AutoFit"
+msgstr "স্বতঃমাপসই(_A)"
+
+#: data/ui/menus.ui:729
+msgid "AutoFit to _Contents"
+msgstr "বিষয়বস্তু অনুযায়ী স্বতঃমাপসই(_C)"
+
+#: data/ui/menus.ui:734
+msgid "AutoFit to _Window"
+msgstr "উইন্ডো অনুযায়ী স্বতঃমাপসই(_W)"
+
+#: data/ui/menus.ui:739
+msgid "Distribute _Rows Evenly"
+msgstr "সারিগুলি সমানভাবে বণ্টন করুন(_R)"
+
+#: data/ui/menus.ui:744
+msgid "Distribute Co_lumns Evenly"
+msgstr "কলামগুলি সমানভাবে বণ্টন করুন(_L)"
+
+#: data/ui/menus.ui:751
+msgid "_Heading Rows Repeat"
+msgstr "শিরোনাম সারির পুনরাবৃত্তি(_H)"
+
+#: data/ui/menus.ui:757
+msgid "Con_vert Text to Table"
+msgstr "পাঠ্যকে সারণীতে রূপান্তর করুন(_V)"
+
+#: data/ui/menus.ui:761
+msgid "S_ort Ascending"
+msgstr "ঊর্ধ্বক্রমে সাজান(_O)"
+
+#: data/ui/menus.ui:766
+msgid "Sort Desce_nding"
+msgstr "অধঃক্রমে সাজান(_N)"
+
+#: data/ui/menus.ui:771
+msgid "Form_ula..."
+msgstr "সূত্র(_U)..."
+
+#: data/ui/menus.ui:777
+msgid "Table _Gridlines"
+msgstr "সারণীর গ্রিডলাইন(_G)"
+
+#: data/ui/menus.ui:781
+msgid "Table _Properties..."
+msgstr "সারণী বৈশিষ্ট্য(_P)..."
+
+#: data/ui/menus.ui:788
+msgid "_Window"
+msgstr "উইন্ডো(_W)"
+
+#: data/ui/menus.ui:791
+msgid "_New Window"
+msgstr "নতুন উইন্ডো(_N)"
+
+#: data/ui/menus.ui:795
+msgid "_Split"
+msgstr "বিভক্ত করুন(_S)"
+
+#: data/ui/menus.ui:799
+msgid "_Arrange All"
+msgstr "সব সাজান(_A)"
+
+#: data/ui/menus.ui:807
+msgid "_Help"
+msgstr "সহায়তা(_H)"
+
+#: data/ui/menus.ui:810 src/ui/w42-help.c:624
+msgid "_Contents"
+msgstr "বিষয়বস্তু(_C)"
+
+#: data/ui/menus.ui:814
+msgid "_Search for Help on..."
+msgstr "সহায়তা অনুসন্ধান করুন(_S)..."
+
+#: data/ui/menus.ui:824
+msgid "Word42 on the _Web"
+msgstr "ওয়েবে Word42(_W)"
+
+#: data/ui/menus.ui:828
+msgid "Report a _Bug"
+msgstr "ত্রুটি রিপোর্ট করুন(_B)"
+
+#: data/ui/menus.ui:834
+msgid "_About Word42"
+msgstr "Word42 সম্পর্কে(_A)"
+
+#. Translators: %s says what the fault is.
+#: src/io/w42-abw.c:1623
+#, c-format
+msgid "The compressed AbiWord file is damaged: %s"
+msgstr "সংকুচিত AbiWord ফাইলটি ক্ষতিগ্রস্ত: %s"
+
+#: src/io/w42-abw.c:1631
+msgid "The compressed AbiWord file unpacks to more than 256 MB."
+msgstr "সংকুচিত AbiWord ফাইলটি খোলার পর 256 MB-এর বেশি হয়ে যায়।"
+
+#: src/io/w42-abw.c:1648
+msgid "The compressed AbiWord file is cut short."
+msgstr "সংকুচিত AbiWord ফাইলটি অসম্পূর্ণ।"
+
+#: src/io/w42-abw.c:2928
+msgid "The document could not be compressed."
+msgstr "নথিটি সংকুচিত করা যায়নি।"
+
+#. Translators: OLE is the container a Word 97 file is kept in,
+#. * made of numbered sectors; %u is a sector's number.
+#: src/io/w42-doc.c:131
+#, c-format
+msgid "OLE sector %u is past the end of the file"
+msgstr "OLE সেক্টর %u ফাইলের শেষ সীমার বাইরে"
+
+#. Translators: OLE is the container a Word 97 file is kept in,
+#. * FAT its table of sectors; %u is a sector's number.
+#: src/io/w42-doc.c:135
+#, c-format
+msgid "OLE sector %u has no FAT entry"
+msgstr "OLE সেক্টর %u-এর কোনো FAT ভুক্তি নেই"
+
+#: src/io/w42-doc.c:137
+msgid "OLE sector chain loops"
+msgstr "OLE সেক্টর শৃঙ্খলে লুপ রয়েছে"
+
+#: src/io/w42-doc.c:170
+msgid "This is not a Word document (no OLE2 header)."
+msgstr "এটি কোনো Word নথি নয় (OLE2 হেডার নেই)।"
+
+#: src/io/w42-doc.c:183
+msgid "OLE sector size is out of range"
+msgstr "OLE সেক্টরের আকার সীমার বাইরে"
+
+#: src/io/w42-doc.c:257
+msgid "OLE directory is empty"
+msgstr "OLE ডিরেক্টরি খালি"
+
+#. Translators: %s is the name of a part of a
+#. * Word 97 file, such as "WordDocument".
+#: src/io/w42-doc.c:352
+#, c-format
+msgid "OLE mini stream %s is damaged"
+msgstr "OLE মিনি স্ট্রিম %s ক্ষতিগ্রস্ত"
+
+#. Translators: %s is the name of a part of a Word 97 file,
+#. * such as "WordDocument" or "1Table".
+#: src/io/w42-doc.c:374
+#, c-format
+msgid "The document has no %s stream."
+msgstr "নথিটিতে কোনো %s স্ট্রিম নেই।"
+
+#: src/io/w42-doc.c:525
+msgid "The document has no piece table."
+msgstr "নথিটিতে কোনো পিস টেবিল নেই।"
+
+#: src/io/w42-doc.c:533 src/io/w42-doc.c:537 src/io/w42-doc.c:542
+msgid "Piece table is damaged"
+msgstr "পিস টেবিল ক্ষতিগ্রস্ত"
+
+#: src/io/w42-doc.c:589
+msgid "The document has no text pieces."
+msgstr "নথিটিতে কোনো পাঠ্য খণ্ড নেই।"
+
+#: src/io/w42-doc.c:3160
+msgid "The document's text is out of reach."
+msgstr "নথির পাঠ্যে পৌঁছানো যাচ্ছে না।"
+
+#. Translators: WordDocument is the name of the part of
+#. * a Word 97 file that holds its text; keep it as it is.
+#: src/io/w42-doc.c:3222
+#, c-format
+msgid "The WordDocument stream is too short to be one."
+msgstr "WordDocument স্ট্রিমটি এত ছোট যে এটি বৈধ হতে পারে না।"
+
+#: src/io/w42-doc.c:3232
+#, c-format
+msgid "This is not a Word document."
+msgstr "এটি কোনো Word নথি নয়।"
+
+#: src/io/w42-doc.c:3244
+#, c-format
+msgid "The document is encrypted, and Word42 cannot open encrypted documents."
+msgstr "নথিটি এনক্রিপ্ট করা, এবং Word42 এনক্রিপ্ট করা নথি খুলতে পারে না।"
+
+#. Translators: word/document.xml is the name of a file
+#. * inside a .docx; keep it as it is.
+#: src/io/w42-docx.c:4023
+#, c-format
+msgid "The file is not a Word document: it has no word/document.xml."
+msgstr "ফাইলটি কোনো Word নথি নয়: এতে word/document.xml নেই।"
+
+#. Translators: "the page" is the web page (HTML file)
+#. * being opened.
+#: src/io/w42-htmlin.c:3570
+#, c-format
+msgid "The page nests its elements too deeply to be a document."
+msgstr ""
+"পৃষ্ঠাটির উপাদানগুলি এত গভীরভাবে একটির ভিতরে আরেকটি বসানো যে এটি নথি হতে পারে "
+"না।"
+
+#. Translators: "the page" is the web page (HTML file)
+#. * being opened.
+#: src/io/w42-htmlin.c:3584
+#, c-format
+msgid "The page could not be parsed."
+msgstr "পৃষ্ঠাটি পার্স করা যায়নি।"
+
+#: src/io/w42-io.c:224
+#, c-format
+msgid "Word42 writes EPUB but does not read it."
+msgstr "Word42 EPUB লিখতে পারে কিন্তু পড়তে পারে না।"
+
+#: src/io/w42-io.c:274
+#, c-format
+msgid "The file is not text in any encoding Word42 recognises."
+msgstr "ফাইলটি Word42-এর চেনা কোনো এনকোডিংয়ের পাঠ্য নয়।"
+
+#: src/io/w42-io.c:316
+#, c-format
+msgid ""
+"Word42 reads Word .doc files but does not write them. Save as RTF or .docx, "
+"which other word processors read."
+msgstr ""
+"Word42 Word .doc ফাইল পড়তে পারে কিন্তু লিখতে পারে না। RTF বা .docx হিসাবে "
+"সংরক্ষণ করুন, যা অন্যান্য ওয়ার্ড প্রসেসর পড়তে পারে।"
+
+#: src/io/w42-merge.c:166
+#, c-format
+msgid "The data source has no field names in its first row."
+msgstr "ডেটা উৎসের প্রথম সারিতে কোনো ক্ষেত্রের নাম নেই।"
+
+#: src/io/w42-merge.c:216 src/io/w42-merge.c:231
+#, c-format
+msgid "Could not make a temporary file."
+msgstr "একটি অস্থায়ী ফাইল তৈরি করা যায়নি।"
+
+#. Translators: content.xml is the name of a file inside
+#. * an .odt; keep it as it is.
+#: src/io/w42-odt.c:2655
+#, c-format
+msgid "The file is not an OpenDocument text: it has no content.xml."
+msgstr "ফাইলটি কোনো OpenDocument পাঠ্য নয়: এতে content.xml নেই।"
+
+#. Translators: %s is the reason, as the Cairo graphics
+#. * library gives it, in English.
+#: src/io/w42-pdf.c:209 src/io/w42-pdf.c:224
+#, c-format
+msgid "Word42 could not write the PDF: %s"
+msgstr "Word42 PDF লিখতে পারেনি: %s"
+
+#. Translators: poppler is the name of a program library;
+#. * keep it as it is.
+#: src/io/w42-pdf.c:995
+#, c-format
+msgid ""
+"This build of Word42 cannot read PDF files. It was built without poppler."
+msgstr ""
+"Word42-এর এই বিল্ডটি PDF ফাইল পড়তে পারে না। এটি poppler ছাড়া বিল্ড করা হয়েছে।"
+
+#. Translators: ppt/presentation.xml is the name of a file
+#. * inside a .pptx; keep it as it is.
+#: src/io/w42-pptx.c:679
+#, c-format
+msgid "That file is not a presentation: it has no ppt/presentation.xml."
+msgstr "ফাইলটি কোনো উপস্থাপনা নয়: এতে ppt/presentation.xml নেই।"
+
+#. Translators: the heading given to a slide that has no
+#. * title of its own, when a presentation is opened.
+#: src/io/w42-pptx.c:736
+msgid "Slide"
+msgstr "স্লাইড"
+
+#: src/io/w42-rtf.c:3872
+#, c-format
+msgid "That file does not begin like an RTF document."
+msgstr "ফাইলটি RTF নথির মতো করে শুরু হয় না।"
+
+#: src/io/w42-zip.c:166 src/io/w42-zip.c:182
+#, c-format
+msgid "Not a zip file."
+msgstr "এটি zip ফাইল নয়।"
+
+#: src/io/w42-zip.c:193
+#, c-format
+msgid "The zip file is cut short."
+msgstr "zip ফাইলটি অসম্পূর্ণ।"
+
+#. Translators: %d is a line of the macro, %s what is wrong with it.
+#: src/macro/w42-vba.c:276 src/ui/w42-macro.c:2789
+#, c-format
+msgid "Line %d: %s"
+msgstr "লাইন %d: %s"
+
+#. Translators: "With" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:593
+msgid "a name starting with a dot needs a With block"
+msgstr "বিন্দু দিয়ে শুরু হওয়া নামের জন্য একটি With ব্লক প্রয়োজন"
+
+#: src/macro/w42-vba.c:812
+msgid "a named argument outside a call"
+msgstr "কলের বাইরে একটি নামযুক্ত আর্গুমেন্ট"
+
+#. Translators: Sub and Function are macro keywords: keep them in
+#. * English.
+#: src/macro/w42-vba.c:875
+msgid "Sub or Function without a name"
+msgstr "নামহীন Sub বা Function"
+
+#. Translators: "Optional" is a macro keyword: keep it in
+#. * English.
+#: src/macro/w42-vba.c:913
+msgid "an Optional parameter with a default value is not supported"
+msgstr "ডিফল্ট মানসহ Optional প্যারামিটার সমর্থিত নয়"
+
+#. Translators: "Dim" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:941
+msgid "Dim expects a name"
+msgstr "Dim-এর পরে একটি নাম প্রত্যাশিত"
+
+#. Translators: "New" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:960
+msgid "objects made with New are not supported"
+msgstr "New দিয়ে তৈরি অবজেক্ট সমর্থিত নয়"
+
+#. Translators: "Dim a(10)" is macro code: keep it as it
+#. * is.
+#: src/macro/w42-vba.c:998
+msgid "an array's size must be a number: Dim a(10)"
+msgstr "অ্যারের আকার অবশ্যই একটি সংখ্যা হতে হবে: Dim a(10)"
+
+#. Translators: End Sub, Sub, End Function and Function
+#. * are macro keywords: keep them in English.
+#: src/macro/w42-vba.c:1150
+msgid "End Sub without Sub"
+msgstr "Sub ছাড়া End Sub"
+
+#: src/macro/w42-vba.c:1151
+msgid "End Function without Function"
+msgstr "Function ছাড়া End Function"
+
+#. Translators: the first %s is a macro keyword (Sub,
+#. * Function, If, For, Do, Select Case or With), the
+#. * second Sub or Function; "End" is a keyword too.  Keep
+#. * them all in English.
+#: src/macro/w42-vba.c:1160
+#, c-format
+msgid "%s is still open at End %s"
+msgstr "End %2$s-এ পৌঁছেও %1$s এখনও খোলা রয়েছে"
+
+#. Translators: End If and If are macro keywords: keep them
+#. * in English.
+#: src/macro/w42-vba.c:1177
+msgid "End If without If"
+msgstr "If ছাড়া End If"
+
+#. Translators: End Select and Select are macro keywords:
+#. * keep them in English.
+#: src/macro/w42-vba.c:1185
+msgid "End Select without Select"
+msgstr "Select ছাড়া End Select"
+
+#. Translators: End With and With are macro keywords: keep
+#. * them in English.
+#: src/macro/w42-vba.c:1193
+msgid "End With without With"
+msgstr "With ছাড়া End With"
+
+#. Translators: "End" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:1198
+msgid "End of what?"
+msgstr "কীসের End?"
+
+#. Translators: "Exit" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:1216
+msgid "Exit of what?"
+msgstr "কীসের Exit?"
+
+#. Translators: If and Then are macro keywords: keep them in
+#. * English.
+#: src/macro/w42-vba.c:1228
+msgid "If without Then"
+msgstr "Then ছাড়া If"
+
+#. Translators: Select and Case are macro keywords: keep them
+#. * in English.
+#: src/macro/w42-vba.c:1289
+msgid "Select without Case"
+msgstr "Case ছাড়া Select"
+
+#. Translators: Case and Select Case are macro keywords: keep
+#. * them in English.
+#: src/macro/w42-vba.c:1308
+msgid "Case outside Select Case"
+msgstr "Select Case-এর বাইরে Case"
+
+#. Translators: "For Each" is a macro keyword, and "For i = 1
+#. * To ...Count" macro code: keep them in English.
+#: src/macro/w42-vba.c:1331
+msgid "For Each is not supported: count with For i = 1 To ...Count"
+msgstr "For Each সমর্থিত নয়: For i = 1 To ...Count দিয়ে গণনা করুন"
+
+#. Translators: "For" is a macro keyword, and "For i = a To
+#. * b" macro code: keep them in English.
+#: src/macro/w42-vba.c:1344
+msgid "For expects: For i = a To b"
+msgstr "For-এর প্রত্যাশিত রূপ: For i = a To b"
+
+#. Translators: Next and For are macro keywords: keep them in
+#. * English.
+#: src/macro/w42-vba.c:1369
+msgid "Next without For"
+msgstr "For ছাড়া Next"
+
+#. Translators: Wend and While are macro keywords: keep them in
+#. * English.
+#: src/macro/w42-vba.c:1414
+msgid "Wend without While"
+msgstr "While ছাড়া Wend"
+
+#. Translators: Loop and Do are macro keywords: keep them in
+#. * English.
+#: src/macro/w42-vba.c:1427
+msgid "Loop without Do"
+msgstr "Do ছাড়া Loop"
+
+#. Translators: "With" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:1463
+msgid "With without an object"
+msgstr "অবজেক্ট ছাড়া With"
+
+#. Translators: "Const" is a macro keyword: keep it in English.
+#. * NAME and value stand for what is written there.
+#: src/macro/w42-vba.c:1497
+msgid "Const expects NAME = value"
+msgstr "Const-এর প্রত্যাশিত রূপ: নাম = মান"
+
+#. Translators: "GoTo" is a macro keyword: keep it in English.
+#: src/macro/w42-vba.c:1514
+msgid "GoTo and labels are not supported"
+msgstr "GoTo ও লেবেল সমর্থিত নয়"
+
+#: src/macro/w42-vba.c:1559
+msgid "an indexed object property cannot be set"
+msgstr "সূচকযুক্ত অবজেক্ট বৈশিষ্ট্য সেট করা যায় না"
+
+#: src/macro/w42-vba.c:1592
+msgid "a statement that does not start with a name"
+msgstr "এমন একটি বিবৃতি যা কোনো নাম দিয়ে শুরু হয় না"
+
+#: src/macro/w42-vba.c:1770
+msgid "labels are not supported"
+msgstr "লেবেল সমর্থিত নয়"
+
+#. Translators: %s is a macro keyword (Sub, Function, If, For, Do,
+#. * Select Case or With): keep it in English.
+#: src/macro/w42-vba.c:1803
+#, c-format
+msgid "%s is never ended"
+msgstr "%s কখনও শেষ করা হয়নি"
+
+#. Translators: "Sub" is a macro keyword: keep it in English.
+#. * %s is the Sub's name.
+#: src/macro/w42-vba.c:1820
+#, c-format
+msgid "There is no Sub named %s in this macro."
+msgstr "এই ম্যাক্রোতে %s নামে কোনো Sub নেই।"
+
+#: src/main.c:115
+msgid "Usage: word42 --convert-to=FORMAT [--outdir=DIR] FILE..."
+msgstr "ব্যবহার: word42 --convert-to=FORMAT [--outdir=DIR] FILE..."
+
+#: src/main.c:116
+msgid ""
+"FORMAT is the extension to write: pdf, epub, odt, docx, rtf, html, txt or "
+"abw."
+msgstr ""
+"FORMAT হলো যে এক্সটেনশনে লেখা হবে: pdf, epub, odt, docx, rtf, html, txt অথবা "
+"abw।"
+
+#: src/main.c:126
+msgid "the folder could not be made"
+msgstr "ফোল্ডারটি তৈরি করা যায়নি"
+
+#: src/main.c:159
+msgid "already in that format"
+msgstr "ইতিমধ্যে সেই ফরম্যাটে আছে"
+
+#: src/main.c:169
+msgid "could not be converted"
+msgstr "রূপান্তর করা যায়নি"
+
+#. Translators: the name of a new document not yet saved, shown in
+#. * the title bar and also used as its file name, so the translation
+#. * must be usable as one: no dots, slashes, backslashes, colons or
+#. * other characters a file name cannot hold.  Keep %u, its number.
+#: src/model/w42-document.c:195
+#, c-format
+msgid "Document%u"
+msgstr "নথি%u"
+
+#. Translators: an envelope size; #10, DL, C5, C6, Monarch and 6 3/4
+#. * are the sizes' own names, "in" is inches and "mm" millimetres.
+#: src/model/w42-envelope.c:23
+msgid "Envelope #10 (9 1/2 x 4 1/8 in)"
+msgstr "খাম #10 (9 1/2 x 4 1/8 ইঞ্চি)"
+
+#: src/model/w42-envelope.c:24
+msgid "Envelope DL (220 x 110 mm)"
+msgstr "খাম DL (220 x 110 মিমি)"
+
+#: src/model/w42-envelope.c:25
+msgid "Envelope C5 (229 x 162 mm)"
+msgstr "খাম C5 (229 x 162 মিমি)"
+
+#: src/model/w42-envelope.c:26
+msgid "Envelope C6 (162 x 114 mm)"
+msgstr "খাম C6 (162 x 114 মিমি)"
+
+#: src/model/w42-envelope.c:27
+msgid "Envelope Monarch (7 1/2 x 3 7/8 in)"
+msgstr "খাম Monarch (7 1/2 x 3 7/8 ইঞ্চি)"
+
+#: src/model/w42-envelope.c:28
+msgid "Envelope 6 3/4 (6 1/2 x 3 5/8 in)"
+msgstr "খাম 6 3/4 (6 1/2 x 3 5/8 ইঞ্চি)"
+
+#. Translators: a sheet of labels: how many labels it has, its paper
+#. * size (A4 or Letter) and the size of one label; "in" is inches and
+#. * "mm" millimetres.
+#: src/model/w42-envelope.c:38
+msgid "24 per sheet, A4 (63.5 x 33.9 mm)"
+msgstr "প্রতি শিটে 24টি, A4 (63.5 x 33.9 মিমি)"
+
+#: src/model/w42-envelope.c:40
+msgid "21 per sheet, A4 (70 x 42.3 mm)"
+msgstr "প্রতি শিটে 21টি, A4 (70 x 42.3 মিমি)"
+
+#: src/model/w42-envelope.c:42
+msgid "14 per sheet, A4 (99.1 x 38.1 mm)"
+msgstr "প্রতি শিটে 14টি, A4 (99.1 x 38.1 মিমি)"
+
+#: src/model/w42-envelope.c:44
+msgid "10 per sheet, A4 (99.1 x 57 mm)"
+msgstr "প্রতি শিটে 10টি, A4 (99.1 x 57 মিমি)"
+
+#: src/model/w42-envelope.c:46
+msgid "30 per sheet, Letter (2 5/8 x 1 in)"
+msgstr "প্রতি শিটে 30টি, লেটার (2 5/8 x 1 ইঞ্চি)"
+
+#: src/model/w42-envelope.c:48
+msgid "20 per sheet, Letter (4 x 2 in)"
+msgstr "প্রতি শিটে 20টি, লেটার (4 x 2 ইঞ্চি)"
+
+#. Translators: the names of the looks Table AutoFormat offers, each
+#. * with a line saying what it is.
+#: src/model/w42-tableformat.c:16
+msgid "Plain"
+msgstr "সাদামাটা"
+
+#: src/model/w42-tableformat.c:16
+msgid "No rules and no shading."
+msgstr "কোনো রেখা বা ছায়াকরণ নেই।"
+
+#: src/model/w42-tableformat.c:18
+msgid "Grid"
+msgstr "গ্রিড"
+
+#: src/model/w42-tableformat.c:18
+msgid "Every cell ruled, the heading in bold."
+msgstr "প্রতিটি কক্ষে রেখা, শিরোনাম গাঢ়।"
+
+#: src/model/w42-tableformat.c:20
+msgid "Ruled"
+msgstr "রেখাঙ্কিত"
+
+#: src/model/w42-tableformat.c:20
+msgid "A rule round the table and under the heading."
+msgstr "সারণীর চারপাশে ও শিরোনামের নিচে একটি রেখা।"
+
+#: src/model/w42-tableformat.c:22
+msgid "Ruled Bands"
+msgstr "রেখাঙ্কিত ব্যান্ড"
+
+#: src/model/w42-tableformat.c:22
+msgid "Ruled, with every other row lightly shaded."
+msgstr "রেখাঙ্কিত, একটি পর পর সারি হালকা ছায়াযুক্ত।"
+
+#: src/model/w42-tableformat.c:24
+msgid "Shaded Heading"
+msgstr "ছায়াযুক্ত শিরোনাম"
+
+#: src/model/w42-tableformat.c:24
+msgid "A grid, with the heading row shaded."
+msgstr "একটি গ্রিড, শিরোনাম সারি ছায়াযুক্ত।"
+
+#: src/model/w42-tableformat.c:26 src/ui/w42-dialogs.c:3258
+msgid "Columns"
+msgstr "কলাম"
+
+#: src/model/w42-tableformat.c:26
+msgid "A grid, heading and first column in bold."
+msgstr "একটি গ্রিড, শিরোনাম ও প্রথম কলাম গাঢ়।"
+
+#: src/model/w42-tableformat.c:28 src/model/w42-template.c:19
+msgid "Report"
+msgstr "প্রতিবেদন"
+
+#: src/model/w42-tableformat.c:28
+msgid "A rule round the table, the heading in bold italic."
+msgstr "সারণীর চারপাশে একটি রেখা, শিরোনাম গাঢ় তির্যক।"
+
+#: src/model/w42-template.c:15
+msgid "Blank Document"
+msgstr "ফাঁকা নথি"
+
+#: src/model/w42-template.c:15
+msgid "An empty page, as File > New gives you."
+msgstr "একটি ফাঁকা পৃষ্ঠা, যেমনটি ফাইল > নতুন দেয়।"
+
+#: src/model/w42-template.c:16
+msgid "Letter"
+msgstr "চিঠি"
+
+#: src/model/w42-template.c:16
+msgid "A letter: the date, an address, a greeting and a closing."
+msgstr "একটি চিঠি: তারিখ, ঠিকানা, সম্ভাষণ ও সমাপ্তি।"
+
+#: src/model/w42-template.c:17
+msgid "Memo"
+msgstr "মেমো"
+
+#: src/model/w42-template.c:17
+msgid "A memorandum: To, From, Date and Subject over a rule."
+msgstr "একটি স্মারকলিপি: একটি রেখার উপরে প্রতি, প্রেরক, তারিখ ও বিষয়।"
+
+#: src/model/w42-template.c:18
+msgid "Fax Cover"
+msgstr "ফ্যাক্স কভার"
+
+#: src/model/w42-template.c:18
+msgid "A fax cover sheet: who it is for, how many pages, a message."
+msgstr "একটি ফ্যাক্স কভার শিট: কার জন্য, কত পৃষ্ঠা, একটি বার্তা।"
+
+#: src/model/w42-template.c:19
+msgid "A report: a title, headings and a place for the text."
+msgstr "একটি প্রতিবেদন: শিরোনাম, উপশিরোনাম ও মূল পাঠ্যের জায়গা।"
+
+#: src/model/w42-template.c:20 src/model/w42-template.c:310
+msgid "Meeting Notes"
+msgstr "সভার কার্যবিবরণী"
+
+#: src/model/w42-template.c:20
+msgid "Notes of a meeting: who was there, what was decided."
+msgstr "একটি সভার বিবরণী: কারা উপস্থিত ছিলেন, কী সিদ্ধান্ত হলো।"
+
+#: src/model/w42-template.c:21
+msgid "Novel"
+msgstr "উপন্যাস"
+
+#: src/model/w42-template.c:21
+msgid ""
+"A novel set as a book: small pages, justified text with indented paragraphs, "
+"and every chapter on a page of its own."
+msgstr ""
+"বইয়ের মতো করে সাজানো একটি উপন্যাস: ছোট পৃষ্ঠা, ইন্ডেন্ট করা অনুচ্ছেদসহ উভয় প্রান্তে "
+"সারিবদ্ধ পাঠ্য, এবং প্রতিটি অধ্যায় আলাদা পৃষ্ঠায়।"
+
+#: src/model/w42-template.c:23
+msgid "Manuscript"
+msgstr "পাণ্ডুলিপি"
+
+#: src/model/w42-template.c:23
+msgid ""
+"A manuscript for an agent or a publisher: double-spaced, with your name and "
+"the title at the top of every page."
+msgstr ""
+"এজেন্ট বা প্রকাশকের জন্য একটি পাণ্ডুলিপি: দ্বিগুণ লাইন ব্যবধান, প্রতিটি পৃষ্ঠার শীর্ষে "
+"আপনার নাম ও শিরোনাম।"
+
+#. Translators: this and the lines that follow are the text of the
+#. * documents File > New from Template makes, for the user to type
+#. * over: write them as a template in your language would have them.
+#: src/model/w42-template.c:228 src/model/w42-template.c:246
+#: src/model/w42-template.c:255 src/model/w42-template.c:284
+#: src/model/w42-template.c:295 src/model/w42-template.c:397
+msgid "Your Name"
+msgstr "আপনার নাম"
+
+#: src/model/w42-template.c:229 src/model/w42-template.c:399
+msgid "Your Address"
+msgstr "আপনার ঠিকানা"
+
+#: src/model/w42-template.c:230 src/model/w42-template.c:237
+msgid "Town, Postcode"
+msgstr "শহর, পোস্টকোড"
+
+#: src/model/w42-template.c:235
+msgid "Recipient's Name"
+msgstr "প্রাপকের নাম"
+
+#: src/model/w42-template.c:236
+msgid "Their Address"
+msgstr "প্রাপকের ঠিকানা"
+
+#: src/model/w42-template.c:239
+msgid "Dear Sir or Madam,"
+msgstr "প্রিয় মহোদয়/মহোদয়া,"
+
+#: src/model/w42-template.c:241
+msgid "The letter goes here."
+msgstr "চিঠির মূল অংশ এখানে লিখুন।"
+
+#: src/model/w42-template.c:243
+msgid "Yours faithfully,"
+msgstr "বিনীত,"
+
+#: src/model/w42-template.c:250
+msgid "MEMORANDUM"
+msgstr "স্মারকলিপি"
+
+#. Translators: a memo's first line: the heading, then who it is
+#. * for.
+#: src/model/w42-template.c:254 src/model/w42-template.c:281
+msgid "To:"
+msgstr "প্রতি:"
+
+#: src/model/w42-template.c:254
+msgid "Everyone"
+msgstr "সকলে"
+
+#: src/model/w42-template.c:255 src/model/w42-template.c:284
+msgid "From:"
+msgstr "প্রেরক:"
+
+#. Translators: a memo's heading, as "To:" and "From:" are.
+#: src/model/w42-template.c:260
+msgid "Date:"
+msgstr "তারিখ:"
+
+#: src/model/w42-template.c:272
+msgid "Subject:"
+msgstr "বিষয়:"
+
+#: src/model/w42-template.c:272
+msgid "What this is about"
+msgstr "কী বিষয়ে"
+
+#: src/model/w42-template.c:275
+msgid "The memorandum goes here."
+msgstr "স্মারকলিপির মূল অংশ এখানে লিখুন।"
+
+#: src/model/w42-template.c:279
+msgid "FACSIMILE"
+msgstr "ফ্যাক্স বার্তা"
+
+#: src/model/w42-template.c:281
+msgid "Their Name"
+msgstr "প্রাপকের নাম"
+
+#. Translators: on a fax cover sheet, the fax number.
+#: src/model/w42-template.c:283 src/model/w42-template.c:285
+msgid "Fax:"
+msgstr "ফ্যাক্স:"
+
+#: src/model/w42-template.c:283
+msgid "Their Number"
+msgstr "প্রাপকের নম্বর"
+
+#: src/model/w42-template.c:285
+msgid "Your Number"
+msgstr "আপনার নম্বর"
+
+#. Translators: on a fax cover sheet, how many pages are sent.
+#: src/model/w42-template.c:287
+msgid "Pages:"
+msgstr "পৃষ্ঠা:"
+
+#: src/model/w42-template.c:287
+msgid "1, including this one"
+msgstr "1, এটি সহ"
+
+#: src/model/w42-template.c:290
+msgid "The message goes here."
+msgstr "বার্তাটি এখানে লিখুন।"
+
+#: src/model/w42-template.c:294
+msgid "The Title of the Report"
+msgstr "প্রতিবেদনের শিরোনাম"
+
+#: src/model/w42-template.c:299
+msgid "Summary"
+msgstr "সারসংক্ষেপ"
+
+#: src/model/w42-template.c:300
+msgid "What the report says, in a paragraph."
+msgstr "প্রতিবেদনের মূল বক্তব্য, এক অনুচ্ছেদে।"
+
+#: src/model/w42-template.c:301
+msgid "The Matter in Hand"
+msgstr "আলোচ্য বিষয়"
+
+#: src/model/w42-template.c:302
+msgid "The body of the report goes here."
+msgstr "প্রতিবেদনের মূল অংশ এখানে লিখুন।"
+
+#: src/model/w42-template.c:303
+msgid "A Point Worth Its Own Heading"
+msgstr "আলাদা শিরোনামের যোগ্য একটি বিষয়"
+
+#: src/model/w42-template.c:304
+msgid "And what there is to say about it."
+msgstr "এবং এ সম্পর্কে যা বলার আছে।"
+
+#: src/model/w42-template.c:305
+msgid "What Follows From It"
+msgstr "এর থেকে যা দাঁড়ায়"
+
+#: src/model/w42-template.c:306
+msgid "The conclusion goes here."
+msgstr "উপসংহার এখানে লিখুন।"
+
+#. Translators: in the notes of a meeting, who attended.
+#: src/model/w42-template.c:315
+msgid "Present:"
+msgstr "উপস্থিত:"
+
+#: src/model/w42-template.c:315
+msgid "Who was there"
+msgstr "যাঁরা উপস্থিত ছিলেন"
+
+#. Translators: in the notes of a meeting, who sent word that they
+#. * could not attend.
+#: src/model/w42-template.c:318
+msgid "Apologies:"
+msgstr "অনুপস্থিত:"
+
+#: src/model/w42-template.c:318
+msgid "Who was not"
+msgstr "যাঁরা উপস্থিত থাকতে পারেননি"
+
+#: src/model/w42-template.c:321
+msgid "Matters discussed"
+msgstr "আলোচিত বিষয়সমূহ"
+
+#: src/model/w42-template.c:322
+msgid "The first matter."
+msgstr "প্রথম বিষয়।"
+
+#: src/model/w42-template.c:323
+msgid "Decisions"
+msgstr "সিদ্ধান্তসমূহ"
+
+#: src/model/w42-template.c:324
+msgid "What was decided, and by whom it will be done."
+msgstr "কী সিদ্ধান্ত হলো, এবং কে তা বাস্তবায়ন করবেন।"
+
+#: src/model/w42-template.c:342
+msgid "The Title of the Novel"
+msgstr "উপন্যাসের নাম"
+
+#. Translators: under the title of a novel, what the book is.
+#: src/model/w42-template.c:344
+msgid "A Novel"
+msgstr "একটি উপন্যাস"
+
+#: src/model/w42-template.c:345 src/model/w42-template.c:408
+msgid "Chapter One"
+msgstr "প্রথম অধ্যায়"
+
+#. Translators: Heading 1 is a style's name, which is not
+#. * translated.
+#: src/model/w42-template.c:348
+msgid ""
+"The first lines of the book go here. The paragraphs are justified and set "
+"in, as a printed novel's are, and each chapter starts on a new page: give "
+"its title the Heading 1 style."
+msgstr ""
+"বইয়ের প্রথম লাইনগুলি এখানে লিখুন। ছাপা উপন্যাসের মতোই অনুচ্ছেদগুলি উভয় প্রান্তে "
+"সারিবদ্ধ ও ইন্ডেন্ট করা, এবং প্রতিটি অধ্যায় নতুন পৃষ্ঠায় শুরু হয়: অধ্যায়ের শিরোনামে "
+"Heading 1 শৈলী দিন।"
+
+#. Translators: Tools, Language, Set Language, Default and Word Count
+#. * Goal are the menus, menu items and button of those names: use the
+#. * words the translated menus and dialog use.
+#: src/model/w42-template.c:355
+msgid ""
+"Tools ▸ Language ▸ Set Language, Default makes the book's language the one "
+"its spelling, quotation marks and hyphenation follow; Tools ▸ Word Count "
+"Goal sets how long it is to be."
+msgstr ""
+"সরঞ্জাম ▸ ভাষা ▸ ভাষা নির্ধারণ করুন-এ ডিফল্ট বোতামটি বইয়ের ভাষা নির্ধারণ করে, যা "
+"এর বানান, উদ্ধৃতি চিহ্ন ও হাইফেনেশন অনুসরণ করে; সরঞ্জাম ▸ শব্দ গণনার লক্ষ্য দিয়ে "
+"বইটি কত দীর্ঘ হবে তা নির্ধারণ করুন।"
+
+#: src/model/w42-template.c:361
+msgid "A new scene begins after a break like the one above."
+msgstr "উপরের মতো একটি বিরতির পরে নতুন দৃশ্য শুরু হয়।"
+
+#: src/model/w42-template.c:362
+msgid "Chapter Two"
+msgstr "দ্বিতীয় অধ্যায়"
+
+#: src/model/w42-template.c:363
+msgid "And the story goes on."
+msgstr "এবং গল্প এগিয়ে চলে।"
+
+#. Translators: the running head of a manuscript, the page number
+#. * after it; the writer puts their own surname and title in place
+#. * of these, as "The story begins here. Replace Surname and TITLE"
+#. * tells them, so use the same two words there.
+#: src/model/w42-template.c:384
+msgid "Surname / TITLE"
+msgstr "পদবি / শিরোনাম"
+
+#: src/model/w42-template.c:401
+msgid "Your Email and Telephone"
+msgstr "আপনার ইমেল ও টেলিফোন"
+
+#: src/model/w42-template.c:404
+msgid "THE TITLE"
+msgstr "শিরোনাম"
+
+#: src/model/w42-template.c:405
+msgid "by Your Name"
+msgstr "লেখক: আপনার নাম"
+
+#. Translators: on a manuscript's title page, how long the book is.
+#: src/model/w42-template.c:407
+msgid "About 80,000 words"
+msgstr "প্রায় 80,000 শব্দ"
+
+#. Translators: Surname and TITLE are the words of "Surname / TITLE";
+#. * View and Header and Footer are the menu items of that name.
+#: src/model/w42-template.c:411
+msgid ""
+"The story begins here. Replace Surname and TITLE in View ▸ Header and Footer "
+"with your own; the page number follows them on every page but the first."
+msgstr ""
+"গল্প এখানে শুরু হয়। দেখুন ▸ শীর্ষলেখ ও পাদলেখ-এ পদবি ও শিরোনাম-এর জায়গায় আপনার "
+"নিজেরটি লিখুন; প্রথম পৃষ্ঠা বাদে প্রতিটি পৃষ্ঠায় এগুলির পরে পৃষ্ঠা নম্বর বসে।"
+
+#. Translators: the "#" on the line above is the break meant.
+#: src/model/w42-template.c:417
+msgid "A scene break is a hash mark on a line of its own."
+msgstr "দৃশ্য বিরতি হলো আলাদা লাইনে একটি হ্যাশ চিহ্ন।"
+
+#. Translators: "default:RTL" for a language written from right to
+#. * left, such as Arabic or Urdu; "default:LTR" otherwise.
+#: src/ui/w42-application.c:265
+msgid "default:LTR"
+msgstr "default:LTR"
+
+#: src/ui/w42-dialogs.c:232 src/ui/w42-dialogs.c:286 src/ui/w42-dialogs.c:1232
+#: src/ui/w42-macro.c:367 src/ui/w42-macro.c:402 src/ui/w42-window.c:3811
+msgid "_OK"
+msgstr "ঠিক আছে(_O)"
+
+#: src/ui/w42-dialogs.c:233 src/ui/w42-dialogs.c:1233 src/ui/w42-dialogs.c:6993
+#: src/ui/w42-macro.c:367 src/ui/w42-macro.c:369 src/ui/w42-macro.c:370
+#: src/ui/w42-macro.c:402 src/ui/w42-print.c:379 src/ui/w42-print.c:883
+#: src/ui/w42-thesaurus-dialog.c:360 src/ui/w42-view.c:1269
+#: src/ui/w42-window.c:1036 src/ui/w42-window.c:1166 src/ui/w42-window.c:1448
+msgid "Cancel"
+msgstr "বাতিল"
+
+#. Translators: paper sizes; "in" is inches and "mm" millimetres.
+#: src/ui/w42-dialogs.c:415
+msgid "Letter  8½ x 11 in"
+msgstr "লেটার  8½ x 11 ইঞ্চি"
+
+#: src/ui/w42-dialogs.c:416
+msgid "Legal  8½ x 14 in"
+msgstr "লিগ্যাল  8½ x 14 ইঞ্চি"
+
+#: src/ui/w42-dialogs.c:417
+msgid "A4  210 x 297 mm"
+msgstr "A4  210 x 297 মিমি"
+
+#: src/ui/w42-dialogs.c:418
+msgid "A5  148 x 210 mm"
+msgstr "A5  148 x 210 মিমি"
+
+#. Translators: the page keeps the size it has, which is not in the list.
+#: src/ui/w42-dialogs.c:420
+msgid "Custom (as it is)"
+msgstr "কাস্টম (যেমন আছে)"
+
+#: src/ui/w42-dialogs.c:423
+msgid "Portrait"
+msgstr "প্রতিকৃতি"
+
+#: src/ui/w42-dialogs.c:423
+msgid "Landscape"
+msgstr "ভূদৃশ্য"
+
+#: src/ui/w42-dialogs.c:471
+msgid "The margins leave no room for text: an inch or less each, please."
+msgstr ""
+"মার্জিনে পাঠ্যের জন্য কোনো জায়গা থাকছে না: অনুগ্রহ করে প্রতিটি এক ইঞ্চি বা তার কম "
+"রাখুন।"
+
+#: src/ui/w42-dialogs.c:515
+msgid "Page Setup"
+msgstr "পৃষ্ঠা সেটআপ"
+
+#: src/ui/w42-dialogs.c:518
+msgid "Margins"
+msgstr "মার্জিন"
+
+#: src/ui/w42-dialogs.c:519
+msgid "_Top:"
+msgstr "শীর্ষ(_T):"
+
+#: src/ui/w42-dialogs.c:520
+msgid "_Bottom:"
+msgstr "নিচ(_B):"
+
+#: src/ui/w42-dialogs.c:521 src/ui/w42-dialogs.c:709
+msgid "_Left:"
+msgstr "বাম(_L):"
+
+#: src/ui/w42-dialogs.c:522 src/ui/w42-dialogs.c:711
+msgid "_Right:"
+msgstr "ডান(_R):"
+
+#: src/ui/w42-dialogs.c:524
+msgid "Paper"
+msgstr "কাগজ"
+
+#: src/ui/w42-dialogs.c:525
+msgid "Paper _Size:"
+msgstr "কাগজের আকার(_S):"
+
+#: src/ui/w42-dialogs.c:526
+msgid "Orie_ntation:"
+msgstr "অভিমুখ(_N):"
+
+#: src/ui/w42-dialogs.c:549 src/ui/w42-dialogs.c:1108 src/ui/w42-dialogs.c:1271
+msgctxt "alignment"
+msgid "Left"
+msgstr "বাম"
+
+#: src/ui/w42-dialogs.c:549 src/ui/w42-dialogs.c:1108
+msgctxt "alignment"
+msgid "Centered"
+msgstr "কেন্দ্রীভূত"
+
+#: src/ui/w42-dialogs.c:550 src/ui/w42-dialogs.c:1109 src/ui/w42-dialogs.c:1271
+msgctxt "alignment"
+msgid "Right"
+msgstr "ডান"
+
+#: src/ui/w42-dialogs.c:550 src/ui/w42-dialogs.c:1109
+msgctxt "alignment"
+msgid "Justified"
+msgstr "উভয় প্রান্তে"
+
+#: src/ui/w42-dialogs.c:553
+msgid "Left-to-right"
+msgstr "বাম থেকে ডানে"
+
+#: src/ui/w42-dialogs.c:553
+msgid "Right-to-left"
+msgstr "ডান থেকে বামে"
+
+#. Translators: a paragraph's special indent: none, the first line
+#. * indented, or the first line hanging out to the left.
+#: src/ui/w42-dialogs.c:558
+msgid "(none)"
+msgstr "(কোনোটিই নয়)"
+
+#: src/ui/w42-dialogs.c:558
+msgid "First Line"
+msgstr "প্রথম লাইন"
+
+#: src/ui/w42-dialogs.c:558
+msgid "Hanging"
+msgstr "ঝুলন্ত"
+
+#: src/ui/w42-dialogs.c:562 src/ui/w42-dialogs.c:813
+msgctxt "line spacing"
+msgid "Single"
+msgstr "একক"
+
+#: src/ui/w42-dialogs.c:562 src/ui/w42-dialogs.c:813
+msgctxt "line spacing"
+msgid "1.5 Lines"
+msgstr "1.5 লাইন"
+
+#: src/ui/w42-dialogs.c:563 src/ui/w42-dialogs.c:814
+msgctxt "line spacing"
+msgid "Double"
+msgstr "দ্বিগুণ"
+
+#: src/ui/w42-dialogs.c:563
+msgctxt "line spacing"
+msgid "Exactly"
+msgstr "ঠিক"
+
+#: src/ui/w42-dialogs.c:564
+msgctxt "line spacing"
+msgid "Multiple"
+msgstr "একাধিক"
+
+#: src/ui/w42-dialogs.c:702
+msgid "Paragraph"
+msgstr "অনুচ্ছেদ"
+
+#: src/ui/w42-dialogs.c:705
+msgid "Indentation"
+msgstr "ইন্ডেন্টেশন"
+
+#: src/ui/w42-dialogs.c:706 src/ui/w42-dialogs.c:1513 src/ui/w42-dialogs.c:2117
+msgid "_Alignment:"
+msgstr "সারিবদ্ধকরণ(_A):"
+
+#: src/ui/w42-dialogs.c:708
+msgid "_Direction:"
+msgstr "দিক(_D):"
+
+#: src/ui/w42-dialogs.c:713
+msgid "_Special:"
+msgstr "বিশেষ(_S):"
+
+#. Translators: how far the special indent reaches.
+#: src/ui/w42-dialogs.c:715
+msgid "B_y:"
+msgstr "পরিমাণ(_Y):"
+
+#: src/ui/w42-dialogs.c:720
+msgid "Spacing"
+msgstr "ব্যবধান"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:724
+msgid "Be_fore (pt):"
+msgstr "আগে (পয়েন্ট)(_F):"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:726
+msgid "After (_pt):"
+msgstr "পরে (পয়েন্ট)(_P):"
+
+#: src/ui/w42-dialogs.c:736
+msgid "Li_ne Spacing:"
+msgstr "লাইন ব্যবধান(_N):"
+
+#. Translators: the line spacing's figure: points for Exactly, a
+#. * multiple of the line for Multiple.
+#: src/ui/w42-dialogs.c:745
+msgid "A_t:"
+msgstr "মান(_T):"
+
+#: src/ui/w42-dialogs.c:755
+msgid "Text Flow"
+msgstr "পাঠ্য প্রবাহ"
+
+#: src/ui/w42-dialogs.c:757
+msgid "_Widow/Orphan Control"
+msgstr "উইডো/অরফ্যান নিয়ন্ত্রণ(_W)"
+
+#: src/ui/w42-dialogs.c:758
+msgid "_Keep Lines Together"
+msgstr "লাইনগুলি একসাথে রাখুন(_K)"
+
+#: src/ui/w42-dialogs.c:759
+msgid "Keep with Ne_xt"
+msgstr "পরেরটির সাথে রাখুন(_X)"
+
+#: src/ui/w42-dialogs.c:760
+msgid "Page _Break Before"
+msgstr "আগে পৃষ্ঠা বিরতি(_B)"
+
+#: src/ui/w42-dialogs.c:814
+msgctxt "line spacing"
+msgid "As defined"
+msgstr "সংজ্ঞা অনুযায়ী"
+
+#. Translators: %s is the name of a style, as it is in the document.
+#: src/ui/w42-dialogs.c:877
+#, c-format
+msgid "Character style, based on %s"
+msgstr "অক্ষর শৈলী, %s-এর উপর ভিত্তি করে"
+
+#. Translators: %s is the name of a style, as it is in the document.
+#: src/ui/w42-dialogs.c:880
+#, c-format
+msgid "Paragraph style, based on %s"
+msgstr "অনুচ্ছেদ শৈলী, %s-এর উপর ভিত্তি করে"
+
+#: src/ui/w42-dialogs.c:882
+msgid "Character style"
+msgstr "অক্ষর শৈলী"
+
+#: src/ui/w42-dialogs.c:882
+msgid "Paragraph style"
+msgstr "অনুচ্ছেদ শৈলী"
+
+#: src/ui/w42-dialogs.c:949
+msgid "New Style"
+msgstr "নতুন শৈলী"
+
+#: src/ui/w42-dialogs.c:952
+msgid "New style"
+msgstr "নতুন শৈলী"
+
+#: src/ui/w42-dialogs.c:953 src/ui/w42-dialogs.c:2279 src/ui/w42-dialogs.c:5346
+msgid "_Name:"
+msgstr "নাম(_N):"
+
+#: src/ui/w42-dialogs.c:961
+msgid "_Character style (applies to selected text only)"
+msgstr "অক্ষর শৈলী (শুধু নির্বাচিত পাঠ্যে প্রযোজ্য)(_C)"
+
+#. Translators: %s is the name of a style, as it is in the document.
+#: src/ui/w42-dialogs.c:966
+#, c-format
+msgid "Based on %s."
+msgstr "%s-এর উপর ভিত্তি করে।"
+
+#: src/ui/w42-dialogs.c:1122 src/ui/w42-window.c:4292
+msgid "Style"
+msgstr "শৈলী"
+
+#: src/ui/w42-dialogs.c:1128
+msgid "Styles"
+msgstr "শৈলী"
+
+#: src/ui/w42-dialogs.c:1129
+msgid "_Style:"
+msgstr "শৈলী(_S):"
+
+#: src/ui/w42-dialogs.c:1137
+msgid "_New..."
+msgstr "নতুন(_N)..."
+
+#: src/ui/w42-dialogs.c:1154
+msgid "Definition"
+msgstr "সংজ্ঞা"
+
+#: src/ui/w42-dialogs.c:1156
+msgid "_Font:"
+msgstr "ফন্ট(_F):"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:1165
+msgid "Si_ze (pt):"
+msgstr "আকার (পয়েন্ট)(_Z):"
+
+#: src/ui/w42-dialogs.c:1172
+msgid "_Bold"
+msgstr "গাঢ়(_B)"
+
+#: src/ui/w42-dialogs.c:1177
+msgid "Ali_gnment:"
+msgstr "সারিবদ্ধকরণ(_G):"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:1179
+msgid "Space B_efore (pt):"
+msgstr "আগের ব্যবধান (পয়েন্ট)(_E):"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:1181
+msgid "Space A_fter (pt):"
+msgstr "পরের ব্যবধান (পয়েন্ট)(_F):"
+
+#: src/ui/w42-dialogs.c:1189
+msgid "Outline le_vel:"
+msgstr "রূপরেখা স্তর(_V):"
+
+#: src/ui/w42-dialogs.c:1194
+msgid ""
+"0 for body text; 1 to 9 for a heading of that level, which is what Heading "
+"Numbering counts."
+msgstr ""
+"মূল পাঠ্যের জন্য 0; সেই স্তরের শিরোনামের জন্য 1 থেকে 9, যা শিরোনাম নম্বরকরণ গণনা "
+"করে।"
+
+#. Translators: "cm" is centimetres.
+#: src/ui/w42-dialogs.c:1205
+msgid "Fi_rst line (cm):"
+msgstr "প্রথম লাইন (সেমি)(_R):"
+
+#. Translators: "in" is inches.
+#: src/ui/w42-dialogs.c:1207
+msgid "Fi_rst line (in):"
+msgstr "প্রথম লাইন (ইঞ্চি)(_R):"
+
+#: src/ui/w42-dialogs.c:1209
+msgid "Line spa_cing:"
+msgstr "লাইন ব্যবধান(_C):"
+
+#: src/ui/w42-dialogs.c:1211
+msgid "_Page break before"
+msgstr "আগে পৃষ্ঠা বিরতি(_P)"
+
+#: src/ui/w42-dialogs.c:1212
+msgid "Keep with ne_xt"
+msgstr "পরেরটির সাথে রাখুন(_X)"
+
+#: src/ui/w42-dialogs.c:1214
+msgid "Every paragraph in this style starts a new page: chapter headings."
+msgstr "এই শৈলীর প্রতিটি অনুচ্ছেদ নতুন পৃষ্ঠায় শুরু হয়: অধ্যায়ের শিরোনামের জন্য।"
+
+#: src/ui/w42-dialogs.c:1224
+msgid "_Apply"
+msgstr "প্রয়োগ করুন(_A)"
+
+#: src/ui/w42-dialogs.c:1226
+msgid "Save the definition and apply the style to the selected paragraphs."
+msgstr "সংজ্ঞাটি সংরক্ষণ করুন এবং নির্বাচিত অনুচ্ছেদগুলিতে শৈলীটি প্রয়োগ করুন।"
+
+#. Translators: the tooltip of the button that centres the paragraph.
+#: src/ui/w42-dialogs.c:1271 src/ui/w42-window.c:4281
+msgctxt "alignment"
+msgid "Center"
+msgstr "কেন্দ্র"
+
+#: src/ui/w42-dialogs.c:1364
+msgid "H_eader:"
+msgstr "শীর্ষলেখ(_E):"
+
+#: src/ui/w42-dialogs.c:1365
+msgid "F_ooter:"
+msgstr "পাদলেখ(_O):"
+
+#: src/ui/w42-dialogs.c:1413
+msgid "Header and Footer"
+msgstr "শীর্ষলেখ ও পাদলেখ"
+
+#: src/ui/w42-dialogs.c:1416
+msgid "Text"
+msgstr "পাঠ্য"
+
+#: src/ui/w42-dialogs.c:1417
+msgid "_Header:"
+msgstr "শীর্ষলেখ(_H):"
+
+#: src/ui/w42-dialogs.c:1418
+msgid "_Footer:"
+msgstr "পাদলেখ(_F):"
+
+#: src/ui/w42-dialogs.c:1420
+msgid "First Page"
+msgstr "প্রথম পৃষ্ঠা"
+
+#: src/ui/w42-dialogs.c:1421
+msgid "_Different first page"
+msgstr "ভিন্ন প্রথম পৃষ্ঠা(_D)"
+
+#: src/ui/w42-dialogs.c:1425
+msgid "Even Pages"
+msgstr "জোড় পৃষ্ঠা"
+
+#: src/ui/w42-dialogs.c:1426
+msgid "Different odd and _even pages"
+msgstr "ভিন্ন বিজোড় ও জোড় পৃষ্ঠা(_E)"
+
+#. Translators: {PAGE}, {NUMPAGES} and {DATE} are typed into the header
+#. * as they are: keep them in English, braces and all.
+#: src/ui/w42-dialogs.c:1433
+msgid ""
+"Fields: {PAGE} is the page number, {NUMPAGES} the number of pages, {DATE} "
+"today's date.  Headers and footers show in Page Layout view and in print."
+msgstr ""
+"ক্ষেত্র: {PAGE} হলো পৃষ্ঠা নম্বর, {NUMPAGES} মোট পৃষ্ঠার সংখ্যা, {DATE} আজকের "
+"তারিখ।  শীর্ষলেখ ও পাদলেখ পৃষ্ঠা বিন্যাস দৃশ্যে এবং মুদ্রণে দেখা যায়।"
+
+#: src/ui/w42-dialogs.c:1498
+msgid "Top of Page (Header)"
+msgstr "পৃষ্ঠার শীর্ষে (শীর্ষলেখ)"
+
+#: src/ui/w42-dialogs.c:1498
+msgid "Bottom of Page (Footer)"
+msgstr "পৃষ্ঠার নিচে (পাদলেখ)"
+
+#: src/ui/w42-dialogs.c:1508
+msgid "Page Numbers"
+msgstr "পৃষ্ঠা নম্বর"
+
+#: src/ui/w42-dialogs.c:1511 src/ui/w42-dialogs.c:6222
+msgid "Position"
+msgstr "অবস্থান"
+
+#: src/ui/w42-dialogs.c:1512 src/ui/w42-dialogs.c:6171
+#: src/ui/w42-dialogs.c:6223 src/ui/w42-dialogs.c:6270
+msgid "_Position:"
+msgstr "অবস্থান(_P):"
+
+#: src/ui/w42-dialogs.c:1556
+msgid "Insert Table"
+msgstr "সারণী সন্নিবেশ করুন"
+
+#: src/ui/w42-dialogs.c:1559
+msgid "Table Size"
+msgstr "সারণীর আকার"
+
+#: src/ui/w42-dialogs.c:1561
+msgid "Number of _Columns:"
+msgstr "কলামের সংখ্যা(_C):"
+
+#: src/ui/w42-dialogs.c:1569
+msgid "Number of _Rows:"
+msgstr "সারির সংখ্যা(_R):"
+
+#. Translators: what Edit > Go To goes to.
+#: src/ui/w42-dialogs.c:1609
+msgctxt "go to"
+msgid "Page"
+msgstr "পৃষ্ঠা"
+
+#: src/ui/w42-dialogs.c:1609
+msgctxt "go to"
+msgid "Line"
+msgstr "লাইন"
+
+#: src/ui/w42-dialogs.c:1609
+msgctxt "go to"
+msgid "Bookmark"
+msgstr "বুকমার্ক"
+
+#: src/ui/w42-dialogs.c:1664
+msgid "Go To"
+msgstr "এতে যান"
+
+#: src/ui/w42-dialogs.c:1668
+msgid "Go to What"
+msgstr "কোথায় যাবেন"
+
+#: src/ui/w42-dialogs.c:1670
+msgid "Go to _What:"
+msgstr "কোথায় যাবেন(_W):"
+
+#: src/ui/w42-dialogs.c:1672
+msgid "Enter _Number:"
+msgstr "নম্বর লিখুন(_N):"
+
+#: src/ui/w42-dialogs.c:1750
+msgid "Date and Time"
+msgstr "তারিখ ও সময়"
+
+#: src/ui/w42-dialogs.c:1753
+msgid "Available Formats"
+msgstr "উপলব্ধ বিন্যাস"
+
+#: src/ui/w42-dialogs.c:1755
+msgid "_Formats:"
+msgstr "বিন্যাস(_F):"
+
+#: src/ui/w42-dialogs.c:1845
+msgid "Symbol"
+msgstr "প্রতীক"
+
+#: src/ui/w42-dialogs.c:1878 src/ui/w42-dialogs.c:2992
+#: src/ui/w42-dialogs.c:3477 src/ui/w42-dialogs.c:3867
+#: src/ui/w42-dialogs.c:7056 src/ui/w42-find-dialog.c:316
+#: src/ui/w42-spell-dialog.c:401 src/ui/w42-window.c:3948
+msgid "Close"
+msgstr "বন্ধ করুন"
+
+#: src/ui/w42-dialogs.c:1920
+msgid "AutoCorrect"
+msgstr "স্বতঃসংশোধন"
+
+#: src/ui/w42-dialogs.c:1923
+msgid "As You Type"
+msgstr "টাইপ করার সময়"
+
+#: src/ui/w42-dialogs.c:1924
+msgid "_Correct as you type"
+msgstr "টাইপ করার সময় সংশোধন করুন(_C)"
+
+#: src/ui/w42-dialogs.c:1929
+msgid ""
+"Straight quotes become curly ones, two capitals at the start of a word "
+"become one, a sentence takes a capital, two hyphens become a dash, and the "
+"words below are put right."
+msgstr ""
+"সোজা উদ্ধৃতি চিহ্ন বাঁকা হয়ে যায়, শব্দের শুরুতে পরপর দুটি বড় হাতের অক্ষর একটিতে পরিণত "
+"হয়, বাক্যের প্রথম অক্ষর বড় হাতের হয়, দুটি হাইফেন ড্যাশে পরিণত হয়, এবং নিচের "
+"শব্দগুলি সংশোধন করা হয়।"
+
+#: src/ui/w42-dialogs.c:1939 src/ui/w42-find-dialog.c:240
+msgid "Replace"
+msgstr "প্রতিস্থাপন"
+
+#: src/ui/w42-dialogs.c:1979
+msgctxt "tab stop"
+msgid "Left"
+msgstr "বাম"
+
+#: src/ui/w42-dialogs.c:1979
+msgctxt "tab stop"
+msgid "Center"
+msgstr "কেন্দ্র"
+
+#: src/ui/w42-dialogs.c:1980
+msgctxt "tab stop"
+msgid "Right"
+msgstr "ডান"
+
+#: src/ui/w42-dialogs.c:1980
+msgctxt "tab stop"
+msgid "Decimal"
+msgstr "দশমিক"
+
+#. Translators: the first of the tab leaders, numbered 1 to 4 as Word
+#. * numbered them; the others are drawn with dots, hyphens and rules.
+#: src/ui/w42-dialogs.c:1986
+msgid "1  None"
+msgstr "1  কোনোটিই নয়"
+
+#: src/ui/w42-dialogs.c:2101
+msgid "Tabs"
+msgstr "ট্যাব"
+
+#: src/ui/w42-dialogs.c:2105
+msgid "Tab Stops"
+msgstr "ট্যাব স্টপ"
+
+#: src/ui/w42-dialogs.c:2107
+msgid "_Tab Stop Position:"
+msgstr "ট্যাব স্টপের অবস্থান(_T):"
+
+#: src/ui/w42-dialogs.c:2118
+msgid "_Leader:"
+msgstr "লিডার(_L):"
+
+#: src/ui/w42-dialogs.c:2132
+msgid "_Set"
+msgstr "সেট করুন(_S)"
+
+#: src/ui/w42-dialogs.c:2133
+msgid "Cl_ear"
+msgstr "সাফ করুন(_E)"
+
+#: src/ui/w42-dialogs.c:2134
+msgid "Clear A_ll"
+msgstr "সব সাফ করুন(_L)"
+
+#: src/ui/w42-dialogs.c:2168
+msgid "Inches"
+msgstr "ইঞ্চি"
+
+#: src/ui/w42-dialogs.c:2168
+msgid "Centimeters"
+msgstr "সেন্টিমিটার"
+
+#: src/ui/w42-dialogs.c:2170
+msgctxt "view"
+msgid "Normal"
+msgstr "সাধারণ"
+
+#: src/ui/w42-dialogs.c:2170
+msgctxt "view"
+msgid "Online Layout"
+msgstr "অনলাইন বিন্যাস"
+
+#: src/ui/w42-dialogs.c:2170
+msgctxt "view"
+msgid "Page Layout"
+msgstr "পৃষ্ঠা বিন্যাস"
+
+#: src/ui/w42-dialogs.c:2257 src/ui/w42-print.c:852
+msgid "Options"
+msgstr "বিকল্প"
+
+#: src/ui/w42-dialogs.c:2260
+msgid "General"
+msgstr "সাধারণ"
+
+#: src/ui/w42-dialogs.c:2261
+msgid "_Measurement Units:"
+msgstr "পরিমাপের একক(_M):"
+
+#: src/ui/w42-dialogs.c:2264
+msgid "View"
+msgstr "দৃশ্য"
+
+#: src/ui/w42-dialogs.c:2266
+msgid "Default _View:"
+msgstr "ডিফল্ট দৃশ্য(_V):"
+
+#: src/ui/w42-dialogs.c:2275
+msgid "Default _Zoom:"
+msgstr "ডিফল্ট জুম(_Z):"
+
+#: src/ui/w42-dialogs.c:2277
+msgid "User Info"
+msgstr "ব্যবহারকারীর তথ্য"
+
+#: src/ui/w42-dialogs.c:2293
+msgid "Annotations and revisions carry this name in the files you save."
+msgstr "আপনার সংরক্ষিত ফাইলে মন্তব্য ও সংশোধনের সাথে এই নাম থাকে।"
+
+#: src/ui/w42-dialogs.c:2301 src/ui/w42-spell-dialog.c:319
+#: src/ui/w42-window.c:4071
+msgid "Spelling"
+msgstr "বানান"
+
+#: src/ui/w42-dialogs.c:2302
+msgid "Correct as you t_ype"
+msgstr "টাইপ করার সময় সংশোধন করুন(_Y)"
+
+#: src/ui/w42-dialogs.c:2307
+msgid "_Check spelling as you type"
+msgstr "টাইপ করার সময় বানান পরীক্ষা করুন(_C)"
+
+#. Translators: the group of save settings, not a button.
+#: src/ui/w42-dialogs.c:2316
+msgctxt "options"
+msgid "Save"
+msgstr "সংরক্ষণ"
+
+#: src/ui/w42-dialogs.c:2317
+msgid "Always create _backup copy"
+msgstr "সর্বদা ব্যাকআপ কপি তৈরি করুন(_B)"
+
+#. Translators: "Backup of" is how the backup's file name begins.
+#: src/ui/w42-dialogs.c:2322
+msgid ""
+"Before a file is saved over, the version it replaces is kept beside it as "
+"“Backup of” and its name."
+msgstr ""
+"কোনো ফাইলের উপর সংরক্ষণ করার আগে, যে সংস্করণটি প্রতিস্থাপিত হয় সেটি নামের আগে "
+"“ব্যাকআপ -” যোগ করে তার পাশেই রাখা হয়।"
+
+#: src/ui/w42-dialogs.c:2326
+msgid "Save _AutoRecover info every:"
+msgstr "স্বতঃপুনরুদ্ধার তথ্য সংরক্ষণের ব্যবধান(_A):"
+
+#. Translators: follows "Save AutoRecover info every:" and a number.
+#: src/ui/w42-dialogs.c:2328
+msgid "minutes"
+msgstr "মিনিট"
+
+#: src/ui/w42-dialogs.c:2372 src/ui/w42-dialogs.c:2387
+#: src/ui/w42-dialogs.c:3041 src/ui/w42-dialogs.c:3975
+#: src/ui/w42-dialogs.c:5056
+msgctxt "colour"
+msgid "Black"
+msgstr "কালো"
+
+#: src/ui/w42-dialogs.c:2372 src/ui/w42-dialogs.c:2387
+#: src/ui/w42-dialogs.c:3031 src/ui/w42-dialogs.c:3041
+#: src/ui/w42-dialogs.c:3976 src/ui/w42-dialogs.c:5053
+msgctxt "colour"
+msgid "Blue"
+msgstr "নীল"
+
+#: src/ui/w42-dialogs.c:2372 src/ui/w42-dialogs.c:2387
+#: src/ui/w42-dialogs.c:3042 src/ui/w42-dialogs.c:5052
+msgctxt "colour"
+msgid "Cyan"
+msgstr "সায়ান"
+
+#: src/ui/w42-dialogs.c:2373 src/ui/w42-dialogs.c:2388
+#: src/ui/w42-dialogs.c:3033 src/ui/w42-dialogs.c:3042
+#: src/ui/w42-dialogs.c:3976 src/ui/w42-dialogs.c:5052
+msgctxt "colour"
+msgid "Green"
+msgstr "সবুজ"
+
+#: src/ui/w42-dialogs.c:2373 src/ui/w42-dialogs.c:2388
+#: src/ui/w42-dialogs.c:3042 src/ui/w42-dialogs.c:5053
+msgctxt "colour"
+msgid "Magenta"
+msgstr "ম্যাজেন্টা"
+
+#: src/ui/w42-dialogs.c:2373 src/ui/w42-dialogs.c:2388
+#: src/ui/w42-dialogs.c:3032 src/ui/w42-dialogs.c:3043
+#: src/ui/w42-dialogs.c:3976 src/ui/w42-dialogs.c:5053
+msgctxt "colour"
+msgid "Red"
+msgstr "লাল"
+
+#: src/ui/w42-dialogs.c:2374 src/ui/w42-dialogs.c:2389
+#: src/ui/w42-dialogs.c:3030 src/ui/w42-dialogs.c:3043
+#: src/ui/w42-dialogs.c:3977 src/ui/w42-dialogs.c:5052
+msgctxt "colour"
+msgid "Yellow"
+msgstr "হলুদ"
+
+#: src/ui/w42-dialogs.c:2374 src/ui/w42-dialogs.c:2389
+#: src/ui/w42-dialogs.c:3043 src/ui/w42-dialogs.c:3975
+msgctxt "colour"
+msgid "White"
+msgstr "সাদা"
+
+#: src/ui/w42-dialogs.c:2375 src/ui/w42-dialogs.c:2390
+#: src/ui/w42-dialogs.c:3032 src/ui/w42-dialogs.c:3044
+#: src/ui/w42-dialogs.c:5054
+msgctxt "colour"
+msgid "Dark Blue"
+msgstr "গাঢ় নীল"
+
+#: src/ui/w42-dialogs.c:2375 src/ui/w42-dialogs.c:2390
+#: src/ui/w42-dialogs.c:3044 src/ui/w42-dialogs.c:5054
+msgctxt "colour"
+msgid "Dark Cyan"
+msgstr "গাঢ় সায়ান"
+
+#: src/ui/w42-dialogs.c:2375 src/ui/w42-dialogs.c:2390
+#: src/ui/w42-dialogs.c:3044 src/ui/w42-dialogs.c:5054
+msgctxt "colour"
+msgid "Dark Green"
+msgstr "গাঢ় সবুজ"
+
+#: src/ui/w42-dialogs.c:2376 src/ui/w42-dialogs.c:2391
+#: src/ui/w42-dialogs.c:3045 src/ui/w42-dialogs.c:5055
+msgctxt "colour"
+msgid "Dark Magenta"
+msgstr "গাঢ় ম্যাজেন্টা"
+
+#: src/ui/w42-dialogs.c:2376 src/ui/w42-dialogs.c:2391
+#: src/ui/w42-dialogs.c:3033 src/ui/w42-dialogs.c:3045
+#: src/ui/w42-dialogs.c:5055
+msgctxt "colour"
+msgid "Dark Red"
+msgstr "গাঢ় লাল"
+
+#: src/ui/w42-dialogs.c:2377 src/ui/w42-dialogs.c:2392
+#: src/ui/w42-dialogs.c:3034 src/ui/w42-dialogs.c:3045
+#: src/ui/w42-dialogs.c:5055
+msgctxt "colour"
+msgid "Dark Yellow"
+msgstr "গাঢ় হলুদ"
+
+#: src/ui/w42-dialogs.c:2377 src/ui/w42-dialogs.c:2392
+#: src/ui/w42-dialogs.c:3046 src/ui/w42-dialogs.c:5051
+msgctxt "colour"
+msgid "Dark Gray"
+msgstr "গাঢ় ধূসর"
+
+#: src/ui/w42-dialogs.c:2377 src/ui/w42-dialogs.c:2392
+#: src/ui/w42-dialogs.c:3046 src/ui/w42-dialogs.c:5051
+msgctxt "colour"
+msgid "Light Gray"
+msgstr "হালকা ধূসর"
+
+#. Translators: no colour.
+#. Translators: no highlight colour.
+#: src/ui/w42-dialogs.c:2386 src/ui/w42-dialogs.c:3030
+msgctxt "colour"
+msgid "None"
+msgstr "কোনোটিই নয়"
+
+#. Translators: line widths; "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:2408
+msgid "¼ pt"
+msgstr "¼ পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2408
+msgid "½ pt"
+msgstr "½ পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2408
+msgid "¾ pt"
+msgstr "¾ পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2408
+msgid "1 pt"
+msgstr "1 পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2408
+msgid "1½ pt"
+msgstr "1½ পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2409
+msgid "2¼ pt"
+msgstr "2¼ পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2409
+msgid "3 pt"
+msgstr "3 পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2409
+msgid "4½ pt"
+msgstr "4½ পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2409
+msgid "6 pt"
+msgstr "6 পয়েন্ট"
+
+#: src/ui/w42-dialogs.c:2413
+msgctxt "border style"
+msgid "Single"
+msgstr "একক"
+
+#: src/ui/w42-dialogs.c:2413
+msgctxt "border style"
+msgid "Double"
+msgstr "দ্বৈত"
+
+#: src/ui/w42-dialogs.c:2414
+msgctxt "border style"
+msgid "Dashed"
+msgstr "ড্যাশযুক্ত"
+
+#: src/ui/w42-dialogs.c:2414
+msgctxt "border style"
+msgid "Dotted"
+msgstr "বিন্দুযুক্ত"
+
+#. Translators: what the borders are put on, inside a table.
+#: src/ui/w42-dialogs.c:2418
+msgctxt "apply borders to"
+msgid "Paragraph"
+msgstr "অনুচ্ছেদ"
+
+#: src/ui/w42-dialogs.c:2418
+msgctxt "apply borders to"
+msgid "Cell"
+msgstr "কক্ষ"
+
+#: src/ui/w42-dialogs.c:2419
+msgctxt "apply borders to"
+msgid "Table"
+msgstr "সারণী"
+
+#: src/ui/w42-dialogs.c:2434
+msgctxt "shading"
+msgid "None"
+msgstr "কোনোটিই নয়"
+
+#: src/ui/w42-dialogs.c:2435
+msgctxt "shading"
+msgid "Solid (100%)"
+msgstr "নিরেট (100%)"
+
+#: src/ui/w42-dialogs.c:2633 src/ui/w42-dialogs.c:4368
+msgid "_Top"
+msgstr "শীর্ষ(_T)"
+
+#: src/ui/w42-dialogs.c:2633 src/ui/w42-dialogs.c:4368
+msgid "Botto_m"
+msgstr "নিচ(_M)"
+
+#: src/ui/w42-dialogs.c:2633
+msgid "_Left"
+msgstr "বাম(_L)"
+
+#: src/ui/w42-dialogs.c:2633
+msgid "_Right"
+msgstr "ডান(_R)"
+
+#: src/ui/w42-dialogs.c:2645
+msgid "Borders and Shading"
+msgstr "সীমানা ও ছায়াকরণ"
+
+#: src/ui/w42-dialogs.c:2649
+msgid "Borders"
+msgstr "সীমানা"
+
+#. Translators: the preset of no borders.
+#: src/ui/w42-dialogs.c:2653
+msgid "_None"
+msgstr "কোনোটিই নয়(_N)"
+
+#. Translators: the preset of a border on all four sides.
+#: src/ui/w42-dialogs.c:2655
+msgid "_Box"
+msgstr "বাক্স(_B)"
+
+#: src/ui/w42-dialogs.c:2670
+msgid "_Inside (between the cells)"
+msgstr "ভিতরে (কক্ষগুলির মাঝে)(_I)"
+
+#: src/ui/w42-dialogs.c:2675
+msgid "St_yle:"
+msgstr "শৈলী(_Y):"
+
+#: src/ui/w42-dialogs.c:2677
+msgid "Line _Width:"
+msgstr "রেখার প্রস্থ(_W):"
+
+#: src/ui/w42-dialogs.c:2678 src/ui/w42-dialogs.c:4103
+msgid "Line _Color:"
+msgstr "রেখার রং(_C):"
+
+#: src/ui/w42-dialogs.c:2684
+msgid "_Apply to:"
+msgstr "এতে প্রয়োগ করুন(_A):"
+
+#: src/ui/w42-dialogs.c:2690
+msgid "Shading"
+msgstr "ছায়াকরণ"
+
+#: src/ui/w42-dialogs.c:2694 src/ui/w42-dialogs.c:4359
+msgid "_Shading:"
+msgstr "ছায়াকরণ(_S):"
+
+#: src/ui/w42-dialogs.c:2695 src/ui/w42-dialogs.c:4364
+msgid "Bac_kground:"
+msgstr "পটভূমি(_K):"
+
+#: src/ui/w42-dialogs.c:2702
+msgid "Page Border"
+msgstr "পৃষ্ঠা সীমানা"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:2706
+msgid "_Distance from edge (pt):"
+msgstr "প্রান্ত থেকে দূরত্ব (পয়েন্ট)(_D):"
+
+#: src/ui/w42-dialogs.c:2708
+msgid "A border round _every page"
+msgstr "প্রতিটি পৃষ্ঠার চারপাশে সীমানা(_E)"
+
+#: src/ui/w42-dialogs.c:2711
+msgid "Style:"
+msgstr "শৈলী:"
+
+#: src/ui/w42-dialogs.c:2713
+msgid "Line Width:"
+msgstr "রেখার প্রস্থ:"
+
+#: src/ui/w42-dialogs.c:2716
+msgid "Line Color:"
+msgstr "রেখার রং:"
+
+#: src/ui/w42-dialogs.c:2783
+msgid "Hyperlink"
+msgstr "হাইপারলিঙ্ক"
+
+#: src/ui/w42-dialogs.c:2786
+msgid "Link"
+msgstr "লিঙ্ক"
+
+#: src/ui/w42-dialogs.c:2788
+msgid "_Address:"
+msgstr "ঠিকানা(_A):"
+
+#: src/ui/w42-dialogs.c:2797
+msgid "_Text to Display:"
+msgstr "প্রদর্শনের পাঠ্য(_T):"
+
+#: src/ui/w42-dialogs.c:2816
+msgid "_Remove Link"
+msgstr "লিঙ্ক সরান(_R)"
+
+#: src/ui/w42-dialogs.c:2879
+msgid "Type a name for the bookmark."
+msgstr "বুকমার্কের জন্য একটি নাম লিখুন।"
+
+#: src/ui/w42-dialogs.c:2884
+msgid "Select the text to bookmark first."
+msgstr "প্রথমে বুকমার্ক করার পাঠ্য নির্বাচন করুন।"
+
+#: src/ui/w42-dialogs.c:2901
+msgid "No bookmark of that name."
+msgstr "ওই নামে কোনো বুকমার্ক নেই।"
+
+#: src/ui/w42-dialogs.c:2945
+msgid "Bookmark"
+msgstr "বুকমার্ক"
+
+#: src/ui/w42-dialogs.c:2949
+msgid "Bookmarks"
+msgstr "বুকমার্ক"
+
+#: src/ui/w42-dialogs.c:2951
+msgid "Bookmark _Name:"
+msgstr "বুকমার্কের নাম(_N):"
+
+#: src/ui/w42-dialogs.c:2972 src/ui/w42-dialogs.c:3475
+#: src/ui/w42-dialogs.c:5370 src/ui/w42-spell-dialog.c:399
+msgid "_Add"
+msgstr "যোগ করুন(_A)"
+
+#: src/ui/w42-dialogs.c:2973
+msgid "_Go To"
+msgstr "যান(_G)"
+
+#: src/ui/w42-dialogs.c:3023
+msgctxt "underline"
+msgid "(none)"
+msgstr "(কোনোটিই নয়)"
+
+#: src/ui/w42-dialogs.c:3023
+msgctxt "underline"
+msgid "Single"
+msgstr "একক"
+
+#: src/ui/w42-dialogs.c:3023
+msgctxt "underline"
+msgid "Double"
+msgstr "দ্বৈত"
+
+#: src/ui/w42-dialogs.c:3024
+msgctxt "underline"
+msgid "Words Only"
+msgstr "শুধু শব্দ"
+
+#: src/ui/w42-dialogs.c:3024
+msgctxt "underline"
+msgid "Dotted"
+msgstr "বিন্দুযুক্ত"
+
+#: src/ui/w42-dialogs.c:3024
+msgctxt "underline"
+msgid "Dashed"
+msgstr "ড্যাশযুক্ত"
+
+#: src/ui/w42-dialogs.c:3025
+msgctxt "underline"
+msgid "Thick"
+msgstr "পুরু"
+
+#: src/ui/w42-dialogs.c:3025
+msgctxt "underline"
+msgid "Wave"
+msgstr "তরঙ্গ"
+
+#: src/ui/w42-dialogs.c:3030
+msgctxt "colour"
+msgid "Bright Green"
+msgstr "উজ্জ্বল সবুজ"
+
+#: src/ui/w42-dialogs.c:3031
+msgctxt "colour"
+msgid "Turquoise"
+msgstr "ফিরোজা"
+
+#: src/ui/w42-dialogs.c:3031
+msgctxt "colour"
+msgid "Pink"
+msgstr "গোলাপি"
+
+#: src/ui/w42-dialogs.c:3032
+msgctxt "colour"
+msgid "Teal"
+msgstr "টিল"
+
+#: src/ui/w42-dialogs.c:3033
+msgctxt "colour"
+msgid "Violet"
+msgstr "বেগুনি"
+
+#: src/ui/w42-dialogs.c:3034
+msgctxt "colour"
+msgid "Gray 50%"
+msgstr "ধূসর 50%"
+
+#: src/ui/w42-dialogs.c:3034
+msgctxt "colour"
+msgid "Gray 25%"
+msgstr "ধূসর 25%"
+
+#. Translators: the automatic text colour, which is black.
+#: src/ui/w42-dialogs.c:3041
+msgctxt "colour"
+msgid "Auto"
+msgstr "স্বয়ংক্রিয়"
+
+#: src/ui/w42-dialogs.c:3117
+msgid "Font Effects"
+msgstr "ফন্ট প্রভাব"
+
+#: src/ui/w42-dialogs.c:3121
+msgid "Effects"
+msgstr "প্রভাব"
+
+#: src/ui/w42-dialogs.c:3122
+msgid "Stri_kethrough"
+msgstr "স্ট্রাইকথ্রু(_K)"
+
+#: src/ui/w42-dialogs.c:3123
+msgid "Su_perscript"
+msgstr "উপরিলিপি(_P)"
+
+#: src/ui/w42-dialogs.c:3124
+msgid "Su_bscript"
+msgstr "নিম্নলিপি(_B)"
+
+#: src/ui/w42-dialogs.c:3125
+msgid "S_mall Caps"
+msgstr "ছোট বড় হাতের অক্ষর(_M)"
+
+#: src/ui/w42-dialogs.c:3126
+msgid "_All Caps"
+msgstr "সব বড় হাতের অক্ষর(_A)"
+
+#: src/ui/w42-dialogs.c:3127
+msgid "O_verline"
+msgstr "উপররেখা(_V)"
+
+#: src/ui/w42-dialogs.c:3144
+msgid "Dou_ble Strikethrough"
+msgstr "দ্বৈত স্ট্রাইকথ্রু(_B)"
+
+#: src/ui/w42-dialogs.c:3145
+msgid "Shado_w"
+msgstr "ছায়া(_W)"
+
+#: src/ui/w42-dialogs.c:3146
+msgid "Out_line"
+msgstr "রূপরেখা(_L)"
+
+#: src/ui/w42-dialogs.c:3147
+msgid "Em_boss"
+msgstr "উত্থিত(_B)"
+
+#: src/ui/w42-dialogs.c:3148
+msgid "En_grave"
+msgstr "খোদাই(_G)"
+
+#: src/ui/w42-dialogs.c:3162 src/ui/w42-window.c:4343
+msgid "Underline"
+msgstr "নিম্নরেখা"
+
+#: src/ui/w42-dialogs.c:3163
+msgid "_Underline:"
+msgstr "নিম্নরেখা(_U):"
+
+#: src/ui/w42-dialogs.c:3166
+msgid "Highlight"
+msgstr "হাইলাইট"
+
+#: src/ui/w42-dialogs.c:3170
+msgid "_Highlight:"
+msgstr "হাইলাইট(_H):"
+
+#: src/ui/w42-dialogs.c:3176 src/ui/w42-dialogs.c:5162
+msgid "_Color:"
+msgstr "রং(_C):"
+
+#: src/ui/w42-dialogs.c:3179
+msgid "Character Spacing"
+msgstr "অক্ষর ব্যবধান"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:3182
+msgid "_Expanded by (pt):"
+msgstr "প্রসারণ (পয়েন্ট)(_E):"
+
+#: src/ui/w42-dialogs.c:3212
+msgid "Whole document"
+msgstr "সম্পূর্ণ নথি"
+
+#: src/ui/w42-dialogs.c:3212
+msgid "This section"
+msgstr "এই বিভাগ"
+
+#: src/ui/w42-dialogs.c:3212
+msgid "This point forward"
+msgstr "এখান থেকে সামনে"
+
+#. Translators: how many columns of text.
+#: src/ui/w42-dialogs.c:3217
+msgctxt "columns"
+msgid "One"
+msgstr "এক"
+
+#: src/ui/w42-dialogs.c:3217
+msgctxt "columns"
+msgid "Two"
+msgstr "দুই"
+
+#: src/ui/w42-dialogs.c:3217
+msgctxt "columns"
+msgid "Three"
+msgstr "তিন"
+
+#: src/ui/w42-dialogs.c:3261
+msgid "Presets"
+msgstr "প্রিসেট"
+
+#: src/ui/w42-dialogs.c:3267
+msgid "_Number of Columns:"
+msgstr "কলামের সংখ্যা(_N):"
+
+#. Translators: the space between the columns.
+#: src/ui/w42-dialogs.c:3270
+msgid "_Spacing:"
+msgstr "ব্যবধান(_S):"
+
+#: src/ui/w42-dialogs.c:3273
+msgid "_Apply To:"
+msgstr "এতে প্রয়োগ করুন(_A):"
+
+#. Translators: an annotation in the list: the annotated text in
+#. * quotation marks (the second %s is an ellipsis when it was cut
+#. * short), a dash, and the annotation.
+#: src/ui/w42-dialogs.c:3338
+#, c-format
+msgid "“%s%s” — %s"
+msgstr "“%s%s” — %s"
+
+#: src/ui/w42-dialogs.c:3351
+msgid "No annotations in the document."
+msgstr "নথিতে কোনো মন্তব্য নেই।"
+
+#: src/ui/w42-dialogs.c:3363
+msgid "Select the text to annotate first."
+msgstr "প্রথমে মন্তব্য করার পাঠ্য নির্বাচন করুন।"
+
+#: src/ui/w42-dialogs.c:3365
+msgid "Type the annotation first."
+msgstr "প্রথমে মন্তব্যটি লিখুন।"
+
+#: src/ui/w42-dialogs.c:3433
+msgid "Annotations"
+msgstr "মন্তব্য"
+
+#: src/ui/w42-dialogs.c:3437
+msgid "Annotation"
+msgstr "মন্তব্য"
+
+#: src/ui/w42-dialogs.c:3439 src/ui/w42-dialogs.c:4079
+msgid "_Text:"
+msgstr "পাঠ্য(_T):"
+
+#: src/ui/w42-dialogs.c:3456
+msgid "In the Document"
+msgstr "নথিতে"
+
+#: src/ui/w42-dialogs.c:3565
+#, c-format
+msgid "%u record"
+msgid_plural "%u records"
+msgstr[0] "%uটি রেকর্ড"
+msgstr[1] "%uটি রেকর্ড"
+
+#: src/ui/w42-dialogs.c:3566
+#, c-format
+msgid "%u field"
+msgid_plural "%u fields"
+msgstr[0] "%uটি ক্ষেত্র"
+msgstr[1] "%uটি ক্ষেত্র"
+
+#. Translators: the data source's size: "12 records" and "3 fields".
+#: src/ui/w42-dialogs.c:3568
+#, c-format
+msgid "%s, %s."
+msgstr "%s, %s।"
+
+#: src/ui/w42-dialogs.c:3623
+msgid "Comma Separated Values (*.csv)"
+msgstr "কমা দ্বারা পৃথক মান (*.csv)"
+
+#: src/ui/w42-dialogs.c:3627
+msgid "Open Data Source"
+msgstr "ডেটা উৎস খুলুন"
+
+#: src/ui/w42-dialogs.c:3647 src/ui/w42-dialogs.c:3773
+msgid "Open a data source first."
+msgstr "প্রথমে একটি ডেটা উৎস খুলুন।"
+
+#: src/ui/w42-dialogs.c:3673
+msgid "A merge is written as Rich Text: give the file a name ending .rtf."
+msgstr "মার্জ রিচ টেক্সট হিসাবে লেখা হয়: ফাইলের নামের শেষে .rtf দিন।"
+
+#. Translators: %s is a file name.
+#: src/ui/w42-dialogs.c:3688
+#, c-format
+msgid ""
+"%s is there already: choose it by that name to replace it, or another name."
+msgstr ""
+"%s ইতিমধ্যে আছে: প্রতিস্থাপন করতে ওই নামটিই বেছে নিন, অথবা অন্য একটি নাম দিন।"
+
+#: src/ui/w42-dialogs.c:3752
+msgid "Word42 could not open the merged document."
+msgstr "Word42 মার্জ করা নথিটি খুলতে পারেনি।"
+
+#: src/ui/w42-dialogs.c:3778
+msgid "The data source has no records."
+msgstr "ডেটা উৎসে কোনো রেকর্ড নেই।"
+
+#: src/ui/w42-dialogs.c:3785 src/ui/w42-window.c:324
+msgid "Rich Text Format (*.rtf)"
+msgstr "রিচ টেক্সট ফরম্যাট (*.rtf)"
+
+#: src/ui/w42-dialogs.c:3788
+msgid "Merge to New Document"
+msgstr "নতুন নথিতে মার্জ করুন"
+
+#. Translators: the name the merged document is offered under; keep
+#. * the .rtf at the end.
+#: src/ui/w42-dialogs.c:3792
+msgid "Merged.rtf"
+msgstr "মার্জকৃত.rtf"
+
+#: src/ui/w42-dialogs.c:3814
+msgid "Mail Merge"
+msgstr "মেল মার্জ"
+
+#: src/ui/w42-dialogs.c:3819
+msgid "Data Source"
+msgstr "ডেটা উৎস"
+
+#: src/ui/w42-dialogs.c:3821
+msgid "A CSV file whose first row names the fields."
+msgstr "একটি CSV ফাইল, যার প্রথম সারিতে ক্ষেত্রগুলির নাম থাকে।"
+
+#: src/ui/w42-dialogs.c:3825
+msgid "_Get Data..."
+msgstr "ডেটা আনুন(_G)..."
+
+#. Translators: no data source file has been chosen yet.
+#: src/ui/w42-dialogs.c:3828
+msgctxt "data source"
+msgid "(none)"
+msgstr "(কোনোটিই নয়)"
+
+#: src/ui/w42-dialogs.c:3835
+msgid "Merge Fields"
+msgstr "মার্জ ক্ষেত্র"
+
+#: src/ui/w42-dialogs.c:3848
+msgid "_Insert Merge Field"
+msgstr "মার্জ ক্ষেত্র সন্নিবেশ করুন(_I)"
+
+#: src/ui/w42-dialogs.c:3849
+msgid "_Merge to New Document..."
+msgstr "নতুন নথিতে মার্জ করুন(_M)..."
+
+#. Translators: how a merge field looks in the text; "Name" stands for
+#. * a field's name.
+#: src/ui/w42-dialogs.c:3858
+msgid "Fields go into the text as «Name»."
+msgstr "ক্ষেত্রগুলি পাঠ্যে «নাম» আকারে বসে।"
+
+#: src/ui/w42-dialogs.c:3918 src/ui/w42-dialogs.c:6066
+msgid "Page number"
+msgstr "পৃষ্ঠা নম্বর"
+
+#: src/ui/w42-dialogs.c:3918
+msgid "Bookmark text"
+msgstr "বুকমার্কের পাঠ্য"
+
+#: src/ui/w42-dialogs.c:3929
+msgid "Cross-reference"
+msgstr "ক্রস-রেফারেন্স"
+
+#: src/ui/w42-dialogs.c:3932
+msgid "Reference"
+msgstr "রেফারেন্স"
+
+#. Translators: "Insert > Bookmark" is the menu command.
+#: src/ui/w42-dialogs.c:3937
+msgid ""
+"There are no bookmarks to refer to.\n"
+"Insert > Bookmark marks a place first."
+msgstr ""
+"উল্লেখ করার মতো কোনো বুকমার্ক নেই।\n"
+"প্রথমে সন্নিবেশ > বুকমার্ক দিয়ে একটি স্থান চিহ্নিত করুন।"
+
+#: src/ui/w42-dialogs.c:3941 src/ui/w42-dialogs.c:3945
+msgid "For which _bookmark:"
+msgstr "কোন বুকমার্কের জন্য(_B):"
+
+#: src/ui/w42-dialogs.c:3947
+msgid "_Insert reference to:"
+msgstr "যার রেফারেন্স সন্নিবেশ করবেন(_I):"
+
+#: src/ui/w42-dialogs.c:3949
+msgid "The reference is text; insert it again after the pages change."
+msgstr "রেফারেন্সটি সাধারণ পাঠ্য; পৃষ্ঠা বদলে গেলে এটি আবার সন্নিবেশ করুন।"
+
+#: src/ui/w42-dialogs.c:3971
+msgctxt "shape"
+msgid "Line"
+msgstr "রেখা"
+
+#: src/ui/w42-dialogs.c:3971
+msgctxt "shape"
+msgid "Arrow"
+msgstr "তীর"
+
+#: src/ui/w42-dialogs.c:3971
+msgctxt "shape"
+msgid "Rectangle"
+msgstr "আয়তক্ষেত্র"
+
+#: src/ui/w42-dialogs.c:3972
+msgctxt "shape"
+msgid "Rounded Rectangle"
+msgstr "গোলাকার কোণের আয়তক্ষেত্র"
+
+#: src/ui/w42-dialogs.c:3972
+msgctxt "shape"
+msgid "Ellipse"
+msgstr "উপবৃত্ত"
+
+#: src/ui/w42-dialogs.c:3975
+msgctxt "colour"
+msgid "Gray"
+msgstr "ধূসর"
+
+#: src/ui/w42-dialogs.c:4069
+msgid "Format Drawing"
+msgstr "অঙ্কন বিন্যাস"
+
+#: src/ui/w42-dialogs.c:4069
+msgid "Drawing"
+msgstr "অঙ্কন"
+
+#: src/ui/w42-dialogs.c:4073
+msgid "Shape"
+msgstr "আকৃতি"
+
+#: src/ui/w42-dialogs.c:4074
+msgid "_Shape:"
+msgstr "আকৃতি(_S):"
+
+#: src/ui/w42-dialogs.c:4076 src/ui/w42-dialogs.c:6167
+#: src/ui/w42-dialogs.c:6272
+msgid "_Width:"
+msgstr "প্রস্থ(_W):"
+
+#: src/ui/w42-dialogs.c:4077 src/ui/w42-dialogs.c:6168
+msgid "_Height:"
+msgstr "উচ্চতা(_H):"
+
+#: src/ui/w42-dialogs.c:4082
+msgid "set in the middle of the shape"
+msgstr "আকৃতির মাঝখানে বসানো"
+
+#: src/ui/w42-dialogs.c:4091
+msgid "Line and Fill"
+msgstr "রেখা ও পূরণ"
+
+#. Translators: "pt" is points, the typographic unit.
+#: src/ui/w42-dialogs.c:4094
+msgid "_Line Width (pt):"
+msgstr "রেখার প্রস্থ (পয়েন্ট)(_L):"
+
+#: src/ui/w42-dialogs.c:4105
+msgid "_Filled"
+msgstr "পূরণ করা(_F)"
+
+#: src/ui/w42-dialogs.c:4108
+msgid "Fill Colo_r:"
+msgstr "পূরণের রং(_R):"
+
+#. Translators: kinds of list; the numbered kinds are shown as they
+#. * number, and the bullets are drawn before their names.
+#: src/ui/w42-dialogs.c:4132
+msgctxt "list"
+msgid "None"
+msgstr "কোনোটিই নয়"
+
+#: src/ui/w42-dialogs.c:4132
+msgctxt "list"
+msgid "• Bullet"
+msgstr "• বুলেট"
+
+#: src/ui/w42-dialogs.c:4133
+msgctxt "list"
+msgid "◦ Circle"
+msgstr "◦ বৃত্ত"
+
+#: src/ui/w42-dialogs.c:4134
+msgctxt "list"
+msgid "▪ Square"
+msgstr "▪ বর্গ"
+
+#: src/ui/w42-dialogs.c:4134
+msgctxt "list"
+msgid "– Dash"
+msgstr "– ড্যাশ"
+
+#: src/ui/w42-dialogs.c:4186
+msgid "Bullets and Numbering"
+msgstr "বুলেট ও নম্বরকরণ"
+
+#: src/ui/w42-dialogs.c:4190
+msgid "List"
+msgstr "তালিকা"
+
+#: src/ui/w42-dialogs.c:4191
+msgid "_Kind:"
+msgstr "ধরন(_K):"
+
+#: src/ui/w42-dialogs.c:4195
+msgid "_Level:"
+msgstr "স্তর(_L):"
+
+#: src/ui/w42-dialogs.c:4204
+msgid "_Restart numbering at:"
+msgstr "নম্বরকরণ আবার শুরুর মান(_R):"
+
+#: src/ui/w42-dialogs.c:4211
+msgid ""
+"Numbering continues from the item before unless restarted.\n"
+"Tab and Shift+Tab at the start of an item change its level."
+msgstr ""
+"আবার শুরু না করলে নম্বরকরণ আগের আইটেম থেকে চলতে থাকে।\n"
+"আইটেমের শুরুতে Tab ও Shift+Tab এর স্তর পরিবর্তন করে।"
+
+#: src/ui/w42-dialogs.c:4245
+msgctxt "vertical alignment"
+msgid "Top"
+msgstr "শীর্ষ"
+
+#: src/ui/w42-dialogs.c:4245
+msgctxt "vertical alignment"
+msgid "Center"
+msgstr "কেন্দ্র"
+
+#: src/ui/w42-dialogs.c:4246
+msgctxt "vertical alignment"
+msgid "Bottom"
+msgstr "নিচ"
+
+#: src/ui/w42-dialogs.c:4334
+msgid "Table Properties"
+msgstr "সারণী বৈশিষ্ট্য"
+
+#. Translators: the group of settings for the whole table.
+#: src/ui/w42-dialogs.c:4339
+msgctxt "table properties"
+msgid "Table"
+msgstr "সারণী"
+
+#: src/ui/w42-dialogs.c:4340
+msgid "_Borders around every cell"
+msgstr "প্রতিটি কক্ষের চারপাশে সীমানা(_B)"
+
+#: src/ui/w42-dialogs.c:4343
+msgid "_Repeat the first row at the top of each page"
+msgstr "প্রতিটি পৃষ্ঠার শীর্ষে প্রথম সারির পুনরাবৃত্তি করুন(_R)"
+
+#: src/ui/w42-dialogs.c:4347
+msgid "This Row"
+msgstr "এই সারি"
+
+#: src/ui/w42-dialogs.c:4351
+msgid "Height at _least:"
+msgstr "ন্যূনতম উচ্চতা(_L):"
+
+#: src/ui/w42-dialogs.c:4355
+msgid "This Cell"
+msgstr "এই কক্ষ"
+
+#: src/ui/w42-dialogs.c:4368
+msgid "Le_ft"
+msgstr "বাম(_F)"
+
+#: src/ui/w42-dialogs.c:4368
+msgid "Ri_ght"
+msgstr "ডান(_G)"
+
+#: src/ui/w42-dialogs.c:4370
+msgid "Borders:"
+msgstr "সীমানা:"
+
+#: src/ui/w42-dialogs.c:4393
+msgid "Line st_yle:"
+msgstr "রেখার শৈলী(_Y):"
+
+#: src/ui/w42-dialogs.c:4395
+msgid "Line _width:"
+msgstr "রেখার প্রস্থ(_W):"
+
+#: src/ui/w42-dialogs.c:4397
+msgid "Line _color:"
+msgstr "রেখার রং(_C):"
+
+#: src/ui/w42-dialogs.c:4399
+msgid "_Vertical alignment:"
+msgstr "উল্লম্ব সারিবদ্ধকরণ(_V):"
+
+#. Translators: the formulas are typed as they are
+#. * here: keep =SUM(ABOVE) and the rest in English.
+#: src/ui/w42-dialogs.c:4452
+msgid ""
+"The formula must be a function of the cells in one direction: =SUM(ABOVE), "
+"=AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) or =PRODUCT(LEFT)."
+msgstr ""
+"সূত্রটিকে অবশ্যই একটি দিকের কক্ষগুলির একটি ফাংশন হতে হবে: =SUM(ABOVE), "
+"=AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) অথবা =PRODUCT(LEFT)।"
+
+#: src/ui/w42-dialogs.c:4475 src/ui/w42-dialogs.c:4493
+msgid "Formula"
+msgstr "সূত্র"
+
+#: src/ui/w42-dialogs.c:4494
+msgid "_Formula:"
+msgstr "সূত্র(_F):"
+
+#: src/ui/w42-dialogs.c:4501
+msgid "_Paste function:"
+msgstr "ফাংশন আটকান(_P):"
+
+#. Translators: ABOVE, BELOW, LEFT and RIGHT are typed into formulas as
+#. * they are: keep them in English.
+#: src/ui/w42-dialogs.c:4506
+msgid ""
+"ABOVE, BELOW, LEFT or RIGHT: the cells in that direction,\n"
+"up to the first that holds no number.  The result is a field."
+msgstr ""
+"ABOVE, BELOW, LEFT অথবা RIGHT: সেই দিকের কক্ষগুলি,\n"
+"প্রথম যে কক্ষে কোনো সংখ্যা নেই তার আগে পর্যন্ত।  ফলাফলটি একটি ক্ষেত্র।"
+
+#: src/ui/w42-dialogs.c:4562
+#, c-format
+msgid "%d paragraph changed.  Undo takes the whole thing back in one step."
+msgid_plural ""
+"%d paragraphs changed.  Undo takes the whole thing back in one step."
+msgstr[0] ""
+"%dটি অনুচ্ছেদ পরিবর্তিত হয়েছে।  পূর্বাবস্থায় ফেরান এক ধাপে পুরোটা ফিরিয়ে নেয়।"
+msgstr[1] ""
+"%dটি অনুচ্ছেদ পরিবর্তিত হয়েছে।  পূর্বাবস্থায় ফেরান এক ধাপে পুরোটা ফিরিয়ে নেয়।"
+
+#: src/ui/w42-dialogs.c:4567
+msgid "Nothing needed changing."
+msgstr "কিছুই পরিবর্তনের প্রয়োজন ছিল না।"
+
+#: src/ui/w42-dialogs.c:4570 src/ui/w42-dialogs.c:4588
+msgid "AutoFormat"
+msgstr "স্বতঃবিন্যাস"
+
+#: src/ui/w42-dialogs.c:4591
+msgid ""
+"Word42 will look over the whole document and put right what was typed as "
+"though on a typewriter."
+msgstr ""
+"Word42 সম্পূর্ণ নথিটি দেখবে এবং টাইপরাইটারের মতো করে টাইপ করা অংশগুলি ঠিক করে "
+"দেবে।"
+
+#: src/ui/w42-dialogs.c:4598 src/ui/w42-dialogs.c:6031
+msgid "Apply"
+msgstr "প্রয়োগ"
+
+#: src/ui/w42-dialogs.c:4599
+msgid "_Headings: short lines that stand alone"
+msgstr "শিরোনাম: আলাদাভাবে থাকা ছোট লাইন(_H)"
+
+#: src/ui/w42-dialogs.c:4600
+msgid "_Lists: lines that start with a dash or a number"
+msgstr "তালিকা: ড্যাশ বা সংখ্যা দিয়ে শুরু হওয়া লাইন(_L)"
+
+#: src/ui/w42-dialogs.c:4601
+msgid "_Quotes and dashes as a printer sets them"
+msgstr "মুদ্রণশিল্পের রীতিতে উদ্ধৃতি চিহ্ন ও ড্যাশ(_Q)"
+
+#: src/ui/w42-dialogs.c:4602
+msgid "_Empty paragraphs: a run of them becomes one"
+msgstr "খালি অনুচ্ছেদ: পরপর কয়েকটি থাকলে একটিতে পরিণত হয়(_E)"
+
+#: src/ui/w42-dialogs.c:4663
+msgid "Select the words to put in the index first."
+msgstr "প্রথমে সূচিতে রাখার শব্দগুলি নির্বাচন করুন।"
+
+#. Translators: "Insert > Index Entry" and "Insert >
+#. * Index" are the menu commands.
+#: src/ui/w42-dialogs.c:4666
+msgid ""
+"Insert ▸ Index Entry marks what is selected; Insert ▸ Index then gathers the "
+"marked words and the pages they are on."
+msgstr ""
+"সন্নিবেশ ▸ সূচি ভুক্তি নির্বাচিত অংশটি চিহ্নিত করে; তারপর সন্নিবেশ ▸ সূচি চিহ্নিত "
+"শব্দগুলি ও সেগুলি যে পৃষ্ঠায় আছে তা একত্র করে।"
+
+#: src/ui/w42-dialogs.c:4675
+msgid "Index Entry"
+msgstr "সূচি ভুক্তি"
+
+#: src/ui/w42-dialogs.c:4678
+msgid "Mark the selected words"
+msgstr "নির্বাচিত শব্দগুলি চিহ্নিত করুন"
+
+#: src/ui/w42-dialogs.c:4679
+msgid "_File it under:"
+msgstr "যে পদের অধীনে রাখবেন(_F):"
+
+#: src/ui/w42-dialogs.c:4689
+msgid ""
+"The words stay as they are and read as they did; the index says which pages "
+"they are on."
+msgstr ""
+"শব্দগুলি যেমন ছিল তেমনই থাকে ও আগের মতোই পড়া যায়; সূচি জানায় সেগুলি কোন কোন "
+"পৃষ্ঠায় আছে।"
+
+#: src/ui/w42-dialogs.c:4741
+msgid "A document of your own, kept in the templates folder."
+msgstr "টেমপ্লেট ফোল্ডারে রাখা আপনার নিজের একটি নথি।"
+
+#: src/ui/w42-dialogs.c:4787
+msgid "Word42 could not open that template."
+msgstr "Word42 ওই টেমপ্লেটটি খুলতে পারেনি।"
+
+#: src/ui/w42-dialogs.c:4813
+msgid "New from Template"
+msgstr "টেমপ্লেট থেকে নতুন"
+
+#: src/ui/w42-dialogs.c:4816
+msgid "Templates"
+msgstr "টেমপ্লেট"
+
+#: src/ui/w42-dialogs.c:4875
+msgid "Envelope"
+msgstr "খাম"
+
+#: src/ui/w42-dialogs.c:4875
+msgid "Labels"
+msgstr "লেবেল"
+
+#: src/ui/w42-dialogs.c:4977
+msgid "Envelopes and Labels"
+msgstr "খাম ও লেবেল"
+
+#: src/ui/w42-dialogs.c:4980
+msgid "What to make"
+msgstr "কী তৈরি করবেন"
+
+#: src/ui/w42-dialogs.c:4981
+msgid "_Make:"
+msgstr "তৈরি করুন(_M):"
+
+#: src/ui/w42-dialogs.c:4983
+msgid "Addresses"
+msgstr "ঠিকানা"
+
+#: src/ui/w42-dialogs.c:4984
+msgid "_Delivery address:"
+msgstr "প্রাপকের ঠিকানা(_D):"
+
+#: src/ui/w42-dialogs.c:4985
+msgid "_Return address:"
+msgstr "ফেরত ঠিকানা(_R):"
+
+#: src/ui/w42-dialogs.c:5006
+msgid "Sizes"
+msgstr "আকার"
+
+#: src/ui/w42-dialogs.c:5010
+msgid "_Envelope:"
+msgstr "খাম(_E):"
+
+#: src/ui/w42-dialogs.c:5017
+msgid "_Label sheet:"
+msgstr "লেবেল শিট(_L):"
+
+#: src/ui/w42-dialogs.c:5021
+msgid "The same on _every label"
+msgstr "প্রতিটি লেবেলে একই(_E)"
+
+#: src/ui/w42-dialogs.c:5025
+msgid ""
+"The envelope or the sheet of labels is made as a document of its own, in a "
+"new window."
+msgstr "খাম বা লেবেলের শিটটি একটি নতুন উইন্ডোতে আলাদা নথি হিসাবে তৈরি হয়।"
+
+#: src/ui/w42-dialogs.c:5051
+msgctxt "colour"
+msgid "None (white paper)"
+msgstr "কোনোটিই নয় (সাদা কাগজ)"
+
+#: src/ui/w42-dialogs.c:5152
+msgid "Background"
+msgstr "পটভূমি"
+
+#: src/ui/w42-dialogs.c:5161
+msgid "The colour behind the page"
+msgstr "পৃষ্ঠার পিছনের রং"
+
+#: src/ui/w42-dialogs.c:5172
+msgid ""
+"The colour is shown on the screen and in Print Preview; printing leaves the "
+"paper as it is."
+msgstr ""
+"রংটি স্ক্রিনে ও মুদ্রণ পূর্বরূপে দেখা যায়; মুদ্রণের সময় কাগজ যেমন আছে তেমনই থাকে।"
+
+#. Translators: "Add" is the button.
+#: src/ui/w42-dialogs.c:5280
+msgid "Select the text to keep, then Add."
+msgstr "রাখার পাঠ্য নির্বাচন করুন, তারপর যোগ করুন চাপুন।"
+
+#: src/ui/w42-dialogs.c:5286
+msgid "Give the entry a name."
+msgstr "ভুক্তিটির একটি নাম দিন।"
+
+#: src/ui/w42-dialogs.c:5341
+msgid "AutoText"
+msgstr "স্বতঃপাঠ্য"
+
+#: src/ui/w42-dialogs.c:5344
+msgid "Entries"
+msgstr "ভুক্তি"
+
+#. Translators: "Add" is the button.
+#: src/ui/w42-dialogs.c:5404
+msgid "Add keeps the selected text under that name."
+msgstr "যোগ করুন বোতামটি নির্বাচিত পাঠ্য ওই নামে রেখে দেয়।"
+
+#: src/ui/w42-dialogs.c:5433
+msgid "Pages"
+msgstr "পৃষ্ঠা"
+
+#: src/ui/w42-dialogs.c:5433
+msgid "Words"
+msgstr "শব্দ"
+
+#: src/ui/w42-dialogs.c:5433
+msgid "Characters"
+msgstr "অক্ষর"
+
+#: src/ui/w42-dialogs.c:5433
+msgid "Characters (no spaces)"
+msgstr "অক্ষর (স্পেস ছাড়া)"
+
+#: src/ui/w42-dialogs.c:5434
+msgid "Paragraphs"
+msgstr "অনুচ্ছেদ"
+
+#: src/ui/w42-dialogs.c:5434
+msgid "Lines"
+msgstr "লাইন"
+
+#: src/ui/w42-dialogs.c:5533
+msgid "Word Count"
+msgstr "শব্দ গণনা"
+
+#: src/ui/w42-dialogs.c:5536
+msgid "Counts"
+msgstr "গণনা"
+
+#: src/ui/w42-dialogs.c:5536
+msgid "Statistics"
+msgstr "পরিসংখ্যান"
+
+#. Translators: the heading of the column of counts for the whole
+#. * document.
+#: src/ui/w42-dialogs.c:5541
+msgid "Document"
+msgstr "নথি"
+
+#. Translators: the heading of the column of counts for the
+#. * selected text.
+#: src/ui/w42-dialogs.c:5544
+msgid "Selection"
+msgstr "নির্বাচন"
+
+#: src/ui/w42-dialogs.c:5570
+msgid "Include _footnotes and endnotes"
+msgstr "পাদটীকা ও প্রান্তটীকা অন্তর্ভুক্ত করুন(_F)"
+
+#: src/ui/w42-dialogs.c:5631
+msgid "Word Count Goal"
+msgstr "শব্দ গণনার লক্ষ্য"
+
+#: src/ui/w42-dialogs.c:5634
+msgid "Goal"
+msgstr "লক্ষ্য"
+
+#: src/ui/w42-dialogs.c:5635
+msgid "_Words to reach:"
+msgstr "লক্ষ্য শব্দসংখ্যা(_W):"
+
+#. Translators: the plural follows the first number, the words in the
+#. * document; the second is how many of them are new since it was
+#. * opened, and may be put so that it needs no plural of its own.
+#: src/ui/w42-dialogs.c:5649
+#, c-format
+msgid ""
+"The document has %lu word; %ld of them were written since it was opened."
+msgid_plural ""
+"The document has %lu words; %ld of them were written since it was opened."
+msgstr[0] "নথিতে %luটি শব্দ আছে; এর মধ্যে %ldটি নথি খোলার পর লেখা হয়েছে।"
+msgstr[1] "নথিতে %luটি শব্দ আছে; এর মধ্যে %ldটি নথি খোলার পর লেখা হয়েছে।"
+
+#: src/ui/w42-dialogs.c:5654
+#, c-format
+msgid "The document has %lu word."
+msgid_plural "The document has %lu words."
+msgstr[0] "নথিতে %luটি শব্দ আছে।"
+msgstr[1] "নথিতে %luটি শব্দ আছে।"
+
+#: src/ui/w42-dialogs.c:5664
+msgid "The status bar counts toward the goal as you write. 0 means no goal."
+msgstr "আপনি লেখার সময় স্থিতি দণ্ড লক্ষ্যের দিকে গণনা করে। 0 মানে কোনো লক্ষ্য নেই।"
+
+#: src/ui/w42-dialogs.c:5711
+msgid "The text is checked with the document's own dictionary."
+msgstr "পাঠ্যটি নথির নিজস্ব অভিধান দিয়ে পরীক্ষা করা হয়।"
+
+#: src/ui/w42-dialogs.c:5714
+msgid "The text is not checked at all."
+msgstr "পাঠ্যটি একেবারেই পরীক্ষা করা হয় না।"
+
+#: src/ui/w42-dialogs.c:5717
+msgid "A dictionary for this is installed."
+msgstr "এর জন্য একটি অভিধান ইনস্টল করা আছে।"
+
+#: src/ui/w42-dialogs.c:5720
+msgid "No dictionary for this is installed: the words are not checked."
+msgstr "এর জন্য কোনো অভিধান ইনস্টল করা নেই: শব্দগুলি পরীক্ষা করা হয় না।"
+
+#: src/ui/w42-dialogs.c:5779
+msgid "Language"
+msgstr "ভাষা"
+
+#: src/ui/w42-dialogs.c:5782
+msgid "Mark the selected text as"
+msgstr "নির্বাচিত পাঠ্যটিকে যে ভাষা হিসাবে চিহ্নিত করবেন"
+
+#: src/ui/w42-dialogs.c:5787
+msgid "(the document's own language)"
+msgstr "(নথির নিজস্ব ভাষা)"
+
+#. Translators: %s is the name of a language.
+#: src/ui/w42-dialogs.c:5829
+#, c-format
+msgid "The document is in %s."
+msgstr "নথিটি %s ভাষায়।"
+
+#. Translators: %s is a dictionary's language code, such as en_US.
+#: src/ui/w42-dialogs.c:5832
+#, c-format
+msgid "The document's own dictionary is %s."
+msgstr "নথির নিজস্ব অভিধান হলো %s।"
+
+#: src/ui/w42-dialogs.c:5835
+msgid "No dictionary was found on this machine."
+msgstr "এই কম্পিউটারে কোনো অভিধান পাওয়া যায়নি।"
+
+#: src/ui/w42-dialogs.c:5849
+msgid "_Default"
+msgstr "ডিফল্ট(_D)"
+
+#: src/ui/w42-dialogs.c:5852
+msgid "Make this the document's language, and the one new documents start in."
+msgstr "এটিকে নথির ভাষা করুন, এবং নতুন নথিগুলিও এই ভাষায় শুরু হবে।"
+
+#: src/ui/w42-dialogs.c:5998
+msgid "Table AutoFormat"
+msgstr "সারণী স্বতঃবিন্যাস"
+
+#: src/ui/w42-dialogs.c:6001
+msgid "Formats"
+msgstr "বিন্যাস"
+
+#: src/ui/w42-dialogs.c:6032
+msgid "_Heading row"
+msgstr "শিরোনাম সারি(_H)"
+
+#: src/ui/w42-dialogs.c:6033
+msgid "First _column"
+msgstr "প্রথম কলাম(_C)"
+
+#: src/ui/w42-dialogs.c:6041
+msgid "The look goes on the table the caret is in."
+msgstr "যে সারণীতে কার্সার আছে সেটিতে এই রূপ প্রয়োগ হয়।"
+
+#: src/ui/w42-dialogs.c:6066
+msgid "Number of pages"
+msgstr "পৃষ্ঠার সংখ্যা"
+
+#: src/ui/w42-dialogs.c:6066
+msgid "Date"
+msgstr "তারিখ"
+
+#: src/ui/w42-dialogs.c:6066
+msgid "Time"
+msgstr "সময়"
+
+#: src/ui/w42-dialogs.c:6066
+msgid "File name"
+msgstr "ফাইলের নাম"
+
+#: src/ui/w42-dialogs.c:6067
+msgid "Word count"
+msgstr "শব্দ সংখ্যা"
+
+#: src/ui/w42-dialogs.c:6097 src/ui/w42-dialogs.c:6100
+msgid "Field"
+msgstr "ক্ষেত্র"
+
+#: src/ui/w42-dialogs.c:6101
+msgid "_Insert:"
+msgstr "সন্নিবেশ(_I):"
+
+#: src/ui/w42-dialogs.c:6102
+msgid ""
+"A field shows its result, shaded grey. F9 updates every field;\n"
+"printing and exporting update them too."
+msgstr ""
+"ক্ষেত্র ধূসর ছায়ায় তার ফলাফল দেখায়। F9 সব ক্ষেত্র হালনাগাদ করে;\n"
+"মুদ্রণ ও রপ্তানিও সেগুলি হালনাগাদ করে।"
+
+#: src/ui/w42-dialogs.c:6142
+msgctxt "wrapping"
+msgid "In line with text"
+msgstr "পাঠ্যের সাথে একই লাইনে"
+
+#: src/ui/w42-dialogs.c:6142 src/ui/w42-dialogs.c:6256
+msgctxt "wrapping"
+msgid "Left, text to the right"
+msgstr "বামে, পাঠ্য ডানে"
+
+#: src/ui/w42-dialogs.c:6143 src/ui/w42-dialogs.c:6257
+msgctxt "wrapping"
+msgid "Right, text to the left"
+msgstr "ডানে, পাঠ্য বামে"
+
+#: src/ui/w42-dialogs.c:6143
+msgctxt "wrapping"
+msgid "Top and bottom"
+msgstr "উপরে ও নিচে"
+
+#: src/ui/w42-dialogs.c:6144
+msgctxt "wrapping"
+msgid "In front of text"
+msgstr "পাঠ্যের সামনে"
+
+#: src/ui/w42-dialogs.c:6144
+msgctxt "wrapping"
+msgid "Behind text"
+msgstr "পাঠ্যের পিছনে"
+
+#: src/ui/w42-dialogs.c:6156
+msgid "Select a picture first: click it once, so that its handles show."
+msgstr ""
+"প্রথমে একটি ছবি নির্বাচন করুন: একবার ক্লিক করুন, যাতে এর হ্যান্ডেলগুলি দেখা যায়।"
+
+#: src/ui/w42-dialogs.c:6163
+msgid "Picture"
+msgstr "ছবি"
+
+#: src/ui/w42-dialogs.c:6166
+msgid "Size"
+msgstr "আকার"
+
+#: src/ui/w42-dialogs.c:6170
+msgid "Text wrapping"
+msgstr "পাঠ্য মোড়ানো"
+
+#: src/ui/w42-dialogs.c:6212
+msgctxt "drop cap"
+msgid "None"
+msgstr "কোনোটিই নয়"
+
+#: src/ui/w42-dialogs.c:6212
+msgctxt "drop cap"
+msgid "Dropped"
+msgstr "নামানো"
+
+#: src/ui/w42-dialogs.c:6219
+msgid "Drop Cap"
+msgstr "ড্রপ ক্যাপ"
+
+#: src/ui/w42-dialogs.c:6225
+msgid "_Lines to drop:"
+msgstr "যত লাইন নামবে(_L):"
+
+#. Translators: no frame, the paragraph in the run of the text.
+#: src/ui/w42-dialogs.c:6256
+msgctxt "wrapping"
+msgid "None"
+msgstr "কোনোটিই নয়"
+
+#: src/ui/w42-dialogs.c:6266 src/ui/w42-dialogs.c:6269
+msgid "Frame"
+msgstr "ফ্রেম"
+
+#: src/ui/w42-dialogs.c:6322
+msgid "_Title:"
+msgstr "শিরোনাম(_T):"
+
+#: src/ui/w42-dialogs.c:6322
+msgid "_Subject:"
+msgstr "বিষয়(_S):"
+
+#: src/ui/w42-dialogs.c:6322
+msgid "_Author:"
+msgstr "লেখক(_A):"
+
+#: src/ui/w42-dialogs.c:6322
+msgid "_Keywords:"
+msgstr "মূলশব্দ(_K):"
+
+#: src/ui/w42-dialogs.c:6322
+msgid "_Comments:"
+msgstr "মন্তব্য(_C):"
+
+#: src/ui/w42-dialogs.c:6342
+msgid "Summary Info"
+msgstr "সারাংশ তথ্য"
+
+#: src/ui/w42-dialogs.c:6345
+msgid "This document"
+msgstr "এই নথি"
+
+#: src/ui/w42-dialogs.c:6436
+msgid "_Percent:"
+msgstr "শতাংশ(_P):"
+
+#: src/ui/w42-dialogs.c:6444
+msgid "Zoom"
+msgstr "জুম"
+
+#: src/ui/w42-dialogs.c:6447
+msgid "Zoom To"
+msgstr "জুমের মাত্রা"
+
+#: src/ui/w42-dialogs.c:6549
+msgid "The macro could not be saved."
+msgstr "ম্যাক্রোটি সংরক্ষণ করা যায়নি।"
+
+#: src/ui/w42-dialogs.c:6564
+msgid "Saved."
+msgstr "সংরক্ষিত হয়েছে।"
+
+#. Translators: "Sub", "Sub Main()" and "End Sub" are the macro
+#. * language's own words: keep them in English.
+#: src/ui/w42-dialogs.c:6611
+msgid "There is no Sub to run: write one, Sub Main() ... End Sub."
+msgstr "চালানোর মতো কোনো Sub নেই: একটি লিখুন, Sub Main() ... End Sub।"
+
+#. Translators: %s is the name of the Sub, the macro, being run.
+#: src/ui/w42-dialogs.c:6619
+#, c-format
+msgid "Running %s..."
+msgstr "%s চলছে..."
+
+#: src/ui/w42-dialogs.c:6637
+msgid "Done."
+msgstr "সম্পন্ন।"
+
+#: src/ui/w42-dialogs.c:6639
+msgid "The macro stopped."
+msgstr "ম্যাক্রোটি থেমে গেছে।"
+
+#: src/ui/w42-dialogs.c:6692
+msgid "Macro Editor"
+msgstr "ম্যাক্রো সম্পাদক"
+
+#. Translators: the editor's title; %s is the name of the macro.
+#: src/ui/w42-dialogs.c:6698
+#, c-format
+msgid "Macro Editor - %s"
+msgstr "ম্যাক্রো সম্পাদক - %s"
+
+#. Translators: "Sub" is the macro language's word for a macro.
+#: src/ui/w42-dialogs.c:6722
+msgid "_Sub to run:"
+msgstr "যে Sub চালাবেন(_S):"
+
+#: src/ui/w42-dialogs.c:6727
+msgid "_Run (F5)"
+msgstr "চালান (F5)(_R)"
+
+#. Translators: %s is the name of the macro.
+#: src/ui/w42-dialogs.c:6934
+#, c-format
+msgid "The macro %s stopped."
+msgstr "%s ম্যাক্রোটি থেমে গেছে।"
+
+#. Translators: %s is the name of the macro.
+#: src/ui/w42-dialogs.c:6942
+#, c-format
+msgid "Macro %s ran."
+msgstr "%s ম্যাক্রোটি চালানো হয়েছে।"
+
+#. Translators: %s is the name of the macro.
+#: src/ui/w42-dialogs.c:7000
+#, c-format
+msgid "Delete the macro %s?"
+msgstr "%s ম্যাক্রোটি মুছবেন?"
+
+#. Translators: "Sub" is the macro language's word for a macro.
+#: src/ui/w42-dialogs.c:7003
+msgid "Every Sub in it goes with it."
+msgstr "এর ভিতরের প্রতিটি Sub-ও মুছে যাবে।"
+
+#: src/ui/w42-dialogs.c:7027
+msgid "Macro"
+msgstr "ম্যাক্রো"
+
+#: src/ui/w42-dialogs.c:7034
+msgid "_Macro name:"
+msgstr "ম্যাক্রোর নাম(_M):"
+
+#: src/ui/w42-dialogs.c:7052
+msgid "_Run"
+msgstr "চালান(_R)"
+
+#: src/ui/w42-dialogs.c:7053
+msgid "_Create"
+msgstr "তৈরি করুন(_C)"
+
+#. Translators: "Create" is the button, "Help > Contents" the menu command.
+#: src/ui/w42-dialogs.c:7072
+msgid ""
+"Macros are Word42 Basic files in the macros folder of your data directory.\n"
+"Type a new name and press Create to write one; Help > Contents describes the "
+"language."
+msgstr ""
+"ম্যাক্রো হলো আপনার ডেটা ডিরেক্টরির macros ফোল্ডারে থাকা Word42 Basic ফাইল।\n"
+"নতুন ম্যাক্রো লিখতে একটি নতুন নাম টাইপ করে তৈরি করুন চাপুন; সহায়তা > বিষয়বস্তু-তে "
+"ভাষাটির বর্ণনা আছে।"
+
+#. Translators: the tooltip of a heading in the Document Map: the
+#. * first %s is the heading, the second the number of words in its
+#. * section, with thousands separators.
+#: src/ui/w42-docmap.c:292
+#, c-format
+msgid ""
+"%s\n"
+"%s word"
+msgid_plural ""
+"%s\n"
+"%s words"
+msgstr[0] ""
+"%s\n"
+"%s শব্দ"
+msgstr[1] ""
+"%s\n"
+"%s শব্দ"
+
+#: src/ui/w42-find-dialog.c:90 src/ui/w42-find-dialog.c:133
+#: src/ui/w42-find-dialog.c:179
+msgid "Type what to look for."
+msgstr "কী খুঁজবেন তা টাইপ করুন।"
+
+#: src/ui/w42-find-dialog.c:100
+msgid ""
+"Word42 has finished searching the document. The search item was not found."
+msgstr "Word42 নথিটি অনুসন্ধান শেষ করেছে। অনুসন্ধানের বিষয়টি পাওয়া যায়নি।"
+
+#: src/ui/w42-find-dialog.c:194
+#, c-format
+msgid "%lu replacement made."
+msgid_plural "%lu replacements made."
+msgstr[0] "%luটি প্রতিস্থাপন করা হয়েছে।"
+msgstr[1] "%luটি প্রতিস্থাপন করা হয়েছে।"
+
+#: src/ui/w42-find-dialog.c:198
+msgid "The search item was not found."
+msgstr "অনুসন্ধানের বিষয়টি পাওয়া যায়নি।"
+
+#: src/ui/w42-find-dialog.c:240 src/ui/w42-find-dialog.c:271
+#: src/ui/w42-window.c:4080
+msgid "Find"
+msgstr "খুঁজুন"
+
+#: src/ui/w42-find-dialog.c:289
+msgid "Fi_nd What:"
+msgstr "কী খুঁজবেন(_N):"
+
+#: src/ui/w42-find-dialog.c:292
+msgid "Re_place With:"
+msgstr "যা দিয়ে প্রতিস্থাপন করবেন(_P):"
+
+#: src/ui/w42-find-dialog.c:296
+msgid "Match _Case"
+msgstr "কেস মেলান(_C)"
+
+#: src/ui/w42-find-dialog.c:297
+msgid "Find _Whole Words Only"
+msgstr "শুধু পুরো শব্দ খুঁজুন(_W)"
+
+#: src/ui/w42-find-dialog.c:298
+msgid "Search _Up"
+msgstr "উপরের দিকে অনুসন্ধান করুন(_U)"
+
+#: src/ui/w42-find-dialog.c:315
+msgid "_Find Next"
+msgstr "পরবর্তী খুঁজুন(_F)"
+
+#: src/ui/w42-find-dialog.c:318 src/ui/w42-thesaurus-dialog.c:358
+#: src/ui/w42-window.c:1166
+msgid "_Replace"
+msgstr "প্রতিস্থাপন করুন(_R)"
+
+#: src/ui/w42-find-dialog.c:319
+msgid "Replace _All"
+msgstr "সব প্রতিস্থাপন করুন(_A)"
+
+#: src/ui/w42-help.c:386 src/ui/w42-help.c:637
+msgid "Contents"
+msgstr "বিষয়বস্তু"
+
+#: src/ui/w42-help.c:415
+msgid "Index"
+msgstr "সূচি"
+
+#. Translators: the heading over the list of help topics that
+#. * match what was typed in the search box.
+#: src/ui/w42-help.c:462
+msgid "Found"
+msgstr "পাওয়া গেছে"
+
+#: src/ui/w42-help.c:484
+msgid "(nothing found)"
+msgstr "(কিছু পাওয়া যায়নি)"
+
+#: src/ui/w42-help.c:506
+msgid ""
+"Nothing in the guide answers to that.  Try a shorter word, or look through "
+"the contents."
+msgstr ""
+"নির্দেশিকার কোথাও এর উত্তর নেই।  একটি ছোট শব্দ দিয়ে চেষ্টা করুন, অথবা বিষয়বস্তু "
+"দেখুন।"
+
+#: src/ui/w42-help.c:514 src/ui/w42-help.c:604
+msgid "Word42 Help"
+msgstr "Word42 সহায়তা"
+
+#: src/ui/w42-help.c:622
+msgid "Search for help on..."
+msgstr "সহায়তা অনুসন্ধান করুন..."
+
+#: src/ui/w42-macro.c:368
+msgid "_Abort"
+msgstr "পরিত্যাগ করুন(_A)"
+
+#: src/ui/w42-macro.c:368 src/ui/w42-macro.c:370
+msgid "_Retry"
+msgstr "পুনরায় চেষ্টা করুন(_R)"
+
+#: src/ui/w42-macro.c:368 src/ui/w42-spell-dialog.c:395
+msgid "_Ignore"
+msgstr "উপেক্ষা করুন(_I)"
+
+#: src/ui/w42-macro.c:369
+msgid "_Yes"
+msgstr "হ্যাঁ(_Y)"
+
+#: src/ui/w42-macro.c:369
+msgid "_No"
+msgstr "না(_N)"
+
+#: src/ui/w42-macro.c:393 src/ui/w42-macro.c:417 src/ui/w42-macro.c:2685
+msgid "The document was closed while the macro ran"
+msgstr "ম্যাক্রো চলাকালীন নথিটি বন্ধ করা হয়েছে"
+
+#: src/ui/w42-macro.c:484
+msgid "Division by zero"
+msgstr "শূন্য দিয়ে ভাগ"
+
+#. Translators: a calculation in a macro gave a number too big to hold.
+#: src/ui/w42-macro.c:488
+msgid "Overflow"
+msgstr "ওভারফ্লো"
+
+#. Translators: wdPageBreak and wdSectionBreakNextPage are names in
+#. * the macro language: keep them in English.
+#: src/ui/w42-macro.c:1306
+msgid ""
+"Word42 inserts a wdPageBreak or a wdSectionBreakNextPage, and no other kind "
+"of break"
+msgstr ""
+"Word42 শুধু wdPageBreak বা wdSectionBreakNextPage সন্নিবেশ করে, অন্য কোনো ধরনের "
+"বিরতি নয়"
+
+#: src/ui/w42-macro.c:1783
+msgid "There is no such style"
+msgstr "এমন কোনো শৈলী নেই"
+
+#. Translators: %s is the name of a style.
+#: src/ui/w42-macro.c:1787
+#, c-format
+msgid "There is no style named %s"
+msgstr "%s নামে কোনো শৈলী নেই"
+
+#. Translators: ActiveDocument.SaveAs is macro code: keep it in
+#. * English.
+#: src/ui/w42-macro.c:2113
+msgid "The document has never been saved: use ActiveDocument.SaveAs \"name\""
+msgstr "নথিটি কখনও সংরক্ষণ করা হয়নি: ActiveDocument.SaveAs \"name\" ব্যবহার করুন"
+
+#. Translators: ActiveDocument.SaveAs is macro code: keep it in
+#. * English.
+#: src/ui/w42-macro.c:2120
+msgid ""
+"The document came from a format Word42 does not write back as it was: use "
+"ActiveDocument.SaveAs \"name\""
+msgstr ""
+"নথিটি এমন একটি ফরম্যাট থেকে এসেছে যা Word42 আগের মতো করে লিখতে পারে না: "
+"ActiveDocument.SaveAs \"name\" ব্যবহার করুন"
+
+#: src/ui/w42-macro.c:2124 src/ui/w42-macro.c:2176 src/ui/w42-macro.c:2224
+msgid "The document could not be saved"
+msgstr "নথিটি সংরক্ষণ করা যায়নি"
+
+#. Translators: "SaveAs" is a name in the macro language: keep it in
+#. * English.
+#: src/ui/w42-macro.c:2152
+msgid "SaveAs needs a file name"
+msgstr "SaveAs-এর জন্য একটি ফাইলের নাম প্রয়োজন"
+
+#. Translators: ActiveDocument.SaveAs is macro code: keep it in
+#. * English.
+#: src/ui/w42-macro.c:2220
+msgid ""
+"The document has no file to be saved to: use ActiveDocument.SaveAs \"name\" "
+"first"
+msgstr ""
+"নথিটি সংরক্ষণের জন্য কোনো ফাইল নেই: প্রথমে ActiveDocument.SaveAs \"name\" "
+"ব্যবহার করুন"
+
+#: src/ui/w42-macro.c:2447
+msgid "A new document could not be made"
+msgstr "নতুন নথি তৈরি করা যায়নি"
+
+#. Translators: "Open" is Documents.Open, a name in the macro
+#. * language: keep it in English.
+#: src/ui/w42-macro.c:2484
+msgid "Open needs a file name"
+msgstr "Open-এর জন্য একটি ফাইলের নাম প্রয়োজন"
+
+#. Translators: %s is a file name.
+#: src/ui/w42-macro.c:2491
+#, c-format
+msgid "There is no file %s"
+msgstr "%s নামে কোনো ফাইল নেই"
+
+#: src/ui/w42-macro.c:2502
+msgid "The file could not be opened"
+msgstr "ফাইলটি খোলা যায়নি"
+
+#: src/ui/w42-macro.c:2662
+msgid "Error"
+msgstr "ত্রুটি"
+
+#: src/ui/w42-macro.c:2682
+msgid "The macro ran too long and was stopped"
+msgstr "ম্যাক্রোটি অনেকক্ষণ ধরে চলছিল, তাই থামানো হয়েছে"
+
+#: src/ui/w42-macro.c:2730
+msgid "A macro is running already: answer its box first."
+msgstr "একটি ম্যাক্রো ইতিমধ্যে চলছে: প্রথমে এর বাক্সের উত্তর দিন।"
+
+#. Translators: %s is the macro's name.
+#: src/ui/w42-macro.c:2928
+#, c-format
+msgid "The macro %s could not be deleted."
+msgstr "%s ম্যাক্রোটি মোছা যায়নি।"
+
+#. Translators: print preview, several pages side by side: the
+#. * first and last page shown, then the number of pages.
+#: src/ui/w42-preview.c:124
+#, c-format
+msgid "Pages %d-%d of %d"
+msgstr "পৃষ্ঠা %d-%d, মোট %d"
+
+#. Translators: print preview: the page shown, then the number of
+#. * pages.
+#: src/ui/w42-preview.c:128
+#, c-format
+msgid "Page %d of %d"
+msgstr "পৃষ্ঠা %d, মোট %d"
+
+#: src/ui/w42-preview.c:302 src/ui/w42-window.c:55
+msgid "Page Width"
+msgstr "পৃষ্ঠার প্রস্থ"
+
+#: src/ui/w42-preview.c:302 src/ui/w42-window.c:55
+msgid "Whole Page"
+msgstr "সম্পূর্ণ পৃষ্ঠা"
+
+#: src/ui/w42-preview.c:302
+msgid "Two Pages"
+msgstr "দুই পৃষ্ঠা"
+
+#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4070
+msgid "Print Preview"
+msgstr "মুদ্রণ পূর্বরূপ"
+
+#: src/ui/w42-preview.c:574
+msgid "_One Page"
+msgstr "এক পৃষ্ঠা(_O)"
+
+#: src/ui/w42-preview.c:575
+msgid "_Multiple Pages"
+msgstr "একাধিক পৃষ্ঠা(_M)"
+
+#: src/ui/w42-preview.c:576
+msgid "Zoom _Out"
+msgstr "জুম আউট(_O)"
+
+#: src/ui/w42-preview.c:580
+msgid "Zoom _In"
+msgstr "জুম ইন(_I)"
+
+#: src/ui/w42-preview.c:592
+msgid "Pre_vious"
+msgstr "পূর্ববর্তী(_V)"
+
+#: src/ui/w42-preview.c:593
+msgid "_Next"
+msgstr "পরবর্তী(_N)"
+
+#: src/ui/w42-print.c:232 src/ui/w42-print.c:853
+msgid "_Reverse print order"
+msgstr "বিপরীত ক্রমে মুদ্রণ(_R)"
+
+#: src/ui/w42-print.c:234
+msgid "Print _drawing objects and wrapped pictures"
+msgstr "অঙ্কন বস্তু ও মোড়ানো ছবি মুদ্রণ করুন(_D)"
+
+#: src/ui/w42-print.c:235
+msgid "Print _background colour"
+msgstr "পটভূমির রং মুদ্রণ করুন(_B)"
+
+#: src/ui/w42-print.c:236
+msgid "Draft _output: the text alone"
+msgstr "খসড়া আউটপুট: শুধু পাঠ্য(_O)"
+
+#: src/ui/w42-print.c:287
+msgid "No print backend is available."
+msgstr "কোনো মুদ্রণ ব্যাকএন্ড উপলব্ধ নেই।"
+
+#: src/ui/w42-print.c:317
+msgid "Word42 could not write the PDF."
+msgstr "Word42 PDF লিখতে পারেনি।"
+
+#: src/ui/w42-print.c:351 src/ui/w42-print.c:687 src/ui/w42-window.c:334
+#: src/ui/w42-window.c:2579
+msgid "PDF Documents (*.pdf)"
+msgstr "PDF নথি (*.pdf)"
+
+#: src/ui/w42-print.c:356
+msgid "Print to PDF"
+msgstr "PDF-এ মুদ্রণ"
+
+#: src/ui/w42-print.c:379
+msgid "Print to PDF..."
+msgstr "PDF-এ মুদ্রণ..."
+
+#. Translators: %s is why the printing failed, as the system gave it.
+#: src/ui/w42-print.c:384
+#, c-format
+msgid ""
+"%s\n"
+"\n"
+"word42 can write the document to a PDF instead, which you can print from any "
+"PDF viewer."
+msgstr ""
+"%s\n"
+"\n"
+"এর পরিবর্তে word42 নথিটি একটি PDF-এ লিখতে পারে, যা আপনি যেকোনো PDF দর্শক থেকে "
+"মুদ্রণ করতে পারবেন।"
+
+#: src/ui/w42-print.c:388
+msgid "Word42 could not print the document."
+msgstr "Word42 নথিটি মুদ্রণ করতে পারেনি।"
+
+#. Translators: the name of the paper size a document is printed on,
+#. * as the system's print dialog may show it.
+#: src/ui/w42-print.c:454
+msgid "Word42 page"
+msgstr "Word42 পৃষ্ঠা"
+
+#: src/ui/w42-print.c:598
+msgid "Type the pages to print the way Word did: 1,3,5-12."
+msgstr "Word-এর মতো করে মুদ্রণের পৃষ্ঠাগুলি লিখুন: 1,3,5-12।"
+
+#: src/ui/w42-print.c:691
+msgid "Print to File"
+msgstr "ফাইলে মুদ্রণ"
+
+#: src/ui/w42-print.c:746
+msgid "All pages in range"
+msgstr "পরিসরের সব পৃষ্ঠা"
+
+#: src/ui/w42-print.c:746
+msgid "Odd pages"
+msgstr "বিজোড় পৃষ্ঠা"
+
+#: src/ui/w42-print.c:746
+msgid "Even pages"
+msgstr "জোড় পৃষ্ঠা"
+
+#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4069
+msgid "Print"
+msgstr "মুদ্রণ"
+
+#: src/ui/w42-print.c:773
+msgid "Printer"
+msgstr "মুদ্রক"
+
+#. Translators: %s is the name of the printer the job will go to.
+#: src/ui/w42-print.c:775
+#, c-format
+msgid "Name:  %s"
+msgstr "নাম:  %s"
+
+#: src/ui/w42-print.c:775
+msgid "(the default printer)"
+msgstr "(ডিফল্ট মুদ্রক)"
+
+#: src/ui/w42-print.c:791
+msgid "Page range"
+msgstr "পৃষ্ঠা পরিসর"
+
+#: src/ui/w42-print.c:792
+msgctxt "page range"
+msgid "_All"
+msgstr "সব(_A)"
+
+#: src/ui/w42-print.c:793
+msgid "Curr_ent page"
+msgstr "বর্তমান পৃষ্ঠা(_E)"
+
+#: src/ui/w42-print.c:794
+msgid "_Selection"
+msgstr "নির্বাচন(_S)"
+
+#: src/ui/w42-print.c:795
+msgid "Pa_ges:"
+msgstr "পৃষ্ঠা(_G):"
+
+#: src/ui/w42-print.c:812
+msgid ""
+"Enter page numbers and/or page ranges\n"
+"separated by commas.  For example, 1,3,5-12"
+msgstr ""
+"কমা দিয়ে আলাদা করে পৃষ্ঠা নম্বর এবং/অথবা\n"
+"পৃষ্ঠা পরিসর লিখুন।  উদাহরণস্বরূপ, 1,3,5-12"
+
+#: src/ui/w42-print.c:820
+msgid "Copies"
+msgstr "অনুলিপি"
+
+#: src/ui/w42-print.c:822
+msgid "Number of _copies:"
+msgstr "অনুলিপির সংখ্যা(_C):"
+
+#: src/ui/w42-print.c:830
+msgid "Colla_te"
+msgstr "ক্রমানুসারে সাজান(_T)"
+
+#: src/ui/w42-print.c:854
+msgid "_Drawing objects"
+msgstr "অঙ্কন বস্তু(_D)"
+
+#: src/ui/w42-print.c:855
+msgid "_Background colour"
+msgstr "পটভূমির রং(_B)"
+
+#: src/ui/w42-print.c:856
+msgid "Draft _output"
+msgstr "খসড়া আউটপুট(_O)"
+
+#: src/ui/w42-print.c:872
+msgid "_Print"
+msgstr "মুদ্রণ(_P)"
+
+#: src/ui/w42-print.c:876
+msgid "P_rinter..."
+msgstr "মুদ্রক(_R)..."
+
+#: src/ui/w42-print.c:880
+msgid "Print to _file..."
+msgstr "ফাইলে মুদ্রণ(_F)..."
+
+#: src/ui/w42-scan.c:86
+msgid "Windows Image Acquisition is not available on this computer."
+msgstr "এই কম্পিউটারে Windows Image Acquisition উপলব্ধ নেই।"
+
+#. Translators: %08lx is the error's code, in hexadecimal.
+#: src/ui/w42-scan.c:110
+#, c-format
+msgid "The scanner could not be used (WIA error 0x%08lx)."
+msgstr "স্ক্যানারটি ব্যবহার করা যায়নি (WIA ত্রুটি 0x%08lx)।"
+
+#. Translators: %08lx is the error's code, in hexadecimal.
+#: src/ui/w42-scan.c:140
+#, c-format
+msgid "The scanned picture could not be saved (WIA error 0x%08lx)."
+msgstr "স্ক্যান করা ছবিটি সংরক্ষণ করা যায়নি (WIA ত্রুটি 0x%08lx)।"
+
+#. Translators: "Image Capture" is the macOS program's name;
+#. * Insert > Picture > From File is Word42's menu.
+#: src/ui/w42-scan.c:179
+msgid ""
+"Scanning is not available on macOS yet.  Scan with Image Capture and use "
+"Insert > Picture > From File."
+msgstr ""
+"macOS-এ স্ক্যান করা এখনও উপলব্ধ নয়।  Image Capture দিয়ে স্ক্যান করুন এবং সন্নিবেশ > "
+"ছবি > ফাইল থেকে ব্যবহার করুন।"
+
+#. Translators: scanimage, SANE and sane-utils are
+#. * the names of programs and packages.
+#: src/ui/w42-scan.c:215
+msgid "scanimage was not found.  Install SANE (sane-utils) to scan."
+msgstr "scanimage পাওয়া যায়নি।  স্ক্যান করতে SANE (sane-utils) ইনস্টল করুন।"
+
+#. Translators: %s is the scanner program's own message.
+#: src/ui/w42-scan.c:241
+#, c-format
+msgid "The scanner said: %s"
+msgstr "স্ক্যানারের বার্তা: %s"
+
+#: src/ui/w42-scan.c:244
+msgid "The scanner said: nothing"
+msgstr "স্ক্যানারের বার্তা: কিছুই না"
+
+#. Translators: centimetres, as written after a measurement ("2.5cm").
+#: src/ui/w42-settings.c:99
+msgid "cm"
+msgstr "সেমি"
+
+#. Translators: Escape is the key on the keyboard.
+#: src/ui/w42-slideshow.c:97
+msgid "End of the show.  Escape closes it."
+msgstr "প্রদর্শনী শেষ।  Escape চাপলে এটি বন্ধ হয়।"
+
+#: src/ui/w42-slideshow.c:283
+msgid "Slide Show"
+msgstr "স্লাইড শো"
+
+#: src/ui/w42-spell-dialog.c:103
+msgid "(no suggestions)"
+msgstr "(কোনো প্রস্তাবনা নেই)"
+
+#: src/ui/w42-spell-dialog.c:118
+msgid "The spelling check is complete."
+msgstr "বানান পরীক্ষা সম্পূর্ণ হয়েছে।"
+
+#: src/ui/w42-spell-dialog.c:346
+msgid "Not in Dictionary:"
+msgstr "অভিধানে নেই:"
+
+#: src/ui/w42-spell-dialog.c:355
+msgid "Change _To:"
+msgstr "এতে পরিবর্তন করুন(_T):"
+
+#: src/ui/w42-spell-dialog.c:363
+msgid "Suggestio_ns:"
+msgstr "প্রস্তাবনা(_N):"
+
+#: src/ui/w42-spell-dialog.c:396
+msgid "I_gnore All"
+msgstr "সব উপেক্ষা করুন(_G)"
+
+#: src/ui/w42-spell-dialog.c:397
+msgid "_Change"
+msgstr "পরিবর্তন করুন(_C)"
+
+#: src/ui/w42-spell-dialog.c:398
+msgid "Change A_ll"
+msgstr "সব পরিবর্তন করুন(_L)"
+
+#. Translators: %s is the word looked up in the thesaurus.
+#: src/ui/w42-thesaurus-dialog.c:142
+#, c-format
+msgid "No entries found for \"%s\"."
+msgstr "\"%s\"-এর জন্য কোনো ভুক্তি পাওয়া যায়নি।"
+
+#. Translators: %s is the thesaurus's language code, such as en_US.
+#: src/ui/w42-thesaurus-dialog.c:289
+#, c-format
+msgid "Thesaurus: %s"
+msgstr "সমার্থশব্দকোষ: %s"
+
+#: src/ui/w42-thesaurus-dialog.c:323
+msgid "Looked Up:"
+msgstr "খোঁজা হয়েছে:"
+
+#: src/ui/w42-thesaurus-dialog.c:330
+msgid "_Meanings:"
+msgstr "অর্থ(_M):"
+
+#: src/ui/w42-thesaurus-dialog.c:341
+msgid "Replace with _Synonym:"
+msgstr "সমার্থশব্দ দিয়ে প্রতিস্থাপন করুন(_S):"
+
+#: src/ui/w42-thesaurus-dialog.c:359
+msgid "_Look Up"
+msgstr "খুঁজে দেখুন(_L)"
+
+#: src/ui/w42-thesaurus-dialog.c:364
+msgid "_Previous"
+msgstr "পূর্ববর্তী(_P)"
+
+#: src/ui/w42-view.c:1269 src/ui/w42-window.c:1073 src/ui/w42-window.c:4066
+msgid "Open"
+msgstr "খুলুন"
+
+#: src/ui/w42-view.c:1270
+msgid "Open this link?"
+msgstr "এই লিঙ্কটি খুলবেন?"
+
+#. Translators: the AutoComplete tip over the caret; %s is the
+#. * start of the AutoText entry or date offered, cut short.
+#: src/ui/w42-view.c:4324
+#, c-format
+msgid "%s…  (Press ENTER to Insert)"
+msgstr "%s…  (সন্নিবেশ করতে ENTER চাপুন)"
+
+#. Translators: the AutoComplete tip over the caret; %s is the
+#. * AutoText entry or date offered.
+#: src/ui/w42-view.c:4329
+#, c-format
+msgid "%s  (Press ENTER to Insert)"
+msgstr "%s  (সন্নিবেশ করতে ENTER চাপুন)"
+
+#: src/ui/w42-view.c:5932
+msgid "_Copy"
+msgstr "অনুলিপি করুন(_C)"
+
+#: src/ui/w42-view.c:5933
+msgid "_Paste"
+msgstr "আটকান(_P)"
+
+#: src/ui/w42-view.c:5939
+msgid "_Bullets and Numbering..."
+msgstr "বুলেট ও নম্বরকরণ(_B)..."
+
+#: src/ui/w42-view.c:5944
+msgid "Table P_roperties..."
+msgstr "সারণী বৈশিষ্ট্য(_R)..."
+
+#. Translators: the window's title, "Document1 - Word42 0.9.0".  The
+#. * first %s is the document's name, the second an asterisk when it has
+#. * unsaved changes (else nothing), the third Word42's version.
+#: src/ui/w42-window.c:253
+#, c-format
+msgid "%s%s - Word42 %s"
+msgstr "%s%s - Word42 %s"
+
+#. Translators: the title in Word42's own title bar, "Word42 0.9.0 -
+#. * Document1".  The first %s is Word42's version, the second the
+#. * document's name, the third an asterisk when it has unsaved
+#. * changes (else nothing).
+#: src/ui/w42-window.c:265
+#, c-format
+msgid "Word42 %s - %s%s"
+msgstr "Word42 %s - %s%s"
+
+#: src/ui/w42-window.c:319
+msgid "All Documents (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"
+msgstr "সব নথি (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"
+
+#: src/ui/w42-window.c:322
+msgid ""
+"All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"
+msgstr "সব নথি (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"
+
+#: src/ui/w42-window.c:325
+msgid "Word Document (*.docx)"
+msgstr "Word নথি (*.docx)"
+
+#: src/ui/w42-window.c:327
+msgid "Word 97 (*.doc)"
+msgstr "Word 97 নথি (*.doc)"
+
+#: src/ui/w42-window.c:328
+msgid "OpenDocument Text (*.odt)"
+msgstr "OpenDocument পাঠ্য (*.odt)"
+
+#: src/ui/w42-window.c:329
+msgid "AbiWord (*.abw, *.zabw)"
+msgstr "AbiWord নথি (*.abw, *.zabw)"
+
+#: src/ui/w42-window.c:330 src/ui/w42-window.c:2406
+msgid "Web Pages (*.html)"
+msgstr "ওয়েব পৃষ্ঠা (*.html)"
+
+#: src/ui/w42-window.c:331 src/ui/w42-window.c:2547
+msgid "Presentations (*.pptx)"
+msgstr "উপস্থাপনা (*.pptx)"
+
+#: src/ui/w42-window.c:332
+msgid "Text Documents (*.txt)"
+msgstr "পাঠ্য নথি (*.txt)"
+
+#: src/ui/w42-window.c:335
+msgid "All Files"
+msgstr "সব ফাইল"
+
+#. Translators: the name of the copy Tools > Options > Always create
+#. * backup copy keeps beside a file; %s is the file's own name.  It is a
+#. * file name: no slashes, backslashes or colons, and %s last, so that the
+#. * copy keeps the file's extension and opens as the file does.
+#: src/ui/w42-window.c:587
+#, c-format
+msgid "Backup of %s"
+msgstr "ব্যাকআপ - %s"
+
+#. Translators: %s is the recovered document's name.
+#: src/ui/w42-window.c:661
+#, c-format
+msgid "Word42 recovered “%s”."
+msgstr "Word42 “%s” পুনরুদ্ধার করেছে।"
+
+#: src/ui/w42-window.c:664
+msgid ""
+"It was not saved when Word42 last stopped. Save it to keep it; close it to "
+"let it go."
+msgstr ""
+"Word42 শেষবার বন্ধ হওয়ার সময় এটি সংরক্ষিত ছিল না। রাখতে চাইলে সংরক্ষণ করুন; বাদ "
+"দিতে চাইলে বন্ধ করুন।"
+
+#. Translators: %d is how many autosaved copies could not be read,
+#. * %s the folder they are kept in.
+#: src/ui/w42-window.c:709
+#, c-format
+msgid ""
+"%d document left when Word42 last stopped could not be read. It is kept in "
+"%s, with names ending .bad."
+msgid_plural ""
+"%d documents left when Word42 last stopped could not be read. They are kept "
+"in %s, with names ending .bad."
+msgstr[0] ""
+"Word42 শেষবার বন্ধ হওয়ার সময় রয়ে যাওয়া %dটি নথি পড়া যায়নি। সেটি %s-এ রাখা "
+"আছে, নামের শেষে .bad সহ।"
+msgstr[1] ""
+"Word42 শেষবার বন্ধ হওয়ার সময় রয়ে যাওয়া %dটি নথি পড়া যায়নি। সেগুলি %s-এ রাখা "
+"আছে, নামের শেষে .bad সহ।"
+
+#: src/ui/w42-window.c:719
+msgid "Word42 could not recover everything."
+msgstr "Word42 সবকিছু পুনরুদ্ধার করতে পারেনি।"
+
+#: src/ui/w42-window.c:847 src/ui/w42-window.c:921 src/ui/w42-window.c:1001
+#: src/ui/w42-window.c:4879
+msgid "Word42 could not open that file."
+msgstr "Word42 ফাইলটি খুলতে পারেনি।"
+
+#. Translators: %s is the name of the file exported to.
+#: src/ui/w42-window.c:951
+#, c-format
+msgid ""
+"Exported as %s. The document itself is not saved there: Word42 cannot read "
+"that format back as it was."
+msgstr ""
+"%s হিসাবে রপ্তানি করা হয়েছে। নথিটি নিজে সেখানে সংরক্ষিত হয়নি: Word42 ওই ফরম্যাট "
+"থেকে নথিটি আগের মতো করে পড়তে পারে না।"
+
+#: src/ui/w42-window.c:1043
+msgid ""
+"This document has not been saved yet, so there is nothing to go back to."
+msgstr "এই নথিটি এখনও সংরক্ষণ করা হয়নি, তাই ফিরে যাওয়ার মতো কিছু নেই।"
+
+#: src/ui/w42-window.c:1049
+msgid "The document has no unsaved changes."
+msgstr "নথিটিতে কোনো অসংরক্ষিত পরিবর্তন নেই।"
+
+#. Translators: %s is the document's name.
+#: src/ui/w42-window.c:1055
+#, c-format
+msgid "Revert “%s” to the saved version?"
+msgstr "“%s” কি সংরক্ষিত সংস্করণে ফিরিয়ে নেবেন?"
+
+#: src/ui/w42-window.c:1057
+msgid "The changes made since the document was last saved will be lost."
+msgstr "নথিটি শেষবার সংরক্ষণের পর থেকে করা পরিবর্তনগুলি হারিয়ে যাবে।"
+
+#. Translators: %s is a file name.
+#: src/ui/w42-window.c:1169
+#, c-format
+msgid "“%s” already exists. Replace it?"
+msgstr "“%s” ইতিমধ্যে বিদ্যমান। এটি প্রতিস্থাপন করবেন?"
+
+#: src/ui/w42-window.c:1176
+msgid "The file that is there now will be lost."
+msgstr "এখন যে ফাইলটি আছে সেটি হারিয়ে যাবে।"
+
+#: src/ui/w42-window.c:1197 src/ui/w42-window.c:1203 src/ui/w42-window.c:1225
+#: src/ui/w42-window.c:1305 src/ui/w42-window.c:4785
+msgid "Word42 could not save that file."
+msgstr "Word42 ফাইলটি সংরক্ষণ করতে পারেনি।"
+
+#: src/ui/w42-window.c:1242
+msgid "Save As"
+msgstr "এই হিসাবে সংরক্ষণ করুন"
+
+#: src/ui/w42-window.c:1346 src/ui/w42-window.c:1364
+msgid "Word42 could not save that template."
+msgstr "Word42 টেমপ্লেটটি সংরক্ষণ করতে পারেনি।"
+
+#: src/ui/w42-window.c:1348
+msgid "Saved as a template.  File > New from Template lists it."
+msgstr ""
+"টেমপ্লেট হিসাবে সংরক্ষিত হয়েছে।  ফাইল > টেমপ্লেট থেকে নতুন-এর তালিকায় এটি দেখা "
+"যাবে।"
+
+#: src/ui/w42-window.c:1389
+msgid "Save as Template"
+msgstr "টেমপ্লেট হিসাবে সংরক্ষণ করুন"
+
+#: src/ui/w42-window.c:1448
+msgid "Don't Save"
+msgstr "সংরক্ষণ করবেন না"
+
+#. Translators: %s is the document's name.
+#: src/ui/w42-window.c:1461
+#, c-format
+msgid "Save changes to “%s”?"
+msgstr "“%s”-এ করা পরিবর্তনগুলি সংরক্ষণ করবেন?"
+
+#: src/ui/w42-window.c:1464
+msgid "If you close without saving, the changes you have made will be lost."
+msgstr "সংরক্ষণ না করে বন্ধ করলে আপনার করা পরিবর্তনগুলি হারিয়ে যাবে।"
+
+#: src/ui/w42-window.c:2147 src/ui/w42-window.c:4320
+msgid "Font"
+msgstr "ফন্ট"
+
+#: src/ui/w42-window.c:2217
+msgid "Word42 could not insert that picture."
+msgstr "Word42 ছবিটি সন্নিবেশ করতে পারেনি।"
+
+#: src/ui/w42-window.c:2225
+msgid "Word42 could not open that picture."
+msgstr "Word42 ছবিটি খুলতে পারেনি।"
+
+#: src/ui/w42-window.c:2245
+msgid "Pictures"
+msgstr "ছবি"
+
+#: src/ui/w42-window.c:2249
+msgid "Insert Picture"
+msgstr "ছবি সন্নিবেশ করুন"
+
+#: src/ui/w42-window.c:2271
+msgid "No scanner can be reached from here."
+msgstr "এখান থেকে কোনো স্ক্যানারে পৌঁছানো যাচ্ছে না।"
+
+#: src/ui/w42-window.c:2272
+msgid ""
+"Word42 scans through Windows Image Acquisition on Windows and through SANE's "
+"scanimage on Linux; neither was found."
+msgstr ""
+"Word42 Windows-এ Windows Image Acquisition এবং Linux-এ SANE-এর scanimage "
+"দিয়ে স্ক্যান করে; কোনোটিই পাওয়া যায়নি।"
+
+#: src/ui/w42-window.c:2285
+msgid "The scanner sent a picture Word42 cannot read."
+msgstr "স্ক্যানার এমন একটি ছবি পাঠিয়েছে যা Word42 পড়তে পারে না।"
+
+#: src/ui/w42-window.c:2289
+msgid "Word42 could not scan."
+msgstr "Word42 স্ক্যান করতে পারেনি।"
+
+#: src/ui/w42-window.c:2312 src/ui/w42-window.c:2319
+msgid "Word42 could not export the PDF."
+msgstr "Word42 PDF রপ্তানি করতে পারেনি।"
+
+#: src/ui/w42-window.c:2343 src/ui/w42-window.c:2348
+msgid "Word42 could not export the web page."
+msgstr "Word42 ওয়েব পৃষ্ঠা রপ্তানি করতে পারেনি।"
+
+#: src/ui/w42-window.c:2382
+msgid "Word42 could not write the web page to preview."
+msgstr "Word42 পূর্বরূপ দেখানোর জন্য ওয়েব পৃষ্ঠাটি লিখতে পারেনি।"
+
+#: src/ui/w42-window.c:2407
+msgid "Export as Web Page"
+msgstr "ওয়েব পৃষ্ঠা হিসাবে রপ্তানি করুন"
+
+#: src/ui/w42-window.c:2438 src/ui/w42-window.c:2445
+msgid "Word42 could not export the e-book."
+msgstr "Word42 ই-বুক রপ্তানি করতে পারেনি।"
+
+#: src/ui/w42-window.c:2440
+msgid "The e-book is written."
+msgstr "ই-বুকটি লেখা হয়েছে।"
+
+#: src/ui/w42-window.c:2468
+msgid "E-books (*.epub)"
+msgstr "ই-বুক (*.epub)"
+
+#: src/ui/w42-window.c:2469
+msgid "Export as E-book"
+msgstr "ই-বুক হিসাবে রপ্তানি করুন"
+
+#: src/ui/w42-window.c:2497 src/ui/w42-window.c:2502
+msgid "Word42 could not export the presentation."
+msgstr "Word42 উপস্থাপনাটি রপ্তানি করতে পারেনি।"
+
+#: src/ui/w42-window.c:2529
+msgid "There is nothing to make slides of."
+msgstr "স্লাইড তৈরি করার মতো কিছু নেই।"
+
+#: src/ui/w42-window.c:2530
+msgid ""
+"A slide is a heading and the lines under it: give the document's headings "
+"the Heading 1 style, or a Title."
+msgstr ""
+"একটি স্লাইড হলো একটি শিরোনাম ও তার নিচের লাইনগুলি: নথির শিরোনামগুলিতে Heading 1 "
+"শৈলী, অথবা Title শৈলী দিন।"
+
+#: src/ui/w42-window.c:2535
+#, c-format
+msgid "%u slide."
+msgid_plural "%u slides."
+msgstr[0] "%uটি স্লাইড।"
+msgstr[1] "%uটি স্লাইড।"
+
+#: src/ui/w42-window.c:2548
+msgid "Export as Presentation"
+msgstr "উপস্থাপনা হিসাবে রপ্তানি করুন"
+
+#: src/ui/w42-window.c:2580
+msgid "Export as PDF"
+msgstr "PDF হিসাবে রপ্তানি করুন"
+
+#: src/ui/w42-window.c:2789
+msgid "The caret is in the first row: there is nothing above it to split off."
+msgstr "কার্সার প্রথম সারিতে আছে: এর উপরে আলাদা করার মতো কিছু নেই।"
+
+#: src/ui/w42-window.c:2817
+msgid "There is nothing to convert here."
+msgstr "এখানে রূপান্তর করার মতো কিছু নেই।"
+
+#: src/ui/w42-window.c:2818
+msgid ""
+"In a table this makes paragraphs with tabs between the cells; on selected "
+"paragraphs it makes a table, split at their tabs."
+msgstr ""
+"সারণীর ভিতরে এটি কক্ষগুলির মাঝে ট্যাবসহ অনুচ্ছেদ তৈরি করে; নির্বাচিত অনুচ্ছেদে এটি "
+"ট্যাবের জায়গায় ভাগ করে একটি সারণী তৈরি করে।"
+
+#: src/ui/w42-window.c:2866 src/ui/w42-window.c:2886 src/ui/w42-window.c:2908
+#: src/ui/w42-window.c:3325 src/ui/w42-window.c:3341 src/ui/w42-window.c:3565
+msgid "The caret is in a note: put it in the body of the document first."
+msgstr "কার্সার একটি টীকার ভিতরে আছে: প্রথমে এটি নথির মূল অংশে রাখুন।"
+
+#: src/ui/w42-window.c:2872
+msgid "There is nothing marked for the index."
+msgstr "সূচির জন্য কিছুই চিহ্নিত করা নেই।"
+
+#: src/ui/w42-window.c:2873
+msgid ""
+"Select a word and use Insert ▸ Index Entry to mark it, then ask for the "
+"index again."
+msgstr ""
+"একটি শব্দ নির্বাচন করে সন্নিবেশ ▸ সূচি ভুক্তি দিয়ে তা চিহ্নিত করুন, তারপর আবার সূচি "
+"তৈরি করুন।"
+
+#: src/ui/w42-window.c:2892
+msgid "There are no captions to list."
+msgstr "তালিকাভুক্ত করার মতো কোনো ক্যাপশন নেই।"
+
+#: src/ui/w42-window.c:2893
+msgid ""
+"Insert ▸ Caption puts a caption under a picture, and the table of figures "
+"lists them."
+msgstr ""
+"সন্নিবেশ ▸ ক্যাপশন একটি ছবির নিচে ক্যাপশন বসায়, এবং চিত্রের সারণী সেগুলির তালিকা "
+"দেয়।"
+
+#: src/ui/w42-window.c:2914
+msgid "There are no headings to list."
+msgstr "তালিকাভুক্ত করার মতো কোনো শিরোনাম নেই।"
+
+#: src/ui/w42-window.c:2915
+msgid "Give the document's headings the Heading 1, 2 or 3 style and try again."
+msgstr "নথির শিরোনামগুলিতে Heading 1, 2 বা 3 শৈলী দিন এবং আবার চেষ্টা করুন।"
+
+#: src/ui/w42-window.c:2962
+msgid "There is no table of contents to update."
+msgstr "হালনাগাদ করার মতো কোনো সূচিপত্র নেই।"
+
+#: src/ui/w42-window.c:2963
+msgid "Insert > Table of Contents puts one in."
+msgstr "সন্নিবেশ > সূচিপত্র দিয়ে একটি যোগ করুন।"
+
+#: src/ui/w42-window.c:2999
+msgid "No hyphenation dictionary was found."
+msgstr "কোনো হাইফেনেশন অভিধান পাওয়া যায়নি।"
+
+#: src/ui/w42-window.c:3000
+msgid ""
+"Hyphenation needs libhyphen and a hyph_*.dic pattern file for your language, "
+"the ones LibreOffice uses."
+msgstr ""
+"হাইফেনেশনের জন্য libhyphen এবং আপনার ভাষার একটি hyph_*.dic প্যাটার্ন ফাইল "
+"প্রয়োজন, যেগুলি LibreOffice ব্যবহার করে।"
+
+#: src/ui/w42-window.c:3003
+msgid "There is nothing to hyphenate."
+msgstr "হাইফেন যোগ করার মতো কিছু নেই।"
+
+#: src/ui/w42-window.c:3015
+#, c-format
+msgid "%d hyphen removed."
+msgid_plural "%d hyphens removed."
+msgstr[0] "%dটি হাইফেন সরানো হয়েছে।"
+msgstr[1] "%dটি হাইফেন সরানো হয়েছে।"
+
+#: src/ui/w42-window.c:3018
+msgid "There are no soft hyphens to remove."
+msgstr "সরানোর মতো কোনো সফট হাইফেন নেই।"
+
+#: src/ui/w42-window.c:3162
+msgid ""
+"Type the name of an AutoText entry, then press Ctrl+F3.  Edit > AutoText "
+"makes one from the selection."
+msgstr ""
+"একটি স্বতঃপাঠ্য ভুক্তির নাম টাইপ করুন, তারপর Ctrl+F3 চাপুন।  সম্পাদনা > স্বতঃপাঠ্য "
+"নির্বাচিত অংশ থেকে একটি ভুক্তি তৈরি করে।"
+
+#: src/ui/w42-window.c:3203
+#, c-format
+msgid "%d field updated."
+msgid_plural "%d fields updated."
+msgstr[0] "%dটি ক্ষেত্র হালনাগাদ করা হয়েছে।"
+msgstr[1] "%dটি ক্ষেত্র হালনাগাদ করা হয়েছে।"
+
+#: src/ui/w42-window.c:3206
+msgid "There are no fields in this document."
+msgstr "এই নথিতে কোনো ক্ষেত্র নেই।"
+
+#. Translators: the label Insert > Caption puts in the document; %d is
+#. * the figure's number.  Keep a word before the number, and keep %d as
+#. * it is: the captions already there are counted by what comes before
+#. * it.
+#: src/ui/w42-window.c:3276 src/ui/w42-window.c:3292
+#, c-format
+msgid "Figure %d: "
+msgstr "চিত্র %d: "
+
+#: src/ui/w42-window.c:3355
+msgid "Put the caret at a note's mark, or in the note itself."
+msgstr "কার্সারটি টীকার চিহ্নে, অথবা টীকার ভিতরে রাখুন।"
+
+#: src/ui/w42-window.c:3437
+msgid "No thesaurus was found."
+msgstr "কোনো সমার্থশব্দকোষ পাওয়া যায়নি।"
+
+#: src/ui/w42-window.c:3438
+msgid ""
+"The thesaurus needs a MyThes file for the language of the text -- "
+"th_en_US_v2.dat and its .idx for English, th_nb_NO_v2 for Norwegian, the "
+"ones LibreOffice uses -- in the mythes folder."
+msgstr ""
+"সমার্থশব্দকোষের জন্য mythes ফোল্ডারে পাঠ্যের ভাষার একটি MyThes ফাইল প্রয়োজন -- "
+"ইংরেজির জন্য th_en_US_v2.dat ও তার .idx, নরওয়েজিয়ানের জন্য th_nb_NO_v2, যেগুলি "
+"LibreOffice ব্যবহার করে।"
+
+#: src/ui/w42-window.c:3445
+msgid "Put the caret in a word to look it up in the thesaurus."
+msgstr "সমার্থশব্দকোষে খুঁজতে কার্সারটি একটি শব্দের ভিতরে রাখুন।"
+
+#: src/ui/w42-window.c:3457
+msgid "No spelling dictionary was found."
+msgstr "কোনো বানান অভিধান পাওয়া যায়নি।"
+
+#: src/ui/w42-window.c:3458
+msgid "Install a Hunspell dictionary for your language and start Word42 again."
+msgstr ""
+"আপনার ভাষার জন্য একটি Hunspell অভিধান ইনস্টল করুন এবং Word42 আবার চালু করুন।"
+
+#: src/ui/w42-window.c:3511
+msgid "Revisions accepted."
+msgstr "সংশোধনগুলি গৃহীত হয়েছে।"
+
+#: src/ui/w42-window.c:3513 src/ui/w42-window.c:3525
+msgid "There are no revision marks in this document."
+msgstr "এই নথিতে কোনো সংশোধন চিহ্ন নেই।"
+
+#: src/ui/w42-window.c:3523
+msgid "Revisions rejected."
+msgstr "সংশোধনগুলি প্রত্যাখ্যাত হয়েছে।"
+
+#. Translators: the Windows version in the About box, as "Windows
+#. * 10.0 build 19045 (Windows 10)": the major and minor version, the
+#. * build number, then the release's name in brackets or nothing.
+#: src/ui/w42-window.c:3636
+#, c-format
+msgid "Windows %lu.%lu build %lu%s"
+msgstr "Windows %lu.%lu বিল্ড %lu%s"
+
+#. Translators: what the About box says this copy runs on, for bug
+#. * reports.  The version numbers and library names fill the
+#. * placeholders in turn: Word42's version; GTK's running version and
+#. * the one built against; GLib's; Pango's, Cairo's and GdkPixbuf's;
+#. * the operating system; then the spelling, hyphenation and PDF
+#. * import libraries, or "none".
+#: src/ui/w42-window.c:3667
+#, c-format
+msgid ""
+"Word42 %s\n"
+"GTK %u.%u.%u (built against %d.%d.%d)  ·  GLib %u.%u.%u\n"
+"Pango %s  ·  Cairo %s  ·  GdkPixbuf %s\n"
+"%s\n"
+"Spelling: %s  ·  Hyphenation: %s  ·  PDF import: %s"
+msgstr ""
+"Word42 %s\n"
+"GTK %u.%u.%u (%d.%d.%d-এর সাথে বিল্ড করা)  ·  GLib %u.%u.%u\n"
+"Pango %s  ·  Cairo %s  ·  GdkPixbuf %s\n"
+"%s\n"
+"বানান: %s  ·  হাইফেনেশন: %s  ·  PDF আমদানি: %s"
+
+#. Translators: no library for this, in the About box.
+#: src/ui/w42-window.c:3682 src/ui/w42-window.c:3688 src/ui/w42-window.c:3694
+msgctxt "library"
+msgid "none"
+msgstr "নেই"
+
+#: src/ui/w42-window.c:3726
+msgid "About Word42"
+msgstr "Word42 সম্পর্কে"
+
+#. Translators: %s is Word42's version number.
+#: src/ui/w42-window.c:3749
+#, c-format
+msgid "Version %s"
+msgstr "সংস্করণ %s"
+
+#: src/ui/w42-window.c:3760
+msgid "Written in C on GTK 4, Pango and Cairo."
+msgstr "GTK 4, Pango ও Cairo ভিত্তিক, C ভাষায় লেখা।"
+
+#: src/ui/w42-window.c:3793
+msgid ""
+"Copyright (C) 2026 Andreas Røsdal.\n"
+"\n"
+"This program is free software: you can redistribute it and/or modify it "
+"under the terms of the GNU General Public License as published by the Free "
+"Software Foundation, either version 3 of the License, or (at your option) "
+"any later version.  It comes with ABSOLUTELY NO WARRANTY.\n"
+"\n"
+"Word42 is an independent program, not affiliated with or endorsed by the "
+"makers of any other word processor.  The names of file formats appear only "
+"to say which format is meant.\n"
+"\n"
+"Macros run on MY-BASIC by Tony Wang, used under the MIT licence."
+msgstr ""
+"Copyright (C) 2026 Andreas Røsdal।\n"
+"\n"
+"এই প্রোগ্রামটি একটি মুক্ত সফটওয়্যার: Free Software Foundation প্রকাশিত GNU General "
+"Public License-এর সংস্করণ 3, অথবা (আপনার পছন্দ অনুযায়ী) যেকোনো পরবর্তী সংস্করণের "
+"শর্তাবলি অনুযায়ী আপনি এটি পুনর্বিতরণ এবং/অথবা পরিবর্তন করতে পারেন।  এটি কোনো "
+"ধরনের ওয়ারেন্টি ছাড়াই দেওয়া হয়।\n"
+"\n"
+"Word42 একটি স্বাধীন প্রোগ্রাম; অন্য কোনো ওয়ার্ড প্রসেসরের নির্মাতাদের সাথে এর কোনো "
+"সংশ্লিষ্টতা নেই এবং তারা এটি অনুমোদনও করেনি।  ফাইল ফরম্যাটের নামগুলি কেবল কোন "
+"ফরম্যাট বোঝানো হয়েছে তা জানাতে ব্যবহৃত হয়েছে।\n"
+"\n"
+"ম্যাক্রো চলে Tony Wang-এর MY-BASIC-এ, যা MIT লাইসেন্সের অধীনে ব্যবহৃত।"
+
+#: src/ui/w42-window.c:3942
+msgid "Minimize"
+msgstr "ছোট করুন"
+
+#: src/ui/w42-window.c:3945
+msgid "Maximize"
+msgstr "বড় করুন"
+
+#: src/ui/w42-window.c:4065
+msgid "New"
+msgstr "নতুন"
+
+#: src/ui/w42-window.c:4067
+msgid "Save"
+msgstr "সংরক্ষণ করুন"
+
+#: src/ui/w42-window.c:4073
+msgid "Cut"
+msgstr "কাটুন"
+
+#: src/ui/w42-window.c:4074
+msgid "Copy"
+msgstr "অনুলিপি করুন"
+
+#: src/ui/w42-window.c:4075
+msgid "Paste"
+msgstr "আটকান"
+
+#: src/ui/w42-window.c:4077
+msgid "Undo"
+msgstr "পূর্বাবস্থায় ফেরান"
+
+#: src/ui/w42-window.c:4078
+msgid "Redo"
+msgstr "পুনরায় করুন"
+
+#: src/ui/w42-window.c:4099
+msgid "Zoom Control"
+msgstr "জুম নিয়ন্ত্রণ"
+
+#: src/ui/w42-window.c:4279
+msgid "Align Left"
+msgstr "বামে সারিবদ্ধ করুন"
+
+#: src/ui/w42-window.c:4282
+msgid "Align Right"
+msgstr "ডানে সারিবদ্ধ করুন"
+
+#: src/ui/w42-window.c:4282
+msgid "Justify"
+msgstr "উভয় প্রান্তে সারিবদ্ধ করুন"
+
+#: src/ui/w42-window.c:4334
+msgid "Font Size"
+msgstr "ফন্টের আকার"
+
+#: src/ui/w42-window.c:4341
+msgid "Bold"
+msgstr "গাঢ়"
+
+#: src/ui/w42-window.c:4342
+msgid "Italic"
+msgstr "তির্যক"
+
+#: src/ui/w42-window.c:4370
+msgid "Numbering"
+msgstr "নম্বরকরণ"
+
+#: src/ui/w42-window.c:4371
+msgid "Bullets"
+msgstr "বুলেট"
+
+#. Translators: the status bar's page number.
+#: src/ui/w42-window.c:4394 src/ui/w42-window.c:5217
+#, c-format
+msgid "Page %d"
+msgstr "পৃষ্ঠা %d"
+
+#. Translators: the status bar's reading of how far down the page
+#. * the caret is, "At" short for "at so far from the top": %.1f is
+#. * the distance, %s the unit, already translated (" or cm).
+#: src/ui/w42-window.c:4396 src/ui/w42-window.c:5243
+#, c-format
+msgid "At %.1f%s"
+msgstr "অবস্থান %.1f%s"
+
+#. Translators: the status bar's line number, "Ln" short for Line.
+#: src/ui/w42-window.c:4398 src/ui/w42-window.c:5225
+#, c-format
+msgid "Ln %d"
+msgstr "লাইন %d"
+
+#. Translators: the status bar's column number, "Col" short for
+#. * Column: how many characters in from the start of the line.
+#: src/ui/w42-window.c:4400 src/ui/w42-window.c:5229
+#, c-format
+msgid "Col %d"
+msgstr "কলাম %d"
+
+#. Translators: the status bar's word count toward the goal set in
+#. * Tools > Word Count Goal: "12,000 of 80,000 words".  The first %s
+#. * is the words written, the second the goal.
+#: src/ui/w42-window.c:4503
+#, c-format
+msgid "%s of %s word"
+msgid_plural "%s of %s words"
+msgstr[0] "%s শব্দ (লক্ষ্য %s)"
+msgstr[1] "%s শব্দ (লক্ষ্য %s)"
+
+#. Translators: the status bar's word count; %s is the number, with
+#. * thousands separators.
+#: src/ui/w42-window.c:4511
+#, c-format
+msgid "%s word"
+msgid_plural "%s words"
+msgstr[0] "%s শব্দ"
+msgstr[1] "%s শব্দ"
+
+#. Translators: in the word count's tooltip; %d%% is how far
+#. * toward the goal the document is, as "40%".
+#: src/ui/w42-window.c:4522
+#, c-format
+msgid "%d%% of the goal."
+msgstr "লক্ষ্যের %d%%।"
+
+#. Translators: in the word count's tooltip; %ld is the words
+#. * written since the document was opened, which can be less than
+#. * nothing when more was deleted.
+#: src/ui/w42-window.c:4533
+#, c-format
+msgid "Written since the document was opened: %ld word."
+msgid_plural "Written since the document was opened: %ld words."
+msgstr[0] "নথি খোলার পর থেকে লেখা হয়েছে: %ld শব্দ।"
+msgstr[1] "নথি খোলার পর থেকে লেখা হয়েছে: %ld শব্দ।"
+
+#: src/ui/w42-window.c:4539
+msgid "Tools ▸ Word Count Goal sets the goal."
+msgstr "সরঞ্জাম ▸ শব্দ গণনার লক্ষ্য দিয়ে লক্ষ্য নির্ধারণ করুন।"
+
+#: src/ui/w42-window.c:4791
+msgid "The rest are saved."
+msgstr "বাকিগুলি সংরক্ষিত হয়েছে।"
+
+#: src/ui/w42-window.c:4791
+msgid "Nothing was saved."
+msgstr "কিছুই সংরক্ষিত হয়নি।"
+
+#: src/ui/w42-window.c:4792
+msgid ""
+"A document that has never been saved, or that came from a format Word42 does "
+"not write back, needs a name: use File > Save As for it."
+msgstr ""
+"যে নথি কখনও সংরক্ষিত হয়নি, অথবা এমন ফরম্যাট থেকে এসেছে যা Word42 লিখতে পারে "
+"না, তার একটি নাম প্রয়োজন: এর জন্য ফাইল > এই হিসাবে সংরক্ষণ করুন ব্যবহার করুন।"
+
+#: src/ui/w42-window.c:4831 src/ui/w42-window.c:4873
+msgid "Word42 could not read that file."
+msgstr "Word42 ফাইলটি পড়তে পারেনি।"
+
+#: src/ui/w42-window.c:4867
+msgid "The two documents are the same."
+msgstr "দুটি নথি একই।"
+
+#: src/ui/w42-window.c:4869
+#, c-format
+msgid "%d change marked."
+msgid_plural "%d changes marked."
+msgstr[0] "%dটি পরিবর্তন চিহ্নিত করা হয়েছে।"
+msgstr[1] "%dটি পরিবর্তন চিহ্নিত করা হয়েছে।"
+
+#: src/ui/w42-window.c:4893
+msgid "Compare Documents: the original"
+msgstr "নথি তুলনা করুন: মূল নথি"
+
+#: src/ui/w42-window.c:4909
+msgid "Insert File"
+msgstr "ফাইল সন্নিবেশ করুন"
+
+#: src/ui/w42-window.c:5252
+msgid "Modified"
+msgstr "পরিবর্তিত"
+
+#: src/util/w42-image.c:153
+#, c-format
+msgid "That file is not a picture in any format Word42 can read."
+msgstr "ফাইলটি Word42-এর পাঠযোগ্য কোনো ফরম্যাটের ছবি নয়।"
+
+#. Translators: the language of text that is not to be spell-checked
+#. * at all, as Tools > Language lists it.
+#: src/util/w42-lang.c:21
+msgid "(no proofing)"
+msgstr "(প্রুফিং নেই)"
+
+#: src/util/w42-lang.c:22
+msgid "English (United States)"
+msgstr "ইংরেজি (মার্কিন যুক্তরাষ্ট্র)"
+
+#: src/util/w42-lang.c:23
+msgid "English (United Kingdom)"
+msgstr "ইংরেজি (যুক্তরাজ্য)"
+
+#: src/util/w42-lang.c:24
+msgid "English (Australia)"
+msgstr "ইংরেজি (অস্ট্রেলিয়া)"
+
+#: src/util/w42-lang.c:25
+msgid "English (Canada)"
+msgstr "ইংরেজি (কানাডা)"
+
+#: src/util/w42-lang.c:26
+msgid "Norwegian (Bokmål)"
+msgstr "নরওয়েজিয়ান (বোকমাল)"
+
+#: src/util/w42-lang.c:27
+msgid "Norwegian (Nynorsk)"
+msgstr "নরওয়েজিয়ান (নিনর্স্ক)"
+
+#: src/util/w42-lang.c:28
+msgid "Danish"
+msgstr "ড্যানিশ"
+
+#: src/util/w42-lang.c:29
+msgid "Swedish"
+msgstr "সুইডিশ"
+
+#: src/util/w42-lang.c:30
+msgid "Finnish"
+msgstr "ফিনিশ"
+
+#: src/util/w42-lang.c:31
+msgid "Icelandic"
+msgstr "আইসল্যান্ডিক"
+
+#: src/util/w42-lang.c:32
+msgid "German (Germany)"
+msgstr "জার্মান (জার্মানি)"
+
+#: src/util/w42-lang.c:33
+msgid "German (Austria)"
+msgstr "জার্মান (অস্ট্রিয়া)"
+
+#: src/util/w42-lang.c:34
+msgid "German (Switzerland)"
+msgstr "জার্মান (সুইজারল্যান্ড)"
+
+#: src/util/w42-lang.c:35
+msgid "French (France)"
+msgstr "ফরাসি (ফ্রান্স)"
+
+#: src/util/w42-lang.c:36
+msgid "French (Canada)"
+msgstr "ফরাসি (কানাডা)"
+
+#: src/util/w42-lang.c:37
+msgid "Spanish (Spain)"
+msgstr "স্প্যানিশ (স্পেন)"
+
+#: src/util/w42-lang.c:38
+msgid "Spanish (Mexico)"
+msgstr "স্প্যানিশ (মেক্সিকো)"
+
+#: src/util/w42-lang.c:39
+msgid "Portuguese (Portugal)"
+msgstr "পর্তুগিজ (পর্তুগাল)"
+
+#: src/util/w42-lang.c:40
+msgid "Portuguese (Brazil)"
+msgstr "পর্তুগিজ (ব্রাজিল)"
+
+#: src/util/w42-lang.c:41
+msgid "Italian"
+msgstr "ইতালীয়"
+
+#: src/util/w42-lang.c:42
+msgid "Dutch (Netherlands)"
+msgstr "ডাচ (নেদারল্যান্ডস)"
+
+#: src/util/w42-lang.c:43
+msgid "Dutch (Belgium)"
+msgstr "ডাচ (বেলজিয়াম)"
+
+#: src/util/w42-lang.c:44
+msgid "Polish"
+msgstr "পোলিশ"
+
+#: src/util/w42-lang.c:45
+msgid "Czech"
+msgstr "চেক"
+
+#: src/util/w42-lang.c:46
+msgid "Slovak"
+msgstr "স্লোভাক"
+
+#: src/util/w42-lang.c:47
+msgid "Hungarian"
+msgstr "হাঙ্গেরীয়"
+
+#: src/util/w42-lang.c:48
+msgid "Romanian"
+msgstr "রোমানীয়"
+
+#: src/util/w42-lang.c:49
+msgid "Bulgarian"
+msgstr "বুলগেরীয়"
+
+#: src/util/w42-lang.c:50
+msgid "Greek"
+msgstr "গ্রিক"
+
+#: src/util/w42-lang.c:51
+msgid "Russian"
+msgstr "রুশ"
+
+#: src/util/w42-lang.c:52
+msgid "Ukrainian"
+msgstr "ইউক্রেনীয়"
+
+#: src/util/w42-lang.c:53
+msgid "Turkish"
+msgstr "তুর্কি"
+
+#: src/util/w42-lang.c:54
+msgid "Hebrew"
+msgstr "হিব্রু"
+
+#: src/util/w42-lang.c:55
+msgid "Arabic (Saudi Arabia)"
+msgstr "আরবি (সৌদি আরব)"
+
+#: src/util/w42-lang.c:56
+msgid "Persian"
+msgstr "ফারসি"
+
+#: src/util/w42-lang.c:57
+msgid "Hindi"
+msgstr "হিন্দি"
+
+#: src/util/w42-lang.c:58
+msgid "Thai"
+msgstr "থাই"
+
+#: src/util/w42-lang.c:59
+msgid "Vietnamese"
+msgstr "ভিয়েতনামী"
+
+#: src/util/w42-lang.c:60
+msgid "Indonesian"
+msgstr "ইন্দোনেশীয়"
+
+#: src/util/w42-lang.c:61
+msgid "Japanese"
+msgstr "জাপানি"
+
+#: src/util/w42-lang.c:62
+msgid "Korean"
+msgstr "কোরীয়"
+
+#: src/util/w42-lang.c:63
+msgid "Chinese (Simplified)"
+msgstr "চীনা (সরলীকৃত)"
+
+#: src/util/w42-lang.c:64
+msgid "Chinese (Traditional)"
+msgstr "চীনা (প্রথাগত)"
+
+#: src/util/w42-lang.c:65
+msgid "Catalan"
+msgstr "কাতালান"
+
+#: src/util/w42-lang.c:66
+msgid "Estonian"
+msgstr "এস্তোনীয়"
+
+#: src/util/w42-lang.c:67
+msgid "Latvian"
+msgstr "লাটভীয়"
+
+#: src/util/w42-lang.c:68
+msgid "Lithuanian"
+msgstr "লিথুয়ানীয়"
+
+#: src/util/w42-lang.c:69
+msgid "Slovenian"
+msgstr "স্লোভেনীয়"
+
+#: src/util/w42-lang.c:70
+msgid "Croatian"
+msgstr "ক্রোয়েশীয়"
+
+#: src/util/w42-lang.c:71
+msgid "Serbian"
+msgstr "সার্বীয়"
+
+#: src/util/w42-lang.c:72
+msgid "Afrikaans"
+msgstr "আফ্রিকান্স"
+
+#: src/util/w42-lang.c:142
+msgid "(document default)"
+msgstr "(নথির ডিফল্ট)"

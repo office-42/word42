@@ -7,6 +7,7 @@
 #include "w42-scan.h"
 
 #include <string.h>
+#include <glib/gi18n.h>
 #include <glib/gstdio.h>
 #include <unistd.h>
 
@@ -81,8 +82,8 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
     hr = CoCreateInstance (&clsid, NULL, CLSCTX_INPROC_SERVER, &IID_IDispatch, (void **) &dialog);
   if (FAILED (hr))
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                   "Windows Image Acquisition is not available on this computer.");
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                           _("Windows Image Acquisition is not available on this computer."));
       goto out;
     }
 
@@ -105,7 +106,8 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
   if (FAILED (hr))
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "The scanner could not be used (WIA error 0x%08lx).", (unsigned long) hr);
+                   /* Translators: %08lx is the error's code, in hexadecimal. */
+                   _("The scanner could not be used (WIA error 0x%08lx)."), (unsigned long) hr);
       goto out;
     }
   if (result.vt != VT_DISPATCH || result.pdispVal == NULL)
@@ -134,7 +136,8 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
     if (FAILED (hr) || path == NULL)
       {
         g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                     "The scanned picture could not be saved (WIA error 0x%08lx).", (unsigned long) hr);
+                     /* Translators: %08lx is the error's code, in hexadecimal. */
+                     _("The scanned picture could not be saved (WIA error 0x%08lx)."), (unsigned long) hr);
         goto out;
       }
     {
@@ -170,9 +173,11 @@ GBytes *
 w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
 {
   (void) parent; (void) format;
-  g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-               "Scanning is not available on macOS yet.  Scan with Image Capture "
-               "and use Insert > Picture > From File.");
+  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                       /* Translators: "Image Capture" is the macOS program's name;
+                        * Insert > Picture > From File is Word42's menu. */
+                       _("Scanning is not available on macOS yet.  Scan with Image Capture "
+                         "and use Insert > Picture > From File."));
   return NULL;
 }
 
@@ -204,8 +209,10 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
   (void) parent;
   if (!w42_scan_available ())
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                   "scanimage was not found.  Install SANE (sane-utils) to scan.");
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                           /* Translators: scanimage, SANE and sane-utils are
+                            * the names of programs and packages. */
+                           _("scanimage was not found.  Install SANE (sane-utils) to scan."));
       return NULL;
     }
   fd = g_file_open_tmp ("word42-scan-XXXXXX", &path, error);
@@ -228,8 +235,13 @@ w42_scan_acquire (GtkWindow *parent, const char **format, GError **error)
     }
   if (!g_spawn_check_wait_status (status, NULL))
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "The scanner said: %s",
-                   err_text != NULL && *err_text != '\0' ? g_strstrip (err_text) : "nothing");
+      if (err_text != NULL && *err_text != '\0')
+        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                     /* Translators: %s is the scanner program's own message. */
+                     _("The scanner said: %s"), g_strstrip (err_text));
+      else
+        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                             _("The scanner said: nothing"));
       g_free (err_text);
       g_unlink (path);
       g_free (path);

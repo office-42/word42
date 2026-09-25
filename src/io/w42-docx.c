@@ -8,6 +8,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <glib/gi18n.h>
 
 #include "w42-build.h"
 #include "w42-image.h"
@@ -4017,7 +4018,9 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   if (xml == NULL)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The file is not a Word document: it has no word/document.xml.");
+                   /* Translators: word/document.xml is the name of a file
+                    * inside a .docx; keep it as it is. */
+                   _("The file is not a Word document: it has no word/document.xml."));
       w42_zip_free (zip);
       return FALSE;
     }

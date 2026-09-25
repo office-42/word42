@@ -30,3 +30,6 @@ compile_commands.json
 data/icons/contact-sheet.*
 .claude/settings.local.json
 __pycache__/
+
+# Made by meson compile word42-pot
+/po/word42.pot

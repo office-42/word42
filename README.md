@@ -23,6 +23,12 @@ are the specification and [docs/PARITY.md](docs/PARITY.md) keeps the score again
 and LibreOffice Writer on size, speed, files and features, and the
 [user guide](docs/GUIDE.md) describes every command in the program.
 
+Word42 speaks the language of the desktop it runs on. With English, its
+menus, dialogs and messages come in the ten most spoken languages in the
+world: Chinese (Simplified), Hindi, Spanish, Arabic, French, Bengali,
+Portuguese, Russian and Urdu, and for Arabic and Urdu the window is laid
+out from the right. The user guide is in English.
+
 ## For writers
 
 Word42 is made to write books in. AutoCorrect sets quotation marks and

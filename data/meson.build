@@ -20,8 +20,14 @@ w42_icon_resources = gnome.compile_resources(
 icon_sizes = ['16x16', '24x24', '32x32', '48x48', '64x64', '128x128', '256x256']
 
 if host_machine.system() not in ['windows', 'darwin']
-  install_data('org.word42.word42.desktop',
-               install_dir: get_option('datadir') / 'applications')
+  i18n.merge_file(
+    input: 'org.word42.word42.desktop.in',
+    output: 'org.word42.word42.desktop',
+    type: 'desktop',
+    po_dir: meson.project_source_root() / 'po',
+    install: true,
+    install_dir: get_option('datadir') / 'applications',
+  )
   install_data('org.word42.word42.metainfo.xml',
                install_dir: get_option('datadir') / 'metainfo')
 

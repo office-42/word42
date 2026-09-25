@@ -6,6 +6,7 @@
 
 #include "w42-help.h"
 
+#include <glib/gi18n.h>
 #include <string.h>
 
 /* ---------------------------------------------------------------------- */
@@ -382,7 +383,7 @@ help_show_contents (HelpBox *box)
   GPtrArray *topics = help_topics ();
 
   box->index_mode = FALSE;
-  gtk_label_set_text (GTK_LABEL (box->what), "Contents");
+  gtk_label_set_text (GTK_LABEL (box->what), _("Contents"));
   help_clear_list (box);
   for (guint i = 0; i < topics->len; i++)
     {
@@ -411,7 +412,7 @@ help_show_index (HelpBox *box)
   GHashTable *where = g_hash_table_new (g_str_hash, g_str_equal);
 
   box->index_mode = TRUE;
-  gtk_label_set_text (GTK_LABEL (box->what), "Index");
+  gtk_label_set_text (GTK_LABEL (box->what), _("Index"));
   help_clear_list (box);
 
   for (guint i = 0; i < topics->len; i++)
@@ -456,7 +457,9 @@ help_show_search (HelpBox *box, const char *term)
   char *needle = g_utf8_casefold (term, -1);
   int found = 0;
 
-  gtk_label_set_text (GTK_LABEL (box->what), "Found");
+  /* Translators: the heading over the list of help topics that
+   * match what was typed in the search box. */
+  gtk_label_set_text (GTK_LABEL (box->what), _("Found"));
   help_clear_list (box);
 
   for (int pass = 0; pass < 2; pass++)
@@ -478,7 +481,7 @@ help_show_search (HelpBox *box, const char *term)
       }
 
   if (found == 0)
-    help_add_row (box, "(nothing found)", -1, NULL);
+    help_add_row (box, _("(nothing found)"), -1, NULL);
   g_free (needle);
 }
 
@@ -500,15 +503,15 @@ help_row_chosen (GtkListBox *list, GtkListBoxRow *row, gpointer data)
   if (which < 0 || (guint) which >= topics->len)
     {
       gtk_label_set_text (GTK_LABEL (box->body),
-                          "Nothing in the guide answers to that.  Try a "
-                          "shorter word, or look through the contents.");
+                          _("Nothing in the guide answers to that.  Try a "
+                            "shorter word, or look through the contents."));
       return;
     }
 
   topic = g_ptr_array_index (topics, (guint) which);
   gtk_label_set_markup (GTK_LABEL (box->body), topic->markup->str);
   gtk_window_set_title (GTK_WINDOW (box->window),
-                        topic->title != NULL ? topic->title : "Word42 Help");
+                        topic->title != NULL ? topic->title : _("Word42 Help"));
   {
     GtkAdjustment *up = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (box->scroller));
 
@@ -598,7 +601,7 @@ help_build (GtkWindow *parent)
   box->anchors = g_ptr_array_new_with_free_func (g_free);
 
   box->window = gtk_window_new ();
-  gtk_window_set_title (GTK_WINDOW (box->window), "Word42 Help");
+  gtk_window_set_title (GTK_WINDOW (box->window), _("Word42 Help"));
   gtk_window_set_transient_for (GTK_WINDOW (box->window), parent);
   gtk_window_set_destroy_with_parent (GTK_WINDOW (box->window), TRUE);
   gtk_window_set_default_size (GTK_WINDOW (box->window), 760, 580);
@@ -616,10 +619,10 @@ help_build (GtkWindow *parent)
 
   top = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
   box->search = gtk_entry_new ();
-  gtk_entry_set_placeholder_text (GTK_ENTRY (box->search), "Search for help on...");
+  gtk_entry_set_placeholder_text (GTK_ENTRY (box->search), _("Search for help on..."));
   gtk_widget_set_hexpand (box->search, TRUE);
-  contents_button = gtk_button_new_with_mnemonic ("_Contents");
-  index_button = gtk_button_new_with_mnemonic ("_Index");
+  contents_button = gtk_button_new_with_mnemonic (_("_Contents"));
+  index_button = gtk_button_new_with_mnemonic (_("_Index"));
   gtk_widget_set_size_request (contents_button, 92, 26);
   gtk_widget_set_size_request (index_button, 92, 26);
   gtk_box_append (GTK_BOX (top), box->search);
@@ -631,7 +634,7 @@ help_build (GtkWindow *parent)
   gtk_widget_set_vexpand (paned, TRUE);
   gtk_box_append (GTK_BOX (content), paned);
 
-  box->what = gtk_label_new ("Contents");
+  box->what = gtk_label_new (_("Contents"));
   gtk_label_set_xalign (GTK_LABEL (box->what), 0.0);
   box->list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (box->list), GTK_SELECTION_BROWSE);
@@ -670,7 +673,7 @@ help_build (GtkWindow *parent)
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_halign (buttons, GTK_ALIGN_END);
   {
-    GtkWidget *close = gtk_button_new_with_mnemonic ("_Close");
+    GtkWidget *close = gtk_button_new_with_mnemonic (_("_Close"));
 
     gtk_widget_set_size_request (close, 92, 26);
     g_signal_connect_swapped (close, "clicked", G_CALLBACK (gtk_window_destroy),

@@ -502,6 +502,10 @@ Early, but real. Word42 today is a working word processor:
 - **Web Page Preview** — File ▸ Web Page Preview opens the document as a
   web page in the browser.
 - **Safety** — closing a modified document asks before discarding it.
+- **Ten languages** — the menus, dialogs and messages follow the
+  desktop's language: English, Chinese (Simplified), Hindi, Spanish,
+  Arabic, French, Bengali, Portuguese, Russian and Urdu, with Arabic and
+  Urdu laid out from the right. The user guide is in English.
 
 What it does not do yet is listed in [Word42.md](../Word42.md), with the
 internals worth doing regardless in [ROADMAP.md](ROADMAP.md).

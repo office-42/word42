@@ -16,6 +16,7 @@
 
 #include "w42-print.h"
 
+#include <glib/gi18n.h>
 #include <string.h>
 
 #include "w42-dialogs.h"
@@ -228,11 +229,11 @@ on_create_custom_widget (GtkPrintOperation *operation, gpointer data)
   gtk_widget_set_margin_start (box, 12);
   gtk_widget_set_margin_end (box, 12);
 
-  job->w_reverse = gtk_check_button_new_with_mnemonic ("_Reverse print order");
+  job->w_reverse = gtk_check_button_new_with_mnemonic (_("_Reverse print order"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (job->w_reverse), gtk_print_settings_get_reverse (settings));
-  job->w_drawings = gtk_check_button_new_with_mnemonic ("Print _drawing objects and wrapped pictures");
-  job->w_background = gtk_check_button_new_with_mnemonic ("Print _background colour");
-  job->w_draft = gtk_check_button_new_with_mnemonic ("Draft _output: the text alone");
+  job->w_drawings = gtk_check_button_new_with_mnemonic (_("Print _drawing objects and wrapped pictures"));
+  job->w_background = gtk_check_button_new_with_mnemonic (_("Print _background colour"));
+  job->w_draft = gtk_check_button_new_with_mnemonic (_("Draft _output: the text alone"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (job->w_reverse),
                                gtk_print_settings_get_bool (settings, KEY_REVERSE));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (job->w_drawings),
@@ -283,7 +284,7 @@ on_done (GtkPrintOperation       *operation,
 
       gtk_print_operation_get_error (operation, &error);
       offer_pdf_fallback (job->parent, job->doc,
-                          error != NULL ? error->message : "No print backend is available.");
+                          error != NULL ? error->message : _("No print backend is available."));
       g_clear_error (&error);
     }
 
@@ -313,7 +314,7 @@ on_fallback_save (GObject *source, GAsyncResult *result, gpointer data)
       if (!w42_pdf_export (w42_document_pt (doc), w42_document_page_setup (doc),
                            file, &error))
         {
-          w42_message_show (NULL, "Word42 could not write the PDF.", error->message);
+          w42_message_show (NULL, _("Word42 could not write the PDF."), error->message);
         }
       g_object_unref (file);
     }
@@ -347,12 +348,12 @@ on_fallback_choice (GObject *source, GAsyncResult *result, gpointer data)
       char *name = w42_document_get_title (doc);
       char *suggested = g_strconcat (name, ".pdf", NULL);
 
-      gtk_file_filter_set_name (pdf, "PDF Documents (*.pdf)");
+      gtk_file_filter_set_name (pdf, _("PDF Documents (*.pdf)"));
       gtk_file_filter_add_pattern (pdf, "*.pdf");
       g_list_store_append (filters, pdf);
       g_object_unref (pdf);
 
-      gtk_file_dialog_set_title (dialog, "Print to PDF");
+      gtk_file_dialog_set_title (dialog, _("Print to PDF"));
       gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
       gtk_file_dialog_set_initial_name (dialog, suggested);
       gtk_file_dialog_save (dialog, parent, NULL, on_fallback_save, doc);
@@ -375,15 +376,16 @@ static void
 offer_pdf_fallback (GtkWindow *parent, W42Document *doc, const char *why)
 {
   GtkAlertDialog *dialog;
-  static const char *buttons[] = { "Cancel", "Print to PDF...", NULL };
+  const char *buttons[] = { _("Cancel"), _("Print to PDF..."), NULL };
   char *detail;
   GWeakRef *parent_ref;
 
-  detail = g_strdup_printf ("%s\n\nword42 can write the document to a PDF "
-                            "instead, which you can print from any PDF "
-                            "viewer.", why);
+  /* Translators: %s is why the printing failed, as the system gave it. */
+  detail = g_strdup_printf (_("%s\n\nword42 can write the document to a PDF "
+                              "instead, which you can print from any PDF "
+                              "viewer."), why);
 
-  dialog = gtk_alert_dialog_new ("Word42 could not print the document.");
+  dialog = gtk_alert_dialog_new ("%s", _("Word42 could not print the document."));
   gtk_alert_dialog_set_detail (dialog, detail);
   gtk_alert_dialog_set_buttons (dialog, buttons);
   gtk_alert_dialog_set_cancel_button (dialog, 0);
@@ -447,7 +449,9 @@ run_print (GtkWindow *parent, W42Document *doc, W42PieceTable *selection,
    * margins of its own: the layout has already put the margins in, and a
    * second set applied on top would inset the text twice. */
   page = w42_document_page_setup (doc);
-  paper = gtk_paper_size_new_custom ("w42", "Word42 page",
+  /* Translators: the name of the paper size a document is printed on,
+   * as the system's print dialog may show it. */
+  paper = gtk_paper_size_new_custom ("w42", _("Word42 page"),
                                      page->width / 20.0, page->height / 20.0,
                                      GTK_UNIT_POINTS);
   setup = gtk_page_setup_new ();
@@ -591,7 +595,7 @@ print_box_apply (PrintBox *box, GtkPrintSettings *settings)
 
       if (!parse_page_ranges (gtk_editable_get_text (GTK_EDITABLE (box->pages)), &ranges, &n))
         {
-          w42_message_show (box->window, "Type the pages to print the way Word did: 1,3,5-12.", NULL);
+          w42_message_show (box->window, _("Type the pages to print the way Word did: 1,3,5-12."), NULL);
           return FALSE;
         }
       gtk_print_settings_set_print_pages (settings, GTK_PRINT_PAGES_RANGES);
@@ -616,7 +620,7 @@ on_print_box_go (GtkButton *button, gpointer data)
 {
   PrintBox *box = data;
   GtkPrintSettings *settings = w42_print_settings ();
-  gboolean system_dialog = g_str_equal (gtk_button_get_label (button), "P_rinter...");
+  gboolean system_dialog = g_object_get_data (G_OBJECT (button), "w42-system-dialog") != NULL;
   W42PieceTable *selection;
 
   if (!print_box_apply (box, settings))
@@ -680,11 +684,11 @@ on_print_to_file (GtkButton *button, gpointer data)
   if (dot != NULL && dot != name && strlen (dot) <= 5)
     *dot = '\0';
   suggested = g_strconcat (name, ".pdf", NULL);
-  gtk_file_filter_set_name (pdf, "PDF Documents (*.pdf)");
+  gtk_file_filter_set_name (pdf, _("PDF Documents (*.pdf)"));
   gtk_file_filter_add_pattern (pdf, "*.pdf");
   g_list_store_append (filters, pdf);
   g_object_unref (pdf);
-  gtk_file_dialog_set_title (dialog, "Print to File");
+  gtk_file_dialog_set_title (dialog, _("Print to File"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   g_object_ref (box->window);
@@ -739,7 +743,7 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   GtkWidget *content, *grid, *columns, *left, *right, *buttons, *b;
   const char *printer = gtk_print_settings_get_printer (settings);
   char *title;
-  static const char *const odd_even[] = { "All pages in range", "Odd pages", "Even pages", NULL };
+  static const char *const odd_even[] = { N_("All pages in range"), N_("Odd pages"), N_("Even pages"), NULL };
 
   box->parent = parent;
   box->doc = g_object_ref (doc);
@@ -747,7 +751,7 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   box->current_page = extras != NULL ? extras->current_page : 0;
 
   box->window = GTK_WINDOW (gtk_window_new ());
-  gtk_window_set_title (box->window, "Print");
+  gtk_window_set_title (box->window, _("Print"));
   gtk_window_set_transient_for (box->window, parent);
   /* The box prints for its window, and must not outlive it. */
   gtk_window_set_destroy_with_parent (box->window, TRUE);
@@ -766,8 +770,9 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   gtk_window_set_child (box->window, content);
 
   /* The printer: the one the last job went to, or the system's default. */
-  frame_with_grid (content, "Printer", &grid);
-  title = g_strdup_printf ("Name:  %s", printer != NULL && *printer != '\0' ? printer : "(the default printer)");
+  frame_with_grid (content, _("Printer"), &grid);
+  /* Translators: %s is the name of the printer the job will go to. */
+  title = g_strdup_printf (_("Name:  %s"), printer != NULL && *printer != '\0' ? printer : _("(the default printer)"));
   box->printer = gtk_label_new (title);
   gtk_label_set_xalign (GTK_LABEL (box->printer), 0.0);
   gtk_grid_attach (GTK_GRID (grid), box->printer, 0, 0, 1, 1);
@@ -783,11 +788,11 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   gtk_box_append (GTK_BOX (columns), right);
 
   /* Page range, as Word 97's dialog had it. */
-  frame_with_grid (left, "Page range", &grid);
-  box->range_all = gtk_check_button_new_with_mnemonic ("_All");
-  box->range_current = gtk_check_button_new_with_mnemonic ("Curr_ent page");
-  box->range_selection = gtk_check_button_new_with_mnemonic ("_Selection");
-  box->range_pages = gtk_check_button_new_with_mnemonic ("Pa_ges:");
+  frame_with_grid (left, _("Page range"), &grid);
+  box->range_all = gtk_check_button_new_with_mnemonic (C_("page range", "_All"));
+  box->range_current = gtk_check_button_new_with_mnemonic (_("Curr_ent page"));
+  box->range_selection = gtk_check_button_new_with_mnemonic (_("_Selection"));
+  box->range_pages = gtk_check_button_new_with_mnemonic (_("Pa_ges:"));
   gtk_check_button_set_group (GTK_CHECK_BUTTON (box->range_current), GTK_CHECK_BUTTON (box->range_all));
   gtk_check_button_set_group (GTK_CHECK_BUTTON (box->range_selection), GTK_CHECK_BUTTON (box->range_all));
   gtk_check_button_set_group (GTK_CHECK_BUTTON (box->range_pages), GTK_CHECK_BUTTON (box->range_all));
@@ -804,7 +809,7 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   gtk_grid_attach (GTK_GRID (grid), box->range_pages, 0, 2, 1, 1);
   gtk_grid_attach (GTK_GRID (grid), box->pages, 1, 2, 1, 1);
   {
-    GtkWidget *hint = gtk_label_new ("Enter page numbers and/or page ranges\nseparated by commas.  For example, 1,3,5-12");
+    GtkWidget *hint = gtk_label_new (_("Enter page numbers and/or page ranges\nseparated by commas.  For example, 1,3,5-12"));
 
     gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
     gtk_widget_add_css_class (hint, "w42-dialog-status");
@@ -812,9 +817,9 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
   }
 
   /* Copies. */
-  frame_with_grid (right, "Copies", &grid);
+  frame_with_grid (right, _("Copies"), &grid);
   {
-    GtkWidget *label = gtk_label_new_with_mnemonic ("Number of _copies:");
+    GtkWidget *label = gtk_label_new_with_mnemonic (_("Number of _copies:"));
 
     box->copies = gtk_spin_button_new_with_range (1, 999, 1);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->copies), MAX (gtk_print_settings_get_n_copies (settings), 1));
@@ -822,7 +827,7 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
     gtk_label_set_xalign (GTK_LABEL (label), 0.0);
     gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
     gtk_grid_attach (GTK_GRID (grid), box->copies, 1, 0, 1, 1);
-    box->collate = gtk_check_button_new_with_mnemonic ("Colla_te");
+    box->collate = gtk_check_button_new_with_mnemonic (_("Colla_te"));
     gtk_check_button_set_active (GTK_CHECK_BUTTON (box->collate),
                                  !gtk_print_settings_has_key (settings, GTK_PRINT_SETTINGS_COLLATE) ||
                                  gtk_print_settings_get_collate (settings));
@@ -831,18 +836,24 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
 
   /* Print: all, odd or even pages; and Word's Options, the ones that mean
    * something here. */
-  frame_with_grid (left, "Print", &grid);
-  box->odd_even = gtk_drop_down_new_from_strings (odd_even);
+  frame_with_grid (left, _("Print"), &grid);
+  {
+    GtkStringList *choices = gtk_string_list_new (NULL);
+
+    for (guint i = 0; odd_even[i] != NULL; i++)
+      gtk_string_list_append (choices, _(odd_even[i]));
+    box->odd_even = gtk_drop_down_new (G_LIST_MODEL (choices), NULL);
+  }
   gtk_drop_down_set_selected (GTK_DROP_DOWN (box->odd_even),
                               gtk_print_settings_get_page_set (settings) == GTK_PAGE_SET_ODD ? 1
                               : gtk_print_settings_get_page_set (settings) == GTK_PAGE_SET_EVEN ? 2 : 0);
   gtk_grid_attach (GTK_GRID (grid), box->odd_even, 0, 0, 1, 1);
 
-  frame_with_grid (right, "Options", &grid);
-  box->reverse = gtk_check_button_new_with_mnemonic ("_Reverse print order");
-  box->drawings = gtk_check_button_new_with_mnemonic ("_Drawing objects");
-  box->background = gtk_check_button_new_with_mnemonic ("_Background colour");
-  box->draft = gtk_check_button_new_with_mnemonic ("Draft _output");
+  frame_with_grid (right, _("Options"), &grid);
+  box->reverse = gtk_check_button_new_with_mnemonic (_("_Reverse print order"));
+  box->drawings = gtk_check_button_new_with_mnemonic (_("_Drawing objects"));
+  box->background = gtk_check_button_new_with_mnemonic (_("_Background colour"));
+  box->draft = gtk_check_button_new_with_mnemonic (_("Draft _output"));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->reverse), gtk_print_settings_get_reverse (settings));
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->drawings),
                                !gtk_print_settings_has_key (settings, KEY_DRAWINGS) ||
@@ -858,17 +869,18 @@ print_dialog_show (GtkWindow *parent, W42Document *doc, const W42PrintExtras *ex
    * dialog to choose another, and prints from there. */
   buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_halign (buttons, GTK_ALIGN_END);
-  b = gtk_button_new_with_mnemonic ("_Print");
+  b = gtk_button_new_with_mnemonic (_("_Print"));
   g_signal_connect (b, "clicked", G_CALLBACK (on_print_box_go), box);
   gtk_box_append (GTK_BOX (buttons), b);
   gtk_window_set_default_widget (box->window, b);
-  b = gtk_button_new_with_mnemonic ("P_rinter...");
+  b = gtk_button_new_with_mnemonic (_("P_rinter..."));
+  g_object_set_data (G_OBJECT (b), "w42-system-dialog", GINT_TO_POINTER (1));
   g_signal_connect (b, "clicked", G_CALLBACK (on_print_box_go), box);
   gtk_box_append (GTK_BOX (buttons), b);
-  b = gtk_button_new_with_mnemonic ("Print to _file...");
+  b = gtk_button_new_with_mnemonic (_("Print to _file..."));
   g_signal_connect (b, "clicked", G_CALLBACK (on_print_to_file), box);
   gtk_box_append (GTK_BOX (buttons), b);
-  b = gtk_button_new_with_mnemonic ("Cancel");
+  b = gtk_button_new_with_mnemonic (_("Cancel"));
   g_signal_connect (b, "clicked", G_CALLBACK (on_print_box_cancel), box);
   gtk_box_append (GTK_BOX (buttons), b);
   gtk_box_append (GTK_BOX (content), buttons);
