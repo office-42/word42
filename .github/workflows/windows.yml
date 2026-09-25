@@ -63,6 +63,7 @@ jobs:
             hyphen:p
             hyphen-en:p
             librsvg:p
+            gettext-tools:p
 
       - name: Show toolchain
         run: |

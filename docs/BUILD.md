@@ -35,20 +35,30 @@ needs no library: the files are looked for in the mythes folder
 On Debian and Ubuntu: `libpoppler-glib-dev libenchant-2-dev
 hunspell-en-us libhyphen-dev hyphen-en-us mythes-en-us`.
 
+The translations in `po/` are compiled by gettext's **msgfmt** (the
+`gettext` package on Linux and in Homebrew, `gettext-tools` in MSYS2);
+without it Meson says so and Word42 builds in English only. An installed
+Word42 finds its translations under `$prefix/share/locale`; to try one
+from the build directory, point it there and name the language:
+
+```sh
+LANGUAGE=fr W42_LOCALE_DIR=builddir/po ./builddir/src/word42
+```
+
 ## Linux
 
 ```sh
 # Debian / Ubuntu
 sudo apt install build-essential meson ninja-build pkg-config \
-     libgtk-4-dev libpango1.0-dev libcairo2-dev libglib2.0-dev \
+     libgtk-4-dev libpango1.0-dev libcairo2-dev libglib2.0-dev gettext \
      liblexbor-dev      # 26.04 and newer; older releases build it below
 
 # Fedora
 sudo dnf install gcc meson ninja-build pkgconf-pkg-config \
-     gtk4-devel pango-devel cairo-devel glib2-devel
+     gtk4-devel pango-devel cairo-devel glib2-devel gettext
 
 # Arch
-sudo pacman -S base-devel meson ninja pkgconf gtk4 pango cairo glib2
+sudo pacman -S base-devel meson ninja pkgconf gtk4 pango cairo glib2 gettext
 ```
 
 Ubuntu packages Lexbor from 26.04 (`liblexbor-dev`, 2.6.0) and Debian
@@ -71,7 +81,7 @@ that is needed either way.)
 ## macOS
 
 ```sh
-brew install meson ninja pkg-config gtk4 pango cairo glib lexbor
+brew install meson ninja pkg-config gtk4 pango cairo glib gettext lexbor
 ```
 
 Homebrew builds GTK 4 against native Quartz, so no X server is involved. If
@@ -94,6 +104,7 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-pango \
   mingw-w64-ucrt-x86_64-cairo \
   mingw-w64-ucrt-x86_64-glib2 \
+  mingw-w64-ucrt-x86_64-gettext-tools \
   mingw-w64-ucrt-x86_64-lexbor
 
 meson setup builddir

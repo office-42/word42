@@ -55,6 +55,19 @@ if [ -d "$prefix/share/hyphen" ]; then
   cp "$prefix"/share/hyphen/hyph_en_US.dic "$prefix"/share/hyphen/hyph_en_GB.dic "$dist/share/hyphen/" 2>/dev/null || true
 fi
 
+# The translations: Word42's own from the build, and GTK's and GLib's for
+# the same languages, which GTK finds beside its DLL as Word42 finds its.
+for mo in "$builddir"/po/*/LC_MESSAGES/word42.mo; do
+  [ -f "$mo" ] || continue
+  lang=$(basename "$(dirname "$(dirname "$mo")")")
+  mkdir -p "$dist/share/locale/$lang/LC_MESSAGES"
+  cp "$mo" "$dist/share/locale/$lang/LC_MESSAGES/"
+  for domain in gtk40 glib20; do
+    f="$prefix/share/locale/$lang/LC_MESSAGES/$domain.mo"
+    [ -f "$f" ] && cp "$f" "$dist/share/locale/$lang/LC_MESSAGES/"
+  done
+done
+
 # GLib schemas (GTK needs its own), compiled.
 mkdir -p "$dist/share/glib-2.0/schemas"
 cp "$prefix"/share/glib-2.0/schemas/org.gtk.gtk4.Settings.*.xml "$dist/share/glib-2.0/schemas/" 2>/dev/null || true

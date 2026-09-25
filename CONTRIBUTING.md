@@ -56,6 +56,26 @@ that way: it is the part of word42 that could be reused by anything, and the
 part whose correctness is easiest to reason about when nothing graphical can
 reach into it.
 
+## Translations
+
+Every string a user reads goes through gettext: `_("...")` where it is
+used, `N_("...")` in a static table whose entries are translated where
+they are shown, and `ngettext ()` for a count. Names that live in files
+or in the macro language — style names such as Normal, field codes,
+VBA keywords, settings keys — are not text and are never marked. A
+file with marked strings is listed in `po/POTFILES.in`.
+
+The translations are the `.po` files in `po/`, one per language named in
+`po/LINGUAS`. After changing strings,
+
+```sh
+meson compile -C builddir word42-update-po
+```
+
+brings the template and every language up to date, and the new or
+changed entries are then translated. Word42's menus and dialogs follow
+Word 97's, so a translation uses the words Word uses in that language.
+
 ## Commit messages
 
 A one-line summary in the imperative, a blank line, then prose saying why the

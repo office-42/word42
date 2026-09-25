@@ -32,7 +32,7 @@ jobs:
             libgtk-4-dev libpango1.0-dev libcairo2-dev libglib2.0-dev \
             libpoppler-glib-dev libenchant-2-dev hunspell-en-us \
             libhyphen-dev hyphen-en-us mythes-en-us \
-            liblexbor-dev cmake xvfb
+            liblexbor-dev cmake xvfb gettext
 
       - name: Restore ccache
         uses: actions/cache@v6

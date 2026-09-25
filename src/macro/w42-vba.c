@@ -23,6 +23,7 @@
 
 #include "w42-vba.h"
 
+#include <glib/gi18n.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -271,7 +272,8 @@ static void
 fail (State *st, const char *what)
 {
   if (st->error == NULL)
-    st->error = g_strdup_printf ("Line %d: %s", st->source_line, what);
+    /* Translators: %d is a line of the macro, %s what is wrong with it. */
+    st->error = g_strdup_printf (_("Line %d: %s"), st->source_line, what);
 }
 
 static Block *
@@ -587,7 +589,8 @@ read_chain (State *st, GArray *toks, guint i, guint to, guint *next)
 
       if (with == NULL)
         {
-          fail (st, "a name starting with a dot needs a With block");
+          /* Translators: "With" is a macro keyword: keep it in English. */
+          fail (st, _("a name starting with a dot needs a With block"));
           g_string_free (s, TRUE);
           *next = i + 1;
           return g_strdup ("nil");
@@ -806,7 +809,7 @@ translate_expr (State *st, GArray *toks, guint from, guint to, GPtrArray *atoms)
 
       if (t->kind == TOK_OP && is_op (t, ":="))
         {
-          fail (st, "a named argument outside a call");
+          fail (st, _("a named argument outside a call"));
           i++;
           continue;
         }
@@ -867,7 +870,9 @@ translate_procedure (State *st, GArray *toks, guint from, guint to, gboolean fun
 
   if (from >= to || TOK (toks, from)->kind != TOK_ID)
     {
-      fail (st, "Sub or Function without a name");
+      /* Translators: Sub and Function are macro keywords: keep them in
+       * English. */
+      fail (st, _("Sub or Function without a name"));
       return;
     }
   name = TOK (toks, from)->text;
@@ -903,7 +908,9 @@ translate_procedure (State *st, GArray *toks, guint from, guint to, gboolean fun
               expect_name = FALSE;
               /* An Optional's default is not something MY-BASIC does. */
               if (k + 1 < close && is_op (TOK (toks, k + 1), "="))
-                fail (st, "an Optional parameter with a default value is not supported");
+                /* Translators: "Optional" is a macro keyword: keep it in
+                 * English. */
+                fail (st, _("an Optional parameter with a default value is not supported"));
             }
         }
     }
@@ -930,7 +937,8 @@ translate_dim (State *st, GArray *toks, guint from, guint to, GString *out)
 
       if (t->kind != TOK_ID)
         {
-          fail (st, "Dim expects a name");
+          /* Translators: "Dim" is a macro keyword: keep it in English. */
+          fail (st, _("Dim expects a name"));
           return;
         }
       name = t->text;
@@ -948,7 +956,8 @@ translate_dim (State *st, GArray *toks, guint from, guint to, GString *out)
           i++;
           if (is_kw (TOK (toks, i), "New"))
             {
-              fail (st, "objects made with New are not supported");
+              /* Translators: "New" is a macro keyword: keep it in English. */
+              fail (st, _("objects made with New are not supported"));
               return;
             }
           type = TOK (toks, i)->text;
@@ -984,7 +993,9 @@ translate_dim (State *st, GArray *toks, guint from, guint to, GString *out)
                 /* MY-BASIC sizes an array by a literal alone. */
                 if (hi + 1 != k || TOK (toks, hi)->kind != TOK_NUM)
                   {
-                    fail (st, "an array's size must be a number: Dim a(10)");
+                    /* Translators: "Dim a(10)" is macro code: keep it as it
+                     * is. */
+                    fail (st, _("an array's size must be a number: Dim a(10)"));
                     g_string_free (dims, TRUE);
                     return;
                   }
@@ -1134,12 +1145,20 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
 
               if (b == NULL)
                 {
-                  fail (st, is_kw (t, "Sub") ? "End Sub without Sub" : "End Function without Function");
+                  /* Translators: End Sub, Sub, End Function and Function
+                   * are macro keywords: keep them in English. */
+                  fail (st, is_kw (t, "Sub") ? _("End Sub without Sub")
+                                             : _("End Function without Function"));
                   return;
                 }
               if (b->kind != want)
                 {
-                  char *msg = g_strdup_printf ("%s is still open at End %s", open[b->kind], t->text);
+                  /* Translators: the first %s is a macro keyword (Sub,
+                   * Function, If, For, Do, Select Case or With), the
+                   * second Sub or Function; "End" is a keyword too.  Keep
+                   * them all in English. */
+                  char *msg = g_strdup_printf (_("%s is still open at End %s"),
+                                               open[b->kind], t->text);
 
                   fail (st, msg);
                   g_free (msg);
@@ -1153,23 +1172,30 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
             }
           else if (is_kw (t, "If"))
             {
-              if (b == NULL || b->kind != BLK_IF) { fail (st, "End If without If"); return; }
+              /* Translators: End If and If are macro keywords: keep them
+               * in English. */
+              if (b == NULL || b->kind != BLK_IF) { fail (st, _("End If without If")); return; }
               g_string_append (out, "endif");
               pop_block (st);
             }
           else if (is_kw (t, "Select"))
             {
-              if (b == NULL || b->kind != BLK_SELECT) { fail (st, "End Select without Select"); return; }
+              /* Translators: End Select and Select are macro keywords:
+               * keep them in English. */
+              if (b == NULL || b->kind != BLK_SELECT) { fail (st, _("End Select without Select")); return; }
               g_string_append (out, b->first ? "" : "endif");
               pop_block (st);
             }
           else if (is_kw (t, "With"))
             {
-              if (b == NULL || b->kind != BLK_WITH) { fail (st, "End With without With"); return; }
+              /* Translators: End With and With are macro keywords: keep
+               * them in English. */
+              if (b == NULL || b->kind != BLK_WITH) { fail (st, _("End With without With")); return; }
               pop_block (st);
             }
           else
-            fail (st, "End of what?");
+            /* Translators: "End" is a macro keyword: keep it in English. */
+            fail (st, _("End of what?"));
           return;
         }
       if (g_ascii_strcasecmp (k, "Exit") == 0)
@@ -1186,7 +1212,8 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
           else if (t != NULL && (is_kw (t, "Do") || is_kw (t, "For")))
             g_string_append (out, "exit");
           else
-            fail (st, "Exit of what?");
+            /* Translators: "Exit" is a macro keyword: keep it in English. */
+            fail (st, _("Exit of what?"));
           return;
         }
       if (g_ascii_strcasecmp (k, "If") == 0)
@@ -1196,7 +1223,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
 
           if (then >= to)
             {
-              fail (st, "If without Then");
+              /* Translators: If and Then are macro keywords: keep them in
+               * English. */
+              fail (st, _("If without Then"));
               return;
             }
           cond = expr_string (st, toks, from + 1, then);
@@ -1255,7 +1284,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
 
           if (from + 1 >= to || !is_kw (TOK (toks, from + 1), "Case"))
             {
-              fail (st, "Select without Case");
+              /* Translators: Select and Case are macro keywords: keep them
+               * in English. */
+              fail (st, _("Select without Case"));
               return;
             }
           st->selects++;
@@ -1272,7 +1303,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
 
           if (b == NULL || b->kind != BLK_SELECT)
             {
-              fail (st, "Case outside Select Case");
+              /* Translators: Case and Select Case are macro keywords: keep
+               * them in English. */
+              fail (st, _("Case outside Select Case"));
               return;
             }
           if (from + 1 < to && is_kw (TOK (toks, from + 1), "Else"))
@@ -1293,7 +1326,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
         {
           if (from + 1 < to && is_kw (TOK (toks, from + 1), "Each"))
             {
-              fail (st, "For Each is not supported: count with For i = 1 To ...Count");
+              /* Translators: "For Each" is a macro keyword, and "For i = 1
+               * To ...Count" macro code: keep them in English. */
+              fail (st, _("For Each is not supported: count with For i = 1 To ...Count"));
               return;
             }
           {
@@ -1304,7 +1339,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
             if (from + 1 >= to || TOK (toks, from + 1)->kind != TOK_ID || to_kw >= to ||
                 eq >= to || !is_op (TOK (toks, eq), "="))
               {
-                fail (st, "For expects: For i = a To b");
+                /* Translators: "For" is a macro keyword, and "For i = a To
+                 * b" macro code: keep them in English. */
+                fail (st, _("For expects: For i = a To b"));
                 return;
               }
             start = expr_string (st, toks, eq + 1, to_kw);
@@ -1327,7 +1364,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
         {
           const Block *b = top_block (st);
 
-          if (b == NULL || b->kind != BLK_FOR) { fail (st, "Next without For"); return; }
+          /* Translators: Next and For are macro keywords: keep them in
+           * English. */
+          if (b == NULL || b->kind != BLK_FOR) { fail (st, _("Next without For")); return; }
           g_string_append (out, "next");
           pop_block (st);
           return;
@@ -1370,7 +1409,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
         {
           const Block *b = top_block (st);
 
-          if (b == NULL || b->kind != BLK_WHILE) { fail (st, "Wend without While"); return; }
+          /* Translators: Wend and While are macro keywords: keep them in
+           * English. */
+          if (b == NULL || b->kind != BLK_WHILE) { fail (st, _("Wend without While")); return; }
           g_string_append (out, "wend");
           pop_block (st);
           return;
@@ -1381,7 +1422,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
 
           if (b == NULL || (b->kind != BLK_WHILE && b->kind != BLK_DO))
             {
-              fail (st, "Loop without Do");
+              /* Translators: Loop and Do are macro keywords: keep them in
+               * English. */
+              fail (st, _("Loop without Do"));
               return;
             }
           if (b->kind == BLK_WHILE)
@@ -1416,7 +1459,8 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
 
           if (from + 1 >= to)
             {
-              fail (st, "With without an object");
+              /* Translators: "With" is a macro keyword: keep it in English. */
+              fail (st, _("With without an object"));
               return;
             }
           chain = read_chain (st, toks, from + 1, to, &next);
@@ -1448,7 +1492,9 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
               g_free (e);
             }
           else
-            fail (st, "Const expects NAME = value");
+            /* Translators: "Const" is a macro keyword: keep it in English.
+             * NAME and value stand for what is written there. */
+            fail (st, _("Const expects NAME = value"));
           return;
         }
       if (g_ascii_strcasecmp (k, "Set") == 0 || g_ascii_strcasecmp (k, "Let") == 0)
@@ -1464,7 +1510,8 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
       if (g_ascii_strcasecmp (k, "GoTo") == 0 || g_ascii_strcasecmp (k, "GoSub") == 0 ||
           g_ascii_strcasecmp (k, "Resume") == 0)
         {
-          fail (st, "GoTo and labels are not supported");
+          /* Translators: "GoTo" is a macro keyword: keep it in English. */
+          fail (st, _("GoTo and labels are not supported"));
           return;
         }
       if (g_ascii_strcasecmp (k, "Stop") == 0)
@@ -1509,7 +1556,7 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
               char *e = expr_string (st, toks, close + 2, to);
 
               if (dotted)
-                fail (st, "an indexed object property cannot be set");
+                fail (st, _("an indexed object property cannot be set"));
               g_string_append_printf (out, "%s(%s) = %s", chain, idx, e);
               g_free (idx);
               g_free (e);
@@ -1542,7 +1589,7 @@ translate_statement (State *st, GArray *toks, guint from, guint to, GString *out
       return;
     }
 
-  fail (st, "a statement that does not start with a name");
+  fail (st, _("a statement that does not start with a name"));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1720,7 +1767,7 @@ w42_vba_translate (const char *source, const char *entry)
                   !is_user_sub (&st, TOK (toks, start)->text) &&
                   !is_reserved (TOK (toks, start)->text) && k == 1)
                 {
-                  fail (&st, "labels are not supported");
+                  fail (&st, _("labels are not supported"));
                 }
               else
                 {
@@ -1751,7 +1798,9 @@ w42_vba_translate (const char *source, const char *entry)
 
       st.source_line = physical - 1;
       {
-        char *msg = g_strdup_printf ("%s is never ended", names[b->kind]);
+        /* Translators: %s is a macro keyword (Sub, Function, If, For, Do,
+         * Select Case or With): keep it in English. */
+        char *msg = g_strdup_printf (_("%s is never ended"), names[b->kind]);
 
         fail (&st, msg);
         g_free (msg);
@@ -1766,7 +1815,9 @@ w42_vba_translate (const char *source, const char *entry)
         {
           st.source_line = 0;
           g_free (st.error);
-          st.error = g_strdup_printf ("There is no Sub named %s in this macro.", entry);
+          /* Translators: "Sub" is a macro keyword: keep it in English.
+           * %s is the Sub's name. */
+          st.error = g_strdup_printf (_("There is no Sub named %s in this macro."), entry);
         }
       else
         {

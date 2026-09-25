@@ -36,6 +36,7 @@ res="$(cd "$here/../Resources" && pwd)"
 export GSETTINGS_SCHEMA_DIR="$res/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$res/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
 export W42_HYPHEN_DIR="$res/share/hyphen"
+export W42_LOCALE_DIR="$res/share/locale"
 if [ -f "$res/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in" ]; then
   cache="${TMPDIR:-/tmp}/word42-loaders-$$.cache"
   sed "s|@RES@|$res|g" "$res/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in" > "$cache"
@@ -73,6 +74,17 @@ if [ -d "$prefix/share/hyphen" ]; then
   mkdir -p "$res/share/hyphen"
   cp "$prefix"/share/hyphen/hyph_en_US.dic "$prefix"/share/hyphen/hyph_en_GB.dic "$res/share/hyphen/" 2>/dev/null || true
 fi
+
+# The translations, Word42's and GTK's, where the launcher tells Word42 to
+# look; Word42 points GTK at its own copy there as well.
+for mo in "$builddir"/po/*/LC_MESSAGES/word42.mo; do
+  [ -f "$mo" ] || continue
+  lang=$(basename "$(dirname "$(dirname "$mo")")")
+  mkdir -p "$res/share/locale/$lang/LC_MESSAGES"
+  cp "$mo" "$res/share/locale/$lang/LC_MESSAGES/"
+  f="$prefix/share/locale/$lang/LC_MESSAGES/gtk40.mo"
+  [ -f "$f" ] && cp "$f" "$res/share/locale/$lang/LC_MESSAGES/"
+done
 
 # --- the icon ----------------------------------------------------------
 iconset=$(mktemp -d)/word42.iconset

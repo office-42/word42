@@ -1,0 +1,7 @@
+# Files with translatable strings, relative to the top of the tree.
+data/org.word42.word42.desktop.in
+data/ui/menus.ui
+src/main.c
+src/macro/w42-vba.c
+src/ui/w42-application.c
+src/ui/w42-macro.c

@@ -126,8 +126,19 @@ endif
 add_project_arguments('-DW42_THESAURUS_DIR="@0@"'.format(get_option('prefix') / get_option('datadir') / 'mythes'),
                       language: 'c')
 
+# The interface speaks the user's language where po/ has a translation,
+# through gettext.  glibc carries it; on Windows and macOS it is libintl,
+# which GLib links against already and this finds when the compiler can.
+i18n = import('i18n')
+intl_dep = dependency('intl', required: false)
+add_project_arguments(
+  '-DGETTEXT_PACKAGE="' + meson.project_name() + '"',
+  '-DW42_LOCALE_DIR="@0@"'.format(get_option('prefix') / get_option('localedir')),
+  language: 'c',
+)
+
 core_deps = [glib_dep, gobject_dep, gio_dep, cairo_dep, pango_dep,
-             pangocairo_dep, pixbuf_dep, lexbor_dep, m_dep]
+             pangocairo_dep, pixbuf_dep, lexbor_dep, m_dep, intl_dep]
 if hyphen_dep.found()
   core_deps += [hyphen_dep]
 endif
@@ -139,6 +150,7 @@ if enchant_dep.found()
 endif
 app_deps  = core_deps + [gtk_dep]
 
+subdir('po')
 subdir('data')
 subdir('src')
 
