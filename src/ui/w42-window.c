@@ -582,7 +582,8 @@ window_backup_before_save (GFile *file)
     }
   /* Translators: the name of the copy Tools > Options > Always create
    * backup copy keeps beside a file; %s is the file's own name.  It is a
-   * file name: no slashes or backslashes. */
+   * file name: no slashes, backslashes or colons, and %s last, so that the
+   * copy keeps the file's extension and opens as the file does. */
   backup_name = g_strdup_printf (_("Backup of %s"), name);
   backup = g_file_get_child (parent, backup_name);
   /* Best effort: a copy that cannot be made must not stop the save. */

@@ -2214,7 +2214,7 @@ msgstr "हमेशा बैकअप प्रतिलिपि बनाए
 #. Translators: "Backup of" is how the backup's file name begins.
 #: src/ui/w42-dialogs.c:2322
 msgid "Before a file is saved over, the version it replaces is kept beside it as “Backup of” and its name."
-msgstr "किसी फ़ाइल को अधिलेखित करने से पहले, उसका पुराना संस्करण उसी के पास उसके नाम के बाद “का बैकअप” जोड़कर रखा जाता है।"
+msgstr "किसी फ़ाइल को अधिलेखित करने से पहले, उसका पुराना संस्करण उसी के पास उसके नाम से पहले “बैकअप -” जोड़कर रखा जाता है।"
 
 #: src/ui/w42-dialogs.c:2326
 msgid "Save _AutoRecover info every:"
@@ -4407,7 +4407,7 @@ msgstr "सभी फ़ाइलें"
 #: src/ui/w42-window.c:586
 #, c-format
 msgid "Backup of %s"
-msgstr "%s का बैकअप"
+msgstr "बैकअप - %s"
 
 #. Translators: %s is the recovered document's name.
 #: src/ui/w42-window.c:660
