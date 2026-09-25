@@ -143,7 +143,19 @@ main (int argc, char *argv[])
   W42Application *app;
   int status;
 
+#ifdef G_OS_WIN32
+  {
+    /* Windows gives main() its arguments in the local code page, where
+     * Kapittel_Ørn.odt may not fit; GLib reads the command line again in
+     * UTF-8, as GApplication does for itself below. */
+    char **args = g_win32_get_command_line ();
+
+    status = convert_main ((int) g_strv_length (args), args);
+    g_strfreev (args);
+  }
+#else
   status = convert_main (argc, argv);
+#endif
   if (status >= 0)
     return status;
 
