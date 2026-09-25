@@ -1164,19 +1164,19 @@ msgstr "Конверт 6 3/4 (6 1/2 x 3 5/8 дюйм.)"
 #. * "mm" millimetres.
 #: src/model/w42-envelope.c:38
 msgid "24 per sheet, A4 (63.5 x 33.9 mm)"
-msgstr "24 на листе, A4 (63.5 x 33.9 мм)"
+msgstr "24 на листе, A4 (63,5 x 33,9 мм)"
 
 #: src/model/w42-envelope.c:40
 msgid "21 per sheet, A4 (70 x 42.3 mm)"
-msgstr "21 на листе, A4 (70 x 42.3 мм)"
+msgstr "21 на листе, A4 (70 x 42,3 мм)"
 
 #: src/model/w42-envelope.c:42
 msgid "14 per sheet, A4 (99.1 x 38.1 mm)"
-msgstr "14 на листе, A4 (99.1 x 38.1 мм)"
+msgstr "14 на листе, A4 (99,1 x 38,1 мм)"
 
 #: src/model/w42-envelope.c:44
 msgid "10 per sheet, A4 (99.1 x 57 mm)"
-msgstr "10 на листе, A4 (99.1 x 57 мм)"
+msgstr "10 на листе, A4 (99,1 x 57 мм)"
 
 #: src/model/w42-envelope.c:46
 msgid "30 per sheet, Letter (2 5/8 x 1 in)"
