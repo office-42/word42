@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: word42\n"
 "Report-Msgid-Bugs-To: https://github.com/office-42/word42/issues\n"
-"POT-Creation-Date: 2026-09-25 19:48+0000\n"
+"POT-Creation-Date: 2026-09-25 20:15+0000\n"
 "PO-Revision-Date: 2026-09-25 12:00+0000\n"
 "Last-Translator: Word42 translators\n"
 "Language-Team: Portuguese\n"
@@ -25,7 +25,9 @@ msgstr "Processador de texto"
 
 #: data/org.word42.word42.desktop.in:6
 msgid "A classic word processor: menus, toolbars, a ruler and a page"
-msgstr "Um processador de texto clássico: menus, barras de ferramentas, uma régua e uma página"
+msgstr ""
+"Um processador de texto clássico: menus, barras de ferramentas, uma régua e "
+"uma página"
 
 #: data/ui/menus.ui:10
 msgid "_File"
@@ -48,7 +50,7 @@ msgstr "_Abrir..."
 msgid "_Close"
 msgstr "_Fechar"
 
-#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6730 src/ui/w42-window.c:1447
+#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6730 src/ui/w42-window.c:1448
 msgid "_Save"
 msgstr "_Salvar"
 
@@ -60,7 +62,7 @@ msgstr "Salvar _como..."
 msgid "Save as Temp_late..."
 msgstr "Salvar como mode_lo..."
 
-#: data/ui/menus.ui:43 src/ui/w42-window.c:1035
+#: data/ui/menus.ui:43 src/ui/w42-window.c:1036
 msgid "_Revert"
 msgstr "Re_verter"
 
@@ -742,7 +744,8 @@ msgstr "O arquivo compactado do AbiWord está danificado: %s"
 
 #: src/io/w42-abw.c:1631
 msgid "The compressed AbiWord file unpacks to more than 256 MB."
-msgstr "O arquivo compactado do AbiWord ocupa mais de 256 MB ao ser descompactado."
+msgstr ""
+"O arquivo compactado do AbiWord ocupa mais de 256 MB ao ser descompactado."
 
 #: src/io/w42-abw.c:1648
 msgid "The compressed AbiWord file is cut short."
@@ -827,7 +830,9 @@ msgstr "Este não é um documento do Word."
 #: src/io/w42-doc.c:3244
 #, c-format
 msgid "The document is encrypted, and Word42 cannot open encrypted documents."
-msgstr "O documento está criptografado, e o Word42 não pode abrir documentos criptografados."
+msgstr ""
+"O documento está criptografado, e o Word42 não pode abrir documentos "
+"criptografados."
 
 #. Translators: word/document.xml is the name of a file
 #. * inside a .docx; keep it as it is.
@@ -841,7 +846,9 @@ msgstr "O arquivo não é um documento do Word: não contém word/document.xml."
 #: src/io/w42-htmlin.c:3570
 #, c-format
 msgid "The page nests its elements too deeply to be a document."
-msgstr "A página aninha seus elementos em níveis profundos demais para ser um documento."
+msgstr ""
+"A página aninha seus elementos em níveis profundos demais para ser um "
+"documento."
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
@@ -862,8 +869,12 @@ msgstr "O arquivo não é texto em nenhuma codificação que o Word42 reconheça
 
 #: src/io/w42-io.c:316
 #, c-format
-msgid "Word42 reads Word .doc files but does not write them. Save as RTF or .docx, which other word processors read."
-msgstr "O Word42 lê arquivos .doc do Word, mas não os grava. Salve como RTF ou .docx, formatos que outros processadores de texto leem."
+msgid ""
+"Word42 reads Word .doc files but does not write them. Save as RTF or .docx, "
+"which other word processors read."
+msgstr ""
+"O Word42 lê arquivos .doc do Word, mas não os grava. Salve como RTF ou ."
+"docx, formatos que outros processadores de texto leem."
 
 #: src/io/w42-merge.c:166
 #, c-format
@@ -893,8 +904,11 @@ msgstr "O Word42 não pôde gravar o PDF: %s"
 #. * keep it as it is.
 #: src/io/w42-pdf.c:995
 #, c-format
-msgid "This build of Word42 cannot read PDF files. It was built without poppler."
-msgstr "Esta versão do Word42 não pode ler arquivos PDF. Ela foi compilada sem o poppler."
+msgid ""
+"This build of Word42 cannot read PDF files. It was built without poppler."
+msgstr ""
+"Esta versão do Word42 não pode ler arquivos PDF. Ela foi compilada sem o "
+"poppler."
 
 #. Translators: ppt/presentation.xml is the name of a file
 #. * inside a .pptx; keep it as it is.
@@ -1109,8 +1123,11 @@ msgid "Usage: word42 --convert-to=FORMAT [--outdir=DIR] FILE..."
 msgstr "Uso: word42 --convert-to=FORMATO [--outdir=PASTA] ARQUIVO..."
 
 #: src/main.c:116
-msgid "FORMAT is the extension to write: pdf, epub, odt, docx, rtf, html, txt or abw."
-msgstr "FORMATO é a extensão a gravar: pdf, epub, odt, docx, rtf, html, txt ou abw."
+msgid ""
+"FORMAT is the extension to write: pdf, epub, odt, docx, rtf, html, txt or "
+"abw."
+msgstr ""
+"FORMATO é a extensão a gravar: pdf, epub, odt, docx, rtf, html, txt ou abw."
 
 #: src/main.c:126
 msgid "the folder could not be made"
@@ -1293,16 +1310,24 @@ msgid "Novel"
 msgstr "Romance"
 
 #: src/model/w42-template.c:21
-msgid "A novel set as a book: small pages, justified text with indented paragraphs, and every chapter on a page of its own."
-msgstr "Um romance composto como livro: páginas pequenas, texto justificado com parágrafos recuados e cada capítulo em uma página própria."
+msgid ""
+"A novel set as a book: small pages, justified text with indented paragraphs, "
+"and every chapter on a page of its own."
+msgstr ""
+"Um romance composto como livro: páginas pequenas, texto justificado com "
+"parágrafos recuados e cada capítulo em uma página própria."
 
 #: src/model/w42-template.c:23
 msgid "Manuscript"
 msgstr "Manuscrito"
 
 #: src/model/w42-template.c:23
-msgid "A manuscript for an agent or a publisher: double-spaced, with your name and the title at the top of every page."
-msgstr "Um manuscrito para um agente ou uma editora: espaço duplo, com seu nome e o título no alto de cada página."
+msgid ""
+"A manuscript for an agent or a publisher: double-spaced, with your name and "
+"the title at the top of every page."
+msgstr ""
+"Um manuscrito para um agente ou uma editora: espaço duplo, com seu nome e o "
+"título no alto de cada página."
 
 #. Translators: this and the lines that follow are the text of the
 #. * documents File > New from Template makes, for the user to type
@@ -1497,15 +1522,27 @@ msgstr "Capítulo um"
 #. Translators: Heading 1 is a style's name, which is not
 #. * translated.
 #: src/model/w42-template.c:348
-msgid "The first lines of the book go here. The paragraphs are justified and set in, as a printed novel's are, and each chapter starts on a new page: give its title the Heading 1 style."
-msgstr "As primeiras linhas do livro vão aqui. Os parágrafos são justificados e recuados, como os de um romance impresso, e cada capítulo começa em uma nova página: aplique ao título dele o estilo Heading 1."
+msgid ""
+"The first lines of the book go here. The paragraphs are justified and set "
+"in, as a printed novel's are, and each chapter starts on a new page: give "
+"its title the Heading 1 style."
+msgstr ""
+"As primeiras linhas do livro vão aqui. Os parágrafos são justificados e "
+"recuados, como os de um romance impresso, e cada capítulo começa em uma nova "
+"página: aplique ao título dele o estilo Heading 1."
 
 #. Translators: Tools, Language, Set Language, Default and Word Count
 #. * Goal are the menus, menu items and button of those names: use the
 #. * words the translated menus and dialog use.
 #: src/model/w42-template.c:355
-msgid "Tools ▸ Language ▸ Set Language, Default makes the book's language the one its spelling, quotation marks and hyphenation follow; Tools ▸ Word Count Goal sets how long it is to be."
-msgstr "Em Ferramentas ▸ Idioma ▸ Definir idioma, o botão Padrão faz do idioma do livro aquele seguido pela ortografia, pelas aspas e pela hifenização; Ferramentas ▸ Meta de contagem de palavras define a extensão desejada."
+msgid ""
+"Tools ▸ Language ▸ Set Language, Default makes the book's language the one "
+"its spelling, quotation marks and hyphenation follow; Tools ▸ Word Count "
+"Goal sets how long it is to be."
+msgstr ""
+"Em Ferramentas ▸ Idioma ▸ Definir idioma, o botão Padrão faz do idioma do "
+"livro aquele seguido pela ortografia, pelas aspas e pela hifenização; "
+"Ferramentas ▸ Meta de contagem de palavras define a extensão desejada."
 
 #: src/model/w42-template.c:361
 msgid "A new scene begins after a break like the one above."
@@ -1547,8 +1584,13 @@ msgstr "Cerca de 80.000 palavras"
 #. Translators: Surname and TITLE are the words of "Surname / TITLE";
 #. * View and Header and Footer are the menu items of that name.
 #: src/model/w42-template.c:411
-msgid "The story begins here. Replace Surname and TITLE in View ▸ Header and Footer with your own; the page number follows them on every page but the first."
-msgstr "A história começa aqui. Substitua Sobrenome e TÍTULO em Exibir ▸ Cabeçalho e rodapé pelos seus; o número da página vem depois deles em todas as páginas, exceto a primeira."
+msgid ""
+"The story begins here. Replace Surname and TITLE in View ▸ Header and Footer "
+"with your own; the page number follows them on every page but the first."
+msgstr ""
+"A história começa aqui. Substitua Sobrenome e TÍTULO em Exibir ▸ Cabeçalho e "
+"rodapé pelos seus; o número da página vem depois deles em todas as páginas, "
+"exceto a primeira."
 
 #. Translators: the "#" on the line above is the break meant.
 #: src/model/w42-template.c:417
@@ -1562,7 +1604,7 @@ msgid "default:LTR"
 msgstr "default:LTR"
 
 #: src/ui/w42-dialogs.c:232 src/ui/w42-dialogs.c:286 src/ui/w42-dialogs.c:1232
-#: src/ui/w42-macro.c:367 src/ui/w42-macro.c:402 src/ui/w42-window.c:3810
+#: src/ui/w42-macro.c:367 src/ui/w42-macro.c:402 src/ui/w42-window.c:3811
 msgid "_OK"
 msgstr "_OK"
 
@@ -1570,7 +1612,7 @@ msgstr "_OK"
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:369 src/ui/w42-macro.c:370
 #: src/ui/w42-macro.c:402 src/ui/w42-print.c:379 src/ui/w42-print.c:883
 #: src/ui/w42-thesaurus-dialog.c:360 src/ui/w42-view.c:1269
-#: src/ui/w42-window.c:1035 src/ui/w42-window.c:1165 src/ui/w42-window.c:1447
+#: src/ui/w42-window.c:1036 src/ui/w42-window.c:1166 src/ui/w42-window.c:1448
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -1606,7 +1648,9 @@ msgstr "Paisagem"
 
 #: src/ui/w42-dialogs.c:471
 msgid "The margins leave no room for text: an inch or less each, please."
-msgstr "As margens não deixam espaço para o texto: use uma polegada ou menos em cada uma."
+msgstr ""
+"As margens não deixam espaço para o texto: use uma polegada ou menos em cada "
+"uma."
 
 #: src/ui/w42-dialogs.c:515
 msgid "Page Setup"
@@ -1827,7 +1871,7 @@ msgstr "Estilo de _caractere (aplica-se somente ao texto selecionado)"
 msgid "Based on %s."
 msgstr "Baseado em %s."
 
-#: src/ui/w42-dialogs.c:1122 src/ui/w42-window.c:4291
+#: src/ui/w42-dialogs.c:1122 src/ui/w42-window.c:4292
 msgid "Style"
 msgstr "Estilo"
 
@@ -1879,8 +1923,12 @@ msgid "Outline le_vel:"
 msgstr "Nível do tópi_co:"
 
 #: src/ui/w42-dialogs.c:1194
-msgid "0 for body text; 1 to 9 for a heading of that level, which is what Heading Numbering counts."
-msgstr "0 para corpo de texto; 1 a 9 para um título desse nível, que é o que a Numeração de títulos conta."
+msgid ""
+"0 for body text; 1 to 9 for a heading of that level, which is what Heading "
+"Numbering counts."
+msgstr ""
+"0 para corpo de texto; 1 a 9 para um título desse nível, que é o que a "
+"Numeração de títulos conta."
 
 #. Translators: "cm" is centimetres.
 #: src/ui/w42-dialogs.c:1205
@@ -1906,7 +1954,8 @@ msgstr "_Manter com o próximo"
 
 #: src/ui/w42-dialogs.c:1214
 msgid "Every paragraph in this style starts a new page: chapter headings."
-msgstr "Cada parágrafo neste estilo começa uma nova página: títulos de capítulo."
+msgstr ""
+"Cada parágrafo neste estilo começa uma nova página: títulos de capítulo."
 
 #: src/ui/w42-dialogs.c:1224
 msgid "_Apply"
@@ -1917,7 +1966,7 @@ msgid "Save the definition and apply the style to the selected paragraphs."
 msgstr "Salvar a definição e aplicar o estilo aos parágrafos selecionados."
 
 #. Translators: the tooltip of the button that centres the paragraph.
-#: src/ui/w42-dialogs.c:1271 src/ui/w42-window.c:4280
+#: src/ui/w42-dialogs.c:1271 src/ui/w42-window.c:4281
 msgctxt "alignment"
 msgid "Center"
 msgstr "Centralizar"
@@ -1965,8 +2014,13 @@ msgstr "Diferente em páginas _pares e ímpares"
 #. Translators: {PAGE}, {NUMPAGES} and {DATE} are typed into the header
 #. * as they are: keep them in English, braces and all.
 #: src/ui/w42-dialogs.c:1433
-msgid "Fields: {PAGE} is the page number, {NUMPAGES} the number of pages, {DATE} today's date.  Headers and footers show in Page Layout view and in print."
-msgstr "Campos: {PAGE} é o número da página, {NUMPAGES} o número de páginas, {DATE} a data de hoje.  Cabeçalhos e rodapés aparecem no modo de exibição Layout da página e na impressão."
+msgid ""
+"Fields: {PAGE} is the page number, {NUMPAGES} the number of pages, {DATE} "
+"today's date.  Headers and footers show in Page Layout view and in print."
+msgstr ""
+"Campos: {PAGE} é o número da página, {NUMPAGES} o número de páginas, {DATE} "
+"a data de hoje.  Cabeçalhos e rodapés aparecem no modo de exibição Layout da "
+"página e na impressão."
 
 #: src/ui/w42-dialogs.c:1498
 msgid "Top of Page (Header)"
@@ -2056,7 +2110,7 @@ msgstr "Símbolo"
 #: src/ui/w42-dialogs.c:1878 src/ui/w42-dialogs.c:2992
 #: src/ui/w42-dialogs.c:3477 src/ui/w42-dialogs.c:3867
 #: src/ui/w42-dialogs.c:7056 src/ui/w42-find-dialog.c:316
-#: src/ui/w42-spell-dialog.c:401 src/ui/w42-window.c:3947
+#: src/ui/w42-spell-dialog.c:401 src/ui/w42-window.c:3948
 msgid "Close"
 msgstr "Fechar"
 
@@ -2073,8 +2127,14 @@ msgid "_Correct as you type"
 msgstr "_Corrigir ao digitar"
 
 #: src/ui/w42-dialogs.c:1929
-msgid "Straight quotes become curly ones, two capitals at the start of a word become one, a sentence takes a capital, two hyphens become a dash, and the words below are put right."
-msgstr "Aspas retas se tornam aspas curvas, duas maiúsculas no início de uma palavra se tornam uma só, as frases começam com maiúscula, dois hifens se tornam um travessão e as palavras abaixo são corrigidas."
+msgid ""
+"Straight quotes become curly ones, two capitals at the start of a word "
+"become one, a sentence takes a capital, two hyphens become a dash, and the "
+"words below are put right."
+msgstr ""
+"Aspas retas se tornam aspas curvas, duas maiúsculas no início de uma palavra "
+"se tornam uma só, as frases começam com maiúscula, dois hifens se tornam um "
+"travessão e as palavras abaixo são corrigidas."
 
 #: src/ui/w42-dialogs.c:1939 src/ui/w42-find-dialog.c:240
 msgid "Replace"
@@ -2190,7 +2250,7 @@ msgid "Annotations and revisions carry this name in the files you save."
 msgstr "Anotações e revisões levam este nome nos arquivos que você salva."
 
 #: src/ui/w42-dialogs.c:2301 src/ui/w42-spell-dialog.c:319
-#: src/ui/w42-window.c:4070
+#: src/ui/w42-window.c:4071
 msgid "Spelling"
 msgstr "Ortografia"
 
@@ -2214,8 +2274,12 @@ msgstr "Sempre criar cópia de _backup"
 
 #. Translators: "Backup of" is how the backup's file name begins.
 #: src/ui/w42-dialogs.c:2322
-msgid "Before a file is saved over, the version it replaces is kept beside it as “Backup of” and its name."
-msgstr "Antes de um arquivo ser substituído ao salvar, a versão anterior é mantida ao lado dele como “Backup de” seguido do nome dele."
+msgid ""
+"Before a file is saved over, the version it replaces is kept beside it as "
+"“Backup of” and its name."
+msgstr ""
+"Antes de um arquivo ser substituído ao salvar, a versão anterior é mantida "
+"ao lado dele como “Backup de” seguido do nome dele."
 
 #: src/ui/w42-dialogs.c:2326
 msgid "Save _AutoRecover info every:"
@@ -2697,7 +2761,7 @@ msgstr "Re_levo"
 msgid "En_grave"
 msgstr "_Baixo-relevo"
 
-#: src/ui/w42-dialogs.c:3162 src/ui/w42-window.c:4342
+#: src/ui/w42-dialogs.c:3162 src/ui/w42-window.c:4343
 msgid "Underline"
 msgstr "Sublinhado"
 
@@ -2841,13 +2905,18 @@ msgstr "Abra uma fonte de dados primeiro."
 
 #: src/ui/w42-dialogs.c:3673
 msgid "A merge is written as Rich Text: give the file a name ending .rtf."
-msgstr "Uma mesclagem é gravada em Rich Text: dê ao arquivo um nome terminado em .rtf."
+msgstr ""
+"Uma mesclagem é gravada em Rich Text: dê ao arquivo um nome terminado em ."
+"rtf."
 
 #. Translators: %s is a file name.
 #: src/ui/w42-dialogs.c:3688
 #, c-format
-msgid "%s is there already: choose it by that name to replace it, or another name."
-msgstr "%s já existe: escolha-o por esse nome para substituí-lo, ou escolha outro nome."
+msgid ""
+"%s is there already: choose it by that name to replace it, or another name."
+msgstr ""
+"%s já existe: escolha-o por esse nome para substituí-lo, ou escolha outro "
+"nome."
 
 #: src/ui/w42-dialogs.c:3752
 msgid "Word42 could not open the merged document."
@@ -2946,7 +3015,8 @@ msgstr "Inserir _referência para:"
 
 #: src/ui/w42-dialogs.c:3949
 msgid "The reference is text; insert it again after the pages change."
-msgstr "A referência é texto; insira-a novamente depois que as páginas mudarem."
+msgstr ""
+"A referência é texto; insira-a novamente depois que as páginas mudarem."
 
 #: src/ui/w42-dialogs.c:3971
 msgctxt "shape"
@@ -3076,7 +3146,8 @@ msgid ""
 "Numbering continues from the item before unless restarted.\n"
 "Tab and Shift+Tab at the start of an item change its level."
 msgstr ""
-"A numeração continua a partir do item anterior, a menos que seja reiniciada.\n"
+"A numeração continua a partir do item anterior, a menos que seja "
+"reiniciada.\n"
 "Tab e Shift+Tab no início de um item mudam o nível dele."
 
 #: src/ui/w42-dialogs.c:4245
@@ -3155,8 +3226,12 @@ msgstr "Alinhamento _vertical:"
 #. Translators: the formulas are typed as they are
 #. * here: keep =SUM(ABOVE) and the rest in English.
 #: src/ui/w42-dialogs.c:4452
-msgid "The formula must be a function of the cells in one direction: =SUM(ABOVE), =AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) or =PRODUCT(LEFT)."
-msgstr "A fórmula deve ser uma função das células em uma direção: =SUM(ABOVE), =AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) ou =PRODUCT(LEFT)."
+msgid ""
+"The formula must be a function of the cells in one direction: =SUM(ABOVE), "
+"=AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) or =PRODUCT(LEFT)."
+msgstr ""
+"A fórmula deve ser uma função das células em uma direção: =SUM(ABOVE), "
+"=AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) ou =PRODUCT(LEFT)."
 
 #: src/ui/w42-dialogs.c:4475 src/ui/w42-dialogs.c:4493
 msgid "Formula"
@@ -3183,7 +3258,8 @@ msgstr ""
 #: src/ui/w42-dialogs.c:4562
 #, c-format
 msgid "%d paragraph changed.  Undo takes the whole thing back in one step."
-msgid_plural "%d paragraphs changed.  Undo takes the whole thing back in one step."
+msgid_plural ""
+"%d paragraphs changed.  Undo takes the whole thing back in one step."
 msgstr[0] "%d parágrafo alterado.  Desfazer reverte tudo em uma só etapa."
 msgstr[1] "%d parágrafos alterados.  Desfazer reverte tudo em uma só etapa."
 
@@ -3196,8 +3272,12 @@ msgid "AutoFormat"
 msgstr "AutoFormatação"
 
 #: src/ui/w42-dialogs.c:4591
-msgid "Word42 will look over the whole document and put right what was typed as though on a typewriter."
-msgstr "O Word42 examinará o documento inteiro e corrigirá o que foi digitado como se fosse em uma máquina de escrever."
+msgid ""
+"Word42 will look over the whole document and put right what was typed as "
+"though on a typewriter."
+msgstr ""
+"O Word42 examinará o documento inteiro e corrigirá o que foi digitado como "
+"se fosse em uma máquina de escrever."
 
 #: src/ui/w42-dialogs.c:4598 src/ui/w42-dialogs.c:6031
 msgid "Apply"
@@ -3226,8 +3306,12 @@ msgstr "Selecione primeiro as palavras a incluir no índice."
 #. Translators: "Insert > Index Entry" and "Insert >
 #. * Index" are the menu commands.
 #: src/ui/w42-dialogs.c:4666
-msgid "Insert ▸ Index Entry marks what is selected; Insert ▸ Index then gathers the marked words and the pages they are on."
-msgstr "Inserir ▸ Marcar entrada de índice marca o que está selecionado; Inserir ▸ Índice reúne as palavras marcadas e as páginas em que elas estão."
+msgid ""
+"Insert ▸ Index Entry marks what is selected; Insert ▸ Index then gathers the "
+"marked words and the pages they are on."
+msgstr ""
+"Inserir ▸ Marcar entrada de índice marca o que está selecionado; Inserir ▸ "
+"Índice reúne as palavras marcadas e as páginas em que elas estão."
 
 #: src/ui/w42-dialogs.c:4675
 msgid "Index Entry"
@@ -3242,8 +3326,12 @@ msgid "_File it under:"
 msgstr "_Entrada principal:"
 
 #: src/ui/w42-dialogs.c:4689
-msgid "The words stay as they are and read as they did; the index says which pages they are on."
-msgstr "As palavras permanecem como estão e são lidas como antes; o índice informa em quais páginas elas estão."
+msgid ""
+"The words stay as they are and read as they did; the index says which pages "
+"they are on."
+msgstr ""
+"As palavras permanecem como estão e são lidas como antes; o índice informa "
+"em quais páginas elas estão."
 
 #: src/ui/w42-dialogs.c:4741
 msgid "A document of your own, kept in the templates folder."
@@ -3310,8 +3398,12 @@ msgid "The same on _every label"
 msgstr "O _mesmo em todas as etiquetas"
 
 #: src/ui/w42-dialogs.c:5025
-msgid "The envelope or the sheet of labels is made as a document of its own, in a new window."
-msgstr "O envelope ou a folha de etiquetas é criado como um documento próprio, em uma nova janela."
+msgid ""
+"The envelope or the sheet of labels is made as a document of its own, in a "
+"new window."
+msgstr ""
+"O envelope ou a folha de etiquetas é criado como um documento próprio, em "
+"uma nova janela."
 
 #: src/ui/w42-dialogs.c:5051
 msgctxt "colour"
@@ -3327,8 +3419,12 @@ msgid "The colour behind the page"
 msgstr "A cor por trás da página"
 
 #: src/ui/w42-dialogs.c:5172
-msgid "The colour is shown on the screen and in Print Preview; printing leaves the paper as it is."
-msgstr "A cor é exibida na tela e em Visualizar impressão; a impressão deixa o papel como está."
+msgid ""
+"The colour is shown on the screen and in Print Preview; printing leaves the "
+"paper as it is."
+msgstr ""
+"A cor é exibida na tela e em Visualizar impressão; a impressão deixa o papel "
+"como está."
 
 #. Translators: "Add" is the button.
 #: src/ui/w42-dialogs.c:5280
@@ -3421,8 +3517,10 @@ msgstr "_Palavras a atingir:"
 #. * opened, and may be put so that it needs no plural of its own.
 #: src/ui/w42-dialogs.c:5649
 #, c-format
-msgid "The document has %lu word; %ld of them were written since it was opened."
-msgid_plural "The document has %lu words; %ld of them were written since it was opened."
+msgid ""
+"The document has %lu word; %ld of them were written since it was opened."
+msgid_plural ""
+"The document has %lu words; %ld of them were written since it was opened."
 msgstr[0] "O documento tem %lu palavra; escritas desde que foi aberto: %ld."
 msgstr[1] "O documento tem %lu palavras; escritas desde que foi aberto: %ld."
 
@@ -3435,7 +3533,9 @@ msgstr[1] "O documento tem %lu palavras."
 
 #: src/ui/w42-dialogs.c:5664
 msgid "The status bar counts toward the goal as you write. 0 means no goal."
-msgstr "A barra de status mostra o progresso em direção à meta enquanto você escreve. 0 significa nenhuma meta."
+msgstr ""
+"A barra de status mostra o progresso em direção à meta enquanto você "
+"escreve. 0 significa nenhuma meta."
 
 #: src/ui/w42-dialogs.c:5711
 msgid "The text is checked with the document's own dictionary."
@@ -3451,7 +3551,9 @@ msgstr "Há um dicionário instalado para este idioma."
 
 #: src/ui/w42-dialogs.c:5720
 msgid "No dictionary for this is installed: the words are not checked."
-msgstr "Não há dicionário instalado para este idioma: as palavras não são verificadas."
+msgstr ""
+"Não há dicionário instalado para este idioma: as palavras não são "
+"verificadas."
 
 #: src/ui/w42-dialogs.c:5779
 msgid "Language"
@@ -3487,7 +3589,9 @@ msgstr "_Padrão"
 
 #: src/ui/w42-dialogs.c:5852
 msgid "Make this the document's language, and the one new documents start in."
-msgstr "Tornar este o idioma do documento e aquele em que os novos documentos começam."
+msgstr ""
+"Tornar este o idioma do documento e aquele em que os novos documentos "
+"começam."
 
 #: src/ui/w42-dialogs.c:5998
 msgid "Table AutoFormat"
@@ -3542,7 +3646,8 @@ msgid ""
 "A field shows its result, shaded grey. F9 updates every field;\n"
 "printing and exporting update them too."
 msgstr ""
-"Um campo mostra seu resultado, sombreado em cinza. F9 atualiza todos os campos;\n"
+"Um campo mostra seu resultado, sombreado em cinza. F9 atualiza todos os "
+"campos;\n"
 "a impressão e a exportação também os atualizam."
 
 #: src/ui/w42-dialogs.c:6142
@@ -3577,7 +3682,9 @@ msgstr "Atrás do texto"
 
 #: src/ui/w42-dialogs.c:6156
 msgid "Select a picture first: click it once, so that its handles show."
-msgstr "Selecione uma imagem primeiro: clique nela uma vez para que suas alças apareçam."
+msgstr ""
+"Selecione uma imagem primeiro: clique nela uma vez para que suas alças "
+"apareçam."
 
 #: src/ui/w42-dialogs.c:6163
 msgid "Picture"
@@ -3749,10 +3856,13 @@ msgstr "_Criar"
 #: src/ui/w42-dialogs.c:7072
 msgid ""
 "Macros are Word42 Basic files in the macros folder of your data directory.\n"
-"Type a new name and press Create to write one; Help > Contents describes the language."
+"Type a new name and press Create to write one; Help > Contents describes the "
+"language."
 msgstr ""
-"As macros são arquivos Word42 Basic na pasta macros do seu diretório de dados.\n"
-"Digite um novo nome e clique em Criar para escrever uma; Ajuda > Conteúdo descreve a linguagem."
+"As macros são arquivos Word42 Basic na pasta macros do seu diretório de "
+"dados.\n"
+"Digite um novo nome e clique em Criar para escrever uma; Ajuda > Conteúdo "
+"descreve a linguagem."
 
 #. Translators: the tooltip of a heading in the Document Map: the
 #. * first %s is the heading, the second the number of words in its
@@ -3778,8 +3888,11 @@ msgid "Type what to look for."
 msgstr "Digite o que deseja localizar."
 
 #: src/ui/w42-find-dialog.c:100
-msgid "Word42 has finished searching the document. The search item was not found."
-msgstr "O Word42 concluiu a pesquisa no documento. O item de pesquisa não foi encontrado."
+msgid ""
+"Word42 has finished searching the document. The search item was not found."
+msgstr ""
+"O Word42 concluiu a pesquisa no documento. O item de pesquisa não foi "
+"encontrado."
 
 #: src/ui/w42-find-dialog.c:194
 #, c-format
@@ -3793,7 +3906,7 @@ msgid "The search item was not found."
 msgstr "O item de pesquisa não foi encontrado."
 
 #: src/ui/w42-find-dialog.c:240 src/ui/w42-find-dialog.c:271
-#: src/ui/w42-window.c:4079
+#: src/ui/w42-window.c:4080
 msgid "Find"
 msgstr "Localizar"
 
@@ -3822,7 +3935,7 @@ msgid "_Find Next"
 msgstr "Localizar pró_xima"
 
 #: src/ui/w42-find-dialog.c:318 src/ui/w42-thesaurus-dialog.c:358
-#: src/ui/w42-window.c:1165
+#: src/ui/w42-window.c:1166
 msgid "_Replace"
 msgstr "_Substituir"
 
@@ -3849,8 +3962,12 @@ msgid "(nothing found)"
 msgstr "(nada encontrado)"
 
 #: src/ui/w42-help.c:506
-msgid "Nothing in the guide answers to that.  Try a shorter word, or look through the contents."
-msgstr "Nada no guia corresponde a isso.  Tente uma palavra mais curta ou consulte o conteúdo."
+msgid ""
+"Nothing in the guide answers to that.  Try a shorter word, or look through "
+"the contents."
+msgstr ""
+"Nada no guia corresponde a isso.  Tente uma palavra mais curta ou consulte o "
+"conteúdo."
 
 #: src/ui/w42-help.c:514 src/ui/w42-help.c:604
 msgid "Word42 Help"
@@ -3896,8 +4013,12 @@ msgstr "Estouro de capacidade"
 #. Translators: wdPageBreak and wdSectionBreakNextPage are names in
 #. * the macro language: keep them in English.
 #: src/ui/w42-macro.c:1306
-msgid "Word42 inserts a wdPageBreak or a wdSectionBreakNextPage, and no other kind of break"
-msgstr "O Word42 insere um wdPageBreak ou um wdSectionBreakNextPage, e nenhum outro tipo de quebra"
+msgid ""
+"Word42 inserts a wdPageBreak or a wdSectionBreakNextPage, and no other kind "
+"of break"
+msgstr ""
+"O Word42 insere um wdPageBreak ou um wdSectionBreakNextPage, e nenhum outro "
+"tipo de quebra"
 
 #: src/ui/w42-macro.c:1783
 msgid "There is no such style"
@@ -3918,8 +4039,12 @@ msgstr "O documento nunca foi salvo: use ActiveDocument.SaveAs \"nome\""
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
 #: src/ui/w42-macro.c:2120
-msgid "The document came from a format Word42 does not write back as it was: use ActiveDocument.SaveAs \"name\""
-msgstr "O documento veio de um formato que o Word42 não grava de volta como era: use ActiveDocument.SaveAs \"nome\""
+msgid ""
+"The document came from a format Word42 does not write back as it was: use "
+"ActiveDocument.SaveAs \"name\""
+msgstr ""
+"O documento veio de um formato que o Word42 não grava de volta como era: use "
+"ActiveDocument.SaveAs \"nome\""
 
 #: src/ui/w42-macro.c:2124 src/ui/w42-macro.c:2176 src/ui/w42-macro.c:2224
 msgid "The document could not be saved"
@@ -3934,8 +4059,12 @@ msgstr "SaveAs precisa de um nome de arquivo"
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
 #: src/ui/w42-macro.c:2220
-msgid "The document has no file to be saved to: use ActiveDocument.SaveAs \"name\" first"
-msgstr "O documento não tem um arquivo onde ser salvo: use ActiveDocument.SaveAs \"nome\" primeiro"
+msgid ""
+"The document has no file to be saved to: use ActiveDocument.SaveAs \"name\" "
+"first"
+msgstr ""
+"O documento não tem um arquivo onde ser salvo: use ActiveDocument.SaveAs "
+"\"nome\" primeiro"
 
 #: src/ui/w42-macro.c:2447
 msgid "A new document could not be made"
@@ -4001,7 +4130,7 @@ msgstr "Página inteira"
 msgid "Two Pages"
 msgstr "Duas páginas"
 
-#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4069
+#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4070
 msgid "Print Preview"
 msgstr "Visualizar impressão"
 
@@ -4054,7 +4183,7 @@ msgid "Word42 could not write the PDF."
 msgstr "O Word42 não pôde gravar o PDF."
 
 #: src/ui/w42-print.c:351 src/ui/w42-print.c:687 src/ui/w42-window.c:334
-#: src/ui/w42-window.c:2578
+#: src/ui/w42-window.c:2579
 msgid "PDF Documents (*.pdf)"
 msgstr "Documentos PDF (*.pdf)"
 
@@ -4072,11 +4201,13 @@ msgstr "Imprimir em PDF..."
 msgid ""
 "%s\n"
 "\n"
-"word42 can write the document to a PDF instead, which you can print from any PDF viewer."
+"word42 can write the document to a PDF instead, which you can print from any "
+"PDF viewer."
 msgstr ""
 "%s\n"
 "\n"
-"O word42 pode gravar o documento em PDF, que você pode imprimir em qualquer visualizador de PDF."
+"O word42 pode gravar o documento em PDF, que você pode imprimir em qualquer "
+"visualizador de PDF."
 
 #: src/ui/w42-print.c:388
 msgid "Word42 could not print the document."
@@ -4108,7 +4239,7 @@ msgstr "Páginas ímpares"
 msgid "Even pages"
 msgstr "Páginas pares"
 
-#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4068
+#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4069
 msgid "Print"
 msgstr "Imprimir"
 
@@ -4193,7 +4324,8 @@ msgstr "Imprimir em _arquivo..."
 
 #: src/ui/w42-scan.c:86
 msgid "Windows Image Acquisition is not available on this computer."
-msgstr "A Aquisição de Imagens do Windows (WIA) não está disponível neste computador."
+msgstr ""
+"A Aquisição de Imagens do Windows (WIA) não está disponível neste computador."
 
 #. Translators: %08lx is the error's code, in hexadecimal.
 #: src/ui/w42-scan.c:110
@@ -4210,14 +4342,20 @@ msgstr "Não foi possível salvar a imagem digitalizada (erro WIA 0x%08lx)."
 #. Translators: "Image Capture" is the macOS program's name;
 #. * Insert > Picture > From File is Word42's menu.
 #: src/ui/w42-scan.c:179
-msgid "Scanning is not available on macOS yet.  Scan with Image Capture and use Insert > Picture > From File."
-msgstr "A digitalização ainda não está disponível no macOS.  Digitalize com o Captura de Imagem e use Inserir > Imagem > Do arquivo."
+msgid ""
+"Scanning is not available on macOS yet.  Scan with Image Capture and use "
+"Insert > Picture > From File."
+msgstr ""
+"A digitalização ainda não está disponível no macOS.  Digitalize com o "
+"Captura de Imagem e use Inserir > Imagem > Do arquivo."
 
 #. Translators: scanimage, SANE and sane-utils are
 #. * the names of programs and packages.
 #: src/ui/w42-scan.c:215
 msgid "scanimage was not found.  Install SANE (sane-utils) to scan."
-msgstr "O scanimage não foi encontrado.  Instale o SANE (sane-utils) para digitalizar."
+msgstr ""
+"O scanimage não foi encontrado.  Instale o SANE (sane-utils) para "
+"digitalizar."
 
 #. Translators: %s is the scanner program's own message.
 #: src/ui/w42-scan.c:241
@@ -4307,7 +4445,7 @@ msgstr "_Pesquisar"
 msgid "_Previous"
 msgstr "_Anterior"
 
-#: src/ui/w42-view.c:1269 src/ui/w42-window.c:1072 src/ui/w42-window.c:4065
+#: src/ui/w42-view.c:1269 src/ui/w42-window.c:1073 src/ui/w42-window.c:4066
 msgid "Open"
 msgstr "Abrir"
 
@@ -4364,11 +4502,15 @@ msgstr "Word42 %s - %s%s"
 
 #: src/ui/w42-window.c:319
 msgid "All Documents (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"
-msgstr "Todos os documentos (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"
+msgstr ""
+"Todos os documentos (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"
 
 #: src/ui/w42-window.c:322
-msgid "All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"
-msgstr "Todos os documentos (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"
+msgid ""
+"All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"
+msgstr ""
+"Todos os documentos (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *."
+"html)"
 
 #: src/ui/w42-window.c:325
 msgid "Word Document (*.docx)"
@@ -4386,11 +4528,11 @@ msgstr "Texto OpenDocument (*.odt)"
 msgid "AbiWord (*.abw, *.zabw)"
 msgstr "AbiWord (*.abw, *.zabw)"
 
-#: src/ui/w42-window.c:330 src/ui/w42-window.c:2405
+#: src/ui/w42-window.c:330 src/ui/w42-window.c:2406
 msgid "Web Pages (*.html)"
 msgstr "Páginas da Web (*.html)"
 
-#: src/ui/w42-window.c:331 src/ui/w42-window.c:2546
+#: src/ui/w42-window.c:331 src/ui/w42-window.c:2547
 msgid "Presentations (*.pptx)"
 msgstr "Apresentações (*.pptx)"
 
@@ -4404,288 +4546,340 @@ msgstr "Todos os arquivos"
 
 #. Translators: the name of the copy Tools > Options > Always create
 #. * backup copy keeps beside a file; %s is the file's own name.  It is a
-#. * file name: no slashes or backslashes.
-#: src/ui/w42-window.c:586
+#. * file name: no slashes, backslashes or colons, and %s last, so that the
+#. * copy keeps the file's extension and opens as the file does.
+#: src/ui/w42-window.c:587
 #, c-format
 msgid "Backup of %s"
 msgstr "Backup de %s"
 
 #. Translators: %s is the recovered document's name.
-#: src/ui/w42-window.c:660
+#: src/ui/w42-window.c:661
 #, c-format
 msgid "Word42 recovered “%s”."
 msgstr "O Word42 recuperou “%s”."
 
-#: src/ui/w42-window.c:663
-msgid "It was not saved when Word42 last stopped. Save it to keep it; close it to let it go."
-msgstr "Ele não foi salvo quando o Word42 foi encerrado pela última vez. Salve-o para mantê-lo; feche-o para descartá-lo."
+#: src/ui/w42-window.c:664
+msgid ""
+"It was not saved when Word42 last stopped. Save it to keep it; close it to "
+"let it go."
+msgstr ""
+"Ele não foi salvo quando o Word42 foi encerrado pela última vez. Salve-o "
+"para mantê-lo; feche-o para descartá-lo."
 
 #. Translators: %d is how many autosaved copies could not be read,
 #. * %s the folder they are kept in.
-#: src/ui/w42-window.c:708
+#: src/ui/w42-window.c:709
 #, c-format
-msgid "%d document left when Word42 last stopped could not be read. It is kept in %s, with names ending .bad."
-msgid_plural "%d documents left when Word42 last stopped could not be read. They are kept in %s, with names ending .bad."
-msgstr[0] "%d documento deixado quando o Word42 foi encerrado pela última vez não pôde ser lido. Ele está guardado em %s, com nome terminado em .bad."
-msgstr[1] "%d documentos deixados quando o Word42 foi encerrado pela última vez não puderam ser lidos. Eles estão guardados em %s, com nomes terminados em .bad."
+msgid ""
+"%d document left when Word42 last stopped could not be read. It is kept in "
+"%s, with names ending .bad."
+msgid_plural ""
+"%d documents left when Word42 last stopped could not be read. They are kept "
+"in %s, with names ending .bad."
+msgstr[0] ""
+"%d documento deixado quando o Word42 foi encerrado pela última vez não pôde "
+"ser lido. Ele está guardado em %s, com nome terminado em .bad."
+msgstr[1] ""
+"%d documentos deixados quando o Word42 foi encerrado pela última vez não "
+"puderam ser lidos. Eles estão guardados em %s, com nomes terminados em .bad."
 
-#: src/ui/w42-window.c:718
+#: src/ui/w42-window.c:719
 msgid "Word42 could not recover everything."
 msgstr "O Word42 não conseguiu recuperar tudo."
 
-#: src/ui/w42-window.c:846 src/ui/w42-window.c:920 src/ui/w42-window.c:1000
-#: src/ui/w42-window.c:4878
+#: src/ui/w42-window.c:847 src/ui/w42-window.c:921 src/ui/w42-window.c:1001
+#: src/ui/w42-window.c:4879
 msgid "Word42 could not open that file."
 msgstr "O Word42 não pôde abrir esse arquivo."
 
 #. Translators: %s is the name of the file exported to.
-#: src/ui/w42-window.c:950
+#: src/ui/w42-window.c:951
 #, c-format
-msgid "Exported as %s. The document itself is not saved there: Word42 cannot read that format back as it was."
-msgstr "Exportado como %s. O documento em si não é salvo lá: o Word42 não consegue ler esse formato de volta como era."
+msgid ""
+"Exported as %s. The document itself is not saved there: Word42 cannot read "
+"that format back as it was."
+msgstr ""
+"Exportado como %s. O documento em si não é salvo lá: o Word42 não consegue "
+"ler esse formato de volta como era."
 
-#: src/ui/w42-window.c:1042
-msgid "This document has not been saved yet, so there is nothing to go back to."
-msgstr "Este documento ainda não foi salvo, portanto não há versão anterior para a qual voltar."
+#: src/ui/w42-window.c:1043
+msgid ""
+"This document has not been saved yet, so there is nothing to go back to."
+msgstr ""
+"Este documento ainda não foi salvo, portanto não há versão anterior para a "
+"qual voltar."
 
-#: src/ui/w42-window.c:1048
+#: src/ui/w42-window.c:1049
 msgid "The document has no unsaved changes."
 msgstr "O documento não tem alterações não salvas."
 
 #. Translators: %s is the document's name.
-#: src/ui/w42-window.c:1054
+#: src/ui/w42-window.c:1055
 #, c-format
 msgid "Revert “%s” to the saved version?"
 msgstr "Reverter “%s” para a versão salva?"
 
-#: src/ui/w42-window.c:1056
+#: src/ui/w42-window.c:1057
 msgid "The changes made since the document was last saved will be lost."
-msgstr "As alterações feitas desde a última vez em que o documento foi salvo serão perdidas."
+msgstr ""
+"As alterações feitas desde a última vez em que o documento foi salvo serão "
+"perdidas."
 
 #. Translators: %s is a file name.
-#: src/ui/w42-window.c:1168
+#: src/ui/w42-window.c:1169
 #, c-format
 msgid "“%s” already exists. Replace it?"
 msgstr "“%s” já existe. Deseja substituí-lo?"
 
-#: src/ui/w42-window.c:1175
+#: src/ui/w42-window.c:1176
 msgid "The file that is there now will be lost."
 msgstr "O arquivo existente será perdido."
 
-#: src/ui/w42-window.c:1196 src/ui/w42-window.c:1202 src/ui/w42-window.c:1224
-#: src/ui/w42-window.c:1304 src/ui/w42-window.c:4784
+#: src/ui/w42-window.c:1197 src/ui/w42-window.c:1203 src/ui/w42-window.c:1225
+#: src/ui/w42-window.c:1305 src/ui/w42-window.c:4785
 msgid "Word42 could not save that file."
 msgstr "O Word42 não pôde salvar esse arquivo."
 
-#: src/ui/w42-window.c:1241
+#: src/ui/w42-window.c:1242
 msgid "Save As"
 msgstr "Salvar como"
 
-#: src/ui/w42-window.c:1345 src/ui/w42-window.c:1363
+#: src/ui/w42-window.c:1346 src/ui/w42-window.c:1364
 msgid "Word42 could not save that template."
 msgstr "O Word42 não pôde salvar esse modelo."
 
-#: src/ui/w42-window.c:1347
+#: src/ui/w42-window.c:1348
 msgid "Saved as a template.  File > New from Template lists it."
 msgstr "Salvo como modelo.  Arquivo > Novo a partir de modelo o lista."
 
-#: src/ui/w42-window.c:1388
+#: src/ui/w42-window.c:1389
 msgid "Save as Template"
 msgstr "Salvar como modelo"
 
-#: src/ui/w42-window.c:1447
+#: src/ui/w42-window.c:1448
 msgid "Don't Save"
 msgstr "Não salvar"
 
 #. Translators: %s is the document's name.
-#: src/ui/w42-window.c:1460
+#: src/ui/w42-window.c:1461
 #, c-format
 msgid "Save changes to “%s”?"
 msgstr "Deseja salvar as alterações em “%s”?"
 
-#: src/ui/w42-window.c:1463
+#: src/ui/w42-window.c:1464
 msgid "If you close without saving, the changes you have made will be lost."
 msgstr "Se você fechar sem salvar, as alterações feitas serão perdidas."
 
-#: src/ui/w42-window.c:2146 src/ui/w42-window.c:4319
+#: src/ui/w42-window.c:2147 src/ui/w42-window.c:4320
 msgid "Font"
 msgstr "Fonte"
 
-#: src/ui/w42-window.c:2216
+#: src/ui/w42-window.c:2217
 msgid "Word42 could not insert that picture."
 msgstr "O Word42 não pôde inserir essa imagem."
 
-#: src/ui/w42-window.c:2224
+#: src/ui/w42-window.c:2225
 msgid "Word42 could not open that picture."
 msgstr "O Word42 não pôde abrir essa imagem."
 
-#: src/ui/w42-window.c:2244
+#: src/ui/w42-window.c:2245
 msgid "Pictures"
 msgstr "Imagens"
 
-#: src/ui/w42-window.c:2248
+#: src/ui/w42-window.c:2249
 msgid "Insert Picture"
 msgstr "Inserir imagem"
 
-#: src/ui/w42-window.c:2270
+#: src/ui/w42-window.c:2271
 msgid "No scanner can be reached from here."
 msgstr "Nenhum scanner está acessível a partir daqui."
 
-#: src/ui/w42-window.c:2271
-msgid "Word42 scans through Windows Image Acquisition on Windows and through SANE's scanimage on Linux; neither was found."
-msgstr "O Word42 digitaliza por meio da Aquisição de Imagens do Windows (WIA) no Windows e do scanimage do SANE no Linux; nenhum dos dois foi encontrado."
+#: src/ui/w42-window.c:2272
+msgid ""
+"Word42 scans through Windows Image Acquisition on Windows and through SANE's "
+"scanimage on Linux; neither was found."
+msgstr ""
+"O Word42 digitaliza por meio da Aquisição de Imagens do Windows (WIA) no "
+"Windows e do scanimage do SANE no Linux; nenhum dos dois foi encontrado."
 
-#: src/ui/w42-window.c:2284
+#: src/ui/w42-window.c:2285
 msgid "The scanner sent a picture Word42 cannot read."
 msgstr "O scanner enviou uma imagem que o Word42 não consegue ler."
 
-#: src/ui/w42-window.c:2288
+#: src/ui/w42-window.c:2289
 msgid "Word42 could not scan."
 msgstr "O Word42 não conseguiu digitalizar."
 
-#: src/ui/w42-window.c:2311 src/ui/w42-window.c:2318
+#: src/ui/w42-window.c:2312 src/ui/w42-window.c:2319
 msgid "Word42 could not export the PDF."
 msgstr "O Word42 não pôde exportar o PDF."
 
-#: src/ui/w42-window.c:2342 src/ui/w42-window.c:2347
+#: src/ui/w42-window.c:2343 src/ui/w42-window.c:2348
 msgid "Word42 could not export the web page."
 msgstr "O Word42 não pôde exportar a página da Web."
 
-#: src/ui/w42-window.c:2381
+#: src/ui/w42-window.c:2382
 msgid "Word42 could not write the web page to preview."
 msgstr "O Word42 não pôde gravar a página da Web para visualização."
 
-#: src/ui/w42-window.c:2406
+#: src/ui/w42-window.c:2407
 msgid "Export as Web Page"
 msgstr "Exportar como página da Web"
 
-#: src/ui/w42-window.c:2437 src/ui/w42-window.c:2444
+#: src/ui/w42-window.c:2438 src/ui/w42-window.c:2445
 msgid "Word42 could not export the e-book."
 msgstr "O Word42 não pôde exportar o livro eletrônico."
 
-#: src/ui/w42-window.c:2439
+#: src/ui/w42-window.c:2440
 msgid "The e-book is written."
 msgstr "O livro eletrônico foi gravado."
 
-#: src/ui/w42-window.c:2467
+#: src/ui/w42-window.c:2468
 msgid "E-books (*.epub)"
 msgstr "Livros eletrônicos (*.epub)"
 
-#: src/ui/w42-window.c:2468
+#: src/ui/w42-window.c:2469
 msgid "Export as E-book"
 msgstr "Exportar como livro eletrônico"
 
-#: src/ui/w42-window.c:2496 src/ui/w42-window.c:2501
+#: src/ui/w42-window.c:2497 src/ui/w42-window.c:2502
 msgid "Word42 could not export the presentation."
 msgstr "O Word42 não pôde exportar a apresentação."
 
-#: src/ui/w42-window.c:2528
+#: src/ui/w42-window.c:2529
 msgid "There is nothing to make slides of."
 msgstr "Não há nada para transformar em slides."
 
-#: src/ui/w42-window.c:2529
-msgid "A slide is a heading and the lines under it: give the document's headings the Heading 1 style, or a Title."
-msgstr "Um slide é um título e as linhas abaixo dele: aplique aos títulos do documento o estilo Heading 1 ou Title."
+#: src/ui/w42-window.c:2530
+msgid ""
+"A slide is a heading and the lines under it: give the document's headings "
+"the Heading 1 style, or a Title."
+msgstr ""
+"Um slide é um título e as linhas abaixo dele: aplique aos títulos do "
+"documento o estilo Heading 1 ou Title."
 
-#: src/ui/w42-window.c:2534
+#: src/ui/w42-window.c:2535
 #, c-format
 msgid "%u slide."
 msgid_plural "%u slides."
 msgstr[0] "%u slide."
 msgstr[1] "%u slides."
 
-#: src/ui/w42-window.c:2547
+#: src/ui/w42-window.c:2548
 msgid "Export as Presentation"
 msgstr "Exportar como apresentação"
 
-#: src/ui/w42-window.c:2579
+#: src/ui/w42-window.c:2580
 msgid "Export as PDF"
 msgstr "Exportar como PDF"
 
-#: src/ui/w42-window.c:2788
+#: src/ui/w42-window.c:2789
 msgid "The caret is in the first row: there is nothing above it to split off."
 msgstr "O cursor está na primeira linha: não há nada acima dele para separar."
 
-#: src/ui/w42-window.c:2816
+#: src/ui/w42-window.c:2817
 msgid "There is nothing to convert here."
 msgstr "Não há nada para converter aqui."
 
-#: src/ui/w42-window.c:2817
-msgid "In a table this makes paragraphs with tabs between the cells; on selected paragraphs it makes a table, split at their tabs."
-msgstr "Em uma tabela, isto cria parágrafos com tabulações entre as células; em parágrafos selecionados, cria uma tabela, dividida nas tabulações."
+#: src/ui/w42-window.c:2818
+msgid ""
+"In a table this makes paragraphs with tabs between the cells; on selected "
+"paragraphs it makes a table, split at their tabs."
+msgstr ""
+"Em uma tabela, isto cria parágrafos com tabulações entre as células; em "
+"parágrafos selecionados, cria uma tabela, dividida nas tabulações."
 
-#: src/ui/w42-window.c:2865 src/ui/w42-window.c:2885 src/ui/w42-window.c:2907
-#: src/ui/w42-window.c:3324 src/ui/w42-window.c:3340 src/ui/w42-window.c:3564
+#: src/ui/w42-window.c:2866 src/ui/w42-window.c:2886 src/ui/w42-window.c:2908
+#: src/ui/w42-window.c:3325 src/ui/w42-window.c:3341 src/ui/w42-window.c:3565
 msgid "The caret is in a note: put it in the body of the document first."
 msgstr "O cursor está em uma nota: coloque-o no corpo do documento primeiro."
 
-#: src/ui/w42-window.c:2871
+#: src/ui/w42-window.c:2872
 msgid "There is nothing marked for the index."
 msgstr "Não há nada marcado para o índice."
 
-#: src/ui/w42-window.c:2872
-msgid "Select a word and use Insert ▸ Index Entry to mark it, then ask for the index again."
-msgstr "Selecione uma palavra e use Inserir ▸ Marcar entrada de índice para marcá-la; depois peça o índice novamente."
+#: src/ui/w42-window.c:2873
+msgid ""
+"Select a word and use Insert ▸ Index Entry to mark it, then ask for the "
+"index again."
+msgstr ""
+"Selecione uma palavra e use Inserir ▸ Marcar entrada de índice para marcá-"
+"la; depois peça o índice novamente."
 
-#: src/ui/w42-window.c:2891
+#: src/ui/w42-window.c:2892
 msgid "There are no captions to list."
 msgstr "Não há legendas para listar."
 
-#: src/ui/w42-window.c:2892
-msgid "Insert ▸ Caption puts a caption under a picture, and the table of figures lists them."
-msgstr "Inserir ▸ Legenda coloca uma legenda sob uma imagem, e o índice de ilustrações as lista."
+#: src/ui/w42-window.c:2893
+msgid ""
+"Insert ▸ Caption puts a caption under a picture, and the table of figures "
+"lists them."
+msgstr ""
+"Inserir ▸ Legenda coloca uma legenda sob uma imagem, e o índice de "
+"ilustrações as lista."
 
-#: src/ui/w42-window.c:2913
+#: src/ui/w42-window.c:2914
 msgid "There are no headings to list."
 msgstr "Não há títulos para listar."
 
-#: src/ui/w42-window.c:2914
+#: src/ui/w42-window.c:2915
 msgid "Give the document's headings the Heading 1, 2 or 3 style and try again."
-msgstr "Aplique aos títulos do documento o estilo Heading 1, 2 ou 3 e tente novamente."
+msgstr ""
+"Aplique aos títulos do documento o estilo Heading 1, 2 ou 3 e tente "
+"novamente."
 
-#: src/ui/w42-window.c:2961
+#: src/ui/w42-window.c:2962
 msgid "There is no table of contents to update."
 msgstr "Não há sumário para atualizar."
 
-#: src/ui/w42-window.c:2962
+#: src/ui/w42-window.c:2963
 msgid "Insert > Table of Contents puts one in."
 msgstr "Inserir > Sumário insere um."
 
-#: src/ui/w42-window.c:2998
+#: src/ui/w42-window.c:2999
 msgid "No hyphenation dictionary was found."
 msgstr "Nenhum dicionário de hifenização foi encontrado."
 
-#: src/ui/w42-window.c:2999
-msgid "Hyphenation needs libhyphen and a hyph_*.dic pattern file for your language, the ones LibreOffice uses."
-msgstr "A hifenização precisa da libhyphen e de um arquivo de padrões hyph_*.dic para o seu idioma, os mesmos que o LibreOffice usa."
+#: src/ui/w42-window.c:3000
+msgid ""
+"Hyphenation needs libhyphen and a hyph_*.dic pattern file for your language, "
+"the ones LibreOffice uses."
+msgstr ""
+"A hifenização precisa da libhyphen e de um arquivo de padrões hyph_*.dic "
+"para o seu idioma, os mesmos que o LibreOffice usa."
 
-#: src/ui/w42-window.c:3002
+#: src/ui/w42-window.c:3003
 msgid "There is nothing to hyphenate."
 msgstr "Não há nada para hifenizar."
 
-#: src/ui/w42-window.c:3014
+#: src/ui/w42-window.c:3015
 #, c-format
 msgid "%d hyphen removed."
 msgid_plural "%d hyphens removed."
 msgstr[0] "%d hífen removido."
 msgstr[1] "%d hifens removidos."
 
-#: src/ui/w42-window.c:3017
+#: src/ui/w42-window.c:3018
 msgid "There are no soft hyphens to remove."
 msgstr "Não há hifens opcionais para remover."
 
-#: src/ui/w42-window.c:3161
-msgid "Type the name of an AutoText entry, then press Ctrl+F3.  Edit > AutoText makes one from the selection."
-msgstr "Digite o nome de uma entrada de AutoTexto e pressione Ctrl+F3.  Editar > AutoTexto cria uma a partir da seleção."
+#: src/ui/w42-window.c:3162
+msgid ""
+"Type the name of an AutoText entry, then press Ctrl+F3.  Edit > AutoText "
+"makes one from the selection."
+msgstr ""
+"Digite o nome de uma entrada de AutoTexto e pressione Ctrl+F3.  Editar > "
+"AutoTexto cria uma a partir da seleção."
 
-#: src/ui/w42-window.c:3202
+#: src/ui/w42-window.c:3203
 #, c-format
 msgid "%d field updated."
 msgid_plural "%d fields updated."
 msgstr[0] "%d campo atualizado."
 msgstr[1] "%d campos atualizados."
 
-#: src/ui/w42-window.c:3205
+#: src/ui/w42-window.c:3206
 msgid "There are no fields in this document."
 msgstr "Não há campos neste documento."
 
@@ -4693,51 +4887,58 @@ msgstr "Não há campos neste documento."
 #. * the figure's number.  Keep a word before the number, and keep %d as
 #. * it is: the captions already there are counted by what comes before
 #. * it.
-#: src/ui/w42-window.c:3275 src/ui/w42-window.c:3291
+#: src/ui/w42-window.c:3276 src/ui/w42-window.c:3292
 #, c-format
 msgid "Figure %d: "
 msgstr "Figura %d: "
 
-#: src/ui/w42-window.c:3354
+#: src/ui/w42-window.c:3355
 msgid "Put the caret at a note's mark, or in the note itself."
 msgstr "Coloque o cursor na marca de uma nota ou na própria nota."
 
-#: src/ui/w42-window.c:3436
+#: src/ui/w42-window.c:3437
 msgid "No thesaurus was found."
 msgstr "Nenhum dicionário de sinônimos foi encontrado."
 
-#: src/ui/w42-window.c:3437
-msgid "The thesaurus needs a MyThes file for the language of the text -- th_en_US_v2.dat and its .idx for English, th_nb_NO_v2 for Norwegian, the ones LibreOffice uses -- in the mythes folder."
-msgstr "O dicionário de sinônimos precisa de um arquivo MyThes para o idioma do texto -- th_en_US_v2.dat e seu .idx para inglês, th_nb_NO_v2 para norueguês, os mesmos que o LibreOffice usa -- na pasta mythes."
+#: src/ui/w42-window.c:3438
+msgid ""
+"The thesaurus needs a MyThes file for the language of the text -- "
+"th_en_US_v2.dat and its .idx for English, th_nb_NO_v2 for Norwegian, the "
+"ones LibreOffice uses -- in the mythes folder."
+msgstr ""
+"O dicionário de sinônimos precisa de um arquivo MyThes para o idioma do "
+"texto -- th_en_US_v2.dat e seu .idx para inglês, th_nb_NO_v2 para norueguês, "
+"os mesmos que o LibreOffice usa -- na pasta mythes."
 
-#: src/ui/w42-window.c:3444
+#: src/ui/w42-window.c:3445
 msgid "Put the caret in a word to look it up in the thesaurus."
-msgstr "Coloque o cursor em uma palavra para procurá-la no dicionário de sinônimos."
+msgstr ""
+"Coloque o cursor em uma palavra para procurá-la no dicionário de sinônimos."
 
-#: src/ui/w42-window.c:3456
+#: src/ui/w42-window.c:3457
 msgid "No spelling dictionary was found."
 msgstr "Nenhum dicionário ortográfico foi encontrado."
 
-#: src/ui/w42-window.c:3457
+#: src/ui/w42-window.c:3458
 msgid "Install a Hunspell dictionary for your language and start Word42 again."
 msgstr "Instale um dicionário Hunspell para o seu idioma e reinicie o Word42."
 
-#: src/ui/w42-window.c:3510
+#: src/ui/w42-window.c:3511
 msgid "Revisions accepted."
 msgstr "Revisões aceitas."
 
-#: src/ui/w42-window.c:3512 src/ui/w42-window.c:3524
+#: src/ui/w42-window.c:3513 src/ui/w42-window.c:3525
 msgid "There are no revision marks in this document."
 msgstr "Não há marcas de revisão neste documento."
 
-#: src/ui/w42-window.c:3522
+#: src/ui/w42-window.c:3523
 msgid "Revisions rejected."
 msgstr "Revisões rejeitadas."
 
 #. Translators: the Windows version in the About box, as "Windows
 #. * 10.0 build 19045 (Windows 10)": the major and minor version, the
 #. * build number, then the release's name in brackets or nothing.
-#: src/ui/w42-window.c:3635
+#: src/ui/w42-window.c:3636
 #, c-format
 msgid "Windows %lu.%lu build %lu%s"
 msgstr "Windows %lu.%lu compilação %lu%s"
@@ -4748,7 +4949,7 @@ msgstr "Windows %lu.%lu compilação %lu%s"
 #. * the one built against; GLib's; Pango's, Cairo's and GdkPixbuf's;
 #. * the operating system; then the spelling, hyphenation and PDF
 #. * import libraries, or "none".
-#: src/ui/w42-window.c:3666
+#: src/ui/w42-window.c:3667
 #, c-format
 msgid ""
 "Word42 %s\n"
@@ -4764,117 +4965,128 @@ msgstr ""
 "Ortografia: %s  ·  Hifenização: %s  ·  Importação de PDF: %s"
 
 #. Translators: no library for this, in the About box.
-#: src/ui/w42-window.c:3681 src/ui/w42-window.c:3687 src/ui/w42-window.c:3693
+#: src/ui/w42-window.c:3682 src/ui/w42-window.c:3688 src/ui/w42-window.c:3694
 msgctxt "library"
 msgid "none"
 msgstr "nenhuma"
 
-#: src/ui/w42-window.c:3725
+#: src/ui/w42-window.c:3726
 msgid "About Word42"
 msgstr "Sobre o Word42"
 
 #. Translators: %s is Word42's version number.
-#: src/ui/w42-window.c:3748
+#: src/ui/w42-window.c:3749
 #, c-format
 msgid "Version %s"
 msgstr "Versão %s"
 
-#: src/ui/w42-window.c:3759
+#: src/ui/w42-window.c:3760
 msgid "Written in C on GTK 4, Pango and Cairo."
 msgstr "Escrito em C com GTK 4, Pango e Cairo."
 
-#: src/ui/w42-window.c:3792
+#: src/ui/w42-window.c:3793
 msgid ""
 "Copyright (C) 2026 Andreas Røsdal.\n"
 "\n"
-"This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.  It comes with ABSOLUTELY NO WARRANTY.\n"
+"This program is free software: you can redistribute it and/or modify it "
+"under the terms of the GNU General Public License as published by the Free "
+"Software Foundation, either version 3 of the License, or (at your option) "
+"any later version.  It comes with ABSOLUTELY NO WARRANTY.\n"
 "\n"
-"Word42 is an independent program, not affiliated with or endorsed by the makers of any other word processor.  The names of file formats appear only to say which format is meant.\n"
+"Word42 is an independent program, not affiliated with or endorsed by the "
+"makers of any other word processor.  The names of file formats appear only "
+"to say which format is meant.\n"
 "\n"
 "Macros run on MY-BASIC by Tony Wang, used under the MIT licence."
 msgstr ""
 "Copyright (C) 2026 Andreas Røsdal.\n"
 "\n"
-"Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob os termos da Licença Pública Geral GNU, conforme publicada pela Free Software Foundation, seja a versão 3 da Licença, seja (a seu critério) qualquer versão posterior.  Ele é fornecido ABSOLUTAMENTE SEM NENHUMA GARANTIA.\n"
+"Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo "
+"sob os termos da Licença Pública Geral GNU, conforme publicada pela Free "
+"Software Foundation, seja a versão 3 da Licença, seja (a seu critério) "
+"qualquer versão posterior.  Ele é fornecido ABSOLUTAMENTE SEM NENHUMA "
+"GARANTIA.\n"
 "\n"
-"O Word42 é um programa independente, não afiliado aos fabricantes de nenhum outro processador de texto nem endossado por eles.  Os nomes de formatos de arquivo aparecem apenas para indicar a qual formato se referem.\n"
+"O Word42 é um programa independente, não afiliado aos fabricantes de nenhum "
+"outro processador de texto nem endossado por eles.  Os nomes de formatos de "
+"arquivo aparecem apenas para indicar a qual formato se referem.\n"
 "\n"
 "As macros são executadas no MY-BASIC, de Tony Wang, usado sob a licença MIT."
 
-#: src/ui/w42-window.c:3941
+#: src/ui/w42-window.c:3942
 msgid "Minimize"
 msgstr "Minimizar"
 
-#: src/ui/w42-window.c:3944
+#: src/ui/w42-window.c:3945
 msgid "Maximize"
 msgstr "Maximizar"
 
-#: src/ui/w42-window.c:4064
+#: src/ui/w42-window.c:4065
 msgid "New"
 msgstr "Novo"
 
-#: src/ui/w42-window.c:4066
+#: src/ui/w42-window.c:4067
 msgid "Save"
 msgstr "Salvar"
 
-#: src/ui/w42-window.c:4072
+#: src/ui/w42-window.c:4073
 msgid "Cut"
 msgstr "Recortar"
 
-#: src/ui/w42-window.c:4073
+#: src/ui/w42-window.c:4074
 msgid "Copy"
 msgstr "Copiar"
 
-#: src/ui/w42-window.c:4074
+#: src/ui/w42-window.c:4075
 msgid "Paste"
 msgstr "Colar"
 
-#: src/ui/w42-window.c:4076
+#: src/ui/w42-window.c:4077
 msgid "Undo"
 msgstr "Desfazer"
 
-#: src/ui/w42-window.c:4077
+#: src/ui/w42-window.c:4078
 msgid "Redo"
 msgstr "Refazer"
 
-#: src/ui/w42-window.c:4098
+#: src/ui/w42-window.c:4099
 msgid "Zoom Control"
 msgstr "Controle de zoom"
 
-#: src/ui/w42-window.c:4278
+#: src/ui/w42-window.c:4279
 msgid "Align Left"
 msgstr "Alinhar à esquerda"
 
-#: src/ui/w42-window.c:4281
+#: src/ui/w42-window.c:4282
 msgid "Align Right"
 msgstr "Alinhar à direita"
 
-#: src/ui/w42-window.c:4281
+#: src/ui/w42-window.c:4282
 msgid "Justify"
 msgstr "Justificar"
 
-#: src/ui/w42-window.c:4333
+#: src/ui/w42-window.c:4334
 msgid "Font Size"
 msgstr "Tamanho da fonte"
 
-#: src/ui/w42-window.c:4340
+#: src/ui/w42-window.c:4341
 msgid "Bold"
 msgstr "Negrito"
 
-#: src/ui/w42-window.c:4341
+#: src/ui/w42-window.c:4342
 msgid "Italic"
 msgstr "Itálico"
 
-#: src/ui/w42-window.c:4369
+#: src/ui/w42-window.c:4370
 msgid "Numbering"
 msgstr "Numeração"
 
-#: src/ui/w42-window.c:4370
+#: src/ui/w42-window.c:4371
 msgid "Bullets"
 msgstr "Marcadores"
 
 #. Translators: the status bar's page number.
-#: src/ui/w42-window.c:4393 src/ui/w42-window.c:5216
+#: src/ui/w42-window.c:4394 src/ui/w42-window.c:5217
 #, c-format
 msgid "Page %d"
 msgstr "Pág %d"
@@ -4882,20 +5094,20 @@ msgstr "Pág %d"
 #. Translators: the status bar's reading of how far down the page
 #. * the caret is, "At" short for "at so far from the top": %.1f is
 #. * the distance, %s the unit, already translated (" or cm).
-#: src/ui/w42-window.c:4395 src/ui/w42-window.c:5242
+#: src/ui/w42-window.c:4396 src/ui/w42-window.c:5243
 #, c-format
 msgid "At %.1f%s"
 msgstr "Em %.1f%s"
 
 #. Translators: the status bar's line number, "Ln" short for Line.
-#: src/ui/w42-window.c:4397 src/ui/w42-window.c:5224
+#: src/ui/w42-window.c:4398 src/ui/w42-window.c:5225
 #, c-format
 msgid "Ln %d"
 msgstr "Lin %d"
 
 #. Translators: the status bar's column number, "Col" short for
 #. * Column: how many characters in from the start of the line.
-#: src/ui/w42-window.c:4399 src/ui/w42-window.c:5228
+#: src/ui/w42-window.c:4400 src/ui/w42-window.c:5229
 #, c-format
 msgid "Col %d"
 msgstr "Col %d"
@@ -4903,7 +5115,7 @@ msgstr "Col %d"
 #. Translators: the status bar's word count toward the goal set in
 #. * Tools > Word Count Goal: "12,000 of 80,000 words".  The first %s
 #. * is the words written, the second the goal.
-#: src/ui/w42-window.c:4502
+#: src/ui/w42-window.c:4503
 #, c-format
 msgid "%s of %s word"
 msgid_plural "%s of %s words"
@@ -4912,7 +5124,7 @@ msgstr[1] "%s de %s palavras"
 
 #. Translators: the status bar's word count; %s is the number, with
 #. * thousands separators.
-#: src/ui/w42-window.c:4510
+#: src/ui/w42-window.c:4511
 #, c-format
 msgid "%s word"
 msgid_plural "%s words"
@@ -4921,7 +5133,7 @@ msgstr[1] "%s palavras"
 
 #. Translators: in the word count's tooltip; %d%% is how far
 #. * toward the goal the document is, as "40%".
-#: src/ui/w42-window.c:4521
+#: src/ui/w42-window.c:4522
 #, c-format
 msgid "%d%% of the goal."
 msgstr "%d%% da meta."
@@ -4929,60 +5141,65 @@ msgstr "%d%% da meta."
 #. Translators: in the word count's tooltip; %ld is the words
 #. * written since the document was opened, which can be less than
 #. * nothing when more was deleted.
-#: src/ui/w42-window.c:4532
+#: src/ui/w42-window.c:4533
 #, c-format
 msgid "Written since the document was opened: %ld word."
 msgid_plural "Written since the document was opened: %ld words."
 msgstr[0] "Palavras escritas desde que o documento foi aberto: %ld."
 msgstr[1] "Palavras escritas desde que o documento foi aberto: %ld."
 
-#: src/ui/w42-window.c:4538
+#: src/ui/w42-window.c:4539
 msgid "Tools ▸ Word Count Goal sets the goal."
 msgstr "Ferramentas ▸ Meta de contagem de palavras define a meta."
 
-#: src/ui/w42-window.c:4790
+#: src/ui/w42-window.c:4791
 msgid "The rest are saved."
 msgstr "Os demais foram salvos."
 
-#: src/ui/w42-window.c:4790
+#: src/ui/w42-window.c:4791
 msgid "Nothing was saved."
 msgstr "Nada foi salvo."
 
-#: src/ui/w42-window.c:4791
-msgid "A document that has never been saved, or that came from a format Word42 does not write back, needs a name: use File > Save As for it."
-msgstr "Um documento que nunca foi salvo, ou que veio de um formato que o Word42 não grava de volta, precisa de um nome: use Arquivo > Salvar como para ele."
+#: src/ui/w42-window.c:4792
+msgid ""
+"A document that has never been saved, or that came from a format Word42 does "
+"not write back, needs a name: use File > Save As for it."
+msgstr ""
+"Um documento que nunca foi salvo, ou que veio de um formato que o Word42 não "
+"grava de volta, precisa de um nome: use Arquivo > Salvar como para ele."
 
-#: src/ui/w42-window.c:4830 src/ui/w42-window.c:4872
+#: src/ui/w42-window.c:4831 src/ui/w42-window.c:4873
 msgid "Word42 could not read that file."
 msgstr "O Word42 não pôde ler esse arquivo."
 
-#: src/ui/w42-window.c:4866
+#: src/ui/w42-window.c:4867
 msgid "The two documents are the same."
 msgstr "Os dois documentos são iguais."
 
-#: src/ui/w42-window.c:4868
+#: src/ui/w42-window.c:4869
 #, c-format
 msgid "%d change marked."
 msgid_plural "%d changes marked."
 msgstr[0] "%d alteração marcada."
 msgstr[1] "%d alterações marcadas."
 
-#: src/ui/w42-window.c:4892
+#: src/ui/w42-window.c:4893
 msgid "Compare Documents: the original"
 msgstr "Comparar documentos: o original"
 
-#: src/ui/w42-window.c:4908
+#: src/ui/w42-window.c:4909
 msgid "Insert File"
 msgstr "Inserir arquivo"
 
-#: src/ui/w42-window.c:5251
+#: src/ui/w42-window.c:5252
 msgid "Modified"
 msgstr "Modificado"
 
 #: src/util/w42-image.c:153
 #, c-format
 msgid "That file is not a picture in any format Word42 can read."
-msgstr "Esse arquivo não é uma imagem em nenhum formato que o Word42 consiga ler."
+msgstr ""
+"Esse arquivo não é uma imagem em nenhum formato que o Word42 consiga ler."
 
 #. Translators: the language of text that is not to be spell-checked
 #. * at all, as Tools > Language lists it.
