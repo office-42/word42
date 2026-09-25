@@ -50,11 +50,15 @@ window.w42 button,
 
 /* The menu bar and its drop-downs carry the most reading of any chrome in
  * the window, so they get a size of their own rather than the smallest one
- * that fits. */
+ * that fits: the size other Windows programs set their menus in.  The
+ * labels are named outright, as the rule above reaches them before anything
+ * they could inherit from their item. */
 .w42-menubar,
 .w42-menubar > item,
-popover.menu contents modelbutton label {
-  font-size: 13px;
+window.w42 .w42-menubar > item > label,
+popover.menu contents modelbutton label,
+popover.menu contents modelbutton accelerator {
+  font-size: 14px;
 }
 
 /* --- the raised bevel, shared by everything that can be pressed -------- */
@@ -140,10 +144,12 @@ window.w42 .titlebar {
   box-shadow: none;
 }
 
-.w42-titlebar-label {
+/* The caption is set in the menus' size and weight, as other Windows
+ * programs set theirs; the class is qualified so that it outranks the
+ * chrome's rule for every label. */
+.w42-titlebar .w42-titlebar-label {
   color: @w42_title_text;
-  font-weight: bold;
-  font-size: 11px;
+  font-size: 14px;
   padding: 0;
   margin: 0;
 }
