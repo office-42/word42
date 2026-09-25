@@ -1877,7 +1877,7 @@ replace_one (Ctx *c, const char *text, const char *with,
   W42SearchOptions exact = *opts;
   gboolean forward = !opts->backwards;
   gboolean fresh = FALSE;
-  gsize s0, e0, start, end, from, after;
+  gsize s0, e0, start, end, from, after, length;
 
   w42_view_get_selection_bounds (c->view, &s0, &e0);
   if (c->replace_view != c->view || s0 != c->replace_start || e0 != c->replace_end)
@@ -1916,6 +1916,7 @@ replace_one (Ctx *c, const char *text, const char *with,
 
   /* Replacing with nothing is a deletion, which inserting nothing is
    * not: the match would stay, and be found again. */
+  length = w42_pt_length (pt);
   w42_view_select_range (c->view, start, end);
   if (*with == '\0')
     w42_view_clear (c->view);
@@ -1927,9 +1928,12 @@ replace_one (Ctx *c, const char *text, const char *with,
                         ? c->replace_origin - (end - start) + (after - start)
                         : after;
 
-  /* And on to the next, unless that is back where the run began. */
+  /* And on to the next, unless that is back where the run began -- or
+   * the match did not go: marking changes, a deletion only strikes the
+   * text through, and it would be found and replaced for ever. */
   from = forward ? after : start;
-  if (w42_search_find (pt, from, text, opts, &s0, &e0) &&
+  if (w42_pt_length (pt) + (end - start) == length + (after - start) &&
+      w42_search_find (pt, from, text, opts, &s0, &e0) &&
       !replace_round (c, s0, from, forward))
     w42_view_select_range (c->view, s0, e0);
   else
