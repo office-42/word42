@@ -5,22 +5,27 @@
 
 #include "w42-tableformat.h"
 
+#include <glib/gi18n.h>
 #include <string.h>
 
+/* The names and hints are marked for translation: whatever shows them
+ * passes them through _(). */
 static const W42TableFormat FORMATS[] = {
-  { "Plain",          "No rules and no shading.",
+  /* Translators: the names of the looks Table AutoFormat offers, each
+   * with a line saying what it is. */
+  { N_("Plain"),          N_("No rules and no shading."),
     W42_TF_RULES_NONE, 0,  0,  0, 0, 0 },
-  { "Grid",           "Every cell ruled, the heading in bold.",
+  { N_("Grid"),           N_("Every cell ruled, the heading in bold."),
     W42_TF_RULES_GRID, 0,  0,  1, 0, 0 },
-  { "Ruled",          "A rule round the table and under the heading.",
+  { N_("Ruled"),          N_("A rule round the table and under the heading."),
     W42_TF_RULES_BOX,  0,  0,  1, 0, 0 },
-  { "Ruled Bands",    "Ruled, with every other row lightly shaded.",
+  { N_("Ruled Bands"),    N_("Ruled, with every other row lightly shaded."),
     W42_TF_RULES_BOX,  0,  10, 1, 0, 0 },
-  { "Shaded Heading", "A grid, with the heading row shaded.",
+  { N_("Shaded Heading"), N_("A grid, with the heading row shaded."),
     W42_TF_RULES_GRID, 20, 0,  1, 0, 0 },
-  { "Columns",        "A grid, heading and first column in bold.",
+  { N_("Columns"),        N_("A grid, heading and first column in bold."),
     W42_TF_RULES_GRID, 10, 0,  1, 0, 1 },
-  { "Report",         "A rule round the table, the heading in bold italic.",
+  { N_("Report"),         N_("A rule round the table, the heading in bold italic."),
     W42_TF_RULES_BOX,  0,  0,  1, 1, 0 },
 };
 

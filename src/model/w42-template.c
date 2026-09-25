@@ -6,19 +6,22 @@
 
 #include "w42-template.h"
 
+#include <glib/gi18n.h>
 #include <string.h>
 
+/* The names and hints are marked for translation: whatever shows them
+ * passes them through _(). */
 static const W42Template TEMPLATES[] = {
-  { "Blank Document", "An empty page, as File > New gives you." },
-  { "Letter",         "A letter: the date, an address, a greeting and a closing." },
-  { "Memo",           "A memorandum: To, From, Date and Subject over a rule." },
-  { "Fax Cover",      "A fax cover sheet: who it is for, how many pages, a message." },
-  { "Report",         "A report: a title, headings and a place for the text." },
-  { "Meeting Notes",  "Notes of a meeting: who was there, what was decided." },
-  { "Novel",          "A novel set as a book: small pages, justified text with "
-                      "indented paragraphs, and every chapter on a page of its own." },
-  { "Manuscript",     "A manuscript for an agent or a publisher: double-spaced, "
-                      "with your name and the title at the top of every page." },
+  { N_("Blank Document"), N_("An empty page, as File > New gives you.") },
+  { N_("Letter"),         N_("A letter: the date, an address, a greeting and a closing.") },
+  { N_("Memo"),           N_("A memorandum: To, From, Date and Subject over a rule.") },
+  { N_("Fax Cover"),      N_("A fax cover sheet: who it is for, how many pages, a message.") },
+  { N_("Report"),         N_("A report: a title, headings and a place for the text.") },
+  { N_("Meeting Notes"),  N_("Notes of a meeting: who was there, what was decided.") },
+  { N_("Novel"),          N_("A novel set as a book: small pages, justified text with "
+                             "indented paragraphs, and every chapter on a page of its own.") },
+  { N_("Manuscript"),     N_("A manuscript for an agent or a publisher: double-spaced, "
+                             "with your name and the title at the top of every page.") },
 };
 
 const W42Template *
@@ -214,40 +217,50 @@ w42_template_make (W42PieceTable *pt, W42PageSetup *page, int which)
       page->column_gap = 0;
     }
 
+  /* The text is the user's to replace, and is in their language; the
+   * style names and field codes stay as they are, since they are keys. */
   switch (which)
     {
     case 1:                                   /* Letter */
-      para (&b, "Normal", "Your Name");
-      para (&b, "Normal", "Your Address");
-      para (&b, "Normal", "Town, Postcode");
+      /* Translators: this and the lines that follow are the text of the
+       * documents File > New from Template makes, for the user to type
+       * over: write them as a template in your language would have them. */
+      para (&b, "Normal", _("Your Name"));
+      para (&b, "Normal", _("Your Address"));
+      para (&b, "Normal", _("Town, Postcode"));
       space_after (&b, 240);
       para (&b, "Normal", NULL);
       date_field (&b);
       space_after (&b, 240);
-      para (&b, "Normal", "Recipient's Name");
-      para (&b, "Normal", "Their Address");
-      para (&b, "Normal", "Town, Postcode");
+      para (&b, "Normal", _("Recipient's Name"));
+      para (&b, "Normal", _("Their Address"));
+      para (&b, "Normal", _("Town, Postcode"));
       space_after (&b, 240);
-      para (&b, "Normal", "Dear Sir or Madam,");
+      para (&b, "Normal", _("Dear Sir or Madam,"));
       space_after (&b, 120);
-      para (&b, "Normal", "The letter goes here.");
+      para (&b, "Normal", _("The letter goes here."));
       space_after (&b, 240);
-      para (&b, "Normal", "Yours faithfully,");
+      para (&b, "Normal", _("Yours faithfully,"));
       para (&b, "Normal", NULL);
       para (&b, "Normal", NULL);
-      para (&b, "Normal", "Your Name");
+      para (&b, "Normal", _("Your Name"));
       break;
 
     case 2:                                   /* Memo */
-      para (&b, "Title", "MEMORANDUM");
+      para (&b, "Title", _("MEMORANDUM"));
       space_after (&b, 240);
-      tabbed_line (&b, "To:", "Everyone");
-      tabbed_line (&b, "From:", "Your Name");
+      /* Translators: a memo's first line: the heading, then who it is
+       * for. */
+      tabbed_line (&b, _("To:"), _("Everyone"));
+      tabbed_line (&b, _("From:"), _("Your Name"));
       {
         W42ParaFmt pa;
         gsize start;
+        /* Translators: a memo's heading, as "To:" and "From:" are. */
+        char *line = g_strconcat (_("Date:"), "\t", NULL);
 
-        para (&b, "Normal", "Date:\t");
+        para (&b, "Normal", line);
+        g_free (line);
         date_field (&b);
         start = w42_pt_paragraph_start (pt, b.pos);
         memset (&pa, 0, sizeof pa);
@@ -256,54 +269,59 @@ w42_template_make (W42PieceTable *pt, W42PageSetup *page, int which)
         pa.tab_kind[0] = W42_TAB_BYTE (W42_TAB_LEFT, W42_TAB_LEAD_NONE);
         w42_pt_apply_para_fmt (pt, start + 1, 0, W42_PARA_TABS, &pa);
       }
-      tabbed_line (&b, "Subject:", "What this is about");
+      tabbed_line (&b, _("Subject:"), _("What this is about"));
       rule_under (&b);
       space_after (&b, 240);
-      para (&b, "Normal", "The memorandum goes here.");
+      para (&b, "Normal", _("The memorandum goes here."));
       break;
 
     case 3:                                   /* Fax cover */
-      para (&b, "Title", "FACSIMILE");
+      para (&b, "Title", _("FACSIMILE"));
       space_after (&b, 240);
-      tabbed_line (&b, "To:", "Their Name");
-      tabbed_line (&b, "Fax:", "Their Number");
-      tabbed_line (&b, "From:", "Your Name");
-      tabbed_line (&b, "Fax:", "Your Number");
-      tabbed_line (&b, "Pages:", "1, including this one");
+      tabbed_line (&b, _("To:"), _("Their Name"));
+      /* Translators: on a fax cover sheet, the fax number. */
+      tabbed_line (&b, _("Fax:"), _("Their Number"));
+      tabbed_line (&b, _("From:"), _("Your Name"));
+      tabbed_line (&b, _("Fax:"), _("Your Number"));
+      /* Translators: on a fax cover sheet, how many pages are sent. */
+      tabbed_line (&b, _("Pages:"), _("1, including this one"));
       rule_under (&b);
       space_after (&b, 240);
-      para (&b, "Normal", "The message goes here.");
+      para (&b, "Normal", _("The message goes here."));
       break;
 
     case 4:                                   /* Report */
-      para (&b, "Title", "The Title of the Report");
-      para (&b, "Normal", "Your Name");
+      para (&b, "Title", _("The Title of the Report"));
+      para (&b, "Normal", _("Your Name"));
       para (&b, "Normal", NULL);
       date_field (&b);
       space_after (&b, 360);
-      para (&b, "Heading 1", "Summary");
-      para (&b, "Normal", "What the report says, in a paragraph.");
-      para (&b, "Heading 1", "The Matter in Hand");
-      para (&b, "Normal", "The body of the report goes here.");
-      para (&b, "Heading 2", "A Point Worth Its Own Heading");
-      para (&b, "Normal", "And what there is to say about it.");
-      para (&b, "Heading 1", "What Follows From It");
-      para (&b, "Normal", "The conclusion goes here.");
+      para (&b, "Heading 1", _("Summary"));
+      para (&b, "Normal", _("What the report says, in a paragraph."));
+      para (&b, "Heading 1", _("The Matter in Hand"));
+      para (&b, "Normal", _("The body of the report goes here."));
+      para (&b, "Heading 2", _("A Point Worth Its Own Heading"));
+      para (&b, "Normal", _("And what there is to say about it."));
+      para (&b, "Heading 1", _("What Follows From It"));
+      para (&b, "Normal", _("The conclusion goes here."));
       break;
 
     case 5:                                   /* Meeting notes */
-      para (&b, "Title", "Meeting Notes");
+      para (&b, "Title", _("Meeting Notes"));
       para (&b, "Normal", NULL);
       date_field (&b);
       space_after (&b, 240);
-      tabbed_line (&b, "Present:", "Who was there");
-      tabbed_line (&b, "Apologies:", "Who was not");
+      /* Translators: in the notes of a meeting, who attended. */
+      tabbed_line (&b, _("Present:"), _("Who was there"));
+      /* Translators: in the notes of a meeting, who sent word that they
+       * could not attend. */
+      tabbed_line (&b, _("Apologies:"), _("Who was not"));
       rule_under (&b);
       space_after (&b, 240);
-      para (&b, "Heading 1", "Matters discussed");
-      para (&b, "Normal", "The first matter.");
-      para (&b, "Heading 1", "Decisions");
-      para (&b, "Normal", "What was decided, and by whom it will be done.");
+      para (&b, "Heading 1", _("Matters discussed"));
+      para (&b, "Normal", _("The first matter."));
+      para (&b, "Heading 1", _("Decisions"));
+      para (&b, "Normal", _("What was decided, and by whom it will be done."));
       break;
 
     case 6:                                   /* Novel */
@@ -321,22 +339,28 @@ w42_template_make (W42PieceTable *pt, W42PageSetup *page, int which)
       w42_pt_set_footer (pt, "{PAGE}", W42_ALIGN_CENTER);
       w42_pt_set_title_page (pt, TRUE);
       w42_pt_set_footer_kind (pt, W42_PAGE_TEXT_FIRST, "", W42_ALIGN_CENTER);
-      para (&b, "Title", "The Title of the Novel");
-      centred (&b, "Normal", "A Novel");
-      para (&b, "Heading 1", "Chapter One");
-      para (&b, "Normal", "The first lines of the book go here. The paragraphs "
-                          "are justified and set in, as a printed novel's are, "
-                          "and each chapter starts on a new page: give its title "
-                          "the Heading 1 style.");
-      para (&b, "Normal", "Tools \342\226\270 Language \342\226\270 Set "
-                          "Language, Default makes the book's language the one "
-                          "its spelling, quotation marks and hyphenation follow; "
-                          "Tools \342\226\270 Word Count Goal sets how long it "
-                          "is to be.");
+      para (&b, "Title", _("The Title of the Novel"));
+      /* Translators: under the title of a novel, what the book is. */
+      centred (&b, "Normal", _("A Novel"));
+      para (&b, "Heading 1", _("Chapter One"));
+      /* Translators: Heading 1 is a style's name, which is not
+       * translated. */
+      para (&b, "Normal", _("The first lines of the book go here. The paragraphs "
+                            "are justified and set in, as a printed novel's are, "
+                            "and each chapter starts on a new page: give its title "
+                            "the Heading 1 style."));
+      /* Translators: Tools, Language, Set Language, Default and Word Count
+       * Goal are the menus, menu items and button of those names: use the
+       * words the translated menus and dialog use. */
+      para (&b, "Normal", _("Tools \342\226\270 Language \342\226\270 Set "
+                            "Language, Default makes the book's language the one "
+                            "its spelling, quotation marks and hyphenation follow; "
+                            "Tools \342\226\270 Word Count Goal sets how long it "
+                            "is to be."));
       centred (&b, "Normal", "* * *");
-      para (&b, "Normal", "A new scene begins after a break like the one above.");
-      para (&b, "Heading 1", "Chapter Two");
-      para (&b, "Normal", "And the story goes on.");
+      para (&b, "Normal", _("A new scene begins after a break like the one above."));
+      para (&b, "Heading 1", _("Chapter Two"));
+      para (&b, "Normal", _("And the story goes on."));
       break;
 
     case 7:                                   /* Manuscript */
@@ -352,7 +376,16 @@ w42_template_make (W42PieceTable *pt, W42PageSetup *page, int which)
        * half an inch, and each chapter a third of the way down a new
        * page. */
       book_styles (pt, "Courier New", 24, W42_ALIGN_LEFT, 720, 200, 24, 2880);
-      w42_pt_set_header (pt, "Surname / TITLE / {PAGE}", W42_ALIGN_RIGHT);
+      {
+        /* Translators: the running head of a manuscript, the page number
+         * after it; the writer puts their own surname and title in place
+         * of these, as "The story begins here. Replace Surname and TITLE"
+         * tells them, so use the same two words there. */
+        char *head = g_strdup_printf ("%s / {PAGE}", _("Surname / TITLE"));
+
+        w42_pt_set_header (pt, head, W42_ALIGN_RIGHT);
+        g_free (head);
+      }
       w42_pt_set_title_page (pt, TRUE);
       w42_pt_set_header_kind (pt, W42_PAGE_TEXT_FIRST, "", W42_ALIGN_RIGHT);
       {
@@ -361,23 +394,27 @@ w42_template_make (W42PieceTable *pt, W42PageSetup *page, int which)
         memset (&pa, 0, sizeof pa);
         pa.indent_first = 0;
         pa.line_spacing_pct = 100;
-        para (&b, "Normal", "Your Name");
+        para (&b, "Normal", _("Your Name"));
         last_para_fmt (&b, W42_PARA_INDENT_FIRST | W42_PARA_LINE_SPACING_PCT, &pa);
-        para (&b, "Normal", "Your Address");
+        para (&b, "Normal", _("Your Address"));
         last_para_fmt (&b, W42_PARA_INDENT_FIRST | W42_PARA_LINE_SPACING_PCT, &pa);
-        para (&b, "Normal", "Your Email and Telephone");
+        para (&b, "Normal", _("Your Email and Telephone"));
         last_para_fmt (&b, W42_PARA_INDENT_FIRST | W42_PARA_LINE_SPACING_PCT, &pa);
       }
-      centred (&b, "Title", "THE TITLE");
-      centred (&b, "Normal", "by Your Name");
-      centred (&b, "Normal", "About 80,000 words");
-      para (&b, "Heading 1", "Chapter One");
-      para (&b, "Normal", "The story begins here. Replace Surname and TITLE in "
-                          "View \342\226\270 Header and Footer with your own; "
-                          "the page number follows them on every page but the "
-                          "first.");
+      centred (&b, "Title", _("THE TITLE"));
+      centred (&b, "Normal", _("by Your Name"));
+      /* Translators: on a manuscript's title page, how long the book is. */
+      centred (&b, "Normal", _("About 80,000 words"));
+      para (&b, "Heading 1", _("Chapter One"));
+      /* Translators: Surname and TITLE are the words of "Surname / TITLE";
+       * View and Header and Footer are the menu items of that name. */
+      para (&b, "Normal", _("The story begins here. Replace Surname and TITLE in "
+                            "View \342\226\270 Header and Footer with your own; "
+                            "the page number follows them on every page but the "
+                            "first."));
       centred (&b, "Normal", "#");
-      para (&b, "Normal", "A scene break is a hash mark on a line of its own.");
+      /* Translators: the "#" on the line above is the break meant. */
+      para (&b, "Normal", _("A scene break is a hash mark on a line of its own."));
       break;
 
     default:                                  /* Blank */

@@ -7,6 +7,7 @@
 #include "w42-zip.h"
 
 #include <string.h>
+#include <glib/gi18n.h>
 
 /* ---------------------------------------------------------------------- */
 /* CRC-32, as zip wants it                                                 */
@@ -162,7 +163,7 @@ w42_zip_new_from_bytes (GBytes *bytes, GError **error)
    * of up to 64K. */
   if (len < 22)
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Not a zip file.");
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("Not a zip file."));
       return NULL;
     }
   for (gsize i = len - 22; ; i--)
@@ -178,7 +179,7 @@ w42_zip_new_from_bytes (GBytes *bytes, GError **error)
     }
   if (!found)
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Not a zip file.");
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("Not a zip file."));
       return NULL;
     }
 
@@ -189,7 +190,7 @@ w42_zip_new_from_bytes (GBytes *bytes, GError **error)
    * past this check and the pointers below would follow them out. */
   if ((guint64) cd_offset + cd_size > len)
     {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "The zip file is cut short.");
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, _("The zip file is cut short."));
       return NULL;
     }
 

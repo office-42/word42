@@ -10,6 +10,7 @@
 #include "w42-style.h"
 
 #include <string.h>
+#include <glib/gi18n.h>
 
 /* ---------------------------------------------------------------------- */
 /* The outline as slides                                                   */
@@ -673,7 +674,9 @@ w42_pptx_load (W42PieceTable *pt,
     {
       w42_zip_free (zip);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "That file is not a presentation: it has no ppt/presentation.xml.");
+                   /* Translators: ppt/presentation.xml is the name of a file
+                    * inside a .pptx; keep it as it is. */
+                   _("That file is not a presentation: it has no ppt/presentation.xml."));
       return FALSE;
     }
 
@@ -728,7 +731,9 @@ w42_pptx_load (W42PieceTable *pt,
               n_lines++;
             }
           g_array_append_val (heading_at, n_lines);
-          append_line (text, title != NULL && *title != '\0' ? title : "Slide");
+          /* Translators: the heading given to a slide that has no
+           * title of its own, when a presentation is opened. */
+          append_line (text, title != NULL && *title != '\0' ? title : _("Slide"));
 
           for (guint b = 0; b < r.bodies->len; b++)
             {

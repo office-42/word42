@@ -6,6 +6,7 @@
 
 #include "w42-envelope.h"
 
+#include <glib/gi18n.h>
 #include <string.h>
 
 /* A millimetre is 56.7 twips; an inch is 1440. */
@@ -14,30 +15,37 @@
 
 /* The envelope sizes a letter is likely to go in, named by what they
  * measure.  The width is the long side: an envelope is printed the way
- * it is addressed, lying on its side. */
+ * it is addressed, lying on its side.  The names are marked for
+ * translation: whatever shows them passes them through _(). */
 static const W42EnvelopeSize ENVELOPES[] = {
-  { "Envelope #10 (9 1/2 x 4 1/8 in)", IN (9.5),  IN (4.125) },
-  { "Envelope DL (220 x 110 mm)",      MM (220),  MM (110) },
-  { "Envelope C5 (229 x 162 mm)",      MM (229),  MM (162) },
-  { "Envelope C6 (162 x 114 mm)",      MM (162),  MM (114) },
-  { "Envelope Monarch (7 1/2 x 3 7/8 in)", IN (7.5), IN (3.875) },
-  { "Envelope 6 3/4 (6 1/2 x 3 5/8 in)",   IN (6.5), IN (3.625) },
+  /* Translators: an envelope size; #10, DL, C5, C6, Monarch and 6 3/4
+   * are the sizes' own names, "in" is inches and "mm" millimetres. */
+  { N_("Envelope #10 (9 1/2 x 4 1/8 in)"), IN (9.5),  IN (4.125) },
+  { N_("Envelope DL (220 x 110 mm)"),      MM (220),  MM (110) },
+  { N_("Envelope C5 (229 x 162 mm)"),      MM (229),  MM (162) },
+  { N_("Envelope C6 (162 x 114 mm)"),      MM (162),  MM (114) },
+  { N_("Envelope Monarch (7 1/2 x 3 7/8 in)"), IN (7.5), IN (3.875) },
+  { N_("Envelope 6 3/4 (6 1/2 x 3 5/8 in)"),   IN (6.5), IN (3.625) },
 };
 
 /* Sheets of labels, named by how many there are and what they measure,
- * with the page they are printed on. */
+ * with the page they are printed on; the names are marked as the
+ * envelopes' are. */
 static const W42LabelSheet LABELS[] = {
-  { "24 per sheet, A4 (63.5 x 33.9 mm)",
+  /* Translators: a sheet of labels: how many labels it has, its paper
+   * size (A4 or Letter) and the size of one label; "in" is inches and
+   * "mm" millimetres. */
+  { N_("24 per sheet, A4 (63.5 x 33.9 mm)"),
     MM (210), MM (297), 3, 8, MM (63.5), MM (33.9), MM (7), MM (13) },
-  { "21 per sheet, A4 (70 x 42.3 mm)",
+  { N_("21 per sheet, A4 (70 x 42.3 mm)"),
     MM (210), MM (297), 3, 7, MM (70), MM (42.3), MM (0), MM (0) },
-  { "14 per sheet, A4 (99.1 x 38.1 mm)",
+  { N_("14 per sheet, A4 (99.1 x 38.1 mm)"),
     MM (210), MM (297), 2, 7, MM (99.1), MM (38.1), MM (5), MM (16) },
-  { "10 per sheet, A4 (99.1 x 57 mm)",
+  { N_("10 per sheet, A4 (99.1 x 57 mm)"),
     MM (210), MM (297), 2, 5, MM (99.1), MM (57), MM (5), MM (13) },
-  { "30 per sheet, Letter (2 5/8 x 1 in)",
+  { N_("30 per sheet, Letter (2 5/8 x 1 in)"),
     IN (8.5), IN (11), 3, 10, IN (2.625), IN (1), IN (0.19), IN (0.5) },
-  { "20 per sheet, Letter (4 x 2 in)",
+  { N_("20 per sheet, Letter (4 x 2 in)"),
     IN (8.5), IN (11), 2, 10, IN (4), IN (2), IN (0.16), IN (0.5) },
 };
 

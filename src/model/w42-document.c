@@ -8,6 +8,8 @@
 
 #include "w42-io.h"
 
+#include <glib/gi18n.h>
+
 struct _W42Document {
   GObject        parent_instance;
   W42PieceTable *pt;
@@ -186,7 +188,11 @@ w42_document_get_title (W42Document *self)
   if (self->file != NULL)
     return g_file_get_basename (self->file);
 
-  return g_strdup_printf ("Document%u", self->untitled_number);
+  /* Translators: the name of a new document not yet saved, shown in
+   * the title bar and also used as its file name, so the translation
+   * must be usable as one: no dots, slashes, backslashes, colons or
+   * other characters a file name cannot hold.  Keep %u, its number. */
+  return g_strdup_printf (_("Document%u"), self->untitled_number);
 }
 
 gboolean

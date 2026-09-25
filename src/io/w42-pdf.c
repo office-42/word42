@@ -12,6 +12,7 @@
 #include "w42-object.h"
 
 #include <cairo-pdf.h>
+#include <glib/gi18n.h>
 #include <math.h>
 #include <string.h>
 
@@ -203,7 +204,9 @@ w42_pdf_export (W42PieceTable      *pt,
   if (cairo_status (cr) != CAIRO_STATUS_SUCCESS)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Word42 could not write the PDF: %s",
+                   /* Translators: %s is the reason, as the Cairo graphics
+                    * library gives it, in English. */
+                   _("Word42 could not write the PDF: %s"),
                    cairo_status_to_string (cairo_status (cr)));
       ok = FALSE;
     }
@@ -216,7 +219,9 @@ w42_pdf_export (W42PieceTable      *pt,
   if (ok && cairo_surface_status (surface) != CAIRO_STATUS_SUCCESS)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Word42 could not write the PDF: %s",
+                   /* Translators: %s is the reason, as the Cairo graphics
+                    * library gives it, in English. */
+                   _("Word42 could not write the PDF: %s"),
                    cairo_status_to_string (cairo_surface_status (surface)));
       ok = FALSE;
     }
@@ -985,8 +990,10 @@ w42_pdf_import (W42PieceTable *pt,
   (void) pt; (void) page; (void) file;
 
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-               "This build of Word42 cannot read PDF files. "
-               "It was built without poppler.");
+               /* Translators: poppler is the name of a program library;
+                * keep it as it is. */
+               _("This build of Word42 cannot read PDF files. "
+                 "It was built without poppler."));
   return FALSE;
 }
 

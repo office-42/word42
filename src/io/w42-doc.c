@@ -7,6 +7,7 @@
 #include "w42-doc.h"
 
 #include <string.h>
+#include <glib/gi18n.h>
 
 #include "w42-image.h"
 #include "w42-shape.h"
@@ -125,11 +126,15 @@ ole_read_chain (Ole *ole, guint32 start, GByteArray *out, GError **error)
       gsize off = (gsize) (s + 1) * ole->sector;
 
       if (off >= ole->len)
-        { g_free (seen); FAIL (error, "OLE sector %u is past the end of the file", s); }
+        /* Translators: OLE is the container a Word 97 file is kept in,
+         * made of numbered sectors; %u is a sector's number. */
+        { g_free (seen); FAIL (error, _("OLE sector %u is past the end of the file"), s); }
       if (s >= ole->fat->len)
-        { g_free (seen); FAIL (error, "OLE sector %u has no FAT entry", s); }
+        /* Translators: OLE is the container a Word 97 file is kept in,
+         * FAT its table of sectors; %u is a sector's number. */
+        { g_free (seen); FAIL (error, _("OLE sector %u has no FAT entry"), s); }
       if (++steps > ole->fat->len || (seen[s / 8] & (1 << (s % 8))))
-        { g_free (seen); FAIL (error, "OLE sector chain loops"); }
+        { g_free (seen); FAIL (error, _("OLE sector chain loops")); }
       seen[s / 8] |= (guint8) (1 << (s % 8));
 
       if (off + ole->sector > ole->len)
@@ -162,7 +167,7 @@ ole_open (Ole *ole, const guint8 *data, gsize len, GError **error)
   ole->len = len;
 
   if (len < 512 || memcmp (data, magic, 8) != 0)
-    FAIL (error, "This is not a Word document (no OLE2 header).");
+    FAIL (error, _("This is not a Word document (no OLE2 header)."));
 
   sector_shift  = rd16 (data + 0x1E);
   mini_shift    = rd16 (data + 0x20);
@@ -175,7 +180,7 @@ ole_open (Ole *ole, const guint8 *data, gsize len, GError **error)
   n_difat       = rd32 (data + 0x48);
 
   if (sector_shift < 7 || sector_shift > 12 || mini_shift < 2 || mini_shift > 12)
-    FAIL (error, "OLE sector size is out of range");
+    FAIL (error, _("OLE sector size is out of range"));
 
   ole->sector = 1u << sector_shift;
   ole->mini_sector = 1u << mini_shift;
@@ -249,7 +254,7 @@ ole_open (Ole *ole, const guint8 *data, gsize len, GError **error)
   if (!ole_read_chain (ole, dir_start, ole->directory, error))
     return FALSE;
   if (ole->directory->len < 128)
-    FAIL (error, "OLE directory is empty");
+    FAIL (error, _("OLE directory is empty"));
 
   /* The mini FAT, and the mini stream it indexes, which is the root
    * entry's own stream. */
@@ -342,7 +347,9 @@ ole_stream (Ole *ole, const char *name, GError **error)
                   {
                     g_byte_array_free (out, TRUE);
                     g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                 "OLE mini stream %s is damaged", name);
+                                 /* Translators: %s is the name of a part of a
+                                  * Word 97 file, such as "WordDocument". */
+                                 _("OLE mini stream %s is damaged"), name);
                     return NULL;
                   }
                 g_byte_array_append (out, ole->ministream->data + off, ole->mini_sector);
@@ -362,7 +369,9 @@ ole_stream (Ole *ole, const char *name, GError **error)
     }
 
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-               "The document has no %s stream.", name);
+               /* Translators: %s is the name of a part of a Word 97 file,
+                * such as "WordDocument" or "1Table". */
+               _("The document has no %s stream."), name);
   return NULL;
 }
 
@@ -513,7 +522,7 @@ read_pieces (Doc *doc, GError **error)
 
   fib_fclcb (doc, 33, &fc, &lcb);
   if (lcb == 0 || !in_tb (doc, fc, lcb))
-    FAIL (error, "The document has no piece table.");
+    FAIL (error, _("The document has no piece table."));
 
   /* The CLX: any number of Prc (property modifiers we do not need), then
    * the Pcdt with the PlcPcd. */
@@ -521,16 +530,16 @@ read_pieces (Doc *doc, GError **error)
   while (p < fc + lcb && doc->tb[p] == 0x01)
     {
       if (!in_tb (doc, p, 3))
-        FAIL (error, "Piece table is damaged");
+        FAIL (error, _("Piece table is damaged"));
       p += 3 + rd16 (doc->tb + p + 1);
     }
   if (!in_tb (doc, p, 5) || doc->tb[p] != 0x02)
-    FAIL (error, "Piece table is damaged");
+    FAIL (error, _("Piece table is damaged"));
 
   lcb_pcd = rd32 (doc->tb + p + 1);
   p += 5;
   if (lcb_pcd < 4 || !in_tb (doc, p, lcb_pcd))
-    FAIL (error, "Piece table is damaged");
+    FAIL (error, _("Piece table is damaged"));
 
   n = (lcb_pcd - 4) / 12;
   for (guint i = 0; i < n; i++)
@@ -577,7 +586,7 @@ read_pieces (Doc *doc, GError **error)
     }
 
   if (doc->pieces->len == 0)
-    FAIL (error, "The document has no text pieces.");
+    FAIL (error, _("The document has no text pieces."));
 
   return TRUE;
 }
@@ -3148,7 +3157,7 @@ load_word6_text (Doc *doc, W42PieceTable *pt, GError **error)
   if (doc->fc_mac <= doc->fc_min || !in_wd (doc, doc->fc_min, doc->fc_mac - doc->fc_min))
     {
       g_string_free (text, TRUE);
-      FAIL (error, "The document's text is out of reach.");
+      FAIL (error, _("The document's text is out of reach."));
     }
 
   {
@@ -3208,7 +3217,9 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
     {
       if (wd != NULL)
         g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                     "The WordDocument stream is too short to be one.");
+                     /* Translators: WordDocument is the name of the part of
+                      * a Word 97 file that holds its text; keep it as it is. */
+                     _("The WordDocument stream is too short to be one."));
       goto out;
     }
 
@@ -3218,7 +3229,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   if (rd16 (doc.wd) != 0xA5EC && rd16 (doc.wd) != 0xA5DC)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "This is not a Word document.");
+                   _("This is not a Word document."));
       goto out;
     }
 
@@ -3230,8 +3241,8 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   if (flags & 0x0100)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                   "The document is encrypted, and Word42 cannot open "
-                   "encrypted documents.");
+                   _("The document is encrypted, and Word42 cannot open "
+                     "encrypted documents."));
       goto out;
     }
 

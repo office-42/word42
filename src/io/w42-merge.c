@@ -6,6 +6,7 @@
 
 #include "w42-merge.h"
 
+#include <glib/gi18n.h>
 #include <glib/gstdio.h>
 #include <string.h>
 
@@ -162,7 +163,7 @@ w42_merge_source_load (GFile *file, GError **error)
     {
       w42_merge_source_free (source);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "The data source has no field names in its first row.");
+                   _("The data source has no field names in its first row."));
       return NULL;
     }
   return source;
@@ -212,7 +213,7 @@ w42_merge_to_file (W42PieceTable *pt, const W42PageSetup *page,
     int fd = g_mkstemp (tmp_path);
     if (fd < 0)
       {
-        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Could not make a temporary file.");
+        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, _("Could not make a temporary file."));
         g_free (tmp_path);
         return FALSE;
       }
@@ -227,7 +228,7 @@ w42_merge_to_file (W42PieceTable *pt, const W42PageSetup *page,
     int fd = g_mkstemp (copy_path);
     if (fd < 0)
       {
-        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Could not make a temporary file.");
+        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, _("Could not make a temporary file."));
         g_object_unref (tmp);
         g_unlink (tmp_path);
         g_free (tmp_path);

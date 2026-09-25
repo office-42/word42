@@ -9,6 +9,7 @@
 #include "w42-image.h"
 #include "w42-lang.h"
 
+#include <glib/gi18n.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -3868,7 +3869,7 @@ w42_rtf_load (W42PieceTable *pt,
     {
       g_free (contents);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                   "That file does not begin like an RTF document.");
+                   _("That file does not begin like an RTF document."));
       return FALSE;
     }
 
