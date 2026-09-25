@@ -55,4 +55,5 @@ See docs/PARITY.md for the full comparison with Word 97 and AbiWord.
   sign and notarise the macOS .app (the CI makes one, unsigned); Flatpak
   on Flathub (the manifest is in build-aux; the module checksums need
   confirming against the releases).
-- Translations; accessibility.
+- Accessibility. The user guide in the languages the program is
+  translated into, and translations into more languages.
