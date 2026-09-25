@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include <glib/gstdio.h>
+#include <glib/gi18n.h>
 #include <cairo.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #ifdef G_OS_WIN32
@@ -51,7 +52,7 @@ static const char  *ZOOM_LABELS[] = { "50%", "75%", "100%", "150%", "200%" };
 /* After the steps, the box offers the two fits Word 97's did; and after
  * those, when the zoom is none of the above, one entry saying what it
  * is, spliced in and out as the zoom changes. */
-static const char  *ZOOM_FIT_LABELS[] = { "Page Width", "Whole Page" };
+static const char  *ZOOM_FIT_LABELS[] = { N_("Page Width"), N_("Whole Page") };
 #define ZOOM_N_FIXED (G_N_ELEMENTS (ZOOM_LABELS) + G_N_ELEMENTS (ZOOM_FIT_LABELS))
 
 /* The sizes Word 97's Formatting toolbar offered. */
@@ -246,14 +247,22 @@ window_update_title (W42Window *self)
   char *title;
 
   /* "Document1 - Word42 0.9.0", and Word's asterisk for unsaved changes. */
-  title = g_strdup_printf ("%s%s - Word42 " W42_VERSION, name,
-                           w42_document_get_modified (self->doc) ? "*" : "");
+  /* Translators: the window's title, "Document1 - Word42 0.9.0".  The
+   * first %s is the document's name, the second an asterisk when it has
+   * unsaved changes (else nothing), the third Word42's version. */
+  title = g_strdup_printf (_("%s%s - Word42 %s"), name,
+                           w42_document_get_modified (self->doc) ? "*" : "",
+                           W42_VERSION);
 
   gtk_window_set_title (GTK_WINDOW (self), title);
 
   if (self->title_label != NULL)
     {
-      char *caption = g_strdup_printf ("Word42 " W42_VERSION " - %s%s", name,
+      /* Translators: the title in Word42's own title bar, "Word42 0.9.0 -
+       * Document1".  The first %s is Word42's version, the second the
+       * document's name, the third an asterisk when it has unsaved
+       * changes (else nothing). */
+      char *caption = g_strdup_printf (_("Word42 %s - %s%s"), W42_VERSION, name,
                         w42_document_get_modified (self->doc) ? "*" : "");
       gtk_label_set_text (GTK_LABEL (self->title_label), caption);
       g_free (caption);
@@ -307,23 +316,23 @@ file_filters (gboolean saving)
   static const char * const any[] = { "*", NULL };
 
   if (saving)
-    append_filter (store, named_filter ("All Documents (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)",
+    append_filter (store, named_filter (_("All Documents (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"),
                                         all_written));
   else
-    append_filter (store, named_filter ("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)",
+    append_filter (store, named_filter (_("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"),
                                         all_docs));
-  append_filter (store, named_filter ("Rich Text Format (*.rtf)", rtf));
-  append_filter (store, named_filter ("Word Document (*.docx)", docx));
+  append_filter (store, named_filter (_("Rich Text Format (*.rtf)"), rtf));
+  append_filter (store, named_filter (_("Word Document (*.docx)"), docx));
   if (!saving)
-    append_filter (store, named_filter ("Word 97 (*.doc)", doc));
-  append_filter (store, named_filter ("OpenDocument Text (*.odt)", odt));
-  append_filter (store, named_filter ("AbiWord (*.abw, *.zabw)", abw));
-  append_filter (store, named_filter ("Web Pages (*.html)", web));
-  append_filter (store, named_filter ("Presentations (*.pptx)", pptx));
-  append_filter (store, named_filter ("Text Documents (*.txt)", text));
+    append_filter (store, named_filter (_("Word 97 (*.doc)"), doc));
+  append_filter (store, named_filter (_("OpenDocument Text (*.odt)"), odt));
+  append_filter (store, named_filter (_("AbiWord (*.abw, *.zabw)"), abw));
+  append_filter (store, named_filter (_("Web Pages (*.html)"), web));
+  append_filter (store, named_filter (_("Presentations (*.pptx)"), pptx));
+  append_filter (store, named_filter (_("Text Documents (*.txt)"), text));
   if (saving || w42_pdf_import_available ())
-    append_filter (store, named_filter ("PDF Documents (*.pdf)", pdf));
-  append_filter (store, named_filter ("All Files", any));
+    append_filter (store, named_filter (_("PDF Documents (*.pdf)"), pdf));
+  append_filter (store, named_filter (_("All Files"), any));
 
   return G_LIST_MODEL (store);
 }
@@ -571,7 +580,10 @@ window_backup_before_save (GFile *file)
       g_free (name);
       return;
     }
-  backup_name = g_strconcat ("Backup of ", name, NULL);
+  /* Translators: the name of the copy Tools > Options > Always create
+   * backup copy keeps beside a file; %s is the file's own name.  It is a
+   * file name: no slashes or backslashes. */
+  backup_name = g_strdup_printf (_("Backup of %s"), name);
   backup = g_file_get_child (parent, backup_name);
   /* Best effort: a copy that cannot be made must not stop the save. */
   g_file_copy (file, backup, G_FILE_COPY_OVERWRITE, NULL, NULL, NULL, NULL);
@@ -644,11 +656,12 @@ w42_window_recover_all (GtkApplication *app)
 
           {
             char *title = w42_document_get_title (window->doc);
-            char *heading = g_strdup_printf ("Word42 recovered \342\200\234%s\342\200\235.", title);
+            /* Translators: %s is the recovered document's name. */
+            char *heading = g_strdup_printf (_("Word42 recovered \342\200\234%s\342\200\235."), title);
 
             show_message (window, heading,
-                          "It was not saved when Word42 last stopped. Save it to "
-                          "keep it; close it to let it go.");
+                          _("It was not saved when Word42 last stopped. Save it to "
+                            "keep it; close it to let it go."));
             g_free (heading);
             g_free (title);
           }
@@ -690,16 +703,19 @@ w42_window_recover_all (GtkApplication *app)
 
   if (unreadable > 0)
     {
-      char *detail = g_strdup_printf ("%d %s left when Word42 last stopped "
-                                      "could not be read. %s kept in %s, with "
-                                      "names ending .bad.",
-                                      unreadable,
-                                      unreadable == 1 ? "document" : "documents",
-                                      unreadable == 1 ? "It is" : "They are",
-                                      dir);
+      /* Translators: %d is how many autosaved copies could not be read,
+       * %s the folder they are kept in. */
+      char *detail = g_strdup_printf (ngettext ("%d document left when Word42 last stopped "
+                                                "could not be read. It is kept in %s, with "
+                                                "names ending .bad.",
+                                                "%d documents left when Word42 last stopped "
+                                                "could not be read. They are kept in %s, with "
+                                                "names ending .bad.",
+                                                (unsigned long) unreadable),
+                                      unreadable, dir);
 
       w42_message_show (first != NULL ? GTK_WINDOW (first) : NULL,
-                        "Word42 could not recover everything.", detail);
+                        _("Word42 could not recover everything."), detail);
       g_free (detail);
     }
 
@@ -827,7 +843,7 @@ w42_window_open (W42Window *self, GFile *file)
 
   if (!w42_window_load (self, file, &error))
     {
-      show_error (self, "Word42 could not open that file.", error);
+      show_error (self, _("Word42 could not open that file."), error);
       g_clear_error (&error);
       return FALSE;
     }
@@ -901,7 +917,7 @@ window_open_file (W42Window *self, GFile *file)
     {
       if (target != self)
         gtk_window_destroy (GTK_WINDOW (target));
-      show_error (self, "Word42 could not open that file.", error);
+      show_error (self, _("Word42 could not open that file."), error);
       g_clear_error (&error);
       return;
     }
@@ -930,8 +946,9 @@ window_export (W42Window *self, GFile *file, GError **error)
     return FALSE;
 
   base = g_file_get_basename (file);
-  window_flash (self, "Exported as %s. The document itself is not saved there: "
-                      "Word42 cannot read that format back as it was.", base);
+  /* Translators: %s is the name of the file exported to. */
+  window_flash (self, _("Exported as %s. The document itself is not saved there: "
+                        "Word42 cannot read that format back as it was."), base);
   g_free (base);
   return TRUE;
 }
@@ -980,7 +997,7 @@ on_open_response (GObject *source, GAsyncResult *result, gpointer data)
         window_open_file (self, file);
       else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                                   GTK_DIALOG_ERROR_DISMISSED))
-        show_error (self, "Word42 could not open that file.", error);
+        show_error (self, _("Word42 could not open that file."), error);
     }
 
   g_clear_object (&file);
@@ -1015,28 +1032,29 @@ action_revert (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   GFile *file = w42_document_get_file (self->doc);
-  static const char *const buttons[] = { "_Revert", "Cancel", NULL };
+  const char *const buttons[] = { _("_Revert"), _("Cancel"), NULL };
   char *name, *heading;
 
   (void) action; (void) param;
 
   if (file == NULL)
     {
-      window_flash (self, "This document has not been saved yet, so there is "
-                          "nothing to go back to.");
+      window_flash (self, "%s", _("This document has not been saved yet, so there is "
+                                  "nothing to go back to."));
       return;
     }
   if (!w42_document_get_modified (self->doc))
     {
-      window_flash (self, "The document has no unsaved changes.");
+      window_flash (self, "%s", _("The document has no unsaved changes."));
       return;
     }
 
   name = w42_document_get_title (self->doc);
-  heading = g_strdup_printf ("Revert \342\200\234%s\342\200\235 to the saved version?", name);
+  /* Translators: %s is the document's name. */
+  heading = g_strdup_printf (_("Revert \342\200\234%s\342\200\235 to the saved version?"), name);
   w42_choice_show (GTK_WINDOW (self), heading,
-                   "The changes made since the document was last saved "
-                   "will be lost.",
+                   _("The changes made since the document was last saved "
+                     "will be lost."),
                    buttons, 1, 1, on_revert_choice, window_weak_ref (self));
   g_free (heading);
   g_free (name);
@@ -1051,7 +1069,7 @@ action_open (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
 
-  gtk_file_dialog_set_title (dialog, "Open");
+  gtk_file_dialog_set_title (dialog, _("Open"));
   gtk_file_dialog_set_filters (dialog, filters);
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_open_response,
                         g_object_ref (self));
@@ -1144,16 +1162,17 @@ window_save_chosen (W42Window *self, GFile *chosen, SaveFinish finish)
 
   if (g_file_query_exists (file, NULL))
     {
-      static const char *const buttons[] = { "_Replace", "Cancel", NULL };
+      const char *const buttons[] = { _("_Replace"), _("Cancel"), NULL };
       Replacing *r = g_new0 (Replacing, 1);
-      char *heading = g_strdup_printf ("\342\200\234%s\342\200\235 already exists. "
-                                       "Replace it?", named);
+      /* Translators: %s is a file name. */
+      char *heading = g_strdup_printf (_("\342\200\234%s\342\200\235 already exists. "
+                                         "Replace it?"), named);
 
       r->self = window_weak_ref (self);
       r->file = file;
       r->finish = finish;
       w42_choice_show (GTK_WINDOW (self), heading,
-                       "The file that is there now will be lost.",
+                       _("The file that is there now will be lost."),
                        buttons, 1, 1, on_replace_choice, r);
       g_free (heading);
       g_free (named);
@@ -1174,13 +1193,13 @@ save_as_finish (W42Window *self, GFile *file)
   if (file != NULL && !w42_io_format_round_trips (file))
     {
       if (!window_export (self, file, &error))
-        show_error (self, "Word42 could not save that file.", error);
+        show_error (self, _("Word42 could not save that file."), error);
     }
   else if (file != NULL)
     {
       saved = window_save_document (self->doc, file, &error);
       if (!saved)
-        show_error (self, "Word42 could not save that file.", error);
+        show_error (self, _("Word42 could not save that file."), error);
     }
 
   g_clear_error (&error);
@@ -1202,7 +1221,7 @@ on_save_response (GObject *source, GAsyncResult *result, gpointer data)
     {
       if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                              GTK_DIALOG_ERROR_DISMISSED))
-        show_error (self, "Word42 could not save that file.", error);
+        show_error (self, _("Word42 could not save that file."), error);
       window_saved (self, FALSE);
     }
 
@@ -1219,7 +1238,7 @@ window_save_as (W42Window *self)
   GFile *file = w42_document_get_file (self->doc);
   char *name = w42_document_get_title (self->doc);
 
-  gtk_file_dialog_set_title (dialog, "Save As");
+  gtk_file_dialog_set_title (dialog, _("Save As"));
   gtk_file_dialog_set_filters (dialog, filters);
 
   /* A document read from a format Word42 writes back is offered under
@@ -1282,7 +1301,7 @@ action_save (GSimpleAction *action, GVariant *param, gpointer data)
   saved = window_save_document (self->doc, file, &error);
   if (!saved)
     {
-      show_error (self, "Word42 could not save that file.", error);
+      show_error (self, _("Word42 could not save that file."), error);
       g_clear_error (&error);
     }
 
@@ -1323,10 +1342,10 @@ template_finish (W42Window *self, GFile *file)
 
   if (!w42_io_save (w42_document_pt (self->doc),
                     w42_document_page_setup (self->doc), file, &error))
-    show_error (self, "Word42 could not save that template.", error);
+    show_error (self, _("Word42 could not save that template."), error);
   else
-    window_flash (self, "Saved as a template.  File > New from Template "
-                        "lists it.");
+    window_flash (self, "%s", _("Saved as a template.  File > New from Template "
+                                "lists it."));
   g_clear_error (&error);
 }
 
@@ -1341,7 +1360,7 @@ on_template_saved (GObject *source, GAsyncResult *result, gpointer data)
     window_save_chosen (self, file, template_finish);
   else if (!window_gone (self) && error != NULL &&
            !g_error_matches (error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED))
-    show_error (self, "Word42 could not save that template.", error);
+    show_error (self, _("Word42 could not save that template."), error);
 
   g_clear_object (&file);
   g_clear_error (&error);
@@ -1366,7 +1385,7 @@ action_save_as_template (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (stem, ".rtf", NULL);
 
-  gtk_file_dialog_set_title (dialog, "Save as Template");
+  gtk_file_dialog_set_title (dialog, _("Save as Template"));
   gtk_file_dialog_set_initial_folder (dialog, folder);
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, on_template_saved,
@@ -1425,7 +1444,7 @@ static gboolean
 on_close_request (GtkWindow *window, gpointer data)
 {
   W42Window *self = W42_WINDOW (window);
-  static const char * const buttons[] = { "Cancel", "Don't Save", "_Save", NULL };
+  const char * const buttons[] = { _("Cancel"), _("Don't Save"), _("_Save"), NULL };
   char *name, *heading;
 
   (void) data;
@@ -1437,11 +1456,12 @@ on_close_request (GtkWindow *window, gpointer data)
     return GDK_EVENT_PROPAGATE;
 
   name = w42_document_get_title (self->doc);
-  heading = g_strdup_printf ("Save changes to \342\200\234%s\342\200\235?", name);
+  /* Translators: %s is the document's name. */
+  heading = g_strdup_printf (_("Save changes to \342\200\234%s\342\200\235?"), name);
 
   w42_choice_show (GTK_WINDOW (self), heading,
-                   "If you close without saving, the changes you have made "
-                   "will be lost.",
+                   _("If you close without saving, the changes you have made "
+                     "will be lost."),
                    buttons, CLOSE_SAVE, CLOSE_CANCEL, on_close_choice,
                    window_weak_ref (self));
 
@@ -2123,7 +2143,7 @@ action_font_dialog (GSimpleAction *action, GVariant *param, gpointer data)
   if (fmt.italic)
     pango_font_description_set_style (desc, PANGO_STYLE_ITALIC);
 
-  gtk_font_dialog_set_title (dialog, "Font");
+  gtk_font_dialog_set_title (dialog, _("Font"));
   gtk_font_dialog_choose_font (dialog, GTK_WINDOW (self), desc, NULL,
                                on_font_dialog_done, g_object_ref (self));
 
@@ -2193,7 +2213,7 @@ on_picture_response (GObject *source, GAsyncResult *result, gpointer data)
         }
       else
         {
-          show_error (self, "Word42 could not insert that picture.", error);
+          show_error (self, _("Word42 could not insert that picture."), error);
         }
 
       g_object_unref (file);
@@ -2201,7 +2221,7 @@ on_picture_response (GObject *source, GAsyncResult *result, gpointer data)
   else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                               GTK_DIALOG_ERROR_DISMISSED))
     {
-      show_error (self, "Word42 could not open that picture.", error);
+      show_error (self, _("Word42 could not open that picture."), error);
     }
 
   g_clear_error (&error);
@@ -2221,11 +2241,11 @@ action_insert_picture (GSimpleAction *action, GVariant *param, gpointer data)
 
   /* Every format gdk-pixbuf has a loader for, which is every format that
    * word42 can show. */
-  gtk_file_filter_set_name (pictures, "Pictures");
+  gtk_file_filter_set_name (pictures, _("Pictures"));
   add_picture_patterns (pictures);
   append_filter (filters, pictures);
 
-  gtk_file_dialog_set_title (dialog, "Insert Picture");
+  gtk_file_dialog_set_title (dialog, _("Insert Picture"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL,
                         on_picture_response, g_object_ref (self));
@@ -2247,9 +2267,9 @@ action_insert_scan (GSimpleAction *action, GVariant *param, gpointer data)
   (void) action; (void) param;
   if (!w42_scan_available ())
     {
-      w42_message_show (GTK_WINDOW (self), "No scanner can be reached from here.",
-                        "Word42 scans through Windows Image Acquisition on Windows and "
-                        "through SANE's scanimage on Linux; neither was found.");
+      w42_message_show (GTK_WINDOW (self), _("No scanner can be reached from here."),
+                        _("Word42 scans through Windows Image Acquisition on Windows and "
+                          "through SANE's scanimage on Linux; neither was found."));
       return;
     }
   bytes = w42_scan_acquire (GTK_WINDOW (self), &format, &error);
@@ -2261,11 +2281,11 @@ action_insert_scan (GSimpleAction *action, GVariant *param, gpointer data)
       if (w42_image_probe (bytes, &width, &height, &probed))
         w42_view_insert_picture (self->view, bytes, probed != NULL ? probed : format, width, height);
       else
-        w42_message_show (GTK_WINDOW (self), "The scanner sent a picture Word42 cannot read.", NULL);
+        w42_message_show (GTK_WINDOW (self), _("The scanner sent a picture Word42 cannot read."), NULL);
       g_bytes_unref (bytes);
     }
   else if (error != NULL)
-    show_error (self, "Word42 could not scan.", error);
+    show_error (self, _("Word42 could not scan."), error);
   g_clear_error (&error);
 }
 
@@ -2288,14 +2308,14 @@ on_export_pdf_response (GObject *source, GAsyncResult *result, gpointer data)
        * still the RTF or text it came from, and Save keeps going there. */
       if (!w42_pdf_export (w42_document_pt (self->doc),
                            w42_document_page_setup (self->doc), file, &error))
-        show_error (self, "Word42 could not export the PDF.", error);
+        show_error (self, _("Word42 could not export the PDF."), error);
 
       g_object_unref (file);
     }
   else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                               GTK_DIALOG_ERROR_DISMISSED))
     {
-      show_error (self, "Word42 could not export the PDF.", error);
+      show_error (self, _("Word42 could not export the PDF."), error);
     }
 
   g_clear_error (&error);
@@ -2319,12 +2339,12 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
     {
       if (!w42_html_export (w42_document_pt (self->doc),
                             w42_document_page_setup (self->doc), file, &error))
-        show_error (self, "Word42 could not export the web page.", error);
+        show_error (self, _("Word42 could not export the web page."), error);
       g_object_unref (file);
     }
   else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                               GTK_DIALOG_ERROR_DISMISSED))
-    show_error (self, "Word42 could not export the web page.", error);
+    show_error (self, _("Word42 could not export the web page."), error);
 
   g_clear_error (&error);
   g_object_unref (self);
@@ -2358,7 +2378,7 @@ action_web_preview (GSimpleAction *action, GVariant *param, gpointer data)
       g_free (uri);
     }
   else
-    show_error (self, "Word42 could not write the web page to preview.", error);
+    show_error (self, _("Word42 could not write the web page to preview."), error);
   g_clear_error (&error);
   g_object_unref (file);
   g_free (path);
@@ -2382,8 +2402,8 @@ action_export_html (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".html", NULL);
 
-  append_filter (filters, named_filter ("Web Pages (*.html)", html));
-  gtk_file_dialog_set_title (dialog, "Export as Web Page");
+  append_filter (filters, named_filter (_("Web Pages (*.html)"), html));
+  gtk_file_dialog_set_title (dialog, _("Export as Web Page"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
@@ -2414,14 +2434,14 @@ on_export_epub_response (GObject *source, GAsyncResult *result, gpointer data)
       w42_view_update_fields (self->view);
       if (!w42_epub_export (w42_document_pt (self->doc),
                             w42_document_page_setup (self->doc), file, &error))
-        show_error (self, "Word42 could not export the e-book.", error);
+        show_error (self, _("Word42 could not export the e-book."), error);
       else
-        window_flash (self, "The e-book is written.");
+        window_flash (self, "%s", _("The e-book is written."));
       g_object_unref (file);
     }
   else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                               GTK_DIALOG_ERROR_DISMISSED))
-    show_error (self, "Word42 could not export the e-book.", error);
+    show_error (self, _("Word42 could not export the e-book."), error);
 
   g_clear_error (&error);
   g_object_unref (self);
@@ -2444,8 +2464,8 @@ action_export_epub (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".epub", NULL);
 
-  append_filter (filters, named_filter ("E-books (*.epub)", epub));
-  gtk_file_dialog_set_title (dialog, "Export as E-book");
+  append_filter (filters, named_filter (_("E-books (*.epub)"), epub));
+  gtk_file_dialog_set_title (dialog, _("Export as E-book"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
@@ -2473,12 +2493,12 @@ on_export_pptx_response (GObject *source, GAsyncResult *result, gpointer data)
     {
       if (!w42_pptx_save (w42_document_pt (self->doc),
                           w42_document_page_setup (self->doc), file, &error))
-        show_error (self, "Word42 could not export the presentation.", error);
+        show_error (self, _("Word42 could not export the presentation."), error);
       g_object_unref (file);
     }
   else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                               GTK_DIALOG_ERROR_DISMISSED))
-    show_error (self, "Word42 could not export the presentation.", error);
+    show_error (self, _("Word42 could not export the presentation."), error);
 
   g_clear_error (&error);
   g_object_unref (self);
@@ -2505,13 +2525,14 @@ action_export_pptx (GSimpleAction *action, GVariant *param, gpointer data)
       g_free (name);
       g_object_unref (filters);
       g_object_unref (dialog);
-      show_message (self, "There is nothing to make slides of.",
-                    "A slide is a heading and the lines under it: give the "
-                    "document's headings the Heading 1 style, or a Title.");
+      show_message (self, _("There is nothing to make slides of."),
+                    _("A slide is a heading and the lines under it: give the "
+                      "document's headings the Heading 1 style, or a Title."));
       return;
     }
   {
-    char *detail = g_strdup_printf (slides->len == 1 ? "1 slide." : "%u slides.", slides->len);
+    char *detail = g_strdup_printf (ngettext ("%u slide.", "%u slides.", slides->len),
+                                    slides->len);
 
     window_flash (self, "%s", detail);
     g_free (detail);
@@ -2522,8 +2543,8 @@ action_export_pptx (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".pptx", NULL);
 
-  append_filter (filters, named_filter ("Presentations (*.pptx)", pptx));
-  gtk_file_dialog_set_title (dialog, "Export as Presentation");
+  append_filter (filters, named_filter (_("Presentations (*.pptx)"), pptx));
+  gtk_file_dialog_set_title (dialog, _("Export as Presentation"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
@@ -2554,8 +2575,8 @@ action_export_pdf (GSimpleAction *action, GVariant *param, gpointer data)
     *dot = '\0';
   suggested = g_strconcat (name, ".pdf", NULL);
 
-  append_filter (filters, named_filter ("PDF Documents (*.pdf)", pdf));
-  gtk_file_dialog_set_title (dialog, "Export as PDF");
+  append_filter (filters, named_filter (_("PDF Documents (*.pdf)"), pdf));
+  gtk_file_dialog_set_title (dialog, _("Export as PDF"));
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_initial_name (dialog, suggested);
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL,
@@ -2764,8 +2785,8 @@ action_table_split_table (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (!w42_view_table_split_table (self->view))
-    window_flash (self, "The caret is in the first row: there is nothing above "
-                        "it to split off.");
+    window_flash (self, "%s", _("The caret is in the first row: there is nothing above "
+                                "it to split off."));
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
@@ -2792,9 +2813,9 @@ action_table_convert (GSimpleAction *action, GVariant *param, gpointer data)
   else
     ok = w42_view_text_to_table (self->view);
   if (!ok)
-    show_message (self, "There is nothing to convert here.",
-                  "In a table this makes paragraphs with tabs between the cells; "
-                  "on selected paragraphs it makes a table, split at their tabs.");
+    show_message (self, _("There is nothing to convert here."),
+                  _("In a table this makes paragraphs with tabs between the cells; "
+                    "on selected paragraphs it makes a table, split at their tabs."));
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
@@ -2841,15 +2862,15 @@ action_insert_index (GSimpleAction *action, GVariant *param, gpointer data)
 
   if (w42_view_caret_in_note (self->view))
     {
-      window_flash (self, "The caret is in a note: put it in the body of the "
-                          "document first.");
+      window_flash (self, "%s", _("The caret is in a note: put it in the body of the "
+                                  "document first."));
       return;
     }
 
   if (w42_view_insert_index (self->view) == 0)
-    show_message (self, "There is nothing marked for the index.",
-                  "Select a word and use Insert \u25b8 Index Entry to "
-                  "mark it, then ask for the index again.");
+    show_message (self, _("There is nothing marked for the index."),
+                  _("Select a word and use Insert \u25b8 Index Entry to "
+                    "mark it, then ask for the index again."));
 }
 
 static void
@@ -2861,15 +2882,15 @@ action_table_of_figures (GSimpleAction *action, GVariant *param, gpointer data)
 
   if (w42_view_caret_in_note (self->view))
     {
-      window_flash (self, "The caret is in a note: put it in the body of the "
-                          "document first.");
+      window_flash (self, "%s", _("The caret is in a note: put it in the body of the "
+                                  "document first."));
       return;
     }
 
   if (w42_view_insert_table_of_figures (self->view) == 0)
-    show_message (self, "There are no captions to list.",
-                  "Insert \u25b8 Caption puts a caption under a picture, "
-                  "and the table of figures lists them.");
+    show_message (self, _("There are no captions to list."),
+                  _("Insert \u25b8 Caption puts a caption under a picture, "
+                    "and the table of figures lists them."));
 }
 
 static void
@@ -2883,15 +2904,15 @@ action_insert_toc (GSimpleAction *action, GVariant *param, gpointer data)
    * the table; the caret has to be in the body. */
   if (w42_view_caret_in_note (self->view))
     {
-      window_flash (self, "The caret is in a note: put it in the body of the "
-                          "document first.");
+      window_flash (self, "%s", _("The caret is in a note: put it in the body of the "
+                                  "document first."));
       return;
     }
 
   if (w42_view_insert_toc (self->view) == 0)
-    show_message (self, "There are no headings to list.",
-                  "Give the document's headings the Heading 1, 2 or 3 style "
-                  "and try again.");
+    show_message (self, _("There are no headings to list."),
+                  _("Give the document's headings the Heading 1, 2 or 3 style "
+                    "and try again."));
 }
 
 static void
@@ -2937,8 +2958,8 @@ action_update_toc (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (!w42_view_update_toc (self->view))
-    show_message (self, "There is no table of contents to update.",
-                  "Insert > Table of Contents puts one in.");
+    show_message (self, _("There is no table of contents to update."),
+                  _("Insert > Table of Contents puts one in."));
 }
 
 static void
@@ -2974,11 +2995,11 @@ action_hyphenate (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (n < 0)
-    show_message (self, "No hyphenation dictionary was found.",
-                  "Hyphenation needs libhyphen and a hyph_*.dic pattern file "
-                  "for your language, the ones LibreOffice uses.");
+    show_message (self, _("No hyphenation dictionary was found."),
+                  _("Hyphenation needs libhyphen and a hyph_*.dic pattern file "
+                    "for your language, the ones LibreOffice uses."));
   else if (n == 0)
-    show_message (self, "There is nothing to hyphenate.", NULL);
+    show_message (self, _("There is nothing to hyphenate."), NULL);
 }
 
 static void
@@ -2990,9 +3011,10 @@ action_unhyphenate (GSimpleAction *action, GVariant *param, gpointer data)
   (void) action; (void) param;
   n = w42_view_hyphenate (self->view, TRUE);
   if (n > 0)
-    window_flash (self, n == 1 ? "1 hyphen removed." : "%d hyphens removed.", n);
+    window_flash (self, ngettext ("%d hyphen removed.", "%d hyphens removed.",
+                                  (unsigned long) n), n);
   else
-    window_flash (self, "There are no soft hyphens to remove.");
+    window_flash (self, "%s", _("There are no soft hyphens to remove."));
 }
 
 static void
@@ -3136,8 +3158,8 @@ action_autotext_expand (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (!w42_view_expand_autotext (self->view))
-    window_flash (self, "Type the name of an AutoText entry, then press "
-                        "Ctrl+F3.  Edit > AutoText makes one from the selection.");
+    window_flash (self, "%s", _("Type the name of an AutoText entry, then press "
+                                "Ctrl+F3.  Edit > AutoText makes one from the selection."));
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
 }
 
@@ -3177,9 +3199,10 @@ action_update_fields (GSimpleAction *action, GVariant *param, gpointer data)
   (void) action; (void) param;
   n = w42_view_update_fields (self->view);
   if (n > 0)
-    window_flash (self, n == 1 ? "1 field updated." : "%d fields updated.", n);
+    window_flash (self, ngettext ("%d field updated.", "%d fields updated.",
+                                  (unsigned long) n), n);
   else
-    window_flash (self, "There are no fields in this document.");
+    window_flash (self, "%s", _("There are no fields in this document."));
 }
 
 static void
@@ -3218,25 +3241,54 @@ action_mail_merge (GSimpleAction *action, GVariant *param, gpointer data)
   w42_mail_merge_dialog_show (GTK_WINDOW (self), self->view);
 }
 
+/* The figure's number, if the paragraph at `p` begins as a caption made
+ * from `format` ("Figure %d: ") does: what comes before the number, then
+ * a digit.  Else 0. */
+static int
+caption_number (const char *p, const char *format)
+{
+  const char *hole = strstr (format, "%d");
+  gsize len;
+
+  if (hole == NULL || hole == format)
+    return 0;
+  len = (gsize) (hole - format);
+  if (strncmp (p, format, len) != 0 || !g_ascii_isdigit (p[len]))
+    return 0;
+  return atoi (p + len);
+}
+
 /* Insert > Caption: a "Figure N: " paragraph in the Caption style below
- * the current one, N being one more than the figures captioned so far. */
+ * the current one, N being one more than the figures captioned so far --
+ * counting those made in English as well as those made in the language
+ * the label is in now. */
 static void
 action_caption (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   W42PieceTable *pt = w42_document_pt (self->doc);
   char *text = w42_pt_get_text (pt, 0, w42_pt_length (pt));
+  /* Translators: the label Insert > Caption puts in the document; %d is
+   * the figure's number.  Keep a word before the number, and keep %d as
+   * it is: the captions already there are counted by what comes before
+   * it. */
+  const char *format = _("Figure %d: ");
   int n = 0;
   char *label;
 
   (void) action; (void) param;
 
-  for (const char *p = text; (p = strstr (p, "Figure ")) != NULL; p += 7)
-    if ((p == text || p[-1] == '\n') && g_ascii_isdigit (p[7]))
-      n = MAX (n, atoi (p + 7));
+  for (const char *p = text; p != NULL; )
+    {
+      const char *nl = strchr (p, '\n');
+
+      n = MAX (n, caption_number (p, "Figure %d: "));
+      n = MAX (n, caption_number (p, format));
+      p = nl != NULL ? nl + 1 : NULL;
+    }
   g_free (text);
 
-  label = g_strdup_printf ("Figure %d: ", n + 1);
+  label = g_strdup_printf (_("Figure %d: "), n + 1);
   w42_view_insert_caption (self->view, label);
   g_free (label);
 }
@@ -3269,8 +3321,8 @@ action_insert_footnote (GSimpleAction *action, GVariant *param, gpointer data)
   /* A note inside a note has nowhere to be numbered from. */
   if (w42_view_caret_in_note (self->view))
     {
-      window_flash (self, "The caret is in a note: put it in the body of the "
-                          "document first.");
+      window_flash (self, "%s", _("The caret is in a note: put it in the body of the "
+                                  "document first."));
       return;
     }
   w42_view_insert_footnote (self->view);
@@ -3285,8 +3337,8 @@ action_insert_endnote (GSimpleAction *action, GVariant *param, gpointer data)
   /* As Insert Footnote. */
   if (w42_view_caret_in_note (self->view))
     {
-      window_flash (self, "The caret is in a note: put it in the body of the "
-                          "document first.");
+      window_flash (self, "%s", _("The caret is in a note: put it in the body of the "
+                                  "document first."));
       return;
     }
   w42_view_insert_endnote (self->view);
@@ -3299,7 +3351,7 @@ action_go_to_note (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (!w42_view_go_to_note (self->view))
-    window_flash (self, "Put the caret at a note's mark, or in the note itself.");
+    window_flash (self, "%s", _("Put the caret at a note's mark, or in the note itself."));
 }
 
 static void
@@ -3381,15 +3433,15 @@ action_thesaurus (GSimpleAction *action, GVariant *param, gpointer data)
   }
   if (self->thesaurus == NULL)
     {
-      show_message (self, "No thesaurus was found.",
-                    "The thesaurus needs a MyThes file for the language of the "
-                    "text -- th_en_US_v2.dat and its .idx for English, "
-                    "th_nb_NO_v2 for Norwegian, the ones LibreOffice uses -- "
-                    "in the mythes folder.");
+      show_message (self, _("No thesaurus was found."),
+                    _("The thesaurus needs a MyThes file for the language of the "
+                      "text -- th_en_US_v2.dat and its .idx for English, "
+                      "th_nb_NO_v2 for Norwegian, the ones LibreOffice uses -- "
+                      "in the mythes folder."));
       return;
     }
   if (!w42_thesaurus_dialog_show (GTK_WINDOW (self), self->view, self->thesaurus))
-    window_flash (self, "Put the caret in a word to look it up in the thesaurus.");
+    window_flash (self, "%s", _("Put the caret in a word to look it up in the thesaurus."));
 }
 
 static void
@@ -3401,9 +3453,9 @@ action_spelling (GSimpleAction *action, GVariant *param, gpointer data)
 
   if (self->spell == NULL)
     {
-      show_message (self, "No spelling dictionary was found.",
-                    "Install a Hunspell dictionary for your language and "
-                    "start Word42 again.");
+      show_message (self, _("No spelling dictionary was found."),
+                    _("Install a Hunspell dictionary for your language and "
+                      "start Word42 again."));
       return;
     }
 
@@ -3455,9 +3507,9 @@ action_accept_revisions (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (w42_view_resolve_revisions (self->view, TRUE))
-    window_flash (self, "Revisions accepted.");
+    window_flash (self, "%s", _("Revisions accepted."));
   else
-    window_flash (self, "There are no revision marks in this document.");
+    window_flash (self, "%s", _("There are no revision marks in this document."));
 }
 
 static void
@@ -3467,9 +3519,9 @@ action_reject_revisions (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   if (w42_view_resolve_revisions (self->view, FALSE))
-    window_flash (self, "Revisions rejected.");
+    window_flash (self, "%s", _("Revisions rejected."));
   else
-    window_flash (self, "There are no revision marks in this document.");
+    window_flash (self, "%s", _("There are no revision marks in this document."));
 }
 
 static void
@@ -3509,8 +3561,8 @@ action_table_insert (GSimpleAction *action, GVariant *param, gpointer data)
    * structure into the document are. */
   if (w42_view_caret_in_note (self->view))
     {
-      window_flash (self, "The caret is in a note: put it in the body of the "
-                          "document first.");
+      window_flash (self, "%s", _("The caret is in a note: put it in the body of the "
+                                  "document first."));
       return;
     }
   w42_insert_table_dialog_show (GTK_WINDOW (self), self->view);
@@ -3577,7 +3629,10 @@ about_os_string (void)
   memset (&v, 0, sizeof v);
   v.dwOSVersionInfoSize = sizeof v;
   if (get_version != NULL && get_version (&v) == 0)
-    return g_strdup_printf ("Windows %lu.%lu build %lu%s",
+    /* Translators: the Windows version in the About box, as "Windows
+     * 10.0 build 19045 (Windows 10)": the major and minor version, the
+     * build number, then the release's name in brackets or nothing. */
+    return g_strdup_printf (_("Windows %lu.%lu build %lu%s"),
                             (unsigned long) v.dwMajorVersion, (unsigned long) v.dwMinorVersion,
                             (unsigned long) v.dwBuildNumber,
                             v.dwBuildNumber >= 22000 ? " (Windows 11)" : v.dwMajorVersion == 10 ? " (Windows 10)" : "");
@@ -3602,11 +3657,17 @@ about_system_info (void)
 {
   char *os = about_os_string ();
   char *out = g_strdup_printf (
-    "Word42 %s\n"
-    "GTK %u.%u.%u (built against %d.%d.%d)  \u00b7  GLib %u.%u.%u\n"
-    "Pango %s  \u00b7  Cairo %s  \u00b7  GdkPixbuf %s\n"
-    "%s\n"
-    "Spelling: %s  \u00b7  Hyphenation: %s  \u00b7  PDF import: %s",
+    /* Translators: what the About box says this copy runs on, for bug
+     * reports.  The version numbers and library names fill the
+     * placeholders in turn: Word42's version; GTK's running version and
+     * the one built against; GLib's; Pango's, Cairo's and GdkPixbuf's;
+     * the operating system; then the spelling, hyphenation and PDF
+     * import libraries, or "none". */
+    _("Word42 %s\n"
+      "GTK %u.%u.%u (built against %d.%d.%d)  \u00b7  GLib %u.%u.%u\n"
+      "Pango %s  \u00b7  Cairo %s  \u00b7  GdkPixbuf %s\n"
+      "%s\n"
+      "Spelling: %s  \u00b7  Hyphenation: %s  \u00b7  PDF import: %s"),
     W42_VERSION,
     gtk_get_major_version (), gtk_get_minor_version (), gtk_get_micro_version (),
     GTK_MAJOR_VERSION, GTK_MINOR_VERSION, GTK_MICRO_VERSION,
@@ -3616,17 +3677,20 @@ about_system_info (void)
 #ifdef HAVE_ENCHANT
     "Enchant",
 #else
-    "none",
+    /* Translators: no library for this, in the About box. */
+    C_("library", "none"),
 #endif
 #ifdef HAVE_HYPHEN
     "libhyphen",
 #else
-    "none",
+    /* Translators: no library for this, in the About box. */
+    C_("library", "none"),
 #endif
 #ifdef HAVE_POPPLER
     "Poppler"
 #else
-    "none"
+    /* Translators: no library for this, in the About box. */
+    C_("library", "none")
 #endif
     );
 
@@ -3658,7 +3722,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
   (void) action; (void) param;
 
   window = gtk_window_new ();
-  gtk_window_set_title (GTK_WINDOW (window), "About Word42");
+  gtk_window_set_title (GTK_WINDOW (window), _("About Word42"));
   {
     /* Escape closes it, as it does every other box. */
     GtkEventController *key = gtk_event_controller_key_new ();
@@ -3679,14 +3743,20 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_set_size_request (banner, 400, 112);
   gtk_box_append (GTK_BOX (box), banner);
 
-  version = gtk_label_new ("Version " W42_VERSION);
+  {
+    /* Translators: %s is Word42's version number. */
+    char *text = g_strdup_printf (_("Version %s"), W42_VERSION);
+
+    version = gtk_label_new (text);
+    g_free (text);
+  }
   gtk_widget_add_css_class (version, "w42-about-version");
   gtk_label_set_xalign (GTK_LABEL (version), 0.0);
   gtk_widget_set_margin_start (version, 20);
   gtk_widget_set_margin_top (version, 16);
   gtk_box_append (GTK_BOX (box), version);
 
-  blurb = gtk_label_new ("Written in C on GTK 4, Pango and Cairo.");
+  blurb = gtk_label_new (_("Written in C on GTK 4, Pango and Cairo."));
   gtk_label_set_xalign (GTK_LABEL (blurb), 0.0);
   gtk_widget_set_margin_start (blurb, 20);
   gtk_widget_set_margin_top (blurb, 8);
@@ -3718,7 +3788,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
     g_free (info);
   }
 
-  licence = gtk_label_new (
+  licence = gtk_label_new (_(
     "Copyright (C) 2026 Andreas Røsdal.\n\n"
     "This program is free software: you can redistribute it and/or modify it "
     "under the terms of the GNU General Public License as published by the "
@@ -3727,7 +3797,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
     "Word42 is an independent program, not affiliated with or endorsed by "
     "the makers of any other word processor.  The names of file formats "
     "appear only to say which format is meant.\n\n"
-    "Macros run on MY-BASIC by Tony Wang, used under the MIT licence.");
+    "Macros run on MY-BASIC by Tony Wang, used under the MIT licence."));
   gtk_label_set_wrap (GTK_LABEL (licence), TRUE);
   gtk_label_set_max_width_chars (GTK_LABEL (licence), 52);
   gtk_label_set_xalign (GTK_LABEL (licence), 0.0);
@@ -3737,7 +3807,7 @@ action_about (GSimpleAction *action, GVariant *param, gpointer data)
   gtk_widget_set_margin_top (licence, 14);
   gtk_box_append (GTK_BOX (box), licence);
 
-  button = gtk_button_new_with_mnemonic ("_OK");
+  button = gtk_button_new_with_mnemonic (_("_OK"));
   gtk_widget_set_halign (button, GTK_ALIGN_END);
   gtk_widget_set_margin_end (button, 20);
   gtk_widget_set_margin_top (button, 18);
@@ -3868,13 +3938,13 @@ build_titlebar (W42Window *self)
   gtk_center_box_set_center_widget (GTK_CENTER_BOX (centre), self->title_label);
 
   gtk_box_append (GTK_BOX (right),
-                  caption_button ("minimise", "Minimize",
+                  caption_button ("minimise", _("Minimize"),
                                   G_CALLBACK (on_titlebar_minimise), self));
   gtk_box_append (GTK_BOX (right),
-                  caption_button ("maximise", "Maximize",
+                  caption_button ("maximise", _("Maximize"),
                                   G_CALLBACK (on_titlebar_maximise), self));
   gtk_box_append (GTK_BOX (right),
-                  caption_button ("close", "Close",
+                  caption_button ("close", _("Close"),
                                   G_CALLBACK (on_titlebar_close), self));
   gtk_center_box_set_end_widget (GTK_CENTER_BOX (centre), right);
 
@@ -3991,22 +4061,22 @@ build_standard_bar (void)
 
   gtk_widget_add_css_class (bar, "w42-toolbar");
 
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-new",           "New",           "win.new"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-open",          "Open",          "win.open"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-save",          "Save",          "win.save"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-new",           _("New"),           "win.new"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-open",          _("Open"),          "win.open"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-save",          _("Save"),          "win.save"));
   gtk_box_append (GTK_BOX (bar), tool_separator ());
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-print",         "Print",         "win.print"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-print-preview", "Print Preview", "win.print-preview"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-spelling",      "Spelling",      "win.spelling"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-print",         _("Print"),         "win.print"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-print-preview", _("Print Preview"), "win.print-preview"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-spelling",      _("Spelling"),      "win.spelling"));
   gtk_box_append (GTK_BOX (bar), tool_separator ());
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-cut",           "Cut",           "win.cut"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-copy",          "Copy",          "win.copy"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-paste",         "Paste",         "win.paste"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-cut",           _("Cut"),           "win.cut"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-copy",          _("Copy"),          "win.copy"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-paste",         _("Paste"),         "win.paste"));
   gtk_box_append (GTK_BOX (bar), tool_separator ());
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-undo",          "Undo",          "win.undo"));
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-redo",          "Redo",          "win.redo"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-undo",          _("Undo"),          "win.undo"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-redo",          _("Redo"),          "win.redo"));
   gtk_box_append (GTK_BOX (bar), tool_separator ());
-  gtk_box_append (GTK_BOX (bar), tool_button ("w42-find",          "Find",          "win.find"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-find",          _("Find"),          "win.find"));
 
   return bar;
 }
@@ -4020,12 +4090,12 @@ build_zoom_drop (W42Window *self)
   for (guint i = 0; i < G_N_ELEMENTS (ZOOM_LABELS); i++)
     gtk_string_list_append (steps, ZOOM_LABELS[i]);
   for (guint i = 0; i < G_N_ELEMENTS (ZOOM_FIT_LABELS); i++)
-    gtk_string_list_append (steps, ZOOM_FIT_LABELS[i]);
+    gtk_string_list_append (steps, _(ZOOM_FIT_LABELS[i]));
 
   self->zoom_drop = gtk_drop_down_new (G_LIST_MODEL (steps), NULL);
   gtk_drop_down_set_selected (GTK_DROP_DOWN (self->zoom_drop), 2);
   gtk_widget_set_size_request (self->zoom_drop, 72, -1);
-  gtk_widget_set_tooltip_text (self->zoom_drop, "Zoom Control");
+  gtk_widget_set_tooltip_text (self->zoom_drop, _("Zoom Control"));
   g_signal_connect (self->zoom_drop, "notify::selected",
                     G_CALLBACK (on_zoom_selected), self);
 
@@ -4204,8 +4274,11 @@ build_format_bar (W42Window *self)
     "w42-align-left", "w42-align-center",
     "w42-align-right", "w42-align-justify"
   };
-  static const char *align_names[4] = {
-    "Align Left", "Center", "Align Right", "Justify"
+  const char *align_names[4] = {
+    _("Align Left"),
+    /* Translators: the tooltip of the button that centres the paragraph. */
+    C_("alignment", "Center"),
+    _("Align Right"), _("Justify")
   };
 
   gtk_widget_add_css_class (bar, "w42-toolbar");
@@ -4215,7 +4288,7 @@ build_format_bar (W42Window *self)
     self->style_list = gtk_string_list_new (NULL);
     self->style_drop = gtk_drop_down_new (g_object_ref (G_LIST_MODEL (self->style_list)), NULL);
     gtk_widget_set_size_request (self->style_drop, 120, -1);
-    gtk_widget_set_tooltip_text (self->style_drop, "Style");
+    gtk_widget_set_tooltip_text (self->style_drop, _("Style"));
     g_signal_connect (self->style_drop, "notify::selected",
                       G_CALLBACK (on_style_selected), self);
     gtk_box_append (GTK_BOX (bar), self->style_drop);
@@ -4243,7 +4316,7 @@ build_format_bar (W42Window *self)
   self->font_drop = gtk_drop_down_new (g_object_ref (self->families), NULL);
   gtk_drop_down_set_enable_search (GTK_DROP_DOWN (self->font_drop), TRUE);
   gtk_widget_set_size_request (self->font_drop, 180, -1);
-  gtk_widget_set_tooltip_text (self->font_drop, "Font");
+  gtk_widget_set_tooltip_text (self->font_drop, _("Font"));
   g_signal_connect (self->font_drop, "notify::selected-item",
                     G_CALLBACK (on_font_selected), self);
   gtk_box_append (GTK_BOX (bar), self->font_drop);
@@ -4257,16 +4330,16 @@ build_format_bar (W42Window *self)
 
   self->size_drop = gtk_drop_down_new (G_LIST_MODEL (sizes), NULL);
   gtk_widget_set_size_request (self->size_drop, 70, -1);
-  gtk_widget_set_tooltip_text (self->size_drop, "Font Size");
+  gtk_widget_set_tooltip_text (self->size_drop, _("Font Size"));
   g_signal_connect (self->size_drop, "notify::selected",
                     G_CALLBACK (on_size_selected), self);
   gtk_box_append (GTK_BOX (bar), self->size_drop);
 
   gtk_box_append (GTK_BOX (bar), tool_separator ());
 
-  self->bold_btn      = toggle_button ("w42-bold", "Bold");
-  self->italic_btn    = toggle_button ("w42-italic", "Italic");
-  self->underline_btn = toggle_button ("w42-underline", "Underline");
+  self->bold_btn      = toggle_button ("w42-bold", _("Bold"));
+  self->italic_btn    = toggle_button ("w42-italic", _("Italic"));
+  self->underline_btn = toggle_button ("w42-underline", _("Underline"));
 
   g_signal_connect (self->bold_btn, "toggled", G_CALLBACK (on_style_toggled), self);
   g_signal_connect (self->italic_btn, "toggled", G_CALLBACK (on_style_toggled), self);
@@ -4293,8 +4366,8 @@ build_format_bar (W42Window *self)
 
   gtk_box_append (GTK_BOX (bar), tool_separator ());
 
-  self->numbers_btn = toggle_button ("w42-numbering", "Numbering");
-  self->bullets_btn = toggle_button ("w42-bullets", "Bullets");
+  self->numbers_btn = toggle_button ("w42-numbering", _("Numbering"));
+  self->bullets_btn = toggle_button ("w42-bullets", _("Bullets"));
   g_signal_connect (self->numbers_btn, "toggled", G_CALLBACK (on_list_toggled), self);
   g_signal_connect (self->bullets_btn, "toggled", G_CALLBACK (on_list_toggled), self);
   gtk_box_append (GTK_BOX (bar), self->numbers_btn);
@@ -4314,10 +4387,18 @@ build_status_bar (W42Window *self)
   gtk_widget_set_margin_top (bar, 2);
   gtk_widget_set_margin_bottom (bar, 2);
 
-  self->status_page = gtk_label_new ("Page 1");
-  self->status_at   = gtk_label_new ("At 1.0\"");
-  self->status_ln   = gtk_label_new ("Ln 1");
-  self->status_col  = gtk_label_new ("Col 1");
+  {
+    char buffer[64];
+
+    g_snprintf (buffer, sizeof buffer, _("Page %d"), 1);
+    self->status_page = gtk_label_new (buffer);
+    g_snprintf (buffer, sizeof buffer, _("At %.1f%s"), 1.0, "\"");
+    self->status_at   = gtk_label_new (buffer);
+    g_snprintf (buffer, sizeof buffer, _("Ln %d"), 1);
+    self->status_ln   = gtk_label_new (buffer);
+    g_snprintf (buffer, sizeof buffer, _("Col %d"), 1);
+    self->status_col  = gtk_label_new (buffer);
+  }
   self->status_pages = gtk_label_new ("1/1");
   self->status_words = gtk_label_new ("");
   self->status_mod  = gtk_label_new ("");
@@ -4415,27 +4496,46 @@ window_show_counts (W42Window *self)
     {
       char *goal = count_text ((gsize) self->goal);
 
-      text = g_strdup_printf ("%s of %s words", words, goal);
+      /* Translators: the status bar's word count toward the goal set in
+       * Tools > Word Count Goal: "12,000 of 80,000 words".  The first %s
+       * is the words written, the second the goal. */
+      text = g_strdup_printf (ngettext ("%s of %s word", "%s of %s words",
+                                        (unsigned long) self->goal),
+                              words, goal);
       g_free (goal);
     }
   else
-    text = g_strdup_printf ("%s %s", words, self->words == 1 ? "word" : "words");
+    /* Translators: the status bar's word count; %s is the number, with
+     * thousands separators. */
+    text = g_strdup_printf (ngettext ("%s word", "%s words", (unsigned long) self->words),
+                            words);
   gtk_label_set_text (GTK_LABEL (self->status_words), text);
 
   {
     GString *t = g_string_new (NULL);
 
     if (self->goal > 0)
-      g_string_append_printf (t, "%d%% of the goal. ",
-                              (int) MIN (self->words * 100 / (gsize) self->goal, 999));
+      {
+        /* Translators: in the word count's tooltip; %d%% is how far
+         * toward the goal the document is, as "40%". */
+        g_string_append_printf (t, _("%d%% of the goal."),
+                                (int) MIN (self->words * 100 / (gsize) self->goal, 999));
+        g_string_append_c (t, ' ');
+      }
     if (self->words_at_open >= 0)
       {
         gssize session = (gssize) self->words - self->words_at_open;
 
-        g_string_append_printf (t, "Written since the document was opened: %"
-                                G_GSSIZE_FORMAT " words.", session);
+        /* Translators: in the word count's tooltip; %ld is the words
+         * written since the document was opened, which can be less than
+         * nothing when more was deleted. */
+        g_string_append_printf (t, ngettext ("Written since the document was opened: %ld word.",
+                                             "Written since the document was opened: %ld words.",
+                                             (unsigned long) ABS (session)),
+                                (long) session);
       }
-    g_string_append (t, "\nTools \342\226\270 Word Count Goal sets the goal.");
+    g_string_append_c (t, '\n');
+    g_string_append (t, _("Tools \342\226\270 Word Count Goal sets the goal."));
     tip = g_string_free (t, FALSE);
   }
   gtk_widget_set_tooltip_text (self->status_words, tip);
@@ -4681,16 +4781,16 @@ action_save_all (GSimpleAction *action, GVariant *param, gpointer data)
           }
         else
           {
-            show_error (w, "Word42 could not save that file.", error);
+            show_error (w, _("Word42 could not save that file."), error);
             g_clear_error (&error);
           }
       }
     }
   if (asked > 0)
-    show_message (self, saved > 0 ? "The rest are saved." : "Nothing was saved.",
-                  "A document that has never been saved, or that came from a "
-                  "format Word42 does not write back, needs a name: use "
-                  "File > Save As for it.");
+    show_message (self, saved > 0 ? _("The rest are saved.") : _("Nothing was saved."),
+                  _("A document that has never been saved, or that came from a "
+                    "format Word42 does not write back, needs a name: use "
+                    "File > Save As for it."));
 }
 
 /* Insert > File: another document's text, at the caret.  Tables and notes
@@ -4727,7 +4827,7 @@ on_insert_file_response (GObject *source, GAsyncResult *result, gpointer data)
             }
         }
       else
-        show_error (self, "Word42 could not read that file.", error);
+        show_error (self, _("Word42 could not read that file."), error);
       w42_pt_free (other);
       g_object_unref (file);
     }
@@ -4763,19 +4863,19 @@ on_compare_response (GObject *source, GAsyncResult *result, gpointer data)
           int n = w42_view_compare_with (self->view, other);
 
           if (n == 0)
-            window_flash (self, "The two documents are the same.");
+            window_flash (self, "%s", _("The two documents are the same."));
           else
-            window_flash (self, n == 1 ? "1 change marked."
-                                       : "%d changes marked.", n);
+            window_flash (self, ngettext ("%d change marked.",
+                                          "%d changes marked.", (unsigned long) n), n);
         }
       else
-        show_error (self, "Word42 could not read that file.", error);
+        show_error (self, _("Word42 could not read that file."), error);
       w42_pt_free (other);
       g_object_unref (file);
     }
   else if (error != NULL && !g_error_matches (error, GTK_DIALOG_ERROR,
                                               GTK_DIALOG_ERROR_DISMISSED))
-    show_error (self, "Word42 could not open that file.", error);
+    show_error (self, _("Word42 could not open that file."), error);
   g_clear_error (&error);
   gtk_widget_grab_focus (GTK_WIDGET (self->view));
   g_object_unref (self);
@@ -4789,7 +4889,7 @@ action_compare_documents (GSimpleAction *action, GVariant *param, gpointer data)
   GListModel *filters = file_filters (FALSE);
 
   (void) action; (void) param;
-  gtk_file_dialog_set_title (dialog, "Compare Documents: the original");
+  gtk_file_dialog_set_title (dialog, _("Compare Documents: the original"));
   gtk_file_dialog_set_filters (dialog, filters);
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_compare_response,
                         g_object_ref (self));
@@ -4805,7 +4905,7 @@ action_insert_file (GSimpleAction *action, GVariant *param, gpointer data)
   GListModel *filters = file_filters (FALSE);
 
   (void) action; (void) param;
-  gtk_file_dialog_set_title (dialog, "Insert File");
+  gtk_file_dialog_set_title (dialog, _("Insert File"));
   gtk_file_dialog_set_filters (dialog, filters);
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, on_insert_file_response,
                         g_object_ref (self));
@@ -5112,16 +5212,20 @@ window_sync_state (W42Window *self)
       w42_layout_describe_pos (self->count_layout, w42_view_get_caret (self->view),
                                &page, &pline, &pcolumn);
     }
-  g_snprintf (buffer, sizeof buffer, "Page %d", page);
+  /* Translators: the status bar's page number. */
+  g_snprintf (buffer, sizeof buffer, _("Page %d"), page);
   gtk_label_set_text (GTK_LABEL (self->status_page), buffer);
   g_snprintf (buffer, sizeof buffer, "%d/%d", page,
               MAX (self->n_pages > 0 ? self->n_pages : w42_layout_n_pages (layout), page));
   gtk_label_set_text (GTK_LABEL (self->status_pages), buffer);
   window_schedule_count (self);
   window_sync_language (self);
-  g_snprintf (buffer, sizeof buffer, "Ln %d", line);
+  /* Translators: the status bar's line number, "Ln" short for Line. */
+  g_snprintf (buffer, sizeof buffer, _("Ln %d"), line);
   gtk_label_set_text (GTK_LABEL (self->status_ln), buffer);
-  g_snprintf (buffer, sizeof buffer, "Col %d", column);
+  /* Translators: the status bar's column number, "Col" short for
+   * Column: how many characters in from the start of the line. */
+  g_snprintf (buffer, sizeof buffer, _("Col %d"), column);
   gtk_label_set_text (GTK_LABEL (self->status_col), buffer);
 
   {
@@ -5132,7 +5236,10 @@ window_sync_state (W42Window *self)
                                  &cpage, &x, &y, &h))
       {
         /* The distance from the top of the page, in the user's unit. */
-        g_snprintf (buffer, sizeof buffer, "At %.1f%s",
+        /* Translators: the status bar's reading of how far down the page
+         * the caret is, "At" short for "at so far from the top": %.1f is
+         * the distance, %s the unit, already translated (" or cm). */
+        g_snprintf (buffer, sizeof buffer, _("At %.1f%s"),
                     w42_settings_from_twips ((int) (y * W42_TWIPS_PER_PX)),
                     w42_settings_unit_name ());
         gtk_label_set_text (GTK_LABEL (self->status_at), buffer);
@@ -5141,7 +5248,7 @@ window_sync_state (W42Window *self)
 
   gtk_label_set_text (GTK_LABEL (self->status_mod),
                       self->status_flash != NULL ? self->status_flash :
-                      w42_document_get_modified (self->doc) ? "Modified" : "");
+                      w42_document_get_modified (self->doc) ? _("Modified") : "");
 
   has_sel = w42_view_has_selection (self->view);
 

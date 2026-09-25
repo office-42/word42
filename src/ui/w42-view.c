@@ -20,6 +20,8 @@
 #include <math.h>
 #include <string.h>
 
+#include <glib/gi18n.h>
+
 /* Space around and between the pages, in device pixels. */
 #define PAGE_GAP     16.0
 #define CARET_PERIOD 530
@@ -1264,8 +1266,8 @@ w42_view_follow_link (W42View *self, const char *url)
     }
   else
     {
-      const char *buttons[] = { "Cancel", "Open", NULL };
-      GtkAlertDialog *dialog = gtk_alert_dialog_new ("Open this link?");
+      const char *buttons[] = { _("Cancel"), _("Open"), NULL };
+      GtkAlertDialog *dialog = gtk_alert_dialog_new ("%s", _("Open this link?"));
       FollowLink *fl = g_new0 (FollowLink, 1);
 
       fl->window = window != NULL ? g_object_ref (window) : NULL;
@@ -4317,10 +4319,14 @@ view_offer_tip (W42View *self)
       {
         char *cut = g_utf8_offset_to_pointer (first, 40);
         *cut = '\0';
-        shown = g_strdup_printf ("%s\u2026  (Press ENTER to Insert)", first);
+        /* Translators: the AutoComplete tip over the caret; %s is the
+         * start of the AutoText entry or date offered, cut short. */
+        shown = g_strdup_printf (_("%s\u2026  (Press ENTER to Insert)"), first);
       }
     else
-      shown = g_strdup_printf ("%s  (Press ENTER to Insert)", first);
+      /* Translators: the AutoComplete tip over the caret; %s is the
+       * AutoText entry or date offered. */
+      shown = g_strdup_printf (_("%s  (Press ENTER to Insert)"), first);
     gtk_label_set_text (GTK_LABEL (self->tip_label), shown);
     g_free (shown);
     g_free (first);
@@ -5922,20 +5928,20 @@ w42_view_init (W42View *self)
     GMenu *section;
 
     section = g_menu_new ();
-    g_menu_append (section, "Cu_t", "win.cut");
-    g_menu_append (section, "_Copy", "win.copy");
-    g_menu_append (section, "_Paste", "win.paste");
+    g_menu_append (section, _("Cu_t"), "win.cut");
+    g_menu_append (section, _("_Copy"), "win.copy");
+    g_menu_append (section, _("_Paste"), "win.paste");
     g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
     g_object_unref (section);
     section = g_menu_new ();
-    g_menu_append (section, "_Font...", "win.font");
-    g_menu_append (section, "P_aragraph...", "win.paragraph");
-    g_menu_append (section, "_Bullets and Numbering...", "win.bullets-numbering");
-    g_menu_append (section, "_Hyperlink...", "win.hyperlink");
+    g_menu_append (section, _("_Font..."), "win.font");
+    g_menu_append (section, _("P_aragraph..."), "win.paragraph");
+    g_menu_append (section, _("_Bullets and Numbering..."), "win.bullets-numbering");
+    g_menu_append (section, _("_Hyperlink..."), "win.hyperlink");
     g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
     g_object_unref (section);
     section = g_menu_new ();
-    g_menu_append (section, "Table P_roperties...", "win.table-properties");
+    g_menu_append (section, _("Table P_roperties..."), "win.table-properties");
     g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
     g_object_unref (section);
 
