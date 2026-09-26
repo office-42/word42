@@ -5620,7 +5620,10 @@ w42_window_init (W42Window *self)
       g_object_unref (action);
     }
 
+  /* Every window opens maximised; the default size is what Restore Down
+   * gives back. */
   gtk_window_set_default_size (GTK_WINDOW (self), 900, 780);
+  gtk_window_maximize (GTK_WINDOW (self));
   gtk_widget_add_css_class (GTK_WIDGET (self), "w42");
   gtk_window_set_titlebar (GTK_WINDOW (self), build_titlebar (self));
 
