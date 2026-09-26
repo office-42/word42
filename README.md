@@ -6,7 +6,7 @@
 A classic word processor, written from scratch in C on GTK 4, Pango and
 Cairo: a menu bar, two toolbars, a ruler, a status bar and a page.
 
-![Word42 in Page Layout view, open at the first chapter of Jonah in the King James Bible sample — "Now the word of the Lord came unto Jonah" — the verses set justified with superscript numbers under the book's heading, running down the left of a picture of the great fish in the deep, on page 1250 of 1708](docs/images/screenshot.png)
+![Word42 in Page Layout view, open at the first chapter of Jonah in the King James Bible sample — "Now the word of the Lord came unto Jonah" — the verses set justified with superscript numbers under the book's heading, running down the left of a picture of the great fish in the deep, on page 1070 of 1464](docs/images/screenshot.png)
 
 A working word processor: typing, formatting, styles and numbered headings,
 headers and footers, footnotes and endnotes, tables, pictures, lists,
