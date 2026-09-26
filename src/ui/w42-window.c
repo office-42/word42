@@ -5845,6 +5845,14 @@ w42_window_class_init (W42WindowClass *klass)
 }
 
 static void
+window_first_map (GtkWidget *widget, gpointer data)
+{
+  (void) data;
+  g_signal_handlers_disconnect_by_func (widget, window_first_map, NULL);
+  gtk_window_maximize (GTK_WINDOW (widget));
+}
+
+static void
 w42_window_init (W42Window *self)
 {
   GtkWidget *box, *right, *scrolled, *menubar;
@@ -5875,9 +5883,11 @@ w42_window_init (W42Window *self)
     }
 
   /* Every window opens maximised; the default size is what Restore Down
-   * gives back. */
+   * gives back.  Maximised once it is on the screen, not before: on
+   * Windows a window maximised before it is first shown has no other
+   * size to go back to, and could not be made smaller again. */
   gtk_window_set_default_size (GTK_WINDOW (self), 900, 780);
-  gtk_window_maximize (GTK_WINDOW (self));
+  g_signal_connect (self, "map", G_CALLBACK (window_first_map), NULL);
   gtk_widget_add_css_class (GTK_WIDGET (self), "w42");
   gtk_window_set_titlebar (GTK_WINDOW (self), build_titlebar (self));
 
