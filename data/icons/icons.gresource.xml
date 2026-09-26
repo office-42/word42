@@ -14,6 +14,7 @@
     <file>16x16/actions/w42-copy.png</file>
     <file>16x16/actions/w42-cut.png</file>
     <file>16x16/actions/w42-find.png</file>
+    <file>16x16/actions/w42-insert-picture.png</file>
     <file>16x16/actions/w42-italic.png</file>
     <file>16x16/actions/w42-new.png</file>
     <file>16x16/actions/w42-numbering.png</file>
@@ -23,6 +24,7 @@
     <file>16x16/actions/w42-print.png</file>
     <file>16x16/actions/w42-redo.png</file>
     <file>16x16/actions/w42-save.png</file>
+    <file>16x16/actions/w42-slide-show.png</file>
     <file>16x16/actions/w42-spelling.png</file>
     <file>16x16/actions/w42-underline.png</file>
     <file>16x16/actions/w42-undo.png</file>
@@ -37,6 +39,7 @@
     <file>24x24/actions/w42-copy.png</file>
     <file>24x24/actions/w42-cut.png</file>
     <file>24x24/actions/w42-find.png</file>
+    <file>24x24/actions/w42-insert-picture.png</file>
     <file>24x24/actions/w42-italic.png</file>
     <file>24x24/actions/w42-new.png</file>
     <file>24x24/actions/w42-numbering.png</file>
@@ -46,6 +49,7 @@
     <file>24x24/actions/w42-print.png</file>
     <file>24x24/actions/w42-redo.png</file>
     <file>24x24/actions/w42-save.png</file>
+    <file>24x24/actions/w42-slide-show.png</file>
     <file>24x24/actions/w42-spelling.png</file>
     <file>24x24/actions/w42-underline.png</file>
     <file>24x24/actions/w42-undo.png</file>
@@ -60,6 +64,7 @@
     <file>32x32/actions/w42-copy.png</file>
     <file>32x32/actions/w42-cut.png</file>
     <file>32x32/actions/w42-find.png</file>
+    <file>32x32/actions/w42-insert-picture.png</file>
     <file>32x32/actions/w42-italic.png</file>
     <file>32x32/actions/w42-new.png</file>
     <file>32x32/actions/w42-numbering.png</file>
@@ -69,6 +74,7 @@
     <file>32x32/actions/w42-print.png</file>
     <file>32x32/actions/w42-redo.png</file>
     <file>32x32/actions/w42-save.png</file>
+    <file>32x32/actions/w42-slide-show.png</file>
     <file>32x32/actions/w42-spelling.png</file>
     <file>32x32/actions/w42-underline.png</file>
     <file>32x32/actions/w42-undo.png</file>
@@ -82,6 +88,7 @@
     <file>48x48/actions/w42-copy.png</file>
     <file>48x48/actions/w42-cut.png</file>
     <file>48x48/actions/w42-find.png</file>
+    <file>48x48/actions/w42-insert-picture.png</file>
     <file>48x48/actions/w42-italic.png</file>
     <file>48x48/actions/w42-new.png</file>
     <file>48x48/actions/w42-numbering.png</file>
@@ -91,6 +98,7 @@
     <file>48x48/actions/w42-print.png</file>
     <file>48x48/actions/w42-redo.png</file>
     <file>48x48/actions/w42-save.png</file>
+    <file>48x48/actions/w42-slide-show.png</file>
     <file>48x48/actions/w42-spelling.png</file>
     <file>48x48/actions/w42-underline.png</file>
     <file>48x48/actions/w42-undo.png</file>
@@ -105,6 +113,7 @@
     <file>scalable/actions/w42-copy.svg</file>
     <file>scalable/actions/w42-cut.svg</file>
     <file>scalable/actions/w42-find.svg</file>
+    <file>scalable/actions/w42-insert-picture.svg</file>
     <file>scalable/actions/w42-italic.svg</file>
     <file>scalable/actions/w42-new.svg</file>
     <file>scalable/actions/w42-numbering.svg</file>
@@ -114,6 +123,7 @@
     <file>scalable/actions/w42-print.svg</file>
     <file>scalable/actions/w42-redo.svg</file>
     <file>scalable/actions/w42-save.svg</file>
+    <file>scalable/actions/w42-slide-show.svg</file>
     <file>scalable/actions/w42-spelling.svg</file>
     <file>scalable/actions/w42-underline.svg</file>
     <file>scalable/actions/w42-undo.svg</file>

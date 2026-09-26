@@ -5453,3 +5453,11 @@ msgstr "Afrikaans"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(langue par défaut du document)"
+
+#: src/ui/w42-window.c
+msgid "Font Color"
+msgstr "Couleur de police"
+
+#: src/ui/w42-window.c
+msgid "Show as Slide Show"
+msgstr "Afficher en diaporama"

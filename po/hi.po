@@ -5371,3 +5371,11 @@ msgstr "अफ़्रीकांस"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(दस्तावेज़ डिफ़ॉल्ट)"
+
+#: src/ui/w42-window.c
+msgid "Font Color"
+msgstr "फ़ॉन्ट रंग"
+
+#: src/ui/w42-window.c
+msgid "Show as Slide Show"
+msgstr "स्लाइड शो के रूप में दिखाएँ"

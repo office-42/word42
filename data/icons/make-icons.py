@@ -172,6 +172,24 @@ ICONS['w42-find'] = (
     'stroke-linecap="round"/>' % INK
 )
 
+# Insert Picture: a framed landscape, a hill under the sun.
+ICONS['w42-insert-picture'] = (
+    '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="%s" '
+    'stroke="%s" stroke-width="1"/>' % (LIGHT_1, INK) +
+    '<circle cx="5.5" cy="6" r="1.6" fill="%s"/>' % YELLOW_5 +
+    '<path d="M2 13 6.2 8.4 8.8 11 10.8 9 14 13Z" fill="%s"/>' % GREEN_4
+)
+
+# Slide Show: a projection screen on its stand, with a play mark on it.
+ICONS['w42-slide-show'] = (
+    '<rect x="1" y="1.5" width="14" height="1.6" rx="0.8" fill="%s"/>' % DARK_1 +
+    '<rect x="2.5" y="3" width="11" height="8" fill="%s" stroke="%s" '
+    'stroke-width="1"/>' % (LIGHT_1, INK) +
+    '<path d="M6.8 5 10.4 7 6.8 9Z" fill="%s"/>' % BLUE_4 +
+    '<path d="M8 11.5V15M5.5 15 8 12.5 10.5 15" fill="none" stroke="%s" '
+    'stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>' % INK
+)
+
 ICONS['w42-spelling'] = (
     page(x=1, y=1, w=10, h=12, fold=3) +
     rules(3, [6, 8], 5) +

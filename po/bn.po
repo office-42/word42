@@ -5384,3 +5384,11 @@ msgstr "আফ্রিকান্স"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(নথির ডিফল্ট)"
+
+#: src/ui/w42-window.c
+msgid "Font Color"
+msgstr "ফন্টের রং"
+
+#: src/ui/w42-window.c
+msgid "Show as Slide Show"
+msgstr "স্লাইড শো হিসেবে দেখান"

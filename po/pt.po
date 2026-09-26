@@ -5422,3 +5422,11 @@ msgstr "Africâner"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(padrão do documento)"
+
+#: src/ui/w42-window.c
+msgid "Font Color"
+msgstr "Cor da fonte"
+
+#: src/ui/w42-window.c
+msgid "Show as Slide Show"
+msgstr "Mostrar como apresentação"

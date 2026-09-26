@@ -353,13 +353,17 @@ Early, but real. Word42 today is a working word processor:
   switch is there and in Tools ▸ Options. The correction and the character
   that prompted it undo together.
 
-- **Slides** — View ▸ Slide Show puts the document's outline on the screen
-  as a talk: each heading and the lines under it are a slide, in type large
-  enough for a room, the space bar or the arrow keys moving on and Escape
-  ending it. File ▸ Export as Presentation writes the same outline as a
-  `.pptx`, which PowerPoint and Impress open; File ▸ Open reads one back,
-  each slide's title becoming a heading and its lines the paragraphs under
-  it. A word processor is not a presentation program, and Word42 does not
+- **Slides** — View ▸ Slide Show, or the Show as Slide Show button, puts
+  the document's outline on the screen as a talk: each heading and the
+  lines under it are a slide on a 16:9 stage, a Title paragraph a centred
+  title slide, list levels bullets under bullets, the pictures beside the
+  text, the type shrinking when a slide is full; the space bar or the
+  arrow keys move on, a number and Enter jump, B and W blank the screen,
+  Escape ends it. File ▸ Export as Presentation writes the same outline as
+  a 16:9 `.pptx`, which PowerPoint and Impress open, with its levels,
+  pictures and the speaker's notes (the comments on a slide); File ▸ Open
+  reads one back, each slide's title becoming a heading, its bullets list
+  items at their levels, its pictures pictures and its notes a comment. A word processor is not a presentation program, and Word42 does not
   pretend to be one — but a document is a talk waiting to be given.
 
 - **Splash screen** — the logo, centred over the first window for six tenths

@@ -5445,3 +5445,11 @@ msgstr "الأفريقانية"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(افتراضي المستند)"
+
+#: src/ui/w42-window.c
+msgid "Font Color"
+msgstr "لون الخط"
+
+#: src/ui/w42-window.c
+msgid "Show as Slide Show"
+msgstr "العرض كعرض شرائح"

@@ -98,7 +98,7 @@ throw away.
 | AbiWord (`.abw`, `.zabw`) | yes | yes |
 | Web page (`.html`, `.htm`) | yes | yes |
 | Plain text (`.txt`) | yes | yes |
-| Presentation (`.pptx`) | yes, as an outline | yes, from the outline |
+| Presentation (`.pptx`) | yes, as an outline, with pictures and notes | yes, from the outline |
 | E-book (`.epub`) | — | export only |
 | PDF (`.pdf`) | text only, where the PDF library is present | export only |
 
@@ -1027,22 +1027,47 @@ View ▸ Full Screen again.
 
 ### View ▸ Slide Show
 
-The document's outline, presented. Each heading and the lines under it make
-a slide; the paragraphs before the first heading make one of their own. The
-show fills the screen, in type large enough for a room.
+The document's outline, presented; the **Show as Slide Show** button on the
+Standard toolbar starts it too. Each heading and the lines under it make a
+slide; the paragraphs before the first heading make one of their own. The
+show fills the screen on a 16:9 stage, in type large enough for a room.
+
+How the document becomes slides:
+
+- A paragraph in the **Title** style makes a title slide: the title large
+  and centred, the lines under it the subtitle.
+- Bulleted and numbered lists keep their levels: a second-level item is a
+  bullet under a bullet, as in PowerPoint. A paragraph out of a list is
+  put a level down for every half inch it is indented.
+- **Pictures** under a heading go on its slide: beside the text when there
+  is text, filling the slide when there is not.
+- Too many lines for the slide, and the type gets smaller until they fit.
+- A **comment** on the slide's text (Insert ▸ Comment) is a speaker's
+  note: it is not shown, and it is written to the notes page of the
+  `.pptx`.
 
 | Key | Does |
 | --- | --- |
-| Space, Enter, →, ↓, Page Down, click | The next slide |
-| Backspace, ←, ↑, Page Up, right-click | The one before |
+| Space, Enter, →, ↓, Page Down, N, click, wheel down | The next slide |
+| Backspace, ←, ↑, Page Up, P, right-click, wheel up | The one before |
 | Home / End | The first / the last |
+| A number, then Enter | That slide |
+| B or . | A black screen, and back |
+| W or , | A white screen, and back |
 | Escape, Q | End the show |
 
 It starts on the slide the caret is in, so a talk can be picked up where it
-was left. **File ▸ Export as Presentation** writes the same slides as a
-`.pptx` file, and **File ▸ Open** reads one back: each slide's title becomes
-a Heading 1 and its lines the paragraphs under it, which is the outline the
-talk was made from.
+was left.
+
+**File ▸ Export as Presentation** writes the same slides as a 16:9 `.pptx`
+that PowerPoint, Keynote and Impress open: title slides on PowerPoint's
+Title Slide layout, the rest on Title and Content, with the list levels,
+the pictures and the speaker's notes. **File ▸ Open** reads a deck back:
+each slide's title becomes a Heading 1 (a title slide's, the Title style),
+its text the paragraphs under it, bulleted and levelled as the slide had
+them, its pictures after them, and its notes a comment on the title --
+which is the outline the talk was made from, ready to be edited and
+shown again. Footers, dates and slide numbers are left behind.
 
 ### The Window menu
 

@@ -16,6 +16,7 @@
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
 #include "w42-html.h"
+#include "w42-image.h"
 
 #include <math.h>
 #include <string.h>
@@ -84,6 +85,9 @@ struct _W42View {
   gboolean       text_drag_armed;
   gboolean       text_dragging;
   gsize          drop_pos;
+  /* A picture held over the page from outside -- a file manager, a
+   * browser -- shows the same grey caret, at drop_pos. */
+  gboolean       file_dropping;
 
   /* Edit > Repeat: the last action Repeat can do again, stamped with the
    * undo history's state when it was recorded.  Any edit since is one the
@@ -5245,6 +5249,95 @@ on_drag_update (GtkGestureDrag *gesture, double dx, double dy, gpointer data)
     }
 }
 
+/* Pictures dropped on the page from outside go in where they are let
+ * go.  Every file that is a picture goes in, in the order the file
+ * manager listed them; anything else is passed over. */
+static gsize
+view_pos_at_point (W42View *self, double x, double y)
+{
+  int page = 0;
+  double px = 0, py = 0;
+
+  view_widget_to_page (self, x, y, &page, &px, &py);
+  return w42_pt_clamp_pos (view_pt (self),
+                           w42_layout_point_to_pos (self->layout, page, px, py));
+}
+
+static GdkDragAction
+on_picture_drop_motion (GtkDropTarget *target, double x, double y, gpointer data)
+{
+  W42View *self = data;
+
+  (void) target;
+  if (view_pt (self) == NULL)
+    return 0;
+  self->file_dropping = TRUE;
+  self->drop_pos = view_pos_at_point (self, x, y);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return GDK_ACTION_COPY;
+}
+
+static void
+on_picture_drop_leave (GtkDropTarget *target, gpointer data)
+{
+  W42View *self = data;
+
+  (void) target;
+  self->file_dropping = FALSE;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+static gboolean
+on_picture_drop (GtkDropTarget *target, const GValue *value, double x, double y,
+                 gpointer data)
+{
+  W42View *self = data;
+  gboolean any = FALSE;
+
+  (void) target;
+  self->file_dropping = FALSE;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  if (view_pt (self) == NULL)
+    return FALSE;
+
+  view_set_caret (self, view_pos_at_point (self, x, y), FALSE);
+
+  if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
+    {
+      for (GSList *l = g_value_get_boxed (value); l != NULL; l = l->next)
+        {
+          int width = 0, height = 0;
+          const char *format = NULL;
+          GBytes *bytes = w42_image_load_file (G_FILE (l->data), &width, &height,
+                                               &format, NULL);
+
+          if (bytes == NULL)
+            continue;
+          w42_view_insert_picture (self, bytes, format, width, height);
+          g_bytes_unref (bytes);
+          any = TRUE;
+        }
+    }
+  else if (G_VALUE_HOLDS (value, GDK_TYPE_TEXTURE))
+    {
+      GdkTexture *texture = g_value_get_object (value);
+      GBytes *png = texture != NULL ? gdk_texture_save_to_png_bytes (texture) : NULL;
+
+      if (png != NULL)
+        {
+          w42_view_insert_picture (self, png, g_intern_static_string ("png"),
+                                   gdk_texture_get_width (texture),
+                                   gdk_texture_get_height (texture));
+          g_bytes_unref (png);
+          any = TRUE;
+        }
+    }
+
+  if (any)
+    gtk_widget_grab_focus (GTK_WIDGET (self));
+  return any;
+}
+
 static void
 on_drag_end (GtkGestureDrag *gesture, double dx, double dy, gpointer data)
 {
@@ -5610,8 +5703,9 @@ view_draw (W42View *self, cairo_t *cr, int width, int height)
         }
     }
 
-  /* Dragging the selection: a grey caret marks where the text will drop. */
-  if (self->text_dragging)
+  /* Dragging the selection, or a picture from outside: a grey caret marks
+   * where it will drop. */
+  if (self->text_dragging || self->file_dropping)
     {
       int cpage = 0;
       double cx = 0, cy = 0, ch = 0;
@@ -5977,6 +6071,20 @@ w42_view_init (W42View *self)
     g_signal_connect (drag, "drag-update", G_CALLBACK (on_drag_update), self);
     g_signal_connect (drag, "drag-end", G_CALLBACK (on_drag_end), self);
     gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (drag));
+  }
+
+  {
+    /* Files dragged in from Explorer, Files, Dolphin and the rest arrive
+     * as a file list; a picture dragged out of a browser often only as
+     * the picture itself. */
+    GtkDropTarget *target = gtk_drop_target_new (G_TYPE_INVALID, GDK_ACTION_COPY);
+    GType types[] = { GDK_TYPE_FILE_LIST, GDK_TYPE_TEXTURE };
+
+    gtk_drop_target_set_gtypes (target, types, G_N_ELEMENTS (types));
+    g_signal_connect (target, "motion", G_CALLBACK (on_picture_drop_motion), self);
+    g_signal_connect (target, "leave", G_CALLBACK (on_picture_drop_leave), self);
+    g_signal_connect (target, "drop", G_CALLBACK (on_picture_drop), self);
+    gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (target));
   }
 
   motion = gtk_event_controller_motion_new ();

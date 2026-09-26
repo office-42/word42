@@ -268,6 +268,16 @@ popover.menu contents separator {
   background-color: @w42_bar;
 }
 
+/* The arrow half of Font Color and Highlight is a narrow button of its own. */
+.w42-toolbar .w42-split-arrow > button {
+  min-width: 10px;
+  padding: 1px 0;
+}
+
+.w42-toolbar .w42-split-arrow > button image {
+  -gtk-icon-size: 10px;
+}
+
 /* --- fields: the bevel turned inside out ------------------------------ */
 
 .w42-toolbar dropdown > button,

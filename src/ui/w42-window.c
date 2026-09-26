@@ -92,6 +92,14 @@ struct _W42Window {
   GtkWidget   *align_btn[4];
   GtkWidget   *bullets_btn;
   GtkWidget   *numbers_btn;
+  /* Font Color and Highlight: what the button half puts on the selection,
+   * shown as the bar under its letters, and the popover to choose another. */
+  guint32      font_colour;
+  guint8       highlight;      /* Word's colour index; 0 takes it off */
+  GtkWidget   *font_colour_face;
+  GtkWidget   *highlight_face;
+  GtkWidget   *font_colour_menu;
+  GtkWidget   *highlight_menu;
 
   GtkWidget   *menubar;
   GtkWidget   *status_bar;
@@ -4077,6 +4085,9 @@ build_standard_bar (void)
   gtk_box_append (GTK_BOX (bar), tool_button ("w42-undo",          _("Undo"),          "win.undo"));
   gtk_box_append (GTK_BOX (bar), tool_button ("w42-redo",          _("Redo"),          "win.redo"));
   gtk_box_append (GTK_BOX (bar), tool_separator ());
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-insert-picture", _("Insert Picture"), "win.insert-picture"));
+  gtk_box_append (GTK_BOX (bar), tool_button ("w42-slide-show",     _("Show as Slide Show"), "win.slide-show"));
+  gtk_box_append (GTK_BOX (bar), tool_separator ());
   gtk_box_append (GTK_BOX (bar), tool_button ("w42-find",          _("Find"),          "win.find"));
 
   return bar;
@@ -4266,6 +4277,241 @@ list_font_families (void)
   return G_LIST_MODEL (list);
 }
 
+/* Font Color and Highlight, as on Word 97's Formatting bar: a button that
+ * puts the colour last chosen on the selection, and an arrow beside it
+ * with the colours to choose from.  The lists are the Font box's. */
+static const char *const FONT_COLOUR_NAMES[] = {
+  NC_("colour", "Black"), NC_("colour", "Blue"), NC_("colour", "Cyan"),
+  NC_("colour", "Green"), NC_("colour", "Magenta"), NC_("colour", "Red"),
+  NC_("colour", "Yellow"), NC_("colour", "White"), NC_("colour", "Dark Blue"),
+  NC_("colour", "Dark Cyan"), NC_("colour", "Dark Green"), NC_("colour", "Dark Magenta"),
+  NC_("colour", "Dark Red"), NC_("colour", "Dark Yellow"), NC_("colour", "Dark Gray"),
+  NC_("colour", "Light Gray")
+};
+static const guint32 FONT_COLOUR_VALUES[] = {
+  0x000000, 0x0000FF, 0x00FFFF, 0x00FF00, 0xFF00FF, 0xFF0000, 0xFFFF00, 0xFFFFFF,
+  0x000080, 0x008080, 0x008000, 0x800080, 0x800000, 0x808000, 0x808080, 0xC0C0C0
+};
+static const char *const HIGHLIGHT_NAMES[] = {
+  NC_("colour", "Yellow"), NC_("colour", "Bright Green"), NC_("colour", "Turquoise"),
+  NC_("colour", "Pink"), NC_("colour", "Blue"), NC_("colour", "Red"),
+  NC_("colour", "Dark Blue"), NC_("colour", "Teal"), NC_("colour", "Green"),
+  NC_("colour", "Violet"), NC_("colour", "Dark Red"), NC_("colour", "Dark Yellow"),
+  NC_("colour", "Gray 50%"), NC_("colour", "Gray 25%")
+};
+static const guint8 HIGHLIGHT_VALUES[] = { 7, 4, 3, 5, 2, 6, 9, 10, 11, 12, 13, 14, 15, 16 };
+
+static void
+set_source_rgb24 (cairo_t *cr, guint32 rgb)
+{
+  cairo_set_source_rgb (cr, ((rgb >> 16) & 0xFF) / 255.0,
+                        ((rgb >> 8) & 0xFF) / 255.0, (rgb & 0xFF) / 255.0);
+}
+
+/* The face of either button: its letters, and under them a bar in the
+ * colour a press puts on.  No highlight is an empty, outlined bar. */
+static void
+draw_colour_face (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  W42Window *self = data;
+  gboolean is_highlight = GTK_WIDGET (area) == self->highlight_face;
+  PangoLayout *layout = pango_cairo_create_layout (cr);
+  PangoFontDescription *font = pango_font_description_from_string (is_highlight ? "Sans 8" : "Serif Bold 10");
+  int tw, th;
+
+  pango_font_description_set_absolute_size (font, (is_highlight ? 9 : 12) * PANGO_SCALE);
+  pango_layout_set_font_description (layout, font);
+  pango_layout_set_text (layout, is_highlight ? "ab" : "A", -1);
+  pango_layout_get_pixel_size (layout, &tw, &th);
+  cairo_set_source_rgb (cr, 0, 0, 0);
+  cairo_move_to (cr, (width - tw) / 2.0, MAX (0.0, (height - 4 - th) / 2.0));
+  pango_cairo_show_layout (cr, layout);
+  pango_font_description_free (font);
+  g_object_unref (layout);
+
+  if (is_highlight && self->highlight == 0)
+    {
+      cairo_set_source_rgb (cr, 0.5, 0.5, 0.5);
+      cairo_set_line_width (cr, 1);
+      cairo_rectangle (cr, 1.5, height - 4.5, width - 3, 3);
+      cairo_stroke (cr);
+      return;
+    }
+  set_source_rgb24 (cr, is_highlight ? w42_highlight_rgb (self->highlight) : self->font_colour);
+  cairo_rectangle (cr, 1, height - 5, width - 2, 4);
+  cairo_fill (cr);
+}
+
+static void
+draw_swatch (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  (void) area; (void) data;
+  set_source_rgb24 (cr, GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (area), "w42-rgb")));
+  cairo_rectangle (cr, 0, 0, width, height);
+  cairo_fill_preserve (cr);
+  cairo_set_source_rgb (cr, 0.5, 0.5, 0.5);
+  cairo_set_line_width (cr, 1);
+  cairo_rectangle (cr, 0.5, 0.5, width - 1, height - 1);
+  cairo_stroke (cr);
+}
+
+static void
+apply_font_colour (W42Window *self)
+{
+  W42CharFmt want;
+
+  memset (&want, 0, sizeof want);
+  want.color = self->font_colour;
+  w42_view_apply_char_fmt (self->view, W42_CHAR_COLOR, &want);
+  gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+static void
+apply_highlight (W42Window *self)
+{
+  W42CharFmt want;
+
+  memset (&want, 0, sizeof want);
+  want.highlight = self->highlight;
+  w42_view_apply_char_fmt (self->view, W42_CHAR_HIGHLIGHT, &want);
+  gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+static void
+on_font_colour_clicked (GtkButton *button, gpointer data)
+{
+  (void) button;
+  apply_font_colour (data);
+}
+
+static void
+on_highlight_clicked (GtkButton *button, gpointer data)
+{
+  (void) button;
+  apply_highlight (data);
+}
+
+/* A colour chosen from the popover becomes the button's, and goes on. */
+static void
+on_colour_chosen (GtkButton *button, gpointer data)
+{
+  W42Window *self = data;
+  guint value = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "w42-value"));
+
+  if (g_object_get_data (G_OBJECT (button), "w42-highlight") != NULL)
+    {
+      self->highlight = (guint8) value;
+      gtk_menu_button_popdown (GTK_MENU_BUTTON (self->highlight_menu));
+      gtk_widget_queue_draw (self->highlight_face);
+      apply_highlight (self);
+    }
+  else
+    {
+      self->font_colour = value;
+      gtk_menu_button_popdown (GTK_MENU_BUTTON (self->font_colour_menu));
+      gtk_widget_queue_draw (self->font_colour_face);
+      apply_font_colour (self);
+    }
+}
+
+static GtkWidget *
+colour_choice (W42Window *self, gboolean highlight, guint value, guint32 rgb,
+               const char *name, GtkWidget *child)
+{
+  GtkWidget *button = gtk_button_new ();
+
+  if (child == NULL)
+    {
+      child = gtk_drawing_area_new ();
+      gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (child), 14);
+      gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (child), 14);
+      g_object_set_data (G_OBJECT (child), "w42-rgb", GUINT_TO_POINTER (rgb));
+      gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (child), draw_swatch, NULL, NULL);
+    }
+  gtk_button_set_child (GTK_BUTTON (button), child);
+  gtk_widget_set_tooltip_text (button, name);
+  gtk_widget_set_focusable (button, FALSE);
+  g_object_set_data (G_OBJECT (button), "w42-value", GUINT_TO_POINTER (value));
+  if (highlight)
+    g_object_set_data (G_OBJECT (button), "w42-highlight", GINT_TO_POINTER (1));
+  g_signal_connect (button, "clicked", G_CALLBACK (on_colour_chosen), self);
+  return button;
+}
+
+/* The button and its arrow, side by side.  The popover lists the colours
+ * four across, under a wide button for Automatic or None. */
+static GtkWidget *
+colour_split_button (W42Window *self, gboolean highlight)
+{
+  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+  GtkWidget *face = gtk_drawing_area_new ();
+  GtkWidget *button = gtk_button_new ();
+  GtkWidget *menu = gtk_menu_button_new ();
+  GtkWidget *popover = gtk_popover_new ();
+  GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+  GtkWidget *grid = gtk_grid_new ();
+  const char *tooltip = highlight ? _("Highlight") : _("Font Color");
+  guint n = highlight ? G_N_ELEMENTS (HIGHLIGHT_VALUES) : G_N_ELEMENTS (FONT_COLOUR_VALUES);
+
+  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (face), 16);
+  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (face), 16);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (face), draw_colour_face, self, NULL);
+  gtk_button_set_child (GTK_BUTTON (button), face);
+  gtk_widget_set_tooltip_text (button, tooltip);
+  gtk_widget_set_focusable (button, FALSE);
+  g_signal_connect (button, "clicked",
+                    highlight ? G_CALLBACK (on_highlight_clicked) : G_CALLBACK (on_font_colour_clicked),
+                    self);
+
+  gtk_grid_set_row_spacing (GTK_GRID (grid), 2);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 2);
+  for (guint i = 0; i < n; i++)
+    {
+      guint value = highlight ? HIGHLIGHT_VALUES[i] : FONT_COLOUR_VALUES[i];
+      guint32 rgb = highlight ? w42_highlight_rgb (HIGHLIGHT_VALUES[i]) : FONT_COLOUR_VALUES[i];
+      const char *name = g_dpgettext2 (NULL, "colour", highlight ? HIGHLIGHT_NAMES[i] : FONT_COLOUR_NAMES[i]);
+
+      gtk_grid_attach (GTK_GRID (grid), colour_choice (self, highlight, value, rgb, name, NULL),
+                       (int) (i % 4), (int) (i / 4), 1, 1);
+    }
+  {
+    /* Translators: no highlight colour, and the automatic text colour. */
+    const char *word = highlight ? C_("colour", "None") : C_("colour", "Auto");
+
+    gtk_box_append (GTK_BOX (content),
+                    colour_choice (self, highlight, 0, 0, word, gtk_label_new (word)));
+  }
+  gtk_box_append (GTK_BOX (content), grid);
+  gtk_widget_set_margin_start (content, 3);
+  gtk_widget_set_margin_end (content, 3);
+  gtk_widget_set_margin_top (content, 3);
+  gtk_widget_set_margin_bottom (content, 3);
+  gtk_popover_set_child (GTK_POPOVER (popover), content);
+  gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
+  gtk_widget_add_css_class (popover, "menu");
+  gtk_widget_add_css_class (popover, "w42-palette");
+
+  gtk_menu_button_set_popover (GTK_MENU_BUTTON (menu), popover);
+  gtk_widget_set_tooltip_text (menu, tooltip);
+  gtk_widget_set_focusable (menu, FALSE);
+  gtk_widget_add_css_class (menu, "w42-split-arrow");
+
+  gtk_box_append (GTK_BOX (box), button);
+  gtk_box_append (GTK_BOX (box), menu);
+
+  if (highlight)
+    {
+      self->highlight_face = face;
+      self->highlight_menu = menu;
+    }
+  else
+    {
+      self->font_colour_face = face;
+      self->font_colour_menu = menu;
+    }
+  return box;
+}
+
 static GtkWidget *
 build_format_bar (W42Window *self)
 {
@@ -4373,6 +4619,14 @@ build_format_bar (W42Window *self)
   g_signal_connect (self->bullets_btn, "toggled", G_CALLBACK (on_list_toggled), self);
   gtk_box_append (GTK_BOX (bar), self->numbers_btn);
   gtk_box_append (GTK_BOX (bar), self->bullets_btn);
+
+  gtk_box_append (GTK_BOX (bar), tool_separator ());
+
+  /* Word 97's defaults: a press of Highlight is yellow, of Font Color red. */
+  self->highlight = 7;
+  self->font_colour = 0xFF0000;
+  gtk_box_append (GTK_BOX (bar), colour_split_button (self, TRUE));
+  gtk_box_append (GTK_BOX (bar), colour_split_button (self, FALSE));
 
   return bar;
 }

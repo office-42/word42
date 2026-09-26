@@ -5402,3 +5402,11 @@ msgstr "افریکانز"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(دستاویز کا طے شدہ)"
+
+#: src/ui/w42-window.c
+msgid "Font Color"
+msgstr "فونٹ کا رنگ"
+
+#: src/ui/w42-window.c
+msgid "Show as Slide Show"
+msgstr "سلائیڈ شو کے طور پر دکھائیں"
