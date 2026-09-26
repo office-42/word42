@@ -2170,8 +2170,8 @@ static const char * const VIEW_NAMES[] = {
   NC_("view", "Normal"), NC_("view", "Online Layout"), NC_("view", "Page Layout"), NULL
 };
 static const char * const VIEW_KEYS[]  = { "normal", "online", "page-layout" };
-static const char * const ZOOM_NAMES[] = { "50%", "75%", "100%", "150%", "200%", NULL };
-static const int ZOOM_VALUES[] = { 50, 75, 100, 150, 200 };
+static const char * const ZOOM_NAMES[] = { "50%", "75%", "100%", "125%", "150%", "200%", NULL };
+static const int ZOOM_VALUES[] = { 50, 75, 100, 125, 150, 200 };
 
 static void
 on_options_ok (GtkButton *button, gpointer data)
@@ -2247,7 +2247,7 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
   GtkWidget *content, *grid;
   char *default_view;
   int zoom;
-  guint zoom_index = 1;
+  guint zoom_index = 3;
 
   g_return_if_fail (W42_IS_VIEW (view));
 
@@ -2268,7 +2268,7 @@ w42_options_dialog_show (GtkWindow *parent, W42View *view)
                                       : g_str_equal (default_view, "online") ? 1 : 0);
   g_free (default_view);
 
-  zoom = w42_settings_get_int ("zoom", 100);
+  zoom = w42_settings_get_int ("zoom", 125);
   for (guint i = 0; i < G_N_ELEMENTS (ZOOM_VALUES); i++)
     if (ZOOM_VALUES[i] == zoom)
       zoom_index = i;
@@ -6383,7 +6383,7 @@ w42_summary_dialog_show (GtkWindow *parent, W42View *view)
 typedef struct {
   W42View   *view;
   GtkWidget *window;
-  GtkWidget *radios[6];    /* 200%, 100%, 75%, Page Width, Whole Page, Percent */
+  GtkWidget *radios[7];    /* 200%, 125%, 100%, 75%, Page Width, Whole Page, Percent */
   GtkWidget *percent;
 } ZoomBox;
 
@@ -6391,14 +6391,14 @@ static void
 on_zoom_radio (GtkCheckButton *button, gpointer data)
 {
   ZoomBox *box = data;
-  static const double fixed[] = { 2.0, 1.0, 0.75 };
+  static const double fixed[] = { 2.0, 1.25, 1.0, 0.75 };
 
   if (!gtk_check_button_get_active (button))
     return;
-  for (guint i = 0; i < 5; i++)
+  for (guint i = 0; i < 6; i++)
     if (box->radios[i] == GTK_WIDGET (button))
       {
-        double zoom = i < 3 ? fixed[i] : w42_view_fit_zoom (box->view, i == 4);
+        double zoom = i < 4 ? fixed[i] : w42_view_fit_zoom (box->view, i == 5);
 
         /* The box says what the choice comes to. */
         gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->percent), lround (zoom * 100));
@@ -6413,8 +6413,8 @@ on_zoom_percent (GtkSpinButton *spin, gpointer data)
   (void) spin;
   /* Typing a figure of one's own is choosing Percent. */
   if (gtk_widget_has_focus (box->percent) &&
-      !gtk_check_button_get_active (GTK_CHECK_BUTTON (box->radios[5])))
-    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->radios[5]), TRUE);
+      !gtk_check_button_get_active (GTK_CHECK_BUTTON (box->radios[6])))
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (box->radios[6]), TRUE);
 }
 
 static void
@@ -6433,12 +6433,12 @@ w42_zoom_dialog_show (GtkWindow *parent, W42View *view)
 {
   /* The percentages are shown as they are; the words are N_()-marked. */
   static const char *const names[] = {
-    "_200%", "_100%", "_75%", N_("Page _Width"), N_("W_hole Page"), N_("_Percent:")
+    "_200%", N_("12_5%"), "_100%", "_75%", N_("Page _Width"), N_("W_hole Page"), N_("_Percent:")
   };
   ZoomBox *box = g_new0 (ZoomBox, 1);
   GtkWidget *content, *grid;
   double zoom = w42_view_get_zoom (view);
-  guint chosen = 5;
+  guint chosen = 6;
 
   box->view = view;
   box->window = dialog_shell (parent, _("Zoom"), &content, view);
@@ -6456,11 +6456,12 @@ w42_zoom_dialog_show (GtkWindow *parent, W42View *view)
   box->percent = gtk_spin_button_new_with_range (25, 500, 1);
   gtk_spin_button_set_value (GTK_SPIN_BUTTON (box->percent), lround (zoom * 100));
   gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (box->percent), TRUE);
-  gtk_grid_attach (GTK_GRID (grid), box->percent, 1, 5, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), box->percent, 1, 6, 1, 1);
 
   if (ABS (zoom - 2.0) < 0.005)  chosen = 0;
-  if (ABS (zoom - 1.0) < 0.005)  chosen = 1;
-  if (ABS (zoom - 0.75) < 0.005) chosen = 2;
+  if (ABS (zoom - 1.25) < 0.005) chosen = 1;
+  if (ABS (zoom - 1.0) < 0.005)  chosen = 2;
+  if (ABS (zoom - 0.75) < 0.005) chosen = 3;
   gtk_check_button_set_active (GTK_CHECK_BUTTON (box->radios[chosen]), TRUE);
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)

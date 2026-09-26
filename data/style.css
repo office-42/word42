@@ -26,6 +26,9 @@
 @define-color w42_title      #000080;
 @define-color w42_title_text #ffffff;
 @define-color w42_select     #000080;
+/* The toolbars sit a shade brighter than the rest of the chrome. */
+@define-color w42_bar        #dcdcdc;
+@define-color w42_bar_hover  #ececec;
 
 /* The whole of the chrome is set in one small sans, as the original was.
  * The dialogs are chrome too: they are their own windows, so they do not
@@ -240,7 +243,7 @@ popover.menu contents separator {
 /* --- toolbars --------------------------------------------------------- */
 
 .w42-toolbar {
-  background-color: @w42_face;
+  background-color: @w42_bar;
   border-bottom: 1px solid @w42_shadow;
   padding: 2px 3px;
 }
@@ -249,6 +252,20 @@ popover.menu contents separator {
   background-color: @w42_shadow;
   min-width: 1px;
   margin: 2px 3px;
+}
+
+/* The buttons take the bar's brighter face, and keep their bevel. */
+.w42-toolbar button {
+  background-color: @w42_bar;
+}
+
+.w42-toolbar button:hover {
+  background-color: @w42_bar_hover;
+}
+
+.w42-toolbar button:active,
+.w42-toolbar button:checked {
+  background-color: @w42_bar;
 }
 
 /* --- fields: the bevel turned inside out ------------------------------ */
@@ -289,7 +306,7 @@ popover.menu contents separator {
 
 /* The arrow at the right of a field is itself a little raised button. */
 .w42-toolbar dropdown > button > arrow {
-  background-color: @w42_face;
+  background-color: @w42_bar;
   border: 1px solid;
   border-top-color: @w42_highlight;
   border-left-color: @w42_highlight;

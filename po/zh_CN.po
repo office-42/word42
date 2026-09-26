@@ -232,6 +232,14 @@ msgid "_100%"
 msgstr "_100%"
 
 #: data/ui/menus.ui:239
+msgid "125%"
+msgstr "125%"
+
+#: src/ui/w42-dialogs.c:6436
+msgid "12_5%"
+msgstr "12_5%"
+
+#: data/ui/menus.ui:239
 msgid "1_50%"
 msgstr "1_50%"
 

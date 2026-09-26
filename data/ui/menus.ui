@@ -236,6 +236,11 @@
             <attribute name="target" type="d">1.0</attribute>
           </item>
           <item>
+            <attribute name="label" translatable="yes">125%</attribute>
+            <attribute name="action">win.zoom</attribute>
+            <attribute name="target" type="d">1.25</attribute>
+          </item>
+          <item>
             <attribute name="label" translatable="yes">1_50%</attribute>
             <attribute name="action">win.zoom</attribute>
             <attribute name="target" type="d">1.5</attribute>

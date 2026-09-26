@@ -47,8 +47,8 @@ static void window_saved (W42Window *self, gboolean succeeded);
 
 /* The zoom steps the Standard bar offers; also what Options can make the
  * default. */
-static const double ZOOM_STEPS[] = { 0.5, 0.75, 1.0, 1.5, 2.0 };
-static const char  *ZOOM_LABELS[] = { "50%", "75%", "100%", "150%", "200%" };
+static const double ZOOM_STEPS[] = { 0.5, 0.75, 1.0, 1.25, 1.5, 2.0 };
+static const char  *ZOOM_LABELS[] = { "50%", "75%", "100%", "125%", "150%", "200%" };
 /* After the steps, the box offers the two fits Word 97's did; and after
  * those, when the zoom is none of the above, one entry saying what it
  * is, spliced in and out as the zoom changes. */
@@ -1667,7 +1667,7 @@ static void
 window_apply_settings (W42Window *self)
 {
   char *view = w42_settings_get_string ("default-view", "page-layout");
-  int zoom = w42_settings_get_int ("zoom", 100);
+  int zoom = w42_settings_get_int ("zoom", 125);
   W42ViewMode mode = view_mode_from_name (view);
   GAction *act;
 
