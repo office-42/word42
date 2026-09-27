@@ -120,6 +120,15 @@ if hyphen_dep.found()
                         language: 'c')
 endif
 
+# File > Versions keeps a document's versions in Git.  libgit2 reads and
+# writes the repository in-process, so no git program need be installed;
+# without it Word42 still builds, and File > Versions says what is missing.
+# 1.0 is the first to have the calls under the names used here.
+libgit2_dep = dependency('libgit2', version: '>= 1.0', required: false)
+if libgit2_dep.found()
+  add_project_arguments('-DHAVE_LIBGIT2=1', language: 'c')
+endif
+
 # The thesaurus reads MyThes files -- th_en_US_v2.dat and .idx, the ones
 # LibreOffice uses -- and needs no library; this is where an installed
 # copy is looked for, after the usual system folders.
@@ -148,6 +157,9 @@ endif
 if enchant_dep.found()
   core_deps += [enchant_dep]
 endif
+if libgit2_dep.found()
+  core_deps += [libgit2_dep]
+endif
 app_deps  = core_deps + [gtk_dep]
 
 subdir('po')
@@ -163,4 +175,5 @@ summary({
     'PDF import (poppler)' : poppler_dep.found(),
     'Spelling (enchant)'   : enchant_dep.found(),
     'Hyphenation (hyphen)' : hyphen_dep.found(),
+    'Versions (libgit2)'   : libgit2_dep.found(),
   }, section: 'word42 ' + meson.project_version())

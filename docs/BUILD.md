@@ -25,15 +25,20 @@ meson install -C builddir
 
 ## Optional
 
-Four things are found if they are installed and done without if not:
-**poppler-glib** to read PDF, **Enchant** (with a Hunspell dictionary)
-for spelling, **libhyphen** with a `hyph_*.dic` for hyphenation, and a
-**MyThes** thesaurus -- `th_en_US_v2.dat` and `.idx`, the pair
-LibreOffice uses -- for Tools ▸ Language ▸ Thesaurus. The thesaurus
-needs no library: the files are looked for in the mythes folder
+Five things are found if they are installed and done without if not:
+**poppler-glib** to read PDF and to draw the LaTeX preview, **libgit2**
+(1.0 or newer) for File ▸ Versions, **Enchant** (with a Hunspell
+dictionary) for spelling, **libhyphen** with a `hyph_*.dic` for
+hyphenation, and a **MyThes** thesaurus -- `th_en_US_v2.dat` and `.idx`,
+the pair LibreOffice uses -- for Tools ▸ Language ▸ Thesaurus. The
+thesaurus needs no library: the files are looked for in the mythes folder
 (`/usr/share/mythes`, `$prefix/share/mythes`, or `W42_THESAURUS_DIR`).
-On Debian and Ubuntu: `libpoppler-glib-dev libenchant-2-dev
-hunspell-en-us libhyphen-dev hyphen-en-us mythes-en-us`.
+On Debian and Ubuntu: `libpoppler-glib-dev libgit2-dev libenchant-2-dev
+hunspell-en-us libhyphen-dev hyphen-en-us mythes-en-us`; in Homebrew
+`poppler libgit2 enchant`; in MSYS2 `poppler:p libgit2:p enchant:p`.
+
+LaTeX mode and the LaTeX preview run a TeX engine -- Tectonic, LuaLaTeX,
+XeLaTeX or pdfLaTeX -- at run time, and need none to build.
 
 The translations in `po/` are compiled by gettext's **msgfmt** (the
 `gettext` package on Linux and in Homebrew, `gettext-tools` in MSYS2);

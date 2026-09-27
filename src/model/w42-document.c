@@ -17,6 +17,7 @@ struct _W42Document {
   W42PageSetup   page;
   gboolean       modified;
   guint          untitled_number;
+  char          *title;           /* an unsaved document's own name, or NULL */
   gsize          saved_undo_pos;    /* the undo state when last clean */
   guint64        saved_serial;
   gboolean       unrecorded;      /* a change the undo history does not hold */
@@ -37,6 +38,7 @@ w42_document_finalize (GObject *object)
   W42Document *self = W42_DOCUMENT (object);
 
   g_clear_object (&self->file);
+  g_clear_pointer (&self->title, g_free);
   g_clear_pointer (&self->pt, w42_pt_free);
 
   G_OBJECT_CLASS (w42_document_parent_class)->finalize (object);
@@ -187,12 +189,24 @@ w42_document_get_title (W42Document *self)
 
   if (self->file != NULL)
     return g_file_get_basename (self->file);
+  if (self->title != NULL)
+    return g_strdup (self->title);
 
   /* Translators: the name of a new document not yet saved, shown in
    * the title bar and also used as its file name, so the translation
    * must be usable as one: no dots, slashes, backslashes, colons or
    * other characters a file name cannot hold.  Keep %u, its number. */
   return g_strdup_printf (_("Document%u"), self->untitled_number);
+}
+
+void
+w42_document_set_title (W42Document *self, const char *title)
+{
+  g_return_if_fail (W42_IS_DOCUMENT (self));
+
+  g_free (self->title);
+  self->title = title != NULL && *title != '\0' ? g_strdup (title) : NULL;
+  w42_document_touch (self);
 }
 
 gboolean

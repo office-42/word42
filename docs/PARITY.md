@@ -88,11 +88,11 @@ yardstick.
 | Comments | full | full | yes |
 | Track changes (mark, accept/reject all) | full, one author | full, coloured by author | full |
 | Compare Documents | full (paragraphs, then words; one undo step) | yes | no |
-| Versions kept inside the document | no | yes | no |
+| Versions (File > Versions) | yes, kept in Git beside the document: Save Now, at every save, open, compare, restore | yes, inside the document | no |
 | Mail merge (CSV) | full | full | yes |
 | Envelopes and labels | full (a document of their own) | full | no |
 | Templates and wizards | built-in ones, and a folder of your own | full, with wizards | New from Template |
-| Equations | no | Equation Editor 3.0 | yes (MathML) |
+| Equations | in LaTeX's notation, set by LaTeX in the preview and the PDF | Equation Editor 3.0 | yes (MathML) |
 | Macros | Word42 Basic: a VBA dialect on the MY-BASIC engine, with Selection, ActiveDocument, Application, Documents, MsgBox and InputBox | VBA | no (plugins) |
 
 ## Files
@@ -151,7 +151,7 @@ AutoCorrect, AutoText with its tips, the Document Map, mail merge,
 macros in a VBA dialect, Online Layout view, Compare Documents, the
 table of figures, and Word 97's own .doc read and written.  It lacks positioned text
 boxes and the Drawing toolbar's editable objects, Outline view, grammar,
-Equation Editor, versions, and vertical text; it exceeds Word 97 in
+an Equation Editor of its own, and vertical text; it exceeds Word 97 in
 Unicode, right-to-left text, PDF and every file format made since.
 
 Against **AbiWord**, Word42 covers the everyday word-processing set —

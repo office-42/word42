@@ -4,6 +4,7 @@ data/ui/menus.ui
 src/io/w42-abw.c
 src/io/w42-doc.c
 src/io/w42-docx.c
+src/io/w42-git.c
 src/io/w42-htmlin.c
 src/io/w42-io.c
 src/io/w42-merge.c
@@ -23,6 +24,8 @@ src/ui/w42-dialogs.c
 src/ui/w42-docmap.c
 src/ui/w42-find-dialog.c
 src/ui/w42-help.c
+src/ui/w42-latex-preview.c
+src/ui/w42-latex-run.c
 src/ui/w42-macro.c
 src/ui/w42-preview.c
 src/ui/w42-print.c
@@ -31,6 +34,7 @@ src/ui/w42-settings.c
 src/ui/w42-slideshow.c
 src/ui/w42-spell-dialog.c
 src/ui/w42-thesaurus-dialog.c
+src/ui/w42-versions.c
 src/ui/w42-view.c
 src/ui/w42-window.c
 src/util/w42-image.c

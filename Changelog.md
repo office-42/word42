@@ -13,6 +13,32 @@
   lists, tables, pictures, links, headers, footers and page numbers are
   carried over. Word42 uses Tectonic, LuaLaTeX, XeLaTeX or pdfLaTeX,
   whichever is installed. Save As also writes the LaTeX source (.tex).
+- **Versions, kept in Git** (File ▸ Versions), Word 97's box: Save Now
+  with a comment, a check box to keep a version each time the document
+  is saved, and the versions by date, author and comment, to open,
+  compare with the document or restore. Each version is a commit of the
+  document's file in a Git repository in its folder -- the one already
+  there, or a new one -- so `git log` and a push to a server work on them
+  as on any other. It is chosen document by document, and nothing else in
+  the repository is touched. Git is built in; no git program is needed.
+- **LaTeX Preview** (File ▸ LaTeX Preview) is now a pane beside the page
+  that sets the document again whenever the typing pauses. It keeps the
+  place being written in sight, and a double-click on a page puts the
+  caret at those words (SyncTeX). The LaTeX source can be shown beside,
+  and when LaTeX stops, what it said is shown over the last good pages,
+  with the line in the source and the paragraph in the text it came from.
+- **Mathematics** in LaTeX's notation -- `$...$`, `\(...\)`, `$$...$$`,
+  `\[...\]` and the amsmath environments such as `equation` and `align`
+  -- is set as mathematics by LaTeX, in the preview and the PDF.
+
+### Improved
+
+- LaTeX: a table of contents or of figures becomes LaTeX's own, a picture
+  with its caption becomes a numbered figure, bookmarks and the links to
+  them work in the PDF, and unnumbered headings are in the PDF's outline.
+- Export as PDF in LaTeX mode runs LaTeX again until the page references
+  settle, and clears away the folder it worked in.
+- `word42 --convert-to=tex` writes the LaTeX source.
 
 ## 1.0.4
 

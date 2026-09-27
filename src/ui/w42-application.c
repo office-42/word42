@@ -384,7 +384,7 @@ w42_application_class_init (W42ApplicationClass *klass)
 static const GOptionEntry OPTIONS[] = {
   { "convert-to", 0, 0, G_OPTION_ARG_STRING, NULL,
     "Write each FILE in another format and exit, without a window "
-    "(pdf, epub, odt, docx, rtf, html, txt, abw)", "FORMAT" },
+    "(pdf, epub, odt, docx, rtf, html, txt, abw, tex)", "FORMAT" },
   { "outdir", 0, 0, G_OPTION_ARG_FILENAME, NULL,
     "Where --convert-to writes; beside each file if not given", "DIR" },
   { NULL, 0, 0, 0, NULL, NULL, NULL }

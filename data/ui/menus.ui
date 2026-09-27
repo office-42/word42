@@ -48,6 +48,10 @@
           <attribute name="action">win.save-all</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">V_ersions...</attribute>
+          <attribute name="action">win.versions</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Summary _Info...</attribute>
           <attribute name="action">win.summary</attribute>
         </item>

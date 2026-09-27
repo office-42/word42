@@ -120,17 +120,25 @@ text carries the text.
 ### LaTeX mode
 
 **File ▸ LaTeX Mode** makes LaTeX the typesetter behind your PDFs. While it
-is on, **File ▸ Export as PDF** and **File ▸ LaTeX Preview** hand the
-document to LaTeX. The PDF comes out in Latin Modern, the typeface of
-scientific papers and master's theses, with lines broken by Knuth's
-algorithm, ligatures, hyphenation and microtype.
+is on, **File ▸ Export as PDF** hands the document to LaTeX. The PDF comes
+out in Latin Modern, the typeface of scientific papers and master's theses,
+with lines broken by Knuth's algorithm, ligatures, hyphenation and
+microtype.
 
 The document is carried over as follows:
 
-- Headings become sections, numbered when the headings are numbered.
+- Headings become sections, numbered when the headings are numbered; the
+  unnumbered ones go in the table of contents and the PDF's outline all
+  the same.
 - The Title and Subtitle paragraphs and the author from Summary Info
   become the title block.
 - The document language selects the hyphenation.
+- A table of contents or a table of figures made with Insert ▸ Index and
+  Tables becomes LaTeX's own, with LaTeX's page numbers.
+- A picture with a caption paragraph just above or below it becomes a
+  figure, which LaTeX numbers and places.
+- Bookmarks become labels, and hyperlinks to them become links within
+  the PDF.
 - Footnotes and endnotes, lists, tables, pictures, links, headers and
   footers, and the page setup all go across.
 
@@ -144,7 +152,55 @@ install: it is one program and fetches the packages it needs. Its first run
 takes about a minute. MiKTeX and TeX Live work as well.
 
 **File ▸ Save As** with the `.tex` extension writes the LaTeX source, with
-the pictures beside it, to edit or compile yourself.
+the pictures beside it, to edit or compile yourself; so does
+`word42 --convert-to=tex FILE`.
+
+### The LaTeX preview
+
+**File ▸ LaTeX Preview** opens a pane at the right of the page showing
+the document as LaTeX sets it, and sets it again each time you stop
+typing for a moment, so the pages keep up with the writing. It works
+whether or not LaTeX mode is on.
+
+- The pane keeps the place you are writing in sight. When the caret
+  jumps, the line it lands on is marked in yellow for a moment.
+- Double-click a line on a page and the caret goes to those words in
+  the document.
+- **Typeset** sets the document now. Clear **As you type** to set it
+  only then.
+- **−**, **+** and **Fit** size the pages; Ctrl and the mouse wheel do too.
+- **Source** shows the LaTeX Word42 wrote. Double-click a line of it to go
+  to the paragraph it came from; **Pages** goes back.
+- **Open** opens the PDF in your PDF viewer.
+
+When LaTeX stops with an error, what it said appears above the pages,
+which stay as they were last set. **Show in Source** marks the line
+LaTeX stopped at; **Go to Text** puts the caret in the paragraph that
+line came from.
+
+The first time, the preview takes as long as LaTeX does; after that it
+reuses what LaTeX worked out before, and a page or two comes back in a
+second or so. The pane is drawn with the PDF library (poppler); a Word42
+built without it opens the PDF in your viewer instead.
+
+### Mathematics
+
+Type mathematics as LaTeX writes it, and LaTeX sets it — in the preview,
+in Export as PDF in LaTeX mode, and in a saved `.tex`:
+
+| Type | For |
+|---|---|
+| `$E = mc^2$` or `\(E = mc^2\)` | a formula in the line |
+| `$$\int_0^1 x^2\,dx$$` or `\[ … \]` | a formula on a line of its own |
+| `\begin{equation} … \end{equation}` | a numbered formula; `align`, `gather` and `multline` work too |
+
+A dollar sign opens a formula only when what follows it is not a space,
+and closes one only when what comes before it is not a space and what
+follows it is not a digit, so "it costs $5 to $10" stays money. Type
+`\$` for a dollar sign that is never a formula. Inside a formula, what
+AutoCorrect and Insert ▸ Symbol put in for you goes to LaTeX as LaTeX
+spells it: ’ as `'`, a dash as `-`, × as `\times`, ≤ as `\le`, α as
+`\alpha`. On Word42's own page a formula shows as you typed it.
 
 ### Summary Info
 
@@ -168,6 +224,39 @@ the last of them closes.
 With **Always create backup copy** on in Tools ▸ Options ▸ Save, the file
 a save is about to replace is kept beside it first as "Backup of" and its
 name — `Backup of Morild.odt` — so a save regretted can be had back.
+
+### File ▸ Versions
+
+Word42 keeps the versions of a document in Git, the system programmers
+keep the history of their work in, for each document you ask it to.
+Each version is the document as it was saved, with when, who saved it
+and a comment. **File ▸ Versions** shows them, newest first:
+
+- **Save Now** saves the document and keeps it as a version, with a
+  comment you write.
+- **Keep a version each time the document is saved** makes every save
+  keep one. It is set for this document alone.
+- **Open** opens a version in a window of its own, as a new document.
+  Double-clicking a version does the same.
+- **Compare** marks in the document what has changed since that version,
+  as Tools ▸ Track Changes ▸ Compare Documents does. Edit ▸ Undo takes the
+  marks away.
+- **Restore** puts the version in place of the document. Save to keep it
+  as the newest version; the versions saved since stay in the list.
+
+The versions go in a Git repository in the document's folder: the one the
+folder is in already, if it is in one, or one Word42 makes there. Each is
+an ordinary commit of the document's file and of nothing else, so other
+files in the folder, and anything already staged in the repository, are
+left as they are; `git log` shows the versions, and the repository can be
+pushed to a server to keep a copy or share it. Who saved a version is
+Git's `user.name` and `user.email`, or else the name in Tools ▸ Options.
+Whether to keep a version at each save is kept in the repository's own
+settings, so it goes with the folder.
+
+Word42 needs no Git program for this: Git is built in. Versions are kept
+of a document saved in a format Word42 reads back as it wrote it — Word,
+RTF, OpenDocument, WordPerfect, AbiWord or plain text.
 
 ### Insert one document into another
 

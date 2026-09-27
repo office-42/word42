@@ -26,6 +26,18 @@ GtkWidget *w42_window_new_for_document (GtkApplication *app, W42Document *doc);
  * w42_window_open says so in a message on the window. */
 gboolean   w42_window_load (W42Window *self, GFile *file, GError **error);
 gboolean   w42_window_open (W42Window *self, GFile *file);
+/* File > Versions.  `file` holds an earlier version of this window's
+ * document.  w42_window_open_version shows it in a window of its own, as
+ * an unsaved document called `title`; w42_window_restore_version puts it
+ * in place of the text here, the document keeping its own file and left
+ * unsaved, so that saving keeps it as the newest version. */
+gboolean   w42_window_open_version (W42Window *self, GFile *file, const char *title,
+                                    GError **error);
+gboolean   w42_window_restore_version (W42Window *self, GFile *file, GError **error);
+/* File > Versions > Save Now: the document saved, and what was saved kept
+ * as a version with `comment`, whether or not a version is kept at every
+ * save.  FALSE when the document could not be saved. */
+gboolean   w42_window_save_version (W42Window *self, const char *comment);
 /* For macros: a line in the status bar, and the document written to a
  * file as File > Save As would, with the title and the recent list
  * following -- or, to a format that does not round trip, exported

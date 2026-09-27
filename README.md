@@ -17,7 +17,9 @@ views and print preview — reading and writing
 RTF, OpenDocument .odt, Word .docx and .doc, WordPerfect .wpd, AbiWord .abw,
 HTML, PDF and plain text, and writing EPUB e-books and LaTeX. A LaTeX mode
 typesets PDFs with LaTeX, in the Latin Modern of scientific papers and
-theses. Word 97 is the yardstick: its menus
+theses, with mathematics typed as LaTeX writes it and a preview beside
+the page that follows the typing. File ▸ Versions keeps a document's
+versions in Git, document by document. Word 97 is the yardstick: its menus
 are the specification and [docs/PARITY.md](docs/PARITY.md) keeps the score against it.
 [docs/STATUS.md](docs/STATUS.md) lists what it does,
 [Word42.md](Word42.md) what it does not do yet,
@@ -55,9 +57,10 @@ from source; a Flatpak manifest is in `build-aux/`.
 
 Word42 needs a C11 compiler, Meson, Ninja, and GTK 4.10 or newer with
 Pango, Cairo and gdk-pixbuf, plus [Lexbor](https://lexbor.com/) for HTML.
-Reading PDF needs poppler-glib, spelling needs Enchant, hyphenation
-libhyphen and the thesaurus a MyThes file; without any of them Word42
-still builds and says which is missing. Per-platform dependency lists are
+Reading PDF and the LaTeX preview need poppler-glib, File ▸ Versions
+libgit2, spelling Enchant, hyphenation libhyphen and the thesaurus a
+MyThes file; without any of them Word42 still builds and says which is
+missing. Per-platform dependency lists are
 in [docs/BUILD.md](docs/BUILD.md).
 
 ```sh

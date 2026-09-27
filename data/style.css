@@ -366,6 +366,33 @@ popover.menu contents separator {
   color: #ffffff;
 }
 
+/* File > Versions: the versions kept, in the same plain white list. */
+.w42-versions {
+  background: #ffffff;
+  color: #000000;
+}
+.w42-versions row:selected {
+  background-color: #000080;
+  color: #ffffff;
+}
+
+/* File > LaTeX Preview: a pane of the chrome's grey at the right of the
+ * page, and what LaTeX said when it stopped in the pale red of a warning
+ * over the pages it set last. */
+.w42-latex-preview {
+  background-color: @w42_face;
+  border-left: 1px solid @w42_shadow;
+}
+.w42-latex-error {
+  background-color: #ffe4e1;
+  color: #000000;
+  border-bottom: 1px solid @w42_shadow;
+  padding: 4px 6px;
+}
+.w42-latex-source {
+  font-size: 10pt;
+}
+
 /* --- status bar ------------------------------------------------------- */
 
 .w42-statusbar {

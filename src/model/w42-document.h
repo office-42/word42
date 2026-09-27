@@ -36,6 +36,10 @@ GFile    *w42_document_get_file        (W42Document *self);
 void      w42_document_set_file        (W42Document *self, GFile *file);
 /* "Document1" for an unsaved document, otherwise the basename. */
 char     *w42_document_get_title       (W42Document *self);
+/* The name an unsaved document goes by instead of "Document1", until
+ * it has a file: a version opened from File > Versions is named after
+ * the document it is a version of.  NULL goes back to "Document1". */
+void      w42_document_set_title       (W42Document *self, const char *title);
 
 gboolean  w42_document_load            (W42Document *self, GFile *file, GError **error);
 gboolean  w42_document_save            (W42Document *self, GFile *file, GError **error);

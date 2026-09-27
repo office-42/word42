@@ -12,7 +12,8 @@ deliberate: the menu bar is the specification.
 
 **Word 97's additions**, in the order they close the most ground:
 positioned text boxes and editable drawing objects; revisions coloured
-by author; Outline view; vertical text in cells; File > Versions.  Done
+by author; Outline view; vertical text in cells.  File > Versions is
+done, kept in Git rather than inside the document.  Done
 in the twelfth round: the Document Map, the page border, the Font box's
 shadow, outline, emboss, engrave and double strikethrough, the
 thesaurus, and AutoComplete tips for AutoText; in the thirteenth:

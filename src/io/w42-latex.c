@@ -19,6 +19,11 @@
 
 #include "w42-image.h"
 
+/* A paragraph's source line is broken at the first space after this many
+ * bytes: short enough that SyncTeX's lines say where in a paragraph the
+ * caret is, long enough to read. */
+#define WRAP_AT 78
+
 typedef struct {
   W42PieceTable     *pt;
   const W42PageSetup *page;
@@ -40,7 +45,58 @@ typedef struct {
   /* The lists open, outermost first: the kind of each level. */
   int                list_depth;
   guint8             list_kind[9];
+
+  /* The lines of `out` counted so far, for the anchors. */
+  GArray            *anchors;      /* W42LatexAnchor, or NULL when not wanted */
+  gsize              counted;
+  guint              lines;
+
+  GHashTable        *labels;       /* the bookmarks already given a \label */
+  GString           *held_labels;  /* labels for after a heading or caption,
+                                    * whose text must hold nothing fragile */
+  gboolean           hold_labels;
+  gboolean           toc_done, tof_done;
+  gboolean           last_plain;   /* the last thing written was a paragraph
+                                    * of text, which a display can join */
 } Writer;
+
+/* ---- lines and anchors ------------------------------------------------ */
+
+/* The line of the source the next character will go on, counting from 1
+ * at the top of the body. */
+static guint
+current_line (Writer *w)
+{
+  for (; w->counted < w->out->len; w->counted++)
+    if (w->out->str[w->counted] == '\n')
+      w->lines++;
+  return w->lines + 1;
+}
+
+/* Bytes since the last line end: how long the line being written is. */
+static gsize
+line_length (const GString *out)
+{
+  gsize n = 0;
+
+  while (n < out->len && out->str[out->len - 1 - n] != '\n')
+    n++;
+  return n;
+}
+
+/* The text of `block` from byte `byte` on starts on the current line. */
+static void
+anchor (Writer *w, const W42Block *block, gsize byte)
+{
+  W42LatexAnchor a;
+
+  if (w->anchors == NULL)
+    return;
+  a.pos = block->start_pos + 1 + (gsize) g_utf8_pointer_to_offset (block->text->str,
+                                                                   block->text->str + byte);
+  a.line = current_line (w);
+  g_array_append_val (w->anchors, a);
+}
 
 /* ---- text ------------------------------------------------------------- */
 
@@ -95,6 +151,37 @@ put_text (GString *out, const char *text, gsize n)
     }
 }
 
+/* A stretch of a paragraph's text, bytes `from` to `to`, with the line
+ * broken at a space once it has grown long.  TeX reads a line end as a
+ * space, so the page is the same; each break is an anchor. */
+static void
+put_run_text (Writer *w, const W42Block *block, gsize from, gsize to)
+{
+  const char *text = block->text->str;
+  const char *p = text + from, *end = text + to;
+
+  while (p < end)
+    {
+      const char *next = g_utf8_next_char (p);
+
+      if (*p == ' ' && next < end && line_length (w->out) >= WRAP_AT)
+        {
+          g_string_append_c (w->out, '\n');
+          anchor (w, block, (gsize) (next - text));
+        }
+      else if (*p == '\\' && next < end && *next == '$')
+        {
+          /* \$ is a dollar sign, as LaTeX spells one: the way to write a
+           * price the rules above would take for mathematics. */
+          g_string_append (w->out, "\\$");
+          next++;
+        }
+      else
+        put_text (w->out, p, (gsize) (next - p));
+      p = next;
+    }
+}
+
 /* A link's address, as \href wants it. */
 static void
 put_url (GString *out, const char *url)
@@ -105,6 +192,213 @@ put_url (GString *out, const char *url)
         g_string_append_c (out, '\\');
       g_string_append_c (out, *p);
     }
+}
+
+/* A bookmark's name as a \label: letters, digits and a few marks, and a
+ * prefix of its own.  A colon, the usual, is a character babel's French
+ * makes active. */
+static void
+put_label (GString *out, const char *name)
+{
+  g_string_append (out, "w42-");
+  for (const char *p = name; *p != '\0'; p++)
+    g_string_append_c (out, g_ascii_isalnum (*p) || *p == '-' || *p == '_' || *p == '.' ? *p : '-');
+}
+
+/* ---- mathematics ------------------------------------------------------ */
+
+typedef struct {
+  gsize    start, end;       /* the whole, delimiters and all, in bytes */
+  gsize    body, body_end;   /* what is between them */
+  gboolean display;
+  const char *env;           /* an amsmath environment, written whole */
+} MathSpan;
+
+static const char * const MATH_ENVS[] = {
+  "equation*", "equation", "align*", "align", "gather*", "gather",
+  "multline*", "multline", "flalign*", "flalign", "alignat*", "alignat",
+  "eqnarray*", "eqnarray", "displaymath", "math",
+};
+
+/* Where `close` next comes in text[from, len), or len. */
+static gsize
+find_from (const char *text, gsize len, gsize from, const char *close)
+{
+  gsize n = strlen (close);
+
+  for (gsize i = from; i + n <= len; i++)
+    if (memcmp (text + i, close, n) == 0)
+      return i;
+  return len;
+}
+
+/* The mathematics in a paragraph, in order.  A span that would take in a
+ * picture or a note's mark is not mathematics: those are not LaTeX. */
+static GArray *
+find_math (const char *text, gsize len)
+{
+  GArray *spans = g_array_new (FALSE, TRUE, sizeof (MathSpan));
+
+  for (gsize i = 0; i < len; )
+    {
+      MathSpan s = { 0 };
+      gboolean found = FALSE;
+
+      if (text[i] == '\\' && i + 1 < len && (text[i + 1] == '(' || text[i + 1] == '['))
+        {
+          gsize close = find_from (text, len, i + 2, text[i + 1] == '(' ? "\\)" : "\\]");
+
+          if (close < len)
+            {
+              s.start = i;
+              s.body = i + 2;
+              s.body_end = close;
+              s.end = close + 2;
+              s.display = text[i + 1] == '[';
+              found = TRUE;
+            }
+        }
+      else if (text[i] == '\\' && g_str_has_prefix (text + i, "\\begin{"))
+        {
+          for (guint e = 0; e < G_N_ELEMENTS (MATH_ENVS) && !found; e++)
+            {
+              char *open = g_strdup_printf ("\\begin{%s}", MATH_ENVS[e]);
+              char *close = g_strdup_printf ("\\end{%s}", MATH_ENVS[e]);
+
+              if (g_str_has_prefix (text + i, open))
+                {
+                  gsize at = find_from (text, len, i + strlen (open), close);
+
+                  if (at < len)
+                    {
+                      s.start = s.body = i;
+                      s.end = s.body_end = at + strlen (close);
+                      s.display = TRUE;
+                      s.env = MATH_ENVS[e];
+                      found = TRUE;
+                    }
+                }
+              g_free (open);
+              g_free (close);
+            }
+        }
+      else if (text[i] == '$' && i + 1 < len && text[i + 1] == '$')
+        {
+          gsize close = find_from (text, len, i + 2, "$$");
+
+          if (close < len && close > i + 2)
+            {
+              s.start = i;
+              s.body = i + 2;
+              s.body_end = close;
+              s.end = close + 2;
+              s.display = TRUE;
+              found = TRUE;
+            }
+        }
+      else if (text[i] == '$' && (i == 0 || text[i - 1] != '\\') &&
+               i + 1 < len && !g_ascii_isspace (text[i + 1]))
+        {
+          /* Pandoc's rule: the closing dollar has no space before it and
+           * no digit after it.  And it is the next one: "$5 to $10, or
+           * US$ 12" is three prices, not a formula with a dollar in it. */
+          gsize k = i + 1;
+
+          while (k < len && (text[k] != '$' || text[k - 1] == '\\'))
+            k++;
+          if (k < len && !g_ascii_isspace (text[k - 1]) &&
+              (k + 1 >= len || !g_ascii_isdigit (text[k + 1])))
+            {
+              s.start = i;
+              s.body = i + 1;
+              s.body_end = k;
+              s.end = k + 1;
+              found = TRUE;
+            }
+        }
+
+      /* 0xFFFC is EF BF BC in UTF-8. */
+      if (found && g_strstr_len (text + s.start, (gssize) (s.end - s.start), "\357\277\274") == NULL)
+        {
+          g_array_append_val (spans, s);
+          i = s.end;
+        }
+      else
+        i++;
+    }
+  return spans;
+}
+
+/* What AutoCorrect and the Symbol box put in for what a mathematician
+ * types: TeX's own spellings of them, inside mathematics, where the
+ * characters themselves would not be set. */
+static const char *
+math_spelling (gunichar c)
+{
+  static const struct { gunichar c; const char *tex; } MAP[] = {
+    { 0x2018, "'" }, { 0x2019, "'" }, { 0x2032, "'" }, { 0x2033, "''" },
+    { 0x201C, "\"" }, { 0x201D, "\"" },
+    { 0x2013, "-" }, { 0x2014, "-" }, { 0x2212, "-" },
+    { 0x00A0, " " }, { 0x2028, " " }, { '\t', " " },
+    { 0x00D7, "\\times " }, { 0x00B7, "\\cdot " }, { 0x22C5, "\\cdot " },
+    { 0x00F7, "\\div " }, { 0x00B1, "\\pm " }, { 0x2213, "\\mp " },
+    { 0x2264, "\\le " }, { 0x2265, "\\ge " }, { 0x2260, "\\ne " },
+    { 0x2248, "\\approx " }, { 0x2261, "\\equiv " }, { 0x221D, "\\propto " },
+    { 0x2192, "\\to " }, { 0x2190, "\\leftarrow " }, { 0x21D2, "\\Rightarrow " },
+    { 0x21D4, "\\Leftrightarrow " }, { 0x221E, "\\infty " }, { 0x2026, "\\ldots " },
+    { 0x2202, "\\partial " }, { 0x2207, "\\nabla " }, { 0x2211, "\\sum " },
+    { 0x220F, "\\prod " }, { 0x222B, "\\int " }, { 0x221A, "\\sqrt " },
+    { 0x2208, "\\in " }, { 0x2209, "\\notin " }, { 0x2282, "\\subset " },
+    { 0x2286, "\\subseteq " }, { 0x222A, "\\cup " }, { 0x2229, "\\cap " },
+    { 0x2205, "\\emptyset " }, { 0x2200, "\\forall " }, { 0x2203, "\\exists " },
+    { 0x00B0, "^\\circ " },
+    { 0x03B1, "\\alpha " }, { 0x03B2, "\\beta " }, { 0x03B3, "\\gamma " },
+    { 0x03B4, "\\delta " }, { 0x03B5, "\\epsilon " }, { 0x03B6, "\\zeta " },
+    { 0x03B7, "\\eta " }, { 0x03B8, "\\theta " }, { 0x03B9, "\\iota " },
+    { 0x03BA, "\\kappa " }, { 0x03BB, "\\lambda " }, { 0x03BC, "\\mu " },
+    { 0x03BD, "\\nu " }, { 0x03BE, "\\xi " }, { 0x03C0, "\\pi " },
+    { 0x03C1, "\\rho " }, { 0x03C3, "\\sigma " }, { 0x03C4, "\\tau " },
+    { 0x03C5, "\\upsilon " }, { 0x03C6, "\\phi " }, { 0x03C7, "\\chi " },
+    { 0x03C8, "\\psi " }, { 0x03C9, "\\omega " },
+    { 0x0393, "\\Gamma " }, { 0x0394, "\\Delta " }, { 0x0398, "\\Theta " },
+    { 0x039B, "\\Lambda " }, { 0x039E, "\\Xi " }, { 0x03A0, "\\Pi " },
+    { 0x03A3, "\\Sigma " }, { 0x03A6, "\\Phi " }, { 0x03A8, "\\Psi " },
+    { 0x03A9, "\\Omega " },
+  };
+
+  for (guint i = 0; i < G_N_ELEMENTS (MAP); i++)
+    if (MAP[i].c == c)
+      return MAP[i].tex;
+  return NULL;
+}
+
+static void
+put_math (Writer *w, const char *text, const MathSpan *s)
+{
+  GString *o = w->out;
+
+  if (s->env == NULL)
+    g_string_append (o, s->display ? "\\[" : "\\(");
+  for (const char *p = text + s->body; p < text + s->body_end; p = g_utf8_next_char (p))
+    {
+      gunichar c = g_utf8_get_char (p);
+      const char *tex = math_spelling (c);
+
+      if (tex != NULL)
+        g_string_append (o, tex);
+      else if ((c == '%' || c == '#') && (p == text || p[-1] != '\\'))
+        {
+          /* A bare % would make the rest of the line a comment, taking
+           * the closing delimiter with it; a bare # is a macro's
+           * parameter.  Both are meant as the signs. */
+          g_string_append_c (o, '\\');
+          g_string_append_c (o, (char) c);
+        }
+      else
+        g_string_append_unichar (o, c);
+    }
+  if (s->env == NULL)
+    g_string_append (o, s->display ? "\\]" : "\\)");
 }
 
 /* ---- pictures --------------------------------------------------------- */
@@ -164,7 +458,15 @@ open_format (Writer *w, const W42CharFmt *ch, const W42CharFmt *para)
 
   if (ch->revision == 2)
     return -1;                                   /* a deletion: not in the text */
-  if (ch->link != NULL)
+  if (ch->link != NULL && ch->link[0] == '#')
+    {
+      /* A link to a bookmark: to its \label, in the same PDF. */
+      g_string_append (o, "\\hyperref[");
+      put_label (o, ch->link + 1);
+      g_string_append (o, "]{");
+      n++;
+    }
+  else if (ch->link != NULL)
     {
       g_string_append (o, "\\href{");
       put_url (o, ch->link);
@@ -200,50 +502,123 @@ open_format (Writer *w, const W42CharFmt *ch, const W42CharFmt *para)
   return n;
 }
 
-/* A paragraph's runs, with its notes, fields and pictures. */
+/* A bookmark the reader may be sent to: a \label where it starts, with
+ * an anchor of its own there, or -- in a heading or a caption, whose
+ * text is copied into the table of contents -- after it. */
 static void
-write_runs (Writer *w, const W42Block *block, const W42CharFmt *para)
+put_bookmark (Writer *w, const char *name)
+{
+  GString *o;
+
+  if (name == NULL || name[0] == '_' || g_hash_table_contains (w->labels, name))
+    return;
+  g_hash_table_add (w->labels, (gpointer) name);
+  o = w->hold_labels ? w->held_labels : w->out;
+  if (!w->hold_labels)
+    g_string_append (o, "\\phantomsection");
+  g_string_append (o, "\\label{");
+  put_label (o, name);
+  g_string_append_c (o, '}');
+}
+
+/* A paragraph's runs from byte `from` of its text on, with its notes,
+ * fields, pictures and mathematics. */
+static void
+write_runs (Writer *w, const W42Block *block, const W42CharFmt *para, gsize from)
 {
   const char *field = NULL;
+  const char *text = block->text->str;
+  GArray *math = find_math (text, block->text->len);
+  guint m = 0;
+  gsize done = from;             /* the text written up to here */
 
+  anchor (w, block, from);
   for (guint r = 0; r < block->runs->len; r++)
     {
       const W42Run *run = &g_array_index (block->runs, W42Run, r);
       const W42CharFmt *ch = &w42_ap_table_get (w->aps, run->ap)->ch;
+      gsize start = run->byte_offset, end = run->byte_offset + run->n_bytes;
       int close;
+
+      /* Before `from`, or inside mathematics already written whole. */
+      if (end <= done && run->n_bytes > 0)
+        continue;
+      start = MAX (start, done);
 
       if (run->footnote > 0)
         {
           write_note (w, run->footnote_id, run->endnote);
+          done = end;
           continue;
         }
-      close = open_format (w, ch, para);
-      if (close < 0)
-        continue;
-      if (run->object != W42_OBJECT_NONE)
-        put_picture (w, run->object);
-      else if (ch->field != NULL && g_str_equal (ch->field, "PAGE"))
+      if (ch->revision != 2)
+        put_bookmark (w, ch->bookmark);
+      if (run->object != W42_OBJECT_NONE || (ch->field != NULL &&
+          (g_str_equal (ch->field, "PAGE") || g_str_equal (ch->field, "NUMPAGES") ||
+           g_str_equal (ch->field, "DATE"))))
         {
-          if (field != ch->field)
-            g_string_append (w->out, "\\thepage{}");
-        }
-      else if (ch->field != NULL && g_str_equal (ch->field, "NUMPAGES"))
-        {
-          if (field != ch->field)
-            g_string_append (w->out, "\\pageref{LastPage}");
-          w->need_lastpage = TRUE;
-        }
-      else if (ch->field != NULL && g_str_equal (ch->field, "DATE"))
-        {
-          if (field != ch->field)
+          close = open_format (w, ch, para);
+          if (close < 0)
+            {
+              done = end;
+              continue;
+            }
+          if (run->object != W42_OBJECT_NONE)
+            put_picture (w, run->object);
+          else if (g_str_equal (ch->field, "PAGE"))
+            {
+              if (field != ch->field)
+                g_string_append (w->out, "\\thepage{}");
+            }
+          else if (g_str_equal (ch->field, "NUMPAGES"))
+            {
+              if (field != ch->field)
+                g_string_append (w->out, "\\pageref{LastPage}");
+              w->need_lastpage = TRUE;
+            }
+          else if (field != ch->field)
             g_string_append (w->out, "\\today{}");
+          field = ch->field;
+          while (close-- > 0)
+            g_string_append_c (w->out, '}');
+          done = end;
+          continue;
         }
-      else
-        put_text (w->out, block->text->str + run->byte_offset, run->n_bytes);
       field = ch->field;
-      while (close-- > 0)
-        g_string_append_c (w->out, '}');
+
+      /* Text, in pieces around the mathematics in it.  Mathematics is
+       * written whole where it starts, outside the run's formatting, and
+       * may reach into the runs after. */
+      while (start < end)
+        {
+          const MathSpan *span = m < math->len ? &g_array_index (math, MathSpan, m) : NULL;
+          gsize piece;
+
+          if (span != NULL && span->end <= start)
+            {
+              m++;
+              continue;
+            }
+          if (span != NULL && span->start <= start)
+            {
+              if (ch->revision != 2)
+                put_math (w, text, span);
+              start = done = span->end;
+              m++;
+              continue;
+            }
+          piece = span != NULL && span->start < end ? span->start : end;
+          close = open_format (w, ch, para);
+          if (close >= 0)
+            {
+              put_run_text (w, block, start, piece);
+              while (close-- > 0)
+                g_string_append_c (w->out, '}');
+            }
+          start = done = piece;
+        }
     }
+  g_array_free (math, TRUE);
 }
 
 /* A note's paragraphs inside \footnote or \endnote. */
@@ -268,7 +643,7 @@ write_note (Writer *w, int id, gboolean endnote)
         g_string_append (w->out, "\\par ");
       first = FALSE;
       fmt = w42_ap_table_get (w->aps, b->ap);
-      write_runs (w, b, style_char (w, fmt));
+      write_runs (w, b, style_char (w, fmt), 0);
     }
   /* The space a word processor puts after the note's number. */
   while (start < w->out->len && w->out->str[start] == ' ')
@@ -285,6 +660,15 @@ style_char (Writer *w, const W42Fmt *fmt)
   const W42Style *style = fmt->pa.style != NULL ? w42_stylesheet_find (w->sheet, fmt->pa.style) : NULL;
 
   return style != NULL ? &style->ch : &fmt->ch;
+}
+
+/* The labels held back while a heading's or a caption's text was
+ * written, now that it is closed. */
+static void
+put_held_labels (Writer *w)
+{
+  g_string_append_len (w->out, w->held_labels->str, (gssize) w->held_labels->len);
+  g_string_truncate (w->held_labels, 0);
 }
 
 /* ---- lists ------------------------------------------------------------ */
@@ -470,7 +854,7 @@ write_table (Writer *w, guint first)
               {
                 if (!first_para)
                   g_string_append (o, "\\newline ");
-                write_runs (w, p, style_char (w, w42_ap_table_get (w->aps, p->ap)));
+                write_runs (w, p, style_char (w, w42_ap_table_get (w->aps, p->ap)), 0);
               }
             first_para = FALSE;
             i++;
@@ -494,16 +878,149 @@ write_table (Writer *w, guint first)
 
 /* ---- paragraphs ------------------------------------------------------- */
 
-static const char *
-section_command (int level, gboolean numbered)
-{
-  static const char * const COMMANDS[] = {
-    "section", "subsection", "subsubsection", "paragraph", "subparagraph",
-  };
-  static char buf[32];
+static const char * const SECTIONS[] = {
+  "section", "subsection", "subsubsection", "paragraph", "subparagraph",
+};
 
-  g_snprintf (buf, sizeof buf, "\\%s%s{", COMMANDS[CLAMP (level, 1, 5) - 1], numbered ? "" : "*");
-  return buf;
+/* The table Word42 generated that a paragraph belongs to -- "_Toc" for
+ * the contents, "_Tof" for the figures -- or NULL.  LaTeX makes its own. */
+static const char *
+generated_table (Writer *w, const W42Block *b)
+{
+  for (guint r = 0; r < b->runs->len; r++)
+    {
+      const W42Run *run = &g_array_index (b->runs, W42Run, r);
+      const char *mark = w42_ap_table_get (w->aps, run->ap)->ch.bookmark;
+
+      if (mark != NULL && (g_str_equal (mark, "_Toc") || g_str_equal (mark, "_Tof")))
+        return mark;
+      if (run->n_bytes > 0)
+        break;
+    }
+  return NULL;
+}
+
+/* A paragraph holding a picture and nothing else but spaces. */
+static gboolean
+picture_only (Writer *w, const W42Block *b)
+{
+  const W42ParaFmt *pa = &w42_ap_table_get (w->aps, b->ap)->pa;
+  int pictures = 0;
+
+  if (b->table >= 0 || b->note >= 0 || pa->list != W42_LIST_NONE)
+    return FALSE;
+  for (guint r = 0; r < b->runs->len; r++)
+    {
+      const W42Run *run = &g_array_index (b->runs, W42Run, r);
+
+      if (run->object != W42_OBJECT_NONE)
+        pictures++;
+      else if (run->footnote > 0)
+        return FALSE;
+      else
+        for (gsize k = 0; k < run->n_bytes; k++)
+          if (!g_ascii_isspace (b->text->str[run->byte_offset + k]))
+            return FALSE;
+    }
+  return pictures == 1;
+}
+
+static gboolean
+is_caption (Writer *w, const W42Block *b)
+{
+  const char *style = w42_ap_table_get (w->aps, b->ap)->pa.style;
+
+  return b->table < 0 && b->note < 0 && style != NULL && g_ascii_strcasecmp (style, "Caption") == 0 &&
+         b->text->len > 0;
+}
+
+/* The next paragraph of the body after `i`, notes being elsewhere. */
+static guint
+next_body (Writer *w, guint i)
+{
+  while (i < w->blocks->len && ((const W42Block *) g_ptr_array_index (w->blocks, i))->note >= 0)
+    i++;
+  return i;
+}
+
+/* How many bytes the "Figure 3: " label at the front of a caption takes:
+ * a word, a number and a colon, a full stop or a dash.  LaTeX numbers
+ * its figures itself, in the document's language. */
+static gsize
+caption_label (const char *text)
+{
+  const char *p = text;
+
+  while (*p != '\0' && !g_ascii_isspace (*p))
+    p = g_utf8_next_char (p);
+  if (p == text)
+    return 0;
+  while (*p == ' ')
+    p++;
+  if (!g_ascii_isdigit (*p))
+    return 0;
+  while (g_ascii_isdigit (*p))
+    p++;
+  while (*p == ' ')
+    p++;
+  if (*p == ':' || *p == '.' || *p == '-')
+    p++;
+  else if (g_str_has_prefix (p, "\342\200\223") || g_str_has_prefix (p, "\342\200\224"))
+    p += 3;                                              /* an en or em dash */
+  else if (*p != '\0')
+    return 0;
+  while (*p == ' ')
+    p++;
+  return (gsize) (p - text);
+}
+
+/* A picture and its caption as a figure, which LaTeX places, numbers and
+ * lists in \listoffigures; the caption above the picture or below it,
+ * where the document had it. */
+static void
+write_figure (Writer *w, const W42Block *picture, const W42Block *caption, gboolean below)
+{
+  const W42Fmt *cfmt = w42_ap_table_get (w->aps, caption->ap);
+
+  close_lists (w, 0);
+  g_string_append (w->out, "\\begin{figure}[htbp]\n\\centering\n");
+  for (int part = 0; part < 2; part++)
+    if ((part == 0) != below)
+      {
+        g_string_append (w->out, "\\caption{");
+        w->hold_labels = TRUE;
+        write_runs (w, caption, style_char (w, cfmt), caption_label (caption->text->str));
+        w->hold_labels = FALSE;
+        g_string_append (w->out, "}");
+        put_held_labels (w);
+        g_string_append_c (w->out, '\n');
+      }
+    else
+      {
+        write_runs (w, picture, style_char (w, w42_ap_table_get (w->aps, picture->ap)), 0);
+        g_string_append_c (w->out, '\n');
+      }
+  g_string_append (w->out, "\\end{figure}\n\n");
+}
+
+/* A paragraph that is one displayed formula and nothing else. */
+static gboolean
+display_only (const W42Block *b)
+{
+  GArray *math = find_math (b->text->str, b->text->len);
+  gboolean only = FALSE;
+
+  if (math->len == 1 && g_array_index (math, MathSpan, 0).display)
+    {
+      const MathSpan *s = &g_array_index (math, MathSpan, 0);
+
+      only = TRUE;
+      for (gsize k = 0; k < b->text->len && only; k++)
+        if ((k < s->start || k >= s->end) && !g_ascii_isspace (b->text->str[k]))
+          only = FALSE;
+    }
+  g_array_free (math, TRUE);
+  return only;
 }
 
 static void
@@ -518,6 +1035,8 @@ write_body (Writer *w, guint from)
       const W42Fmt *fmt = w42_ap_table_get (w->aps, b->ap);
       const W42ParaFmt *pa = &fmt->pa;
       int outline = pa->style != NULL ? w42_stylesheet_outline (w->sheet, pa->style) : 0;
+      const char *generated;
+      gboolean plain = FALSE;
 
       if (b->note >= 0)
         {
@@ -527,6 +1046,7 @@ write_body (Writer *w, guint from)
       if (b->table >= 0)
         {
           i = write_table (w, i);
+          w->last_plain = FALSE;
           continue;
         }
       if ((pa->page_break_before || pa->section_break) && i > from)
@@ -534,6 +1054,41 @@ write_body (Writer *w, guint from)
           close_lists (w, 0);
           g_string_append (w->out, "\\clearpage\n\n");
         }
+
+      /* The table of contents and the table of figures Word42 made from
+       * the page numbers of its own layout: LaTeX's, from its own. */
+      generated = generated_table (w, b);
+      if (generated != NULL)
+        {
+          gboolean toc = g_str_equal (generated, "_Toc");
+          gboolean *done = toc ? &w->toc_done : &w->tof_done;
+
+          close_lists (w, 0);
+          if (!*done)
+            g_string_append (w->out, toc ? "\\tableofcontents\n\n" : "\\listoffigures\n\n");
+          *done = TRUE;
+          w->last_plain = FALSE;
+          i++;
+          continue;
+        }
+
+      /* A picture with its caption under it or over it. */
+      {
+        guint next = next_body (w, i + 1);
+        const W42Block *nb = next < w->blocks->len ? g_ptr_array_index (w->blocks, next) : NULL;
+
+        if (nb != NULL && ((picture_only (w, b) && is_caption (w, nb)) ||
+                           (is_caption (w, b) && picture_only (w, nb))))
+          {
+            gboolean below = picture_only (w, b);
+
+            write_figure (w, below ? b : nb, below ? nb : b, below);
+            w->last_plain = FALSE;
+            blank = FALSE;
+            i = next + 1;
+            continue;
+          }
+      }
 
       /* A list item: the lists open down to its level, of its kind. */
       if (pa->list != W42_LIST_NONE && pa->list < W42_LIST_KINDS && outline == 0)
@@ -548,9 +1103,10 @@ write_body (Writer *w, guint from)
           while (w->list_depth < depth)
             open_list (w, (W42ListKind) pa->list, w->list_depth == depth - 1 ? pa->list_start : 0);
           g_string_append (w->out, "\\item ");
-          write_runs (w, b, style_char (w, fmt));
+          write_runs (w, b, style_char (w, fmt), 0);
           g_string_append (w->out, "\n");
           blank = FALSE;
+          w->last_plain = FALSE;
           i++;
           continue;
         }
@@ -562,6 +1118,7 @@ write_body (Writer *w, guint from)
           if (!blank && i > from)
             g_string_append (w->out, "\\medskip\n\n");
           blank = TRUE;
+          w->last_plain = FALSE;
           i++;
           continue;
         }
@@ -569,25 +1126,55 @@ write_body (Writer *w, guint from)
 
       if (outline > 0)
         {
-          g_string_append (w->out, section_command (outline, numbered));
-          write_runs (w, b, style_char (w, fmt));
-          g_string_append (w->out, "}\n\n");
+          int level = CLAMP (outline, 1, 5);
+          gsize at;
+          char *title;
+
+          g_string_append_printf (w->out, "\\%s%s{", SECTIONS[level - 1], numbered ? "" : "*");
+          at = w->out->len;
+          w->hold_labels = TRUE;
+          write_runs (w, b, style_char (w, fmt), 0);
+          w->hold_labels = FALSE;
+          title = g_strndup (w->out->str + at, w->out->len - at);
+          g_string_append (w->out, "}");
+          /* An unnumbered heading is in neither the table of contents nor
+           * the PDF's outline unless it is put there. */
+          if (!numbered && strstr (title, "note{") == NULL)
+            g_string_append_printf (w->out, "\\addcontentsline{toc}{%s}{%s}", SECTIONS[level - 1], title);
+          put_held_labels (w);
+          g_string_append (w->out, "\n\n");
+          g_free (title);
+          w->last_plain = FALSE;
           i++;
           continue;
         }
-      if (pa->align == W42_ALIGN_CENTER || pa->align == W42_ALIGN_RIGHT)
+      if (display_only (b))
+        {
+          /* A formula displayed on its own belongs to the paragraph it
+           * follows: begun as a paragraph of its own, it would leave an
+           * empty line above it.  LaTeX centres it, whatever alignment
+           * the paragraph was given to centre it by hand. */
+          if (w->last_plain && g_str_has_suffix (w->out->str, "\n\n"))
+            g_string_truncate (w->out, w->out->len - 1);
+          write_runs (w, b, style_char (w, fmt), 0);
+          g_string_append (w->out, "\n\n");
+          plain = TRUE;
+        }
+      else if (pa->align == W42_ALIGN_CENTER || pa->align == W42_ALIGN_RIGHT)
         {
           const char *env = pa->align == W42_ALIGN_CENTER ? "center" : "flushright";
 
           g_string_append_printf (w->out, "\\begin{%s}\n", env);
-          write_runs (w, b, style_char (w, fmt));
+          write_runs (w, b, style_char (w, fmt), 0);
           g_string_append_printf (w->out, "\n\\end{%s}\n\n", env);
         }
       else
         {
-          write_runs (w, b, style_char (w, fmt));
+          write_runs (w, b, style_char (w, fmt), 0);
           g_string_append (w->out, "\n\n");
+          plain = TRUE;
         }
+      w->last_plain = plain;
       i++;
     }
   close_lists (w, 0);
@@ -708,6 +1295,7 @@ write_preamble (Writer *w, GString *pre, const char *title, const char *subtitle
   g_string_append (pre, "]{geometry}\n"
                         "\\usepackage{graphicx}\n"
                         "\\usepackage[table]{xcolor}\n"
+                        "\\usepackage{amsmath}\n"
                         "\\usepackage{amssymb}\n"
                         "\\usepackage{enumitem}\n"
                         "\\usepackage{array}\n"
@@ -795,13 +1383,22 @@ write_preamble (Writer *w, GString *pre, const char *title, const char *subtitle
 
 /* ---------------------------------------------------------------------- */
 
+static gint
+anchor_order (gconstpointer a, gconstpointer b)
+{
+  const W42LatexAnchor *x = a, *y = b;
+
+  return x->pos < y->pos ? -1 : x->pos > y->pos ? 1 : (int) x->line - (int) y->line;
+}
+
 gboolean
-w42_latex_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError **error)
+w42_latex_export_anchored (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
+                           GArray **anchors, GError **error)
 {
   Writer w;
   GString *pre = g_string_new (NULL);
   char *title = NULL, *subtitle = NULL;
-  guint from = 0;
+  guint from = 0, pre_lines = 0;
   gboolean ok;
 
   memset (&w, 0, sizeof w);
@@ -812,6 +1409,10 @@ w42_latex_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErr
   w.blocks = w42_pt_snapshot_blocks (pt);
   w.out = g_string_new (NULL);
   w.dir = g_file_get_parent (file);
+  w.labels = g_hash_table_new (g_direct_hash, g_direct_equal);    /* interned names */
+  w.held_labels = g_string_new (NULL);
+  if (anchors != NULL)
+    w.anchors = g_array_new (FALSE, FALSE, sizeof (W42LatexAnchor));
   {
     char *base = g_file_get_basename (file);
     char *dot = strrchr (base, '.');
@@ -847,6 +1448,9 @@ w42_latex_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErr
 
   write_body (&w, from);
   write_preamble (&w, pre, title, subtitle);
+  for (gsize k = 0; k < pre->len; k++)
+    if (pre->str[k] == '\n')
+      pre_lines++;
   g_string_append (pre, w.out->str);
   if (w42_page_columns (page) > 2)
     g_string_append (pre, "\\end{multicols}\n");
@@ -863,12 +1467,29 @@ w42_latex_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErr
     ok = g_file_replace_contents (file, pre->str, pre->len, NULL, FALSE,
                                   G_FILE_CREATE_NONE, NULL, NULL, error);
 
+  if (w.anchors != NULL)
+    {
+      /* The body's lines, counted from the top of the whole file. */
+      for (guint k = 0; k < w.anchors->len; k++)
+        g_array_index (w.anchors, W42LatexAnchor, k).line += pre_lines;
+      g_array_sort (w.anchors, anchor_order);
+      *anchors = w.anchors;
+    }
+
   g_string_free (pre, TRUE);
   g_string_free (w.out, TRUE);
+  g_string_free (w.held_labels, TRUE);
+  g_hash_table_destroy (w.labels);
   g_ptr_array_free (w.blocks, TRUE);
   g_object_unref (w.dir);
   g_free (w.stem);
   g_free (title);
   g_free (subtitle);
   return ok;
+}
+
+gboolean
+w42_latex_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError **error)
+{
+  return w42_latex_export_anchored (pt, page, file, NULL, error);
 }

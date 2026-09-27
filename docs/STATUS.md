@@ -467,9 +467,23 @@ Early, but real. Word42 today is a working word processor:
   - pictures, at their width;
   - links;
   - fancyhdr headers and footers, with PAGE and NUMPAGES;
-  - the page setup and columns.
+  - the page setup and columns;
+  - mathematics typed in LaTeX's notation: `$...$`, `\(...\)`,
+    `$$...$$`, `\[...\]` and the amsmath environments;
+  - the table of contents and the table of figures, as LaTeX's own;
+  - a picture and its caption, as a numbered figure;
+  - bookmarks, as labels, and the links to them.
 
-  Save As writes the .tex. LaTeX is not read.
+  File ▸ LaTeX Preview is a pane beside the page, drawn with poppler, that
+  sets the document again as the typing pauses; SyncTeX keeps the caret's
+  place in sight and takes a double-click on a page back to the text.
+  LaTeX's errors are shown with their line in the source. Save As and
+  `--convert-to=tex` write the .tex. LaTeX is not read.
+- **Versions** — File ▸ Versions keeps a document's versions as commits in
+  a Git repository in its folder, through libgit2: Save Now with a
+  comment, a version at every save when the document asks for it, and
+  the list, to open, compare with or restore. A commit takes the
+  document's file alone, whatever else is staged.
 - **PDF** — File ▸ Export as PDF writes the document through the same layout
   engine and painting code the screen and printer use. Opening a `.pdf`
   imports it: each run's font, size, colour and underline; the columns read

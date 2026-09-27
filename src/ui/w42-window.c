@@ -42,6 +42,9 @@
 #include "w42-macro.h"
 #include "w42-view.h"
 #include "w42-latex-run.h"
+#include "w42-git.h"
+#include "w42-versions.h"
+#include "w42-latex-preview.h"
 
 static const char *window_author_name (void);
 static void window_saved (W42Window *self, gboolean succeeded);
@@ -74,6 +77,11 @@ struct _W42Window {
   GtkWidget   *format_bar;
   GtkWidget   *ruler;
   GtkWidget   *doc_map;       /* View > Document Map, at the left of the page */
+  GtkWidget   *latex_preview; /* File > LaTeX Preview, at the right; NULL
+                               * when built without poppler to draw it */
+  GtkWidget   *latex_paned;   /* between the page and the preview */
+  gboolean     latex_placing; /* the preview is to be given its share of
+                               * the width once the window has one */
 
   GtkWidget   *style_drop;
   GtkStringList *style_list;
@@ -157,6 +165,11 @@ struct _W42Window {
   W42Layout   *count_layout;   /* the printed pages, when the view is a galley */
   int          n_pages;
   GtkWidget   *title_label;   /* word42 draws its own title bar */
+
+  /* File > Versions > Save Now: the save under way is to be kept as a
+   * version whatever the document's setting, with this comment. */
+  gboolean     version_now;
+  char        *version_comment;
 };
 
 G_DEFINE_FINAL_TYPE (W42Window, w42_window, GTK_TYPE_APPLICATION_WINDOW)
@@ -812,16 +825,14 @@ w42_window_new_document (GtkWindow *from)
   return W42_WINDOW (window)->doc;
 }
 
-/* Reads `file` into the window's document, and says nothing if it cannot:
- * the caller knows which window should carry the message. */
-gboolean
-w42_window_load (W42Window *self, GFile *file, GError **error)
+/* `file` read into the window's document, the carets put at its start
+ * and the words counted afresh.  The callers say what file the document
+ * now is and whom to tell. */
+static gboolean
+window_read (W42Window *self, GFile *file, GError **error)
 {
   W42View *views[2];
   gsize first;
-
-  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
-  g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
   if (!w42_document_load (self->doc, file, error))
     return FALSE;
@@ -837,13 +848,82 @@ w42_window_load (W42Window *self, GFile *file, GError **error)
     if (views[i] != NULL)
       w42_view_select_range (views[i], first, first);
 
-  /* Another document: its own count, session and goal. */
+  /* Another text: its own count and session. */
   self->count_valid = FALSE;
   self->words_at_open = -1;
+  return TRUE;
+}
+
+/* Reads `file` into the window's document, and says nothing if it cannot:
+ * the caller knows which window should carry the message. */
+gboolean
+w42_window_load (W42Window *self, GFile *file, GError **error)
+{
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  if (!window_read (self, file, error))
+    return FALSE;
+
+  /* Another document: its own goal. */
   self->goal = 0;
   window_load_goal (self);
 
   window_note_recent (self, file);
+  window_update_title (self);
+  window_sync_state (self);
+  return TRUE;
+}
+
+gboolean
+w42_window_open_version (W42Window *self, GFile *file, const char *title, GError **error)
+{
+  GtkApplication *app;
+  W42Window *other;
+
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  app = gtk_window_get_application (GTK_WINDOW (self));
+  if (app == NULL)
+    return FALSE;
+  other = W42_WINDOW (w42_window_new (app));
+  if (!window_read (other, file, error))
+    {
+      gtk_window_destroy (GTK_WINDOW (other));
+      return FALSE;
+    }
+  /* An earlier version is not the document, and its file is a copy that
+   * is about to go: Save asks where to put it, and closing the window
+   * loses nothing the repository does not still have. */
+  w42_document_set_file (other->doc, NULL);
+  w42_document_set_title (other->doc, title);
+  w42_document_set_modified (other->doc, FALSE);
+  window_update_title (other);
+  window_sync_state (other);
+  gtk_window_present (GTK_WINDOW (other));
+  return TRUE;
+}
+
+gboolean
+w42_window_restore_version (W42Window *self, GFile *file, GError **error)
+{
+  GFile *own;
+
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  own = w42_document_get_file (self->doc);
+  if (own != NULL)
+    g_object_ref (own);
+  if (!window_read (self, file, error))
+    {
+      g_clear_object (&own);
+      return FALSE;
+    }
+  w42_document_set_file (self->doc, own);
+  w42_document_mark_unsaved (self->doc);
+  g_clear_object (&own);
   window_update_title (self);
   window_sync_state (self);
   return TRUE;
@@ -1094,6 +1174,53 @@ action_open (GSimpleAction *action, GVariant *param, gpointer data)
   g_object_unref (dialog);
 }
 
+/* File > Versions: a document whose versions are kept is committed to its
+ * Git repository each time it is saved, and Save Now commits it either
+ * way.  A version that cannot be kept does not undo the save -- the file
+ * is written -- so an automatic one says why in the status bar, and only
+ * the version asked for outright puts up a box. */
+static void
+window_keep_version (W42Window *self)
+{
+  GFile *file = w42_document_get_file (self->doc);
+  gboolean now = self->version_now;
+  char *comment = g_steal_pointer (&self->version_comment);
+  char *message, *base, *id = NULL;
+  GError *error = NULL;
+
+  self->version_now = FALSE;
+  if (file == NULL || (!now && !w42_git_is_tracked (file)))
+    {
+      g_free (comment);
+      return;
+    }
+
+  base = g_file_get_basename (file);
+  /* Translators: the comment kept with a version of a document saved
+   * with no comment of its own; %s is the document's file name. */
+  message = comment != NULL && *comment != '\0' ? g_strdup (comment)
+                                                 : g_strdup_printf (_("Saved %s"), base);
+  if (!w42_git_commit (file, message, window_author_name (), &id, &error))
+    {
+      if (now)
+        show_error (self, _("Word42 saved the document but could not keep it as a version."),
+                    error);
+      else
+        /* Translators: %s is what Git said went wrong. */
+        window_flash (self, _("Saved, but Git could not keep it as a version: %s"),
+                      error->message);
+      g_clear_error (&error);
+    }
+  else if (id != NULL)
+    /* Translators: %s is the short id Git gives a version. */
+    window_flash (self, _("Saved, and kept as version %s."), id);
+
+  g_free (id);
+  g_free (message);
+  g_free (base);
+  g_free (comment);
+}
+
 /* Every path that finishes a save ends here, so that a save begun in order to
  * close the window actually closes it -- and, just as importantly, so that a
  * save that failed does not. */
@@ -1101,7 +1228,12 @@ static void
 window_saved (W42Window *self, gboolean succeeded)
 {
   if (succeeded && w42_document_get_file (self->doc) != NULL)
-    window_note_recent (self, w42_document_get_file (self->doc));
+    {
+      window_note_recent (self, w42_document_get_file (self->doc));
+      window_keep_version (self);
+    }
+  self->version_now = FALSE;
+  g_clear_pointer (&self->version_comment, g_free);
   if (succeeded)
     autosave_remove (self);
   /* A goal set on an untitled document, or before Save As, goes with
@@ -1324,6 +1456,42 @@ action_save (GSimpleAction *action, GVariant *param, gpointer data)
   window_saved (self, saved);
 }
 
+gboolean
+w42_window_save_version (W42Window *self, const char *comment)
+{
+  GFile *file;
+  GError *error = NULL;
+  gboolean saved;
+
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+
+  file = w42_document_get_file (self->doc);
+  if (file == NULL || !w42_io_format_round_trips (file))
+    return FALSE;
+
+  self->version_now = TRUE;
+  g_free (self->version_comment);
+  self->version_comment = g_strdup (comment);
+  saved = window_save_document (self->doc, file, &error);
+  if (!saved)
+    {
+      show_error (self, _("Word42 could not save that file."), error);
+      g_clear_error (&error);
+    }
+  window_saved (self, saved);
+  return saved;
+}
+
+/* File > Versions */
+static void
+action_versions (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_versions_dialog_show (GTK_WINDOW (self), self->view);
+}
+
 static void
 action_save_as (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -1542,6 +1710,10 @@ window_pane_changed (W42Window *self)
   w42_ruler_set_view (self->ruler, self->view);
   if (self->doc_map != NULL)
     w42_docmap_set_view (self->doc_map, self->view);
+#ifdef HAVE_POPPLER
+  if (self->latex_preview != NULL)
+    w42_latex_preview_set_view (self->latex_preview, self->view);
+#endif
   if (self->find_dialog != NULL)
     w42_find_dialog_set_view (W42_FIND_DIALOG (self->find_dialog), self->view);
   if (self->spell_dialog != NULL)
@@ -2383,10 +2555,6 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
   g_object_unref (self);
 }
 
-/* File > Web Page Preview: Word 97 wrote the document out as a web page
- * and opened it in the browser, so that what a reader on the web would
- * see could be seen.  The page goes to the cache folder, one file written
- * over each time, so nothing is left lying about. */
 /* File > LaTeX Mode: PDFs typeset by LaTeX, in Latin Modern, as papers
  * and theses are.  Remembered from one run to the next. */
 static void
@@ -2406,7 +2574,7 @@ action_latex_mode (GSimpleAction *action, GVariant *param, gpointer data)
       char *engine = w42_latex_find_engine ();
 
       if (engine != NULL)
-        window_flash (self, _("LaTeX mode: Export as PDF and LaTeX Preview typeset with LaTeX."));
+        window_flash (self, "%s", _("LaTeX mode: Export as PDF typesets with LaTeX."));
       else
         show_message (self, _("LaTeX mode is on, but no TeX engine is installed."),
                       _("Install Tectonic (tectonic-typesetting.github.io), which fetches what "
@@ -2418,17 +2586,73 @@ action_latex_mode (GSimpleAction *action, GVariant *param, gpointer data)
     window_flash (self, _("LaTeX mode is off: Word42 makes the PDFs itself."));
 }
 
-/* File > LaTeX Preview: the document typeset by LaTeX, opened to look at. */
+/* File > LaTeX Preview: the document as LaTeX sets it, in a pane at the
+ * right of the page that sets it again as the typing pauses -- or, in a
+ * Word42 built without poppler to draw the pages, typeset once and opened
+ * in the desktop's viewer. */
+static void
+window_show_latex_preview (W42Window *self, gboolean visible)
+{
+  GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), "latex-preview");
+
+  if (self->latex_preview == NULL)
+    return;
+  /* A pane shown gets nearly half the width: enough for a page to be
+   * read, with the page being written beside it.  A window not yet laid
+   * out has no width to share, and shares it when it has. */
+  if (visible && !gtk_widget_get_visible (self->latex_preview))
+    {
+      int width = gtk_widget_get_width (self->latex_paned);
+
+      if (width > 0)
+        gtk_paned_set_position (GTK_PANED (self->latex_paned), width * 11 / 20);
+      else
+        self->latex_placing = TRUE;
+    }
+  gtk_widget_set_visible (self->latex_preview, visible);
+  if (action != NULL && g_action_get_state_type (action) != NULL)
+    g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_boolean (visible));
+}
+
+#ifdef HAVE_POPPLER
+static void
+on_latex_paned_sized (GObject *paned, GParamSpec *pspec, gpointer data)
+{
+  W42Window *self = data;
+  int max = 0;
+
+  (void) pspec;
+  g_object_get (paned, "max-position", &max, NULL);
+  if (self->latex_placing && max > 0)
+    {
+      self->latex_placing = FALSE;
+      gtk_paned_set_position (GTK_PANED (paned), max * 11 / 20);
+    }
+}
+#endif
+
 static void
 action_latex_preview (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
 
   (void) action; (void) param;
+  if (self->latex_preview != NULL)
+    {
+      gboolean visible = !gtk_widget_get_visible (self->latex_preview);
+
+      window_show_latex_preview (self, visible);
+      w42_settings_set_bool ("show-latex-preview", visible);
+      return;
+    }
   w42_view_update_fields (self->view);
   w42_latex_typeset (GTK_WINDOW (self), self->doc, NULL);
 }
 
+/* File > Web Page Preview: Word 97 wrote the document out as a web page
+ * and opened it in the browser, so that what a reader on the web would
+ * see could be seen.  The page goes to the cache folder, one file written
+ * over each time, so nothing is left lying about. */
 static void
 action_web_preview (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -5677,8 +5901,14 @@ on_view_state_changed (W42View *view, gpointer data)
 static void
 on_view_mapped (GtkWidget *widget, gpointer data)
 {
-  (void) data;
+  W42Window *self = data;
+
   gtk_widget_grab_focus (widget);
+  /* The LaTeX Preview, if it was showing when Word42 was last used: now,
+   * when the window has a width to share with it. */
+  if (self->latex_preview != NULL && !gtk_widget_get_visible (self->latex_preview) &&
+      w42_settings_get_bool ("show-latex-preview", FALSE))
+    window_show_latex_preview (self, TRUE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -5690,6 +5920,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "open",       action_open,       NULL, NULL,    NULL, { 0 } },
   { "revert",     action_revert,     NULL, NULL,    NULL, { 0 } },
   { "save",       action_save,       NULL, NULL,    NULL, { 0 } },
+  { "versions",   action_versions,   NULL, NULL,    NULL, { 0 } },
   { "save-as",    action_save_as,    NULL, NULL,    NULL, { 0 } },
   { "new-from-template", action_new_from_template, NULL, NULL, NULL, { 0 } },
   { "save-as-template",  action_save_as_template,  NULL, NULL, NULL, { 0 } },
@@ -5778,7 +6009,11 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "export-epub",   action_export_epub,   NULL, NULL, NULL, { 0 } },
   { "web-preview",   action_web_preview,   NULL, NULL, NULL, { 0 } },
   { "latex-mode",    action_latex_mode,    NULL, "false", NULL, { 0 } },
+#ifdef HAVE_POPPLER
+  { "latex-preview", action_latex_preview, NULL, "false", NULL, { 0 } },
+#else
   { "latex-preview", action_latex_preview, NULL, NULL, NULL, { 0 } },
+#endif
   { "table-of-figures", action_table_of_figures, NULL, NULL, NULL, { 0 } },
   { "compare-documents", action_compare_documents, NULL, NULL, NULL, { 0 } },
   { "bookmark",      action_bookmark,      NULL, NULL, NULL, { 0 } },
@@ -5864,6 +6099,7 @@ w42_window_dispose (GObject *object)
     }
   g_clear_pointer (&self->status_flash, g_free);
   g_clear_pointer (&self->window_list_state, g_free);
+  g_clear_pointer (&self->version_comment, g_free);
 
   if (self->find_dialog != NULL)
     {
@@ -6100,6 +6336,24 @@ w42_window_init (W42Window *self)
   gtk_paned_set_resize_start_child (GTK_PANED (self->paned), TRUE);
   gtk_paned_set_shrink_start_child (GTK_PANED (self->paned), FALSE);
   gtk_box_append (GTK_BOX (right), self->paned);
+
+  /* File > LaTeX Preview at the right of the page, likewise. */
+#ifdef HAVE_POPPLER
+  self->latex_preview = w42_latex_preview_new (self->view);
+  gtk_widget_set_visible (self->latex_preview, FALSE);
+  self->latex_paned = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
+  gtk_widget_set_hexpand (self->latex_paned, TRUE);
+  gtk_widget_set_vexpand (self->latex_paned, TRUE);
+  gtk_paned_set_start_child (GTK_PANED (self->latex_paned), right);
+  gtk_paned_set_resize_start_child (GTK_PANED (self->latex_paned), TRUE);
+  gtk_paned_set_shrink_start_child (GTK_PANED (self->latex_paned), FALSE);
+  gtk_paned_set_end_child (GTK_PANED (self->latex_paned), self->latex_preview);
+  gtk_paned_set_resize_end_child (GTK_PANED (self->latex_paned), TRUE);
+  gtk_paned_set_shrink_end_child (GTK_PANED (self->latex_paned), FALSE);
+  g_signal_connect (self->latex_paned, "notify::max-position",
+                    G_CALLBACK (on_latex_paned_sized), self);
+  right = self->latex_paned;
+#endif
 
   /* The Document Map at the left, with a bar to drag between it and the
    * page; hidden, the paned is just the page. */

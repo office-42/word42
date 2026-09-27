@@ -24,7 +24,6 @@ See docs/PARITY.md for the full comparison with Word 97 and AbiWord.
 - Outline view; Master Document.
 - Grammar checking; the Office Assistant is not planned.
 - Insert > Index and Tables: Table of Authorities.
-- File > Versions (several versions kept inside one document).
 - Format > Text Direction (vertical text in table cells); Table > Draw
   Table with the pencil and eraser.
 - Format > Font: the Animation tab (blinking backgrounds and marching

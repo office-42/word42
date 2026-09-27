@@ -26,6 +26,8 @@ w42_core_sources = files(
   'io/w42-doc-write.c',
   'io/w42-wpd.c',
   'io/w42-latex.c',
+  'io/w42-git.c',
+  'io/w42-synctex.c',
   'io/w42-html.c',
   'io/w42-epub.c',
   'io/w42-htmlin.c',
@@ -77,6 +79,7 @@ w42_ui_sources = files(
   'ui/w42-help.c',
   'ui/w42-view.c',
   'ui/w42-latex-run.c',
+  'ui/w42-versions.c',
   'ui/w42-ruler.c',
   'ui/w42-docmap.c',
   'ui/w42-find-dialog.c',
@@ -91,6 +94,12 @@ w42_ui_sources = files(
   'ui/w42-application.c',
   'main.c',
 )
+
+# The LaTeX preview draws its PDF with poppler; without it, File > LaTeX
+# Preview opens the PDF in the desktop's viewer instead.
+if poppler_dep.found()
+  w42_ui_sources += files('ui/w42-pdf-view.c', 'ui/w42-latex-preview.c')
+endif
 
 # Scanning on Windows goes through WIA's Automation layer: COM, which is
 # ole32 and oleaut32, and nothing else.

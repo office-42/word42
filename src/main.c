@@ -114,7 +114,7 @@ convert_main (int argc, char *argv[])
       fprintf (stderr, "%s\n%s\n",
                _("Usage: word42 --convert-to=FORMAT [--outdir=DIR] FILE..."),
                _("FORMAT is the extension to write: pdf, epub, odt, docx, "
-                 "rtf, html, txt or abw."));
+                 "rtf, html, txt, abw or tex."));
       g_ptr_array_free (files, TRUE);
       return 2;
     }

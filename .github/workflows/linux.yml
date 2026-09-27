@@ -30,7 +30,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ccache gcc pkg-config meson ninja-build \
             libgtk-4-dev libpango1.0-dev libcairo2-dev libglib2.0-dev \
-            libpoppler-glib-dev libenchant-2-dev hunspell-en-us \
+            libpoppler-glib-dev libgit2-dev libenchant-2-dev hunspell-en-us \
             libhyphen-dev hyphen-en-us mythes-en-us \
             liblexbor-dev cmake xvfb gettext
 
