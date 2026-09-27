@@ -34,9 +34,13 @@
     return FALSE; \
   } G_STMT_END
 
-/* WordPerfect measures in WPUs, 1200 to the inch; the model in twips. */
+/* WordPerfect measures in WPUs, 1200 to the inch; the model in twips.  A
+ * WPU is sixteen bits in the file, and what another format let into the
+ * model can be far more: such a measure is the most the file can say,
+ * not a product that overflows. */
 #define WPU_TO_TWIPS(v) ((int) ((v) * 6 / 5))
-#define TWIPS_TO_WPU(v) ((guint) ((v) * 5 / 6))
+#define TWIPS_TO_WPU(v) ((guint) CLAMP ((gint64) (v) * 5 / 6, 0, 0xFFFF))
+#define TWIPS_TO_WPU_SIGNED(v) ((guint16) (gint16) CLAMP ((gint64) (v) * 5 / 6, -0x8000, 0x7FFF))
 
 static inline guint16 rd16 (const guint8 *p) { return (guint16) (p[0] | (p[1] << 8)); }
 static inline guint32 rd32 (const guint8 *p)
@@ -140,6 +144,7 @@ typedef struct {
   W42PageSetup *page;
   W42Builder    b;
   int           depth;         /* notes and headers read inside the body */
+  gsize         budget;        /* packet bytes still to be read as text */
 
   /* Character state. */
   gboolean      attr[ATTR_N];
@@ -274,6 +279,14 @@ parse_text_packet (Reader *r, guint pid, Sink sink)
     total += rd32 (d + 6 + 4 * i);
   if (total > p->size - 6 - 4 * n)
     return;
+  /* Each packet is some code's own, and read once, so together they are
+   * no more than the file.  A file whose every note names one packet
+   * would otherwise copy it once a note: kilobytes that read as
+   * gigabytes, and notes whose text is comments naming another packet
+   * multiply again. */
+  if (total > r->budget)
+    return;
+  r->budget -= total;
   r->depth++;
   parse_stream (r, d + 6 + 4 * n, d + 6 + 4 * n + total, sink);
   r->depth--;
@@ -695,7 +708,10 @@ paragraph_group (Reader *r, Sink sink, guint sub, const guint8 *d, const guint8 
           int rel = proportion (d) - 100;
           int abs_wpu = nondel == 6 && n >= 6 ? rd16 (d + 4) : 0;
 
-          r->pa.space_after = MAX (0, rel * r->size * 10 / 100 + WPU_TO_TWIPS (abs_wpu));
+          /* Thousands of lines at the largest size overflow an int; no
+           * paragraph wants more than a long page's height after it. */
+          r->pa.space_after = (int) CLAMP ((gint64) rel * r->size * 10 / 100 + WPU_TO_TWIPS (abs_wpu),
+                                           0, 31680);
         }
       break;
     case 0x0B:
@@ -1124,6 +1140,11 @@ parse_stream (Reader *r, const guint8 *p, const guint8 *end, Sink sink)
                 r->pa.widow_control = 1;
                 r->style = STYLE_NORMAL;
                 parse_text_packet (r, pids[0], SINK_BODY);
+                /* A table the note's text began ends with the note: left
+                 * open, the body's text after it would go into its cells,
+                 * at positions the builder no longer keeps straight. */
+                if (r->in_table)
+                  table_off (r);
                 w42_builder_end_note (&r->b);
                 r->para_open = saved_open;
                 r->pa = saved_pa;
@@ -1220,11 +1241,13 @@ read_prefix (Reader *r)
           if (rd16 (d + 4) > 0)
             r->size = CLAMP (rd16 (d + 4) / 25, 2, 3276);
         }
-      else if (p->type == 0x12)
+      else if (p->type == 0x12 && p->size <= r->budget)
         {
           W42DocInfo info = *w42_pt_get_info (r->pt);
           gsize at = 0;
 
+          /* The index can name one summary thousands of times. */
+          r->budget -= p->size;
           while (at + 6 <= p->size)
             {
               guint glen = rd16 (d + at), tag = rd16 (d + at + 2);
@@ -1428,6 +1451,7 @@ w42_wpd_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   memset (&r, 0, sizeof r);
   r.data = (const guint8 *) contents;
   r.len = length;
+  r.budget = length;
   if (!w42_wpd_sniff (r.data, r.len))
     {
       g_free (contents);
@@ -1726,8 +1750,8 @@ set_char (Writer *w, GByteArray *o, const W42CharFmt *ch)
       guint8 d[8] = { 0 };
       guint wsize = (guint) size * 25;
 
-      d[0] = (guint8) (w->size * 25);
-      d[1] = (guint8) ((w->size * 25) >> 8);
+      d[0] = (guint8) ((guint) w->size * 25);
+      d[1] = (guint8) (((guint) w->size * 25) >> 8);
       d[6] = (guint8) wsize;
       d[7] = (guint8) (wsize >> 8);
       group (o, 0xD4, 0x1A, &pid, 1, d, 8, 8);
@@ -1737,7 +1761,7 @@ set_char (Writer *w, GByteArray *o, const W42CharFmt *ch)
   else if (size != w->size)
     {
       guint16 pid = (guint16) font_pid (w, ch->family);
-      guint8 d[2] = { (guint8) (size * 25), (guint8) ((size * 25) >> 8) };
+      guint8 d[2] = { (guint8) ((guint) size * 25), (guint8) (((guint) size * 25) >> 8) };
 
       group (o, 0xD4, 0x1B, &pid, 1, d, 2, 2);
       w->size = size;
@@ -1799,11 +1823,11 @@ set_para (Writer *w, GByteArray *o, const W42ParaFmt *pa)
       group (o, 0xD3, 0x0A, NULL, 0, d, 6, 6);
     }
   if (pa->indent_first != w->pa.indent_first)
-    group16 (o, 0xD3, 0x0B, (guint16) (gint16) (pa->indent_first * 5 / 6));
+    group16 (o, 0xD3, 0x0B, TWIPS_TO_WPU_SIGNED (pa->indent_first));
   if (pa->indent_left != w->pa.indent_left)
-    group16 (o, 0xD3, 0x0C, (guint16) (gint16) (pa->indent_left * 5 / 6));
+    group16 (o, 0xD3, 0x0C, TWIPS_TO_WPU_SIGNED (pa->indent_left));
   if (pa->indent_right != w->pa.indent_right)
-    group16 (o, 0xD3, 0x0D, (guint16) (gint16) (pa->indent_right * 5 / 6));
+    group16 (o, 0xD3, 0x0D, TWIPS_TO_WPU_SIGNED (pa->indent_right));
   if (pa->n_tabs != w->pa.n_tabs ||
       memcmp (pa->tab_pos, w->pa.tab_pos, sizeof pa->tab_pos[0] * pa->n_tabs) != 0 ||
       memcmp (pa->tab_kind, w->pa.tab_kind, pa->n_tabs) != 0)
@@ -2156,7 +2180,9 @@ write_blocks (Writer *w, GByteArray *o, GPtrArray *blocks, int note)
           GByteArray *d = g_byte_array_new ();
           int cols = pa.columns > 1 ? MIN (pa.columns, 6) : 1;
           int text_w = w->page != NULL ? w->page->width - w->page->margin_left - w->page->margin_right : 9360;
-          int gap = pa.column_gap > 0 ? pa.column_gap : 720;
+          /* No wider than the text: the model's gap is whatever the file
+           * it came from said, and times the columns it would overflow. */
+          int gap = pa.column_gap > 0 ? MIN (pa.column_gap, MAX (text_w, 0)) : 720;
 
           put8 (d, 0);
           put32 (d, 0x00010000);
