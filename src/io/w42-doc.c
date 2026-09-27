@@ -1881,7 +1881,9 @@ read_bookmarks (Doc *doc)
   n = MIN (rd16 (doc->tb + p), 16384);
   p += 4;
   names = g_ptr_array_new ();
-  for (guint i = 0; i < n && p < fc_n + lcb_n; i++)
+  /* A wide name's count is two bytes, and both must be in the table: a
+   * table ending one byte into it had the second read past the stream. */
+  for (guint i = 0; i < n && p + (wide ? 2 : 1) <= fc_n + lcb_n; i++)
     {
       guint cch = wide ? rd16 (doc->tb + p) : doc->tb[p];
       GString *name = g_string_new (NULL);
