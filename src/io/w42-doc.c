@@ -6,6 +6,7 @@
 
 #include "w42-doc.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <glib/gi18n.h>
 
