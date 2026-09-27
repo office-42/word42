@@ -337,6 +337,8 @@ enum {
   FIB_FLD_HDR    = 17,
   FIB_FLD_FTN    = 18,
   FIB_CLX        = 33,
+  FIB_PLF_LST    = 73,
+  FIB_PLF_LFO    = 74,
   FIB_END_REF    = 46,
   FIB_END_TXT    = 47,
   FIB_FLD_EDN    = 48,
@@ -353,7 +355,6 @@ enum {
 #define ISTD_FIRST_USER   15
 
 #define STI_NORMAL       0
-#define STI_TITLE        62
 #define STI_DEFAULT_FONT 65
 #define STI_USER         0xFFE
 
@@ -407,7 +408,27 @@ typedef struct {
   GArray     *note_txt[2];  /* guint32: where each one's text starts in its story */
   GArray     *hdd;          /* guint32: where each header story starts */
   GArray     *sections;     /* Section */
+  GByteArray *data;         /* the Data stream: big PAPXs, pictures */
+  GArray     *lists;        /* ListDef: one per list, its LFO the same place + 1 */
+  int         cur_list[2];  /* the numbered and the bulleted list going on, or -1 */
+  GArray     *row_cells;    /* CellInfo: the cells of the row being written */
 } Writer;
+
+/* A list, as Word defines one: nine levels, each with its kind and the
+ * number it starts at. */
+typedef struct {
+  guint32 lsid;
+  guint8  kind[9];          /* W42ListKind; 0 where the level is unused */
+  int     start[9];
+} ListDef;
+
+/* A cell of a table row: its first column, the columns it covers, and
+ * what its mark carries. */
+typedef struct {
+  int      col;
+  int      span;
+  W42ApIdx cell_ap;
+} CellInfo;
 
 static void
 run_clear (gpointer data)
@@ -726,6 +747,27 @@ pap_sprms (GByteArray *o, const W42ParaFmt *pa, const W42ParaFmt *base)
 
 /* ---- styles ----------------------------------------------------------- */
 
+/* Word's built-in styles past the headings, by their identity (sti):
+ * a file names them by it, and Word shows them in its own language. */
+static const struct { const char *name; guint sti; } BUILTIN_STYLES[] = {
+  { "TOC 1", 19 }, { "TOC 2", 20 }, { "TOC 3", 21 }, { "TOC 4", 22 }, { "TOC 5", 23 },
+  { "TOC 6", 24 }, { "TOC 7", 25 }, { "TOC 8", 26 }, { "TOC 9", 27 },
+  { "Footnote Text", 29 }, { "Header", 31 }, { "Footer", 32 }, { "Caption", 34 },
+  { "Footnote Reference", 38 }, { "Endnote Reference", 42 }, { "Endnote Text", 43 },
+  { "Title", 62 }, { "Body Text", 66 }, { "Subtitle", 74 },
+  { "Hyperlink", 85 }, { "Strong", 87 }, { "Emphasis", 88 },
+  { "List Paragraph", 179 }, { "Quote", 180 }, { "Intense Quote", 181 },
+};
+
+static guint
+builtin_sti (const char *name)
+{
+  for (guint i = 0; i < G_N_ELEMENTS (BUILTIN_STYLES); i++)
+    if (g_ascii_strcasecmp (name, BUILTIN_STYLES[i].name) == 0)
+      return BUILTIN_STYLES[i].sti;
+  return STI_USER;
+}
+
 static const W42Style *
 style_base (Writer *w, const W42Style *style)
 {
@@ -794,16 +836,18 @@ write_std (Writer *w, GByteArray *tb, const W42Style *style, guint istd)
   else if (istd == ISTD_NORMAL)
     sti = STI_NORMAL, name = style != NULL ? style->name : "Normal";
   else if (istd < ISTD_DEFAULT_FONT)
-    sti = istd, name = style != NULL ? style->name : NULL;
-  else
-    sti = g_str_equal (style->name, "Title") ? STI_TITLE : STI_USER, name = style->name;
-
-  if (name == NULL)
     {
-      static const char *HEADINGS[] = { NULL, "heading 1", "heading 2", "heading 3", "heading 4",
-                                        "heading 5", "heading 6", "heading 7", "heading 8", "heading 9" };
-      name = HEADINGS[istd];
+      /* A heading the document has no style for is still Word's. */
+      static const char *HEADINGS[ISTD_DEFAULT_FONT] = {
+        NULL, "heading 1", "heading 2", "heading 3", "heading 4",
+        "heading 5", "heading 6", "heading 7", "heading 8", "heading 9",
+      };
+
+      sti = istd;
+      name = style != NULL ? style->name : HEADINGS[istd];
     }
+  else
+    sti = builtin_sti (style->name), name = style->name;
 
   istd_base = istd == ISTD_NORMAL || istd == ISTD_DEFAULT_FONT ? 0xFFF
               : character ? ISTD_DEFAULT_FONT
@@ -1038,6 +1082,64 @@ add_field (Writer *w, const char *code, guint flt, const char *result,
     }
 }
 
+/* Appends sprms to the paragraph just ended. */
+static void
+para_extra (Writer *w, const GByteArray *sprms)
+{
+  ParaRun *last = &g_array_index (w->pap, ParaRun, w->pap->len - 1);
+
+  g_byte_array_append (last->grpprl, sprms->data, sprms->len);
+}
+
+/* The list a list paragraph belongs to, as Word's ilfo.  Word42 counts a
+ * run of numbered paragraphs on until a plain paragraph, a change of kind
+ * or a restart; Word counts a list on through the document.  So each run
+ * is a list of its own, a restart or a new kind at the top level starts
+ * another, and bullets are a list beside the numbers, which count on
+ * across them as Word42's do. */
+static int
+list_for (Writer *w, const W42ParaFmt *pa)
+{
+  int bullet = w42_list_is_bullet ((W42ListKind) pa->list) ? 1 : 0;
+  int lv = MIN (pa->list_level, 8);
+  int cur = w->cur_list[bullet];
+  ListDef *def = cur >= 0 ? &g_array_index (w->lists, ListDef, cur) : NULL;
+
+  if (def == NULL || (def->kind[lv] != 0 && def->kind[lv] != pa->list && lv == 0) ||
+      (!bullet && lv == 0 && pa->list_start > 0))
+    {
+      ListDef fresh;
+
+      memset (&fresh, 0, sizeof fresh);
+      fresh.lsid = 0x2A420000u + w->lists->len;
+      g_array_append_val (w->lists, fresh);
+      cur = w->cur_list[bullet] = (int) w->lists->len - 1;
+      def = &g_array_index (w->lists, ListDef, cur);
+    }
+  if (def->kind[lv] == 0)
+    {
+      def->kind[lv] = pa->list;
+      def->start[lv] = pa->list_start > 0 ? pa->list_start : 1;
+    }
+  return cur + 1;
+}
+
+/* A list paragraph's sprms: its list and level, and its indents said
+ * outright, since without them Word takes the list's. */
+static void
+list_sprms (Writer *w, GByteArray *o, const W42ParaFmt *pa)
+{
+  if (pa->list == W42_LIST_NONE || pa->list >= W42_LIST_KINDS)
+    {
+      w->cur_list[0] = w->cur_list[1] = -1;
+      return;
+    }
+  sprm16 (o, 0x460B, (guint) list_for (w, pa));        /* sprmPIlfo */
+  sprm8 (o, 0x260A, MIN (pa->list_level, 8));          /* sprmPIlvl */
+  sprm16 (o, 0x840F, (guint16) pa->indent_left);
+  sprm16 (o, 0x8411, (guint16) pa->indent_first);
+}
+
 /* One of the model's paragraphs: its runs, then its mark.  `note_mark`
  * puts a note's reference mark and a space in front, as Word begins a
  * note's text. */
@@ -1091,6 +1193,146 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
    * how tall the blank line is; any other's is its last run's, as a
    * \par in RTF takes the formatting before it. */
   end_para (w, mark, mark_ch, &style->ch, &fmt->pa, &style->pa, istd);
+  {
+    GByteArray *extra = g_byte_array_new ();
+
+    list_sprms (w, extra, &fmt->pa);
+    if (block->table >= 0 && w->story == STORY_MAIN)
+      sprm8 (extra, 0x2416, 1);                        /* sprmPFInTable */
+    para_extra (w, extra);
+    g_byte_array_free (extra, TRUE);
+  }
+}
+
+/* A cell's side as a BRC80: its own line or none when it says its sides,
+ * else the table's outer or inside line when the table is ruled. */
+static guint32
+cell_brc (const W42TableProps *props, const W42ParaFmt *cell, int edge, gboolean outer)
+{
+  if (cell->border & W42_BORDER_CELL_SET)
+    return (cell->border & (1 << edge)) ? brc80 (&cell->edge[edge]) : 0xFFFFFFFFu;
+  if (props == NULL || !props->borders)
+    return 0;
+  {
+    const W42BorderEdge *te = &props->edge[outer ? edge : (edge <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H
+                                                                             : W42_EDGE_INSIDE_V)];
+
+    return te->style == W42_BORDER_NONE ? 0 : brc80 (te);
+  }
+}
+
+/* The mark that ends a table row, 7 in a paragraph of its own, whose
+ * PAPX carries the row's shape: the gap between cells, its height, the
+ * edges of its cells and each one's TC80, their backgrounds, and the
+ * table's own lines. */
+static void
+end_row (Writer *w, int table, int row)
+{
+  const W42TableProps *props = w42_pt_table_props (w->pt, table);
+  GByteArray *s = g_byte_array_new ();
+  int n = (int) MIN (w->row_cells->len, 63);
+  int n_cols = props != NULL ? MAX (props->n_cols, 1) : MAX (n, 1);
+  int rows = w42_pt_table_rows (w->pt, table);
+  int text_w;
+  int x = -108;
+  gboolean any_fill = FALSE;
+
+  {
+    const W42PageSetup *page = w->page;
+    int width = page != NULL && page->width > 0 ? page->width : 12240;
+
+    text_w = width - (page != NULL ? page->margin_left + page->margin_right : 3600);
+    if (text_w < 1440)
+      text_w = 1440;
+  }
+
+  end_para (w, 0x07, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+
+  sprm8 (s, 0x2416, 1);                                  /* sprmPFInTable */
+  sprm8 (s, 0x2417, 1);                                  /* sprmPFTtp */
+  sprm16 (s, 0x9602, 108);                               /* sprmTDxaGapHalf */
+  if (props != NULL && props->row_heights != NULL && (guint) row < props->row_heights->len &&
+      g_array_index (props->row_heights, int, row) > 0)
+    sprm16 (s, 0x9407, (guint) g_array_index (props->row_heights, int, row));
+  if (props != NULL && row < props->header_rows)
+    sprm8 (s, 0x3404, 1);                                /* sprmTTableHeader */
+  if (props != NULL && props->borders)
+    {
+      static const int ORDER[6] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
+                                    W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+
+      put16 (s, 0xD605);                                 /* sprmTTableBorders80 */
+      put8 (s, 24);
+      for (int e = 0; e < 6; e++)
+        put32 (s, props->edge[ORDER[e]].style == W42_BORDER_NONE ? 0 : brc80 (&props->edge[ORDER[e]]));
+    }
+
+  /* sprmTDefTable: the cells' edges, then a TC80 each. */
+  put16 (s, 0xD608);
+  put16 (s, (guint) (2 + 2 * (n + 1) + 20 * n));
+  put8 (s, (guint) n);
+  put16 (s, (guint16) x);
+  for (int i = 0; i < n; i++)
+    {
+      const CellInfo *c = &g_array_index (w->row_cells, CellInfo, i);
+
+      for (int k = 0; k < c->span; k++)
+        {
+          int col = c->col + k;
+          int cw = props != NULL && props->widths != NULL && (guint) col < props->widths->len
+                   ? g_array_index (props->widths, int, col) : 0;
+
+          x += cw > 0 ? cw : text_w / n_cols;
+        }
+      put16 (s, (guint16) x);
+    }
+  for (int i = 0; i < n; i++)
+    {
+      const CellInfo *c = &g_array_index (w->row_cells, CellInfo, i);
+      const W42ParaFmt *pa = &w42_ap_table_get (w->aps, c->cell_ap)->pa;
+      guint flags = 0;
+
+      if (pa->cell_vspan == W42_CELL_COVERED)
+        flags |= 0x0020;                                 /* fVertMerge */
+      else if (pa->cell_vspan > 1)
+        flags |= 0x0060;                                 /* fVertMerge, fVertRestart */
+      if (pa->cell_valign == W42_CELL_VALIGN_CENTER)
+        flags |= 1u << 7;
+      else if (pa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+        flags |= 2u << 7;
+      put16 (s, flags);
+      put16 (s, 0);
+      put32 (s, cell_brc (props, pa, W42_EDGE_TOP, row == 0));
+      put32 (s, cell_brc (props, pa, W42_EDGE_LEFT, c->col == 0));
+      put32 (s, cell_brc (props, pa, W42_EDGE_BOTTOM, row + 1 >= rows));
+      put32 (s, cell_brc (props, pa, W42_EDGE_RIGHT, c->col + c->span >= n_cols));
+      any_fill |= pa->has_shading_color || pa->shading > 0;
+    }
+  if (any_fill)
+    {
+      /* sprmTDefTableShd: a SHD per cell, the background its colour or
+       * its grey. */
+      put16 (s, 0xD612);
+      put8 (s, (guint) (10 * n));
+      for (int i = 0; i < n; i++)
+        {
+          const W42ParaFmt *pa = &w42_ap_table_get (w->aps, g_array_index (w->row_cells, CellInfo, i).cell_ap)->pa;
+          guint32 rgb = pa->has_shading_color ? pa->shading_color
+                        : pa->shading > 0 ? 0x010101u * (guint32) (255 * (100 - MIN (pa->shading, 100)) / 100)
+                        : 0;
+
+          put32 (s, 0xFF000000u);
+          if (pa->has_shading_color || pa->shading > 0)
+            put32 (s, ((rgb >> 16) & 0xFF) | (rgb & 0xFF00) | ((rgb & 0xFF) << 16));
+          else
+            put32 (s, 0xFF000000u);
+          put16 (s, 0);
+        }
+    }
+
+  para_extra (w, s);
+  g_byte_array_free (s, TRUE);
+  g_array_set_size (w->row_cells, 0);
 }
 
 static void
@@ -1131,6 +1373,26 @@ write_main_text (Writer *w, GPtrArray *blocks)
       if (next != NULL && block->table < 0 &&
           w42_ap_table_get (w->aps, next->ap)->pa.section_break)
         mark = 0x0C;
+
+      if (block->table >= 0)
+        {
+          gboolean cell_start = prev == NULL || prev->table != block->table ||
+                                prev->row != block->row || prev->col != block->col;
+          gboolean cell_end = next == NULL || next->table != block->table ||
+                              next->row != block->row || next->col != block->col;
+          gboolean row_end = next == NULL || next->table != block->table || next->row != block->row;
+
+          if (cell_start)
+            {
+              CellInfo c = { block->col, MAX (block->span, 1), block->cell_ap };
+              g_array_append_val (w->row_cells, c);
+            }
+          write_block (w, block, cell_end ? 0x07 : 0x0D, FALSE);
+          if (row_end)
+            end_row (w, block->table, block->row);
+          prev = block;
+          continue;
+        }
       write_block (w, block, mark, FALSE);
       prev = block;
 
@@ -1414,8 +1676,21 @@ write_papx_fkps (Writer *w, GByteArray *wd, GArray *bin_fc, GArray *bin_pn)
       memset (page, 0, sizeof page);
       while (i < w->pap->len && crun < 29)
         {
-          const ParaRun *para = &g_array_index (w->pap, ParaRun, i);
-          guint len = 2 + para->grpprl->len;            /* istd, then the sprms */
+          ParaRun *para = &g_array_index (w->pap, ParaRun, i);
+          guint len;
+
+          /* Too big for a page: the sprms go to the Data stream, and
+           * the page holds sprmPHugePapx saying where. */
+          if (para->grpprl->len > 300)
+            {
+              guint32 at = w->data->len;
+
+              put16 (w->data, para->grpprl->len);
+              g_byte_array_append (w->data, para->grpprl->data, para->grpprl->len);
+              g_byte_array_set_size (para->grpprl, 0);
+              sprm32 (para->grpprl, 0x6646, at);
+            }
+          len = 2 + para->grpprl->len;            /* istd, then the sprms */
           guint size = (len % 2 ? 1 : 2) + len;
           guint header = 4 * (crun + 2) + 13 * (crun + 1);
 
@@ -1535,6 +1810,142 @@ write_sepx (Writer *w, GByteArray *wd, guint index)
   put16 (wd, s->len);
   g_byte_array_append (wd, s->data, s->len);
   g_byte_array_free (s, TRUE);
+}
+
+/* ---- lists ------------------------------------------------------------ */
+
+/* Word's number format for a kind of list. */
+static guint
+nfc_for (guint kind)
+{
+  switch (kind)
+    {
+    case W42_LIST_UPPER_ROMAN:  return 1;
+    case W42_LIST_LOWER_ROMAN:  return 2;
+    case W42_LIST_UPPER_LETTER: return 3;
+    case W42_LIST_LOWER_LETTER: return 4;
+    case W42_LIST_NUMBER:       return 0;
+    default:                    return 23;     /* a bullet */
+    }
+}
+
+/* One LVL: the LVLF, the level's indents, its marker's font for a
+ * bullet, and the marker's text -- the level's own number and a stop, or
+ * the bullet character. */
+static void
+write_lvl (Writer *w, GByteArray *o, guint kind, int level, int start)
+{
+  GByteArray *papx = g_byte_array_new ();
+  GByteArray *chpx = g_byte_array_new ();
+  guint nfc = nfc_for (kind);
+  gunichar2 text[2];
+  guint cch;
+
+  sprm16 (papx, 0x840F, (guint) (360 * (level + 1)));
+  sprm16 (papx, 0x8411, (guint16) -360);
+  if (nfc == 23)
+    {
+      const char *font = "Symbol";
+      gunichar2 bullet = 0xF0B7;
+
+      switch (kind)
+        {
+        case W42_LIST_BULLET_CIRCLE: font = "Courier New"; bullet = 'o'; break;
+        case W42_LIST_BULLET_SQUARE: font = "Wingdings";   bullet = 0xF0A7; break;
+        case W42_LIST_BULLET_DASH:   font = "Times New Roman"; bullet = 0x2013; break;
+        default: break;
+        }
+      {
+        guint ftc = font_index (w, font);
+
+        sprm16 (chpx, 0x4A4F, ftc);
+        sprm16 (chpx, 0x4A51, ftc);
+      }
+      text[0] = bullet;
+      cch = 1;
+    }
+  else
+    {
+      text[0] = (gunichar2) level;       /* the placeholder for this level's number */
+      text[1] = '.';
+      cch = 2;
+    }
+
+  put32 (o, (guint32) start);            /* iStartAt */
+  put8 (o, nfc);
+  put8 (o, 0);                           /* left aligned */
+  put8 (o, nfc == 23 ? 0 : 1);           /* rgbxchNums: where the number is */
+  pad_to (o, o->len + 8);
+  put8 (o, 0);                           /* ixchFollow: a tab */
+  put32 (o, 0);                          /* dxaIndentSav */
+  put32 (o, 0);
+  put8 (o, chpx->len);
+  put8 (o, papx->len);
+  put8 (o, 0);                           /* ilvlRestartLim */
+  put8 (o, 0);
+  g_byte_array_append (o, papx->data, papx->len);
+  g_byte_array_append (o, chpx->data, chpx->len);
+  put16 (o, cch);
+  for (guint i = 0; i < cch; i++)
+    put16 (o, text[i]);
+
+  g_byte_array_free (papx, TRUE);
+  g_byte_array_free (chpx, TRUE);
+}
+
+/* PlfLst: the lists' LSTFs, and after them -- outside the count, as
+ * Word has it -- their levels.  Returns the LSTFs' length. */
+static guint
+write_lists (Writer *w, GByteArray *tb)
+{
+  guint at = tb->len, lcb;
+
+  put16 (tb, w->lists->len);
+  for (guint i = 0; i < w->lists->len; i++)
+    {
+      const ListDef *def = &g_array_index (w->lists, ListDef, i);
+
+      put32 (tb, def->lsid);
+      put32 (tb, 0xFFFFFFFF);            /* tplc */
+      for (int l = 0; l < 9; l++)
+        put16 (tb, 0x0FFF);              /* no style for any level */
+      put8 (tb, 0);                      /* nine levels */
+      put8 (tb, 0);
+    }
+  lcb = tb->len - at;
+  for (guint i = 0; i < w->lists->len; i++)
+    {
+      const ListDef *def = &g_array_index (w->lists, ListDef, i);
+      guint fallback = W42_LIST_NUMBER;
+
+      /* A level no paragraph used is like the first one used. */
+      for (int l = 0; l < 9; l++)
+        if (def->kind[l] != 0)
+          {
+            fallback = w42_list_is_bullet ((W42ListKind) def->kind[l]) ? W42_LIST_BULLET : W42_LIST_NUMBER;
+            break;
+          }
+      for (int l = 0; l < 9; l++)
+        write_lvl (w, tb, def->kind[l] != 0 ? def->kind[l] : fallback, l,
+                   def->start[l] > 0 ? def->start[l] : 1);
+    }
+  return lcb;
+}
+
+/* PlfLfo: an LFO per list, overriding nothing, then each one's LFOData. */
+static void
+write_lfos (Writer *w, GByteArray *tb)
+{
+  put32 (tb, w->lists->len);
+  for (guint i = 0; i < w->lists->len; i++)
+    {
+      put32 (tb, g_array_index (w->lists, ListDef, i).lsid);
+      put32 (tb, 0);
+      put32 (tb, 0);
+      put32 (tb, 0);                     /* no overrides */
+    }
+  for (guint i = 0; i < w->lists->len; i++)
+    put32 (tb, 0xFFFFFFFF);
 }
 
 /* ---- summary information ---------------------------------------------- */
@@ -1852,6 +2263,10 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     }
   w.hdd = g_array_new (FALSE, FALSE, sizeof (guint32));
   w.sections = g_array_new (FALSE, FALSE, sizeof (Section));
+  w.data = g_byte_array_new ();
+  w.lists = g_array_new (FALSE, FALSE, sizeof (ListDef));
+  w.cur_list[0] = w.cur_list[1] = -1;
+  w.row_cells = g_array_new (FALSE, FALSE, sizeof (CellInfo));
 
   collect_styles (&w);
   blocks = w42_pt_snapshot_blocks (pt);
@@ -1977,8 +2392,17 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     write_bin_table (tb, pap_fc, pap_pn);
     END (FIB_BTE_PAPX);
 
-    /* The fonts last of the tables that name them: the styles and the
-     * text have added theirs by now. */
+    if (w.lists->len > 0)
+      {
+        BEGIN (FIB_PLF_LST);
+        fclcb[FIB_PLF_LST][1] = write_lists (&w, tb);
+        BEGIN (FIB_PLF_LFO);
+        write_lfos (&w, tb);
+        END (FIB_PLF_LFO);
+      }
+
+    /* The fonts last of the tables that name them: the styles, the text
+     * and the lists have added theirs by now. */
     write_fonts (&w, fonts);
     BEGIN (FIB_STTBF_FFN);
     g_byte_array_append (tb, fonts->data, fonts->len);
@@ -2053,10 +2477,20 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       { "1Table", tb, 0 },
       { "\001CompObj", co, 0 },
       { "\005SummaryInformation", si, 0 },
+      { "Data", w.data, 0 },
       { "\005DocumentSummaryInformation", dsi, 0 },
     };
+    guint n = G_N_ELEMENTS (streams) - (dsi == NULL ? 1 : 0);
 
-    ole = ole_build (streams, G_N_ELEMENTS (streams) - (dsi == NULL ? 1 : 0), CLSID_WORD);
+    if (w.data->len == 0)
+      {
+        /* No Data stream: the summary moves up into its place. */
+        streams[4] = streams[5];
+        n--;
+      }
+    else
+      pad_to (w.data, OLE_MINI_CUTOFF);
+    ole = ole_build (streams, n, CLSID_WORD);
   }
 
   ok = g_file_replace_contents (file, (const char *) ole->data, ole->len, NULL, FALSE,
@@ -2078,6 +2512,9 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     }
   g_array_free (w.hdd, TRUE);
   g_array_free (w.sections, TRUE);
+  g_byte_array_free (w.data, TRUE);
+  g_array_free (w.lists, TRUE);
+  g_array_free (w.row_cells, TRUE);
   g_byte_array_free (wd, TRUE);
   g_byte_array_free (tb, TRUE);
   g_array_free (chp_fc, TRUE);

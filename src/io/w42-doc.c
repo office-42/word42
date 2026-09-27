@@ -1680,6 +1680,18 @@ resolve_style (Doc *doc, int istd, Para *pa, Char *ch, int depth)
     apply_chpx (doc, style->chpx, style->chpx_len, ch, depth + 1);
 }
 
+/* Word's built-in styles past the headings, by their identity (sti):
+ * a file names them by it, and Word shows them in its own language. */
+static const struct { const char *name; guint sti; } BUILTIN_STYLES[] = {
+  { "TOC 1", 19 }, { "TOC 2", 20 }, { "TOC 3", 21 }, { "TOC 4", 22 }, { "TOC 5", 23 },
+  { "TOC 6", 24 }, { "TOC 7", 25 }, { "TOC 8", 26 }, { "TOC 9", 27 },
+  { "Footnote Text", 29 }, { "Header", 31 }, { "Footer", 32 }, { "Caption", 34 },
+  { "Footnote Reference", 38 }, { "Endnote Reference", 42 }, { "Endnote Text", 43 },
+  { "Title", 62 }, { "Body Text", 66 }, { "Subtitle", 74 },
+  { "Hyperlink", 85 }, { "Strong", 87 }, { "Emphasis", 88 },
+  { "List Paragraph", 179 }, { "Quote", 180 }, { "Intense Quote", 181 },
+};
+
 static const char *
 style_name_for (Doc *doc, int istd)
 {
@@ -1701,9 +1713,13 @@ style_name_for (Doc *doc, int istd)
     case 7: return "Heading 7";
     case 8: return "Heading 8";
     case 9: return "Heading 9";
-    case 62: return "Title";
     default:
-      /* Any other paragraph style by the name the file gives it. */
+      /* Word's other built-in styles by our names for them, whatever
+       * language the file names them in; any other paragraph style by
+       * the name the file gives it. */
+      for (guint i = 0; i < G_N_ELEMENTS (BUILTIN_STYLES); i++)
+        if (BUILTIN_STYLES[i].sti == style->sti)
+          return style->sgc == 1 ? BUILTIN_STYLES[i].name : "Normal";
       return style->sgc == 1 && style->name != NULL ? style->name : "Normal";
     }
 }
