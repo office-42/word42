@@ -434,7 +434,45 @@ typedef struct {
   const char *author;       /* whose the comments and the changes are */
   gboolean    rmarks;       /* a change is marked: SttbfRMark is wanted */
   guint32     dttm;         /* now, as Word dates a change */
+  GPtrArray  *custom;       /* CustomProp: what Word has no word for, kept for Word42 */
 } Writer;
+
+/* A custom property: a number, or a string when `text` is set. */
+typedef struct {
+  char *name;
+  int   value;
+  char *text;
+} CustomProp;
+
+static void
+custom_prop_free (gpointer data)
+{
+  CustomProp *p = data;
+
+  g_free (p->name);
+  g_free (p->text);
+  g_free (p);
+}
+
+static void
+custom_int (Writer *w, const char *name, int value)
+{
+  CustomProp *p = g_new0 (CustomProp, 1);
+
+  p->name = g_strdup (name);
+  p->value = value;
+  g_ptr_array_add (w->custom, p);
+}
+
+static void
+custom_text (Writer *w, const char *name, const char *text)
+{
+  CustomProp *p = g_new0 (CustomProp, 1);
+
+  p->name = g_strdup (name);
+  p->text = g_strdup (text);
+  g_ptr_array_add (w->custom, p);
+}
 
 /* A comment: the text it is on, where its mark is, and what it says. */
 typedef struct {
@@ -1218,7 +1256,7 @@ write_picture (Writer *w, const W42Object *obj)
   put16 (o, 0x0002 | (75 << 4));
   put16 (o, 0xF00A);
   put32 (o, 8);
-  put32 (o, 1025 + w->n_pictures++);
+  put32 (o, 1025 + w->n_pictures);
   put32 (o, 0x00000A00);                         /* fHaveAnchor, fHaveSpt */
   put16 (o, 0x0003 | (3 << 4));
   put16 (o, 0xF00B);
@@ -1359,7 +1397,8 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
       add_note_mark (w, block->runs->len > 0
                         ? &w42_ap_table_get (w->aps, g_array_index (block->runs, W42Run, 0).ap)->ch
                         : &fmt->ch, &style->ch);
-      add_char (w, ' ');
+      if (block->text->str[0] != ' ')
+        add_char (w, ' ');
       chp_sprms (w, grpprl, &fmt->ch, &style->ch);
       end_run (w, grpprl);
     }
@@ -1423,6 +1462,27 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
           const W42Object *obj = w42_object_table_get (w42_pt_object_table (w->pt), run->object);
           gint64 at = obj != NULL ? write_picture (w, obj) : -1;
 
+          if (at >= 0 && (obj->wrap != W42_WRAP_INLINE || obj->shape != W42_SHAPE_PICTURE))
+            {
+              /* Word sees an inline picture; Word42 keeps the rest. */
+              char name[48];
+              /* The line in hundredths of a point: a decimal point would
+               * be a comma in half the world's locales. */
+              char *value = g_strdup_printf ("wrap=%d positioned=%d x=%d y=%d shape=%d line=%d,%06x fill=%d,%06x",
+                                             (int) obj->wrap, obj->positioned ? 1 : 0, obj->pos_x, obj->pos_y,
+                                             (int) obj->shape, (int) (obj->line_pt * 100 + 0.5),
+                                             obj->line_rgb & 0xFFFFFF,
+                                             obj->filled ? 1 : 0, obj->fill_rgb & 0xFFFFFF);
+
+              g_snprintf (name, sizeof name, "Word42Picture%u", w->n_pictures);
+              custom_text (w, name, value);
+              g_free (value);
+              if (obj->text != NULL && *obj->text != '\0')
+                {
+                  g_snprintf (name, sizeof name, "Word42PictureText%u", w->n_pictures);
+                  custom_text (w, name, obj->text);
+                }
+            }
           if (at >= 0)
             {
               /* The picture's place in the text: 1, special, saying where
@@ -1434,6 +1494,7 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
               chp_sprms (w, grpprl, &rf->ch, &style->ch);
               end_run (w, grpprl);
               mark_ch = &rf->ch;
+              w->n_pictures++;
             }
           continue;
         }
@@ -2257,6 +2318,18 @@ write_sepx (Writer *w, GByteArray *wd, guint index)
   sprm16 (s, 0xB022, (guint) page.margin_right);
   sprm16 (s, 0x9023, (guint) page.margin_top);
   sprm16 (s, 0x9024, (guint) page.margin_bottom);
+  if (page.has_border)
+    {
+      /* The line round the page: a BRC80 each side, its distance from
+       * the paper's edge in points, and sprmSPgbProp saying it is
+       * measured from the edge. */
+      W42BorderEdge edge = { page.border_style, page.border_width, page.border_color };
+      guint32 brc = brc80 (&edge) | ((guint32) CLAMP (page.border_space / 20, 0, 31) << 24);
+
+      for (guint16 sprm = 0x702B; sprm <= 0x702E; sprm++)
+        sprm32 (s, sprm, brc);
+      sprm16 (s, 0x522F, 0x0020);
+    }
   sprm16 (s, 0xB017, 720);                                     /* sprmSDyaHdrTop */
   sprm16 (s, 0xB018, 720);                                     /* sprmSDyaHdrBottom */
   if (sect->columns > 1)
@@ -2508,11 +2581,12 @@ write_lfos (Writer *w, GByteArray *tb)
 /* ---- summary information ---------------------------------------------- */
 
 /* \005DocumentSummaryInformation, for its second section: the custom
- * properties, which is where the page the numbers begin on is kept --
- * Word numbers every page -- with the number that page gets.  NULL when
- * there is nothing to keep. */
+ * properties, which is where Word42 keeps what a .doc has no place for
+ * -- the page the numbers begin on, the colour behind the page, heading
+ * numbers, a picture's wrapping and a shape's drawing.  Word shows them
+ * under File > Properties > Custom.  NULL when there is nothing to keep. */
 static GByteArray *
-doc_summary_info (W42PieceTable *pt)
+doc_summary_info (Writer *w)
 {
   static const guint8 FMTID_DOC[16] = {
     0x02, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
@@ -2522,15 +2596,12 @@ doc_summary_info (W42PieceTable *pt)
     0x05, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
     0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
   };
-  static const char * const NAMES[2] = { "Word42PageNumbersFrom", "Word42PageNumbersStart" };
-  GByteArray *o, *first, *user;
-  int from, start, values[2];
+  GByteArray *o, *first, *user, *dict, *body;
+  guint n_props = w->custom->len, n;
+  guint32 *at_v;
 
-  w42_pt_get_page_numbering (pt, &from, &start);
-  if (from <= 1)
+  if (n_props == 0)
     return NULL;
-  values[0] = from;
-  values[1] = start;
 
   /* The first section: the code page and nothing else. */
   first = g_byte_array_new ();
@@ -2542,47 +2613,65 @@ doc_summary_info (W42PieceTable *pt)
   put16 (first, 1252);
   put16 (first, 0);
 
-  /* The second: the dictionary naming properties 2 and 3, the code
-   * page, and the two numbers. */
+  /* The second: the dictionary naming properties 2 on, the code page,
+   * and the values -- numbers as VT_I4, strings as VT_LPWSTR. */
+  n = n_props + 2;
+  dict = g_byte_array_new ();
+  put32 (dict, n_props);
+  for (guint i = 0; i < n_props; i++)
+    {
+      const CustomProp *p = g_ptr_array_index (w->custom, i);
+
+      put32 (dict, i + 2);
+      put32 (dict, (guint32) strlen (p->name) + 1);
+      g_byte_array_append (dict, (const guint8 *) p->name, (guint) strlen (p->name) + 1);
+    }
+  while (dict->len % 4)
+    put8 (dict, 0);
+
+  body = g_byte_array_new ();
+  at_v = g_new (guint32, n_props);
+  g_byte_array_append (body, dict->data, dict->len);
+  put32 (body, 0x02);
+  put16 (body, 1252);
+  put16 (body, 0);
+  for (guint i = 0; i < n_props; i++)
+    {
+      const CustomProp *p = g_ptr_array_index (w->custom, i);
+
+      at_v[i] = 8 + 8 * n + body->len;
+      if (p->text != NULL)
+        {
+          glong n16 = 0;
+          gunichar2 *u = g_utf8_to_utf16 (p->text, -1, NULL, &n16, NULL);
+
+          put32 (body, 0x1F);             /* VT_LPWSTR */
+          put32 (body, (guint32) n16 + 1);
+          for (glong c = 0; c < n16; c++)
+            put16 (body, u[c]);
+          put16 (body, 0);
+          while (body->len % 4)
+            put8 (body, 0);
+          g_free (u);
+        }
+      else
+        {
+          put32 (body, 0x03);             /* VT_I4 */
+          put32 (body, (guint32) p->value);
+        }
+    }
+
   user = g_byte_array_new ();
-  {
-    GByteArray *dict = g_byte_array_new ();
-    guint32 at_dict, at_cp, at_v[2], n = 4;
-    GByteArray *body = g_byte_array_new ();
-
-    put32 (dict, 2);
-    for (guint i = 0; i < 2; i++)
-      {
-        put32 (dict, i + 2);
-        put32 (dict, (guint32) strlen (NAMES[i]) + 1);
-        g_byte_array_append (dict, (const guint8 *) NAMES[i], (guint) strlen (NAMES[i]) + 1);
-      }
-    while (dict->len % 4)
-      put8 (dict, 0);
-
-    at_dict = 8 + 8 * n;
-    g_byte_array_append (body, dict->data, dict->len);
-    at_cp = at_dict + body->len;
-    put32 (body, 0x02);
-    put16 (body, 1252);
-    put16 (body, 0);
-    for (guint i = 0; i < 2; i++)
-      {
-        at_v[i] = at_dict + body->len;
-        put32 (body, 0x03);            /* VT_I4 */
-        put32 (body, (guint32) values[i]);
-      }
-
-    put32 (user, 8 + 8 * n + body->len);
-    put32 (user, n);
-    put32 (user, 0);  put32 (user, at_dict);
-    put32 (user, 1);  put32 (user, at_cp);
-    put32 (user, 2);  put32 (user, at_v[0]);
-    put32 (user, 3);  put32 (user, at_v[1]);
-    g_byte_array_append (user, body->data, body->len);
-    g_byte_array_free (dict, TRUE);
-    g_byte_array_free (body, TRUE);
-  }
+  put32 (user, 8 + 8 * n + body->len);
+  put32 (user, n);
+  put32 (user, 0);  put32 (user, 8 + 8 * n);                    /* the dictionary */
+  put32 (user, 1);  put32 (user, 8 + 8 * n + dict->len);        /* the code page */
+  for (guint i = 0; i < n_props; i++)
+    {
+      put32 (user, i + 2);
+      put32 (user, at_v[i]);
+    }
+  g_byte_array_append (user, body->data, body->len);
 
   o = g_byte_array_new ();
   put16 (o, 0xFFFE);
@@ -2596,6 +2685,10 @@ doc_summary_info (W42PieceTable *pt)
   put32 (o, 68 + first->len);
   g_byte_array_append (o, first->data, first->len);
   g_byte_array_append (o, user->data, user->len);
+
+  g_free (at_v);
+  g_byte_array_free (dict, TRUE);
+  g_byte_array_free (body, TRUE);
   g_byte_array_free (first, TRUE);
   g_byte_array_free (user, TRUE);
   return o;
@@ -2826,6 +2919,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.row_cells = g_array_new (FALSE, FALSE, sizeof (CellInfo));
   w.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
   w.comments = g_array_new (FALSE, FALSE, sizeof (Comment));
+  w.custom = g_ptr_array_new_with_free_func (custom_prop_free);
   w.comment_txt = g_array_new (FALSE, FALSE, sizeof (guint32));
   {
     const W42DocInfo *info = w42_pt_get_info (pt);
@@ -3062,7 +3156,21 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
 
   co = compobj ();
   si = summary_info (pt);
-  dsi = doc_summary_info (pt);
+  {
+    int from, start;
+
+    w42_pt_get_page_numbering (pt, &from, &start);
+    if (from > 1)
+      {
+        custom_int (&w, "Word42PageNumbersFrom", from);
+        custom_int (&w, "Word42PageNumbersStart", start);
+      }
+    if (page != NULL && page->has_background)
+      custom_int (&w, "Word42PageBackground", (int) (page->background & 0xFFFFFF));
+    if (w42_stylesheet_get_number_headings (w.sheet))
+      custom_int (&w, "Word42NumberHeadings", 1);
+  }
+  dsi = doc_summary_info (&w);
   {
     OleStream streams[] = {
       { "WordDocument", wd, 0 },
@@ -3109,6 +3217,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_array_free (w.row_cells, TRUE);
   g_hash_table_destroy (w.bookmarks);
   g_array_free (w.comments, TRUE);
+  g_ptr_array_free (w.custom, TRUE);
   g_array_free (w.comment_txt, TRUE);
   g_byte_array_free (wd, TRUE);
   g_byte_array_free (tb, TRUE);

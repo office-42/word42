@@ -897,25 +897,27 @@ property_string (const guint8 *d, gsize len, gsize at, guint codepage)
   return NULL;
 }
 
-/* Where the page numbers begin, which Word42 keeps among the custom
- * properties of \005DocumentSummaryInformation: its second section's
- * dictionary names the properties, and two of them are ours. */
-static void
-read_doc_summary (Ole *ole, W42PieceTable *pt)
+/* What Word42 keeps among the custom properties of
+ * \005DocumentSummaryInformation, which a .doc has no other place for:
+ * where the page numbers begin, the colour behind the page, heading
+ * numbers, and each picture's wrapping and drawing.  The second
+ * section's dictionary names the properties. */
+static GHashTable *
+read_custom (Ole *ole)
 {
   static const guint8 FMTID_USER[16] = {
     0x05, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
     0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
   };
   GByteArray *stream = ole_stream (ole, "\005DocumentSummaryInformation", NULL);
+  GHashTable *props = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  GHashTable *names = g_hash_table_new_full (NULL, NULL, NULL, g_free);
   const guint8 *d;
   gsize len;
-  guint32 n_sections, at = 0, count, pid[2] = { 0, 0 };
-  int values[2] = { 0, 0 };
-  gboolean have[2] = { FALSE, FALSE };
+  guint32 n_sections, at = 0, count;
 
   if (stream == NULL)
-    return;
+    goto out;
   d = stream->data;
   len = stream->len;
   if (len < 28 || rd16 (d) != 0xFFFE)
@@ -926,9 +928,9 @@ read_doc_summary (Ole *ole, W42PieceTable *pt)
       at = rd32 (d + 28 + 20 * s + 16);
   if (at == 0 || (gsize) at + 8 > len)
     goto out;
-  count = MIN (rd32 (d + at + 4), 256);
+  count = MIN (rd32 (d + at + 4), 4096);
 
-  /* The dictionary, property 0, first: which pids are ours. */
+  /* The dictionary, property 0, first: the names of the others. */
   for (guint32 i = 0; i < count && (gsize) at + 8 + 8 * i + 8 <= len; i++)
     {
       guint32 id = rd32 (d + at + 8 + 8 * i), off = rd32 (d + at + 8 + 8 * i + 4);
@@ -937,21 +939,17 @@ read_doc_summary (Ole *ole, W42PieceTable *pt)
 
       if (id != 0 || p + 4 > len)
         continue;
-      entries = MIN (rd32 (d + p), 256);
+      entries = MIN (rd32 (d + p), 4096);
       p += 4;
       for (guint32 e = 0; e < entries && p + 8 <= len; e++)
         {
           guint32 epid = rd32 (d + p), elen = rd32 (d + p + 4);
 
           p += 8;
-          if (elen > 256 || p + elen > len)
+          if (elen == 0 || elen > 256 || p + elen > len)
             break;
-          if (elen == sizeof "Word42PageNumbersFrom" &&
-              memcmp (d + p, "Word42PageNumbersFrom", elen) == 0)
-            pid[0] = epid;
-          else if (elen == sizeof "Word42PageNumbersStart" &&
-                   memcmp (d + p, "Word42PageNumbersStart", elen) == 0)
-            pid[1] = epid;
+          g_hash_table_insert (names, GUINT_TO_POINTER (epid),
+                               g_strndup ((const char *) d + p, elen));
           p += elen;
         }
     }
@@ -959,19 +957,96 @@ read_doc_summary (Ole *ole, W42PieceTable *pt)
     {
       guint32 id = rd32 (d + at + 8 + 8 * i), off = rd32 (d + at + 8 + 8 * i + 4);
       gsize p = (gsize) at + off;
+      const char *name = id > 1 ? g_hash_table_lookup (names, GUINT_TO_POINTER (id)) : NULL;
 
-      for (int k = 0; k < 2; k++)
-        if (id != 0 && id == pid[k] && p + 8 <= len && rd32 (d + p) == 0x03)
-          {
-            values[k] = (int) rd32 (d + p + 4);
-            have[k] = TRUE;
-          }
+      if (name == NULL || !g_str_has_prefix (name, "Word42") || p + 8 > len)
+        continue;
+      if (rd32 (d + p) == 0x03)
+        g_hash_table_insert (props, g_strdup (name), g_strdup_printf ("%d", (int) rd32 (d + p + 4)));
+      else
+        {
+          char *s = property_string (d, len, p, 1252);
+
+          if (s != NULL)
+            g_hash_table_insert (props, g_strdup (name), s);
+        }
     }
-  if (have[0] && have[1])
-    w42_pt_set_page_numbering (pt, CLAMP (values[0], 1, 9999), CLAMP (values[1], 0, 9999));
 
 out:
-  g_byte_array_free (stream, TRUE);
+  if (stream != NULL)
+    g_byte_array_free (stream, TRUE);
+  g_hash_table_destroy (names);
+  return props;
+}
+
+static void
+read_doc_summary (Ole *ole, W42PieceTable *pt, W42PageSetup *page)
+{
+  GHashTable *props = read_custom (ole);
+  const char *from = g_hash_table_lookup (props, "Word42PageNumbersFrom");
+  const char *start = g_hash_table_lookup (props, "Word42PageNumbersStart");
+  const char *background = g_hash_table_lookup (props, "Word42PageBackground");
+
+  if (from != NULL && start != NULL)
+    w42_pt_set_page_numbering (pt, CLAMP (atoi (from), 1, 9999), CLAMP (atoi (start), 0, 9999));
+  if (background != NULL && page != NULL)
+    {
+      page->has_background = 1;
+      page->background = (guint32) atoi (background) & 0xFFFFFF;
+    }
+  if (g_hash_table_lookup (props, "Word42NumberHeadings") != NULL)
+    w42_stylesheet_set_number_headings (w42_pt_stylesheet (pt), TRUE);
+
+  /* The pictures, in the order the text has them: those that float, and
+   * those that are shapes. */
+  if (g_hash_table_size (props) > 0)
+    {
+      GPtrArray *blocks = w42_pt_snapshot_blocks (pt);
+      W42ObjectTable *objects = w42_pt_object_table (pt);
+      guint n = 0;
+
+      for (guint i = 0; i < blocks->len; i++)
+        {
+          const W42Block *block = g_ptr_array_index (blocks, i);
+
+          if (block->note >= 0)
+            continue;
+          for (guint r = 0; r < block->runs->len; r++)
+            {
+              const W42Run *run = &g_array_index (block->runs, W42Run, r);
+              char name[48];
+              const char *value;
+              int wrap = 0, positioned = 0, x = 0, y = 0, shape = 0, filled = 0, line = 0;
+              unsigned line_rgb = 0, fill_rgb = 0;
+
+              if (run->object == W42_OBJECT_NONE)
+                continue;
+              g_snprintf (name, sizeof name, "Word42Picture%u", n);
+              value = g_hash_table_lookup (props, name);
+              if (value != NULL &&
+                  sscanf (value, "wrap=%d positioned=%d x=%d y=%d shape=%d line=%d,%x fill=%d,%x",
+                          &wrap, &positioned, &x, &y, &shape, &line, &line_rgb, &filled, &fill_rgb) == 9)
+                {
+                  const char *text;
+
+                  g_snprintf (name, sizeof name, "Word42PictureText%u", n);
+                  text = g_hash_table_lookup (props, name);
+                  if (shape > 0 && shape < W42_SHAPE_KINDS)
+                    w42_object_table_set_shape (objects, run->object, (W42ShapeKind) shape, line / 100.0,
+                                                line_rgb, filled != 0, fill_rgb,
+                                                text != NULL ? g_intern_string (text) : NULL);
+                  if (wrap > 0 && wrap <= W42_WRAP_BEHIND)
+                    {
+                      w42_object_table_set_wrap (objects, run->object, (W42Wrap) wrap);
+                      w42_object_table_set_position (objects, run->object, positioned != 0, x, y);
+                    }
+                }
+              n++;
+            }
+        }
+      g_ptr_array_free (blocks, TRUE);
+    }
+  g_hash_table_destroy (props);
 }
 
 /* What File > Summary Info shows, out of the \005SummaryInformation
@@ -1992,6 +2067,22 @@ read_page_setup (Doc *doc, W42PageSetup *page)
         case 0x9024: page->margin_bottom = rd16s (op); break;
         case 0x500B: page->columns = rd16 (op) + 1; break;     /* ccolM1 */
         case 0x900C: page->column_gap = rd16 (op); break;
+        case 0x702B:
+          /* sprmSBrcTop80: the line round the page, which the model
+           * has one of for all four sides. */
+          {
+            W42BorderEdge edge;
+
+            if (olen >= 4 && brc80_edge (op, &edge))
+              {
+                page->has_border = 1;
+                page->border_style = edge.style;
+                page->border_width = edge.width;
+                page->border_color = edge.color;
+                page->border_space = (op[3] & 0x1F) * 20;
+              }
+          }
+          break;
         default: break;
         }
       p += 2 + olen;
@@ -3836,7 +3927,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
   build_document (&doc, pt);
   read_headers (&doc, pt);
-  read_doc_summary (&ole, pt);
+  read_doc_summary (&ole, pt, page);
   ok = TRUE;
 
 out:
