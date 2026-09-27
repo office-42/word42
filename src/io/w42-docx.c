@@ -2319,8 +2319,11 @@ docx_apply_field (Docx *d)
         {
           if (*p == '\\')
             {
+              /* A switch and its letter.  A code that ends in the
+               * backslash has no letter, and two steps would take the
+               * scan past the end of the string. */
               anchor = p[1] == 'l';
-              p += 2;
+              p += p[1] != '\0' ? 2 : 1;
             }
           else if (*p == '"')
             {
