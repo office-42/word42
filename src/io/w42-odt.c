@@ -140,6 +140,18 @@ twips_out (GString *s, int twips)
 /* Reading                                                                 */
 /* ====================================================================== */
 
+/* The cells the tables of a document may make between them: a million,
+ * far beyond any document's.  Every row is as wide as its table, the
+ * builder making the cells it leaves out, so an empty <table:table-row/>
+ * in a table of a thousand columns is a thousand cells: a file of 800
+ * bytes of them took 700 MB.  The rows past it are not read. */
+#define ODT_MAX_CELLS (1u << 20)
+
+/* And the spaces text:s may stand for in all.  A thousand from 22 bytes,
+ * which deflate to next to nothing, made 170 MB of text of a 10 KB file;
+ * past sixteen million, each is one space. */
+#define ODT_MAX_SPACES (1u << 24)
+
 /* A style, resolved: what its chain of parents adds up to. */
 typedef struct {
   W42ParaFmt pa;
@@ -208,6 +220,7 @@ typedef struct {
   guint          pending_cell_fill;    /* and its background; 0 none */
   char          *cur_row_style;
   int            table_row;     /* rows begun in the table being read */
+  gsize          table_cells;   /* and the cells the rows of every table have made */
   gboolean       in_header_rows;
 
   /* while a style is being read */
@@ -239,6 +252,7 @@ typedef struct {
   GArray        *span_stack;    /* W42CharFmt, for nested spans */
   const char    *link;
   gboolean       after_space;   /* white space here would be collapsed */
+  gsize          spaces;        /* the spaces text:s has stood for so far */
   GHashTable    *bookmark_start;
   int            list_depth;
   GPtrArray     *list_style_stack;   /* char*, one per open list */
@@ -349,6 +363,20 @@ keep_attrs (char ***names, char ***values, const char **an, const char **av)
     }
   (*names)[have + more] = NULL;
   (*values)[have + more] = NULL;
+}
+
+/* The spaces a text:s stands for, `least` of them at the fewest, within
+ * what the document may have of them in all. */
+static int
+odt_spaces (Odt *o, const char **an, const char **av, int least)
+{
+  const char *c = attr (an, av, "text:c");
+  int n = c != NULL ? CLAMP (atoi (c), least, 1000) : 1;
+
+  if (o->spaces > ODT_MAX_SPACES)
+    n = MIN (n, 1);
+  o->spaces += (gsize) n;
+  return n;
 }
 
 /* ---- properties into formats -------------------------------------------- */
@@ -1168,8 +1196,7 @@ styles_start (Odt *o, const char *tag, const char **an, const char **av)
     }
   else if ((o->in_header || o->in_footer) && g_str_equal (tag, "s"))
     {
-      const char *c = attr (an, av, "text:c");
-      int n = c != NULL ? CLAMP (atoi (c), 0, 1000) : 1;
+      int n = odt_spaces (o, an, av, 0);
 
       for (int i = 0; i < n; i++)
         g_string_append_c (o->hf_text, ' ');
@@ -1527,8 +1554,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       /* Its paragraphs are the comment's text, spaces and all. */
       if (g_str_equal (tag, "s"))
         {
-          const char *c = attr (an, av, "text:c");
-          int n = c != NULL ? CLAMP (atoi (c), 1, 1000) : 1;
+          int n = odt_spaces (o, an, av, 1);
 
           for (int i = 0; i < n; i++)
             g_string_append_c (o->annotation, ' ');
@@ -1724,8 +1750,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
     }
   else if (g_str_equal (tag, "s"))
     {
-      const char *c = attr (an, av, "text:c");
-      int n = c != NULL ? CLAMP (atoi (c), 1, 1000) : 1;
+      int n = odt_spaces (o, an, av, 1);
 
       for (int i = 0; i < n; i++)
         g_string_append_c (o->text, ' ');
@@ -1890,6 +1915,11 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           w42_builder_end_paragraph (&o->b);
           o->para_open = FALSE;
         }
+      if (o->in_table == 0 && o->table_cells >= ODT_MAX_CELLS)
+        {
+          o->skip_depth = 1;          /* the tables have made all they may */
+          return;
+        }
       o->in_table++;
       if (o->in_table == 1)
         {
@@ -1916,6 +1946,11 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       const char *sn = attr (an, av, "table:style-name");
       int h = sn != NULL ? GPOINTER_TO_INT (g_hash_table_lookup (o->row_heights, sn)) : 0;
 
+      if (o->table_cells >= ODT_MAX_CELLS)
+        {
+          o->skip_depth = 1;
+          return;
+        }
       if (!o->table_started)
         {
           int n = (int) o->table_widths->len;
@@ -1927,6 +1962,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           w42_pt_table_set_borders (o->pt, o->b.table, FALSE);
           o->table_started = TRUE;
         }
+      o->table_cells += (gsize) MAX (o->b.n_cols, 1);
       if (h > 0)
         w42_pt_table_set_row_height (o->b.pt, o->b.table, o->table_row, h);
       if (o->in_header_rows)

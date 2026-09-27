@@ -85,6 +85,14 @@ attr (const char **names, const char **values, const char *want)
 /* Reading                                                                 */
 /* ====================================================================== */
 
+/* The cells the tables of a document may make between them: a million,
+ * far beyond any document's.  Every row is as wide as its table, the
+ * builder making the cells it leaves out, and a cell may start 256 rows
+ * down: a table of sixteen cells in a file of 1.5 KB was four thousand
+ * rows of a thousand cells, and took 650 MB.  What is past it is not
+ * read. */
+#define ABW_MAX_CELLS (1u << 20)
+
 typedef struct {
   int         id;
   W42ListKind kind;
@@ -140,6 +148,7 @@ typedef struct {
   GArray      *table_cols;       /* each <table>'s columns, in file order */
   int          tables_seen;
   GArray      *cover;            /* AbwCover, per column of the open table */
+  gsize        table_cells;      /* the cells the rows of every table have made */
   GHashTable  *bookmarks;        /* name -> where it starts */
   GPtrArray   *styles;           /* AbwStyle, until the last is read */
 
@@ -701,6 +710,7 @@ abw_end_row (Abw *a)
   w42_builder_end_cell (&a->b);
   abw_fill_row (a, a->b.n_cols);
   w42_builder_end_row (&a->b);
+  a->table_cells += (gsize) MAX (a->b.n_cols, 1);
 }
 
 static gboolean
@@ -1223,8 +1233,8 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
             }
           g_strfreev (parts);
         }
-      if (w42_builder_in_table (&a->b) || a->in_hf)
-        a->skip_depth = 1;            /* nested, or in a header: not read */
+      if (w42_builder_in_table (&a->b) || a->in_hf || a->table_cells >= ABW_MAX_CELLS)
+        a->skip_depth = 1;            /* nested, in a header, or one too many: not read */
       else
         {
           /* As many columns as its cells reach, which the first pass
@@ -1252,6 +1262,11 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
       each_prop (props, attach_prop, &at);
       each_prop (props, para_prop, &cell_pa);
       abw_flush (a);
+      if (w42_builder_in_table (&a->b) && a->table_cells >= ABW_MAX_CELLS)
+        {
+          a->skip_depth = 1;          /* the tables have made all they may */
+          return;
+        }
       if (w42_builder_in_table (&a->b))
         {
           int col;
