@@ -5507,8 +5507,11 @@ void
 w42_pt_set_page_numbering (W42PieceTable *pt, int from, int start)
 {
   g_return_if_fail (pt != NULL);
-  pt->page_num_skip = MAX (from, 1) - 1;
-  pt->page_num_base = MAX (start, 0) - 1;
+  /* Every reader hands on what its file says, and a number near the top
+   * of an int overflowed the sum w42_pt_page_number makes of it.  The
+   * range the .doc reader keeps to holds for them all. */
+  pt->page_num_skip = CLAMP (from, 1, 9999) - 1;
+  pt->page_num_base = CLAMP (start, 0, 9999) - 1;
 }
 
 int
