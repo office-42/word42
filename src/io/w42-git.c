@@ -17,6 +17,11 @@
 
 #ifdef HAVE_LIBGIT2
 #include <git2.h>
+/* libgit2 1.8 moved git_error_clear() out of git2.h, among the calls
+ * for code that extends libgit2 itself. */
+#if LIBGIT2_VER_MAJOR > 1 || (LIBGIT2_VER_MAJOR == 1 && LIBGIT2_VER_MINOR >= 8)
+#include <git2/sys/errors.h>
+#endif
 #endif
 
 void
