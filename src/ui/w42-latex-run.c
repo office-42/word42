@@ -320,13 +320,24 @@ compile_run (Compile *c)
 
   c->runs++;
   g_subprocess_launcher_set_cwd (launcher, c->dir);
+  /* The source is not the user's: a document's own text goes into it, and
+   * mathematics passes through as the TeX it is written in.  So the engine
+   * is kept from doing anything but set type: no \write18 to run a program,
+   * and files only in the folder it works in -- not \input{/etc/passwd} or
+   * an \openout up the tree.  openin_any/openout_any restrict the paths
+   * kpathsea will open (p, paranoid: nothing absolute, hidden or above),
+   * which still leaves the figures and the .aux beside the source; Tectonic
+   * reads TECTONIC_UNTRUSTED_MODE for the same. */
+  g_subprocess_launcher_setenv (launcher, "openin_any", "p", TRUE);
+  g_subprocess_launcher_setenv (launcher, "openout_any", "p", TRUE);
+  g_subprocess_launcher_setenv (launcher, "TECTONIC_UNTRUSTED_MODE", "1", TRUE);
   if (c->tectonic)
     proc = g_subprocess_launcher_spawn (launcher, &error, c->engine,
                                         c->synctex ? "--synctex" : "document.tex",
                                         c->synctex ? "document.tex" : NULL, NULL);
   else
-    proc = g_subprocess_launcher_spawn (launcher, &error, c->engine, "-interaction=nonstopmode",
-                                        "-halt-on-error",
+    proc = g_subprocess_launcher_spawn (launcher, &error, c->engine, "-no-shell-escape",
+                                        "-interaction=nonstopmode", "-halt-on-error",
                                         c->synctex ? "-synctex=1" : "document.tex",
                                         c->synctex ? "document.tex" : NULL, NULL);
   g_object_unref (launcher);
