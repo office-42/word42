@@ -7641,7 +7641,7 @@ w42_pdf_options_dialog_show (GtkWindow *parent, W42View *view)
 
   /* Word 97's File Sharing options, as a PDF has them. */
   grid = group (content, _("Security"));
-  box->open_pw = password_row (grid, 0, _("Password to _open:"), o->open_password);
+  box->open_pw = password_row (grid, 0, _("Password to op_en:"), o->open_password);
   gtk_widget_set_tooltip_text (box->open_pw,
     _("Without it the PDF cannot be opened at all: its text, its pictures "
       "and the document inside it are encrypted with AES-256."));
