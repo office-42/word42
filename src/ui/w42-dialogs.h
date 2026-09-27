@@ -20,6 +20,8 @@ void w42_paragraph_dialog_show  (GtkWindow *parent, W42View *view);
 void w42_style_dialog_show      (GtkWindow *parent, W42View *view);
 void w42_header_footer_dialog_show (GtkWindow *parent, W42View *view);
 void w42_page_numbers_dialog_show  (GtkWindow *parent, W42View *view);
+/* Format > Make It Fit: the document scaled to fill a number of pages. */
+void w42_make_it_fit_dialog_show   (GtkWindow *parent, W42View *view);
 void w42_insert_table_dialog_show  (GtkWindow *parent, W42View *view);
 void w42_go_to_dialog_show         (GtkWindow *parent, W42View *view);
 void w42_autocorrect_dialog_show (GtkWindow *parent, W42View *view);

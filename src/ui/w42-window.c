@@ -3064,6 +3064,15 @@ action_table_delete_column (GSimpleAction *action, GVariant *param, gpointer dat
 }
 
 static void
+action_make_it_fit (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_make_it_fit_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+static void
 action_drop_cap (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
@@ -5683,6 +5692,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "autotext-expand", action_autotext_expand, NULL, NULL, NULL, { 0 } },
   { "format-picture", action_format_picture, NULL, NULL, NULL, { 0 } },
   { "drop-cap", action_drop_cap, NULL, NULL, NULL, { 0 } },
+  { "make-it-fit", action_make_it_fit, NULL, NULL, NULL, { 0 } },
   { "frame", action_frame, NULL, NULL, NULL, { 0 } },
   { "header-footer", action_header_footer, NULL, NULL, NULL, { 0 } },
   { "insert-page-numbers", action_page_numbers, NULL, NULL, NULL, { 0 } },

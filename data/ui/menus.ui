@@ -466,6 +466,10 @@
           <attribute name="action">win.borders</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">Make It Fit...</attribute>
+          <attribute name="action">win.make-it-fit</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Colu_mns...</attribute>
           <attribute name="action">win.columns</attribute>
         </item>

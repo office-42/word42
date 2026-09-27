@@ -435,6 +435,18 @@ in Tools ▸ Options.
 A section has its own column layout, so a two-column article can follow a
 one-column title.
 
+### Format ▸ Make It Fit
+
+WordPerfect's answer to a page limit. Say how many pages the document
+should fill, and tick what may change: each margin, the font size, the
+line spacing. Everything ticked grows or shrinks by one factor -- the
+largest that still fits the pages asked for -- so the document keeps
+its proportions: a heading stays twice the size of the text around it.
+It works in both directions, filling a short story out to the pages a
+magazine wants as well as bringing a chapter in under a limit. The change
+to the text is one step for Edit ▸ Undo; the margins are the page setup's.
+Nothing is changed when not even half the size would fit.
+
 ### Format ▸ Columns
 
 One, two or three newspaper columns, with the spacing between them, applied

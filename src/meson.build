@@ -18,6 +18,7 @@ w42_core_sources = files(
   'model/w42-spell.c',
   'layout/w42-layout.c',
   'layout/w42-index.c',
+  'layout/w42-fit.c',
   'io/w42-io.c',
   'io/w42-rtf.c',
   'io/w42-pdf.c',

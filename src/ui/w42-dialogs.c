@@ -9,6 +9,7 @@
 #include "w42-autocorrect.h"
 #include "w42-autotext.h"
 #include "w42-envelope.h"
+#include "w42-fit.h"
 #include "w42-template.h"
 #include "w42-tableformat.h"
 #include "w42-lang.h"
@@ -1564,6 +1565,123 @@ w42_page_numbers_dialog_show (GtkWindow *parent, W42View *view)
   button_row (content, box->window, G_CALLBACK (on_page_numbers_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
   gtk_widget_grab_focus (box->position);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Format > Make It Fit                                                    */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *pages;
+  GtkWidget *items[6];
+} MakeItFitBox;
+
+static const struct { const char *label; W42FitItems item; } FIT_ITEMS[6] = {
+  { N_("_Left margin"),   W42_FIT_LEFT_MARGIN },
+  { N_("_Right margin"),  W42_FIT_RIGHT_MARGIN },
+  { N_("_Top margin"),    W42_FIT_TOP_MARGIN },
+  { N_("_Bottom margin"), W42_FIT_BOTTOM_MARGIN },
+  { N_("_Font size"),     W42_FIT_FONT_SIZE },
+  { N_("Line _spacing"),  W42_FIT_LINE_SPACING },
+};
+
+static void
+on_make_it_fit_ok (GtkButton *button, gpointer data)
+{
+  MakeItFitBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42PieceTable *pt;
+  W42PageSetup page;
+  W42FitItems items = 0;
+  int target, pages = 0;
+
+  (void) button;
+
+  if (doc == NULL)
+    return;
+  pt = w42_document_pt (doc);
+  page = *w42_document_page_setup (doc);
+  gtk_spin_button_update (GTK_SPIN_BUTTON (box->pages));
+  target = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (box->pages));
+  for (guint i = 0; i < G_N_ELEMENTS (FIT_ITEMS); i++)
+    if (gtk_check_button_get_active (GTK_CHECK_BUTTON (box->items[i])))
+      items |= FIT_ITEMS[i].item;
+  if (items == 0)
+    {
+      w42_message_show (GTK_WINDOW (box->window),
+                        _("Make It Fit needs something it may change: tick at "
+                          "least one of the items."), NULL);
+      return;
+    }
+
+  if (!w42_fit_pages (pt, &page, target, items, &pages))
+    {
+      char *detail;
+
+      if (pages == target)
+        detail = g_strdup (_("The document fills that many pages already."));
+      else
+        /* Translators: %d is a number of pages. */
+        detail = g_strdup_printf (ngettext ("Not even at half its size does the document "
+                                            "fit on %d page; tick more items, or ask for more pages.",
+                                            "Not even at half its size does the document "
+                                            "fit on %d pages; tick more items, or ask for more pages.",
+                                            target), target);
+      w42_message_show (GTK_WINDOW (box->window), _("Make It Fit changed nothing."), detail);
+      g_free (detail);
+      return;
+    }
+
+  w42_document_set_page_setup (doc, &page);
+  w42_document_mark_unsaved (doc);
+  w42_document_touch (doc);
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_make_it_fit_dialog_show (GtkWindow *parent, W42View *view)
+{
+  MakeItFitBox *box;
+  GtkWidget *content, *grid, *label;
+  W42Document *doc;
+  int now;
+  char *text;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  doc = w42_view_get_document (view);
+  if (doc == NULL)
+    return;
+  now = w42_fit_count_pages (w42_document_pt (doc), w42_document_page_setup (doc));
+
+  box = g_new0 (MakeItFitBox, 1);
+  box->view = view;
+  box->window = dialog_shell (parent, _("Make It Fit"), &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
+
+  grid = group (content, _("Pages"));
+  /* Translators: %d is a number of pages. */
+  text = g_strdup_printf (ngettext ("The document fills %d page now.",
+                                    "The document fills %d pages now.", now), now);
+  label = gtk_label_new (text);
+  g_free (text);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 2, 1);
+  box->pages = count_row (grid, 1, _("_Desired number of pages:"), 1, 9999, MAX (now - 1, 1));
+
+  grid = group (content, _("Items to Adjust"));
+  for (guint i = 0; i < G_N_ELEMENTS (FIT_ITEMS); i++)
+    {
+      box->items[i] = gtk_check_button_new_with_mnemonic (_(FIT_ITEMS[i].label));
+      gtk_check_button_set_active (GTK_CHECK_BUTTON (box->items[i]), TRUE);
+      gtk_grid_attach (GTK_GRID (grid), box->items[i], (int) (i % 2), (int) (i / 2), 1, 1);
+    }
+
+  button_row (content, box->window, G_CALLBACK (on_make_it_fit_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->pages);
 }
 
 /* ---------------------------------------------------------------------- */

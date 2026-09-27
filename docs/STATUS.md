@@ -343,6 +343,10 @@ Early, but real. Word42 today is a working word processor:
   bytes as loaded are what the document keeps, so a JPEG saved is the same
   JPEG; RTF carries pictures as `\pict`, PNG and JPEG as they are and the
   rest re-encoded as PNG.
+- **Make It Fit** — Format ▸ Make It Fit, from WordPerfect: the document
+  scaled, font size, line spacing and margins together, until it fills the
+  number of pages asked for, larger or smaller; a bisection over the
+  layout's own page count finds the factor.
 - **Text frames and drop caps** — Format ▸ Frame sets a paragraph in a
   frame at the left or right of the column, the text after it running down
   the other side; framed paragraphs one after another share the frame.
