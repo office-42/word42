@@ -1581,6 +1581,21 @@ window_action_state (W42Window *self, const char *name)
   return on;
 }
 
+/* A pane's view in its scrolled window.  GTK puts it in a viewport, which
+ * scrolls a child that takes the focus into sight -- all of the document
+ * at once, so a font chosen from the toolbar, which hands the focus back,
+ * would jump to its top.  The view scrolls to its caret itself. */
+static void
+scroll_view (GtkWidget *scrolled, GtkWidget *view)
+{
+  GtkWidget *child;
+
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled), view);
+  child = gtk_scrolled_window_get_child (GTK_SCROLLED_WINDOW (scrolled));
+  if (GTK_IS_VIEWPORT (child))
+    gtk_viewport_set_scroll_to_focus (GTK_VIEWPORT (child), FALSE);
+}
+
 static void
 window_set_split (W42Window *self, gboolean split)
 {
@@ -1608,8 +1623,7 @@ window_set_split (W42Window *self, gboolean split)
       gtk_widget_set_vexpand (scrolled, TRUE);
       gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled),
                                       GTK_POLICY_AUTOMATIC, GTK_POLICY_ALWAYS);
-      gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled),
-                                     GTK_WIDGET (view));
+      scroll_view (scrolled, GTK_WIDGET (view));
       gtk_paned_set_end_child (GTK_PANED (self->paned), scrolled);
       gtk_paned_set_resize_end_child (GTK_PANED (self->paned), TRUE);
       gtk_paned_set_shrink_end_child (GTK_PANED (self->paned), FALSE);
@@ -6003,8 +6017,7 @@ w42_window_init (W42Window *self)
   gtk_widget_set_vexpand (scrolled, TRUE);
   gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled),
                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_ALWAYS);
-  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled),
-                                 GTK_WIDGET (self->view));
+  scroll_view (scrolled, GTK_WIDGET (self->view));
 
   /* The page sits in a paned so that Window > Split can put a second
    * pane on the same document under it; unsplit, the paned is just the
