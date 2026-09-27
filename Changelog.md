@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.0.6 (in development)
+
 ## 1.0.5
 
 ### New
@@ -39,6 +41,14 @@
 - Export as PDF in LaTeX mode runs LaTeX again until the page references
   settle, and clears away the folder it worked in.
 - `word42 --convert-to=tex` writes the LaTeX source.
+- The new menus, dialogs and messages are translated into the nine
+  languages Word42 speaks besides English.
+
+### Fixed
+
+- Enter in a dialog's number box, such as Go To's page number, presses
+  the dialog's default button. Going to a page in Page Layout view shows
+  the page from its top edge.
 
 ## 1.0.4
 
