@@ -3423,9 +3423,10 @@ w42_layout_shaping_counts (W42Layout *self, guint *reused, guint *shaped)
     *shaped = self->misses;
 }
 
-/* Expands {PAGE}, {NUMPAGES} and {DATE} in a header or footer. */
+/* Expands {PAGE}, {NUMPAGES} and {DATE} in a header or footer.  `number`
+ * is the page's number, or -1 on a page before the numbering begins. */
 static char *
-expand_fields (const char *text, int page, int n_pages)
+expand_fields (const char *text, int number, int n_pages)
 {
   GString *out = g_string_new (NULL);
   const char *p = text;
@@ -3434,7 +3435,8 @@ expand_fields (const char *text, int page, int n_pages)
     {
       if (g_str_has_prefix (p, "{PAGE}"))
         {
-          g_string_append_printf (out, "%d", page + 1);
+          if (number >= 0)
+            g_string_append_printf (out, "%d", number);
           p += 6;
         }
       else if (g_str_has_prefix (p, "{NUMPAGES}"))
@@ -3506,7 +3508,7 @@ build_furniture (W42Layout *self, W42PieceTable *pt)
 
           if (slot == NULL || slot->text == NULL || *slot->text == '\0')
             continue;
-          text = expand_fields (slot->text, page, self->n_pages);
+          text = expand_fields (slot->text, w42_pt_page_number (pt, page), self->n_pages);
           key = g_strdup_printf ("%d\037%d\037%s", which, (int) slot->align, text);
           layout = g_hash_table_lookup (self->furniture_cache, key);
           if (layout == NULL)

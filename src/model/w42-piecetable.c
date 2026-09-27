@@ -76,6 +76,8 @@ struct _W42PieceTable {
   W42PageText header_first, header_even;   /* a title page's, and even pages' */
   W42PageText footer_first, footer_even;
   guint8      title_page, facing_pages;
+  int         page_num_skip;   /* pages before the numbering begins */
+  int         page_num_base;   /* the first numbered page's number, less 1 */
   W42PageText footer;
   const char *author;    /* interned, or NULL */
   W42DocInfo  info;      /* what File > Summary Info says */
@@ -1076,6 +1078,8 @@ w42_pt_load_text (W42PieceTable *pt, const char *utf8)
   g_clear_pointer (&pt->footer_even.text, g_free);
   pt->title_page = FALSE;
   pt->facing_pages = FALSE;
+  pt->page_num_skip = 0;
+  pt->page_num_base = 0;
   g_ptr_array_set_size (pt->tables, 0);
   /* Nor its styles: a style edited, or added, in the last document would
    * otherwise be saved with this one.  The summary info is left alone,
@@ -5487,6 +5491,33 @@ w42_pt_set_facing_pages (W42PieceTable *pt, gboolean on)
 {
   g_return_if_fail (pt != NULL);
   pt->facing_pages = on ? 1 : 0;
+}
+
+void
+w42_pt_get_page_numbering (W42PieceTable *pt, int *from, int *start)
+{
+  g_return_if_fail (pt != NULL);
+  if (from != NULL)
+    *from = pt->page_num_skip + 1;
+  if (start != NULL)
+    *start = pt->page_num_base + 1;
+}
+
+void
+w42_pt_set_page_numbering (W42PieceTable *pt, int from, int start)
+{
+  g_return_if_fail (pt != NULL);
+  pt->page_num_skip = MAX (from, 1) - 1;
+  pt->page_num_base = MAX (start, 0) - 1;
+}
+
+int
+w42_pt_page_number (W42PieceTable *pt, int page)
+{
+  g_return_val_if_fail (pt != NULL, page + 1);
+  if (page < pt->page_num_skip)
+    return -1;
+  return pt->page_num_base + 1 + page - pt->page_num_skip;
 }
 
 /* Which of the three a page uses: the first page's own if there is one,

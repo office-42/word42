@@ -172,7 +172,8 @@ typedef struct {
   int          tb_side, tb_width;
   gpointer     meta_field;      /* slot + 1 of the <m key="..."> being read */
   GString     *meta_text;
-  char        *meta[5];         /* title, subject, author, keywords, comments */
+  char        *meta[7];         /* title, subject, author, keywords, comments,
+                                 * and where the page numbers begin: page, number */
 } Abw;
 
 /* AbiWord 2 names the shape of a list in the paragraph's own properties
@@ -795,6 +796,7 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
       static const struct { const char *key; int slot; } KEYS[] = {
         { "dc.title", 0 }, { "dc.subject", 1 }, { "dc.creator", 2 },
         { "abiword.keywords", 3 }, { "dc.description", 4 },
+        { "word42.page-numbers-from", 5 }, { "word42.page-numbers-start", 6 },
       };
       const char *key = attr (an, av, "key");
 
@@ -1377,7 +1379,7 @@ abw_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **err
     {
       int slot = GPOINTER_TO_INT (a->meta_field) - 1;
 
-      if (slot >= 0 && slot < 5 && a->meta_text->len > 0 && a->meta[slot] == NULL)
+      if (slot >= 0 && slot < (int) G_N_ELEMENTS (a->meta) && a->meta_text->len > 0 && a->meta[slot] == NULL)
         a->meta[slot] = g_strdup (g_strstrip (a->meta_text->str));
       a->meta_field = NULL;
       g_string_truncate (a->meta_text, 0);
@@ -1759,6 +1761,8 @@ w42_abw_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
       info.comments = a.meta[4];
       w42_pt_set_info (pt, &info);
     }
+  if (a.meta[5] != NULL && a.meta[6] != NULL)
+    w42_pt_set_page_numbering (pt, atoi (a.meta[5]), atoi (a.meta[6]));
 
   w42_pt_clear_undo (pt);
   g_string_free (a.text, TRUE);
@@ -2851,6 +2855,15 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         xml_escape (out, value, strlen (value));
         g_string_append (out, "</m>");
       }
+  }
+  {
+    /* Where the page numbers begin, which AbiWord has no word for. */
+    int from, start;
+
+    w42_pt_get_page_numbering (pt, &from, &start);
+    if (from != 1 || start != 1)
+      g_string_append_printf (out, "<m key=\"word42.page-numbers-from\">%d</m>"
+                              "<m key=\"word42.page-numbers-start\">%d</m>", from, start);
   }
   g_string_append (out, "</metadata>\n");
   g_string_append (out, "<styles>\n");

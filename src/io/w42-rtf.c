@@ -1013,6 +1013,19 @@ w42_rtf_save (W42PieceTable      *pt,
     g_string_append (out, "\\titlepg");
   if (w42_pt_get_facing_pages (pt))
     g_string_append (out, "\\facingp");
+
+  /* Word numbers every page and has no page to begin on, so it is told
+   * the number the first page would have, and the groups of our own
+   * carry the rest. */
+  {
+    int from, start;
+
+    w42_pt_get_page_numbering (pt, &from, &start);
+    if (from > 1 || start != 1)
+      g_string_append_printf (out, "\\pgnrestart\\pgnstarts%d", MAX (start - (from - 1), 0));
+    if (from > 1)
+      g_string_append_printf (out, "{\\*\\wordpgnfrom%d}{\\*\\wordpgnstart%d}", from, start);
+  }
   write_page_text (out, "header", w42_pt_get_header (pt), styles, &tables);
   write_page_text (out, "footer", w42_pt_get_footer (pt), styles, &tables);
   if (w42_pt_get_title_page (pt))
@@ -1409,6 +1422,11 @@ struct _RtfReader {
   W42ApIdx       pending_ap;
   gboolean       have_pending;
   gboolean       sect_pending;  /* a \\sect was read; the next paragraph starts it */
+  gboolean       sect_seen;     /* past the first section */
+  gboolean       pgn_restart;   /* the first section's \\pgnrestart */
+  int            pgn_starts;    /* and its \\pgnstarts, 0 when none */
+  int            pgn_from;      /* \\wordpgnfrom and \\wordpgnstart, ours; 0 when none */
+  int            pgn_start;
   gboolean       cell_border;   /* inside a \\clbrdr: the next \\brdr word is its style */
   gboolean       page_border;   /* after a \\pgbrdr side word: the line words are the page's */
   guint          info_depth;    /* the group depth of an \\info group */
@@ -2885,6 +2903,26 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       return;
     }
 
+  if (g_str_equal (word, "pgnrestart") && !r->sect_seen)
+    {
+      r->pgn_restart = TRUE;
+      return;
+    }
+  if (g_str_equal (word, "pgnstarts") && has_param && !r->sect_seen)
+    {
+      r->pgn_starts = MAX (param, 0) + 1;
+      return;
+    }
+  if (g_str_equal (word, "wordpgnfrom") && has_param)
+    {
+      r->pgn_from = MAX (param, 1);
+      return;
+    }
+  if (g_str_equal (word, "wordpgnstart") && has_param)
+    {
+      r->pgn_start = MAX (param, 0) + 1;
+      return;
+    }
   if (g_str_equal (word, "titlepg"))
     {
       w42_pt_set_title_page (r->pt, TRUE);
@@ -3357,6 +3395,7 @@ formatting:
   else if (g_str_equal (word, "sect"))
     {
       r->sect_pending = TRUE;
+      r->sect_seen = TRUE;
       r->sect_cols = 1;
       r->sect_gap = 0;
     }
@@ -3816,7 +3855,7 @@ rtf_known_destination (const char *word)
     "footer", "footerl", "footerr", "footerf",
     "wfnumhead", "pn", "bkmkstart", "bkmkend",
     "atrfstart", "atrfend", "atnref", "annotation",
-    "ud",
+    "ud", "wordpgnfrom", "wordpgnstart",
   };
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
@@ -4596,6 +4635,13 @@ w42_rtf_load (W42PieceTable *pt,
           w42_stylesheet_set (sheet, &copy);
         }
     }
+
+  /* Where the page numbers begin: ours when the file has it, else the
+   * first section's restart. */
+  if (r.pgn_from > 0 && r.pgn_start > 0)
+    w42_pt_set_page_numbering (pt, r.pgn_from, r.pgn_start - 1);
+  else if (r.pgn_restart && r.pgn_starts > 0)
+    w42_pt_set_page_numbering (pt, 1, r.pgn_starts - 1);
 
   w42_pt_clear_undo (pt);
 

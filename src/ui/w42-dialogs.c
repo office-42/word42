@@ -1452,7 +1452,27 @@ typedef struct {
   GtkWidget *window;
   W42View   *view;
   GtkWidget *position, *align;
+  GtkWidget *from, *start;
 } PageNumbersBox;
+
+/* A whole-number spinner and its label, one row of a grid. */
+static GtkWidget *
+count_row (GtkWidget *grid, int row, const char *label, int low, int high, int value)
+{
+  GtkWidget *text = gtk_label_new_with_mnemonic (label);
+  GtkWidget *spin = gtk_spin_button_new_with_range (low, high, 1);
+
+  gtk_label_set_xalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (text), spin);
+  gtk_spin_button_set_value (GTK_SPIN_BUTTON (spin), value);
+  gtk_spin_button_set_activates_default (GTK_SPIN_BUTTON (spin), TRUE);
+  gtk_widget_set_size_request (spin, 84, -1);
+
+  gtk_grid_attach (GTK_GRID (grid), text, 0, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), spin, 1, row, 1, 1);
+
+  return spin;
+}
 
 static void
 on_page_numbers_ok (GtkButton *button, gpointer data)
@@ -1464,6 +1484,13 @@ on_page_numbers_ok (GtkButton *button, gpointer data)
   W42Align align = hf_align_from (box->align);
 
   (void) button;
+
+  /* A value typed but not yet taken by the spinner counts. */
+  gtk_spin_button_update (GTK_SPIN_BUTTON (box->from));
+  gtk_spin_button_update (GTK_SPIN_BUTTON (box->start));
+  w42_pt_set_page_numbering (pt,
+                             gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (box->from)),
+                             gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (box->start)));
 
   /* The number joins a header or footer already there rather than
    * replacing it. */
@@ -1493,7 +1520,11 @@ void
 w42_page_numbers_dialog_show (GtkWindow *parent, W42View *view)
 {
   PageNumbersBox *box;
-  GtkWidget *content, *grid;
+  GtkWidget *content, *grid, *hint;
+  W42PieceTable *pt;
+  const W42PageText *head;
+  guint top, align;
+  int from, start;
   static const char * const positions[] = {
     N_("Top of Page (Header)"), N_("Bottom of Page (Footer)"), NULL
   };
@@ -1503,14 +1534,32 @@ w42_page_numbers_dialog_show (GtkWindow *parent, W42View *view)
   if (w42_view_get_document (view) == NULL)
     return;
 
+  /* The box opens on what the document has: numbers already in the
+   * header are shown as there, and the footer is the default. */
+  pt = w42_document_pt (w42_view_get_document (view));
+  head = w42_pt_get_header (pt);
+  top = head != NULL && head->text != NULL && strstr (head->text, "{PAGE}") != NULL ? 0 : 1;
+  head = top == 0 ? head : w42_pt_get_footer (pt);
+  align = head != NULL && head->text != NULL && strstr (head->text, "{PAGE}") != NULL
+          ? hf_align_index (head->align) : 1;
+  w42_pt_get_page_numbering (pt, &from, &start);
+
   box = g_new0 (PageNumbersBox, 1);
   box->view = view;
   box->window = dialog_shell (parent, _("Page Numbers"), &content, view);
   g_object_weak_ref (G_OBJECT (box->window), hf_free, box);
 
   grid = group (content, _("Position"));
-  box->position = choice_row (grid, 0, 0, _("_Position:"), positions, 1);
-  box->align = choice_row_ctx (grid, 1, 0, _("_Alignment:"), "alignment", HF_ALIGNS, 1);
+  box->position = choice_row (grid, 0, 0, _("_Position:"), positions, top);
+  box->align = choice_row_ctx (grid, 1, 0, _("_Alignment:"), "alignment", HF_ALIGNS, align);
+
+  grid = group (content, _("Numbering"));
+  box->from = count_row (grid, 0, _("Begin on _page:"), 1, 9999, from);
+  box->start = count_row (grid, 1, _("_Start at:"), 0, 9999, start);
+  hint = gtk_label_new (_("The pages before it show no number."));
+  gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
+  gtk_widget_add_css_class (hint, "dim-label");
+  gtk_grid_attach (GTK_GRID (grid), hint, 0, 2, 2, 1);
 
   button_row (content, box->window, G_CALLBACK (on_page_numbers_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));

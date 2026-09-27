@@ -241,6 +241,14 @@ void     w42_pt_set_title_page   (W42PieceTable *pt, gboolean on);
 gboolean w42_pt_get_facing_pages (W42PieceTable *pt);
 void     w42_pt_set_facing_pages (W42PieceTable *pt, gboolean on);
 
+/* Where the page numbers begin: page `from` (counting from 1) is
+ * numbered `start`, and the pages before it show no number.  The
+ * default is 1 and 1. */
+void w42_pt_get_page_numbering (W42PieceTable *pt, int *from, int *start);
+void w42_pt_set_page_numbering (W42PieceTable *pt, int from, int start);
+/* The number {PAGE} shows on a page, counting pages from 0; -1 for none. */
+int  w42_pt_page_number        (W42PieceTable *pt, int page);
+
 /* The header or footer a page uses, counting pages from 0. */
 const W42PageText *w42_pt_page_header (W42PieceTable *pt, int page);
 const W42PageText *w42_pt_page_footer (W42PieceTable *pt, int page);

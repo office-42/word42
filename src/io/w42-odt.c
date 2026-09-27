@@ -2535,6 +2535,8 @@ typedef struct {
   char    *keep[6];      /* title, subject, author, keywords, comments,
                           * and the last one to edit it */
   gboolean ours;         /* Word42 wrote it */
+  char    *user_name;    /* the meta:user-defined being read */
+  int      pgn_from, pgn_start;   /* where the page numbers begin; 0 when not said */
 } OdtMeta;
 
 static void
@@ -2543,9 +2545,14 @@ meta_start (GMarkupParseContext *ctx, const char *name, const char **an,
 {
   OdtMeta *m = data;
 
-  (void) ctx; (void) an; (void) av; (void) error;
+  (void) ctx; (void) error;
   g_free (m->field);
   m->field = g_strdup (name);
+  if (g_str_equal (local (name), "user-defined"))
+    {
+      g_free (m->user_name);
+      m->user_name = g_strdup (attr (an, av, "meta:name"));
+    }
   g_string_truncate (m->text, 0);
 }
 
@@ -2577,6 +2584,14 @@ meta_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
   else if (g_str_equal (tag, "description")) slot = &m->keep[4];
   else if (g_str_equal (tag, "generator"))
     m->ours = g_str_has_prefix (m->text->str, "Word42");
+  else if (g_str_equal (tag, "user-defined") && m->user_name != NULL)
+    {
+      if (g_str_equal (m->user_name, "Word42PageNumbersFrom"))
+        m->pgn_from = MAX (atoi (m->text->str), 1);
+      else if (g_str_equal (m->user_name, "Word42PageNumbersStart"))
+        m->pgn_start = MAX (atoi (m->text->str), 0) + 1;
+      g_clear_pointer (&m->user_name, g_free);
+    }
   if (slot != NULL && m->text->len > 0 && *slot == NULL)
     *slot = g_strdup (m->text->str);
   g_clear_pointer (&m->field, g_free);
@@ -2584,9 +2599,11 @@ meta_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
 }
 
 /* The summary information; and whether Word42 wrote the file, which a
- * program that saves it again says otherwise. */
+ * program that saves it again says otherwise.  Where the page numbers
+ * begin comes back in `pgn`, page and number, 0 when not said: it is
+ * for after the text is read. */
 static gboolean
-odt_read_meta (W42Zip *zip, W42PieceTable *pt)
+odt_read_meta (W42Zip *zip, W42PieceTable *pt, int pgn[2])
 {
   GBytes *xml = w42_zip_read (zip, "meta.xml");
   GMarkupParser parser = { meta_start, meta_end, meta_text, NULL, NULL };
@@ -2610,9 +2627,13 @@ odt_read_meta (W42Zip *zip, W42PieceTable *pt)
   info.comments = m.keep[4];
   w42_pt_set_info (pt, &info);
 
+  pgn[0] = m.pgn_from;
+  pgn[1] = m.pgn_start;
+
   for (guint i = 0; i < G_N_ELEMENTS (m.keep); i++)
     g_free (m.keep[i]);
   g_free (m.field);
+  g_free (m.user_name);
   g_string_free (m.text, TRUE);
   g_bytes_unref (xml);
   return m.ours;
@@ -2637,6 +2658,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   W42Zip *zip;
   GBytes *styles, *content;
   Odt o;
+  int pgn[2] = { 0, 0 };
   W42PageSetup local_page;
   gboolean ok = TRUE;
 
@@ -2670,7 +2692,7 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
     }
 
   memset (&o, 0, sizeof o);
-  o.ours = odt_read_meta (zip, pt);
+  o.ours = odt_read_meta (zip, pt, pgn);
   w42_builder_init (&o.b, pt);
   o.pt = pt;
   o.page = page;
@@ -2713,6 +2735,8 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   odt_register_styles (&o);
   if (ok)
     ok = parse_part (&o, content, error);
+  if (pgn[0] > 0 && pgn[1] > 0)
+    w42_pt_set_page_numbering (pt, pgn[0], pgn[1] - 1);
 
   /* The header's box, when there is a header, is part of Word's margin. */
   for (int k = 0; k < W42_PAGE_TEXT_KINDS; k++)
@@ -4459,6 +4483,18 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         xml_escape (meta, value, strlen (value));
         g_string_append_printf (meta, "</%s>", fields[i].tag);
       }
+    {
+      /* Where the page numbers begin, which LibreOffice says with a
+       * paragraph's page number and a page style; ours is plainer. */
+      int from, start;
+
+      w42_pt_get_page_numbering (pt, &from, &start);
+      if (from != 1 || start != 1)
+        g_string_append_printf (meta,
+          "<meta:user-defined meta:name=\"Word42PageNumbersFrom\" meta:value-type=\"float\">%d</meta:user-defined>"
+          "<meta:user-defined meta:name=\"Word42PageNumbersStart\" meta:value-type=\"float\">%d</meta:user-defined>",
+          from, start);
+    }
     g_string_append (meta, "</office:meta></office:document-meta>");
     w42_zip_writer_add (zip, "meta.xml", meta->str, meta->len);
     g_string_free (meta, TRUE);

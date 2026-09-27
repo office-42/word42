@@ -1174,29 +1174,55 @@ read_core_props (W42Zip *zip, W42PieceTable *pt)
 }
 
 /* settings.xml: whether even pages have headers and footers of their own.
- * That is the document's to say, not the section's, and it is said here. */
+ * That is the document's to say, not the section's, and it is said here.
+ * So is where the page numbers begin, in document variables of ours:
+ * Word numbers every page. */
+typedef struct {
+  W42PieceTable *pt;
+  int            pgn_from, pgn_start;   /* 0 when not said */
+} Settings;
+
 static void
 settings_start (GMarkupParseContext *ctx, const char *name, const char **an,
                 const char **av, gpointer data, GError **error)
 {
+  Settings *s = data;
+  const char *tag = local (name);
+
   (void) ctx; (void) error;
-  if (g_str_equal (local (name), "evenAndOddHeaders"))
-    w42_pt_set_facing_pages (data, toggle_on (an, av));
+  if (g_str_equal (tag, "evenAndOddHeaders"))
+    w42_pt_set_facing_pages (s->pt, toggle_on (an, av));
+  else if (g_str_equal (tag, "docVar"))
+    {
+      const char *var = attr (an, av, "name");
+
+      if (var != NULL && g_str_equal (var, "Word42PageNumbersFrom"))
+        s->pgn_from = MAX (attr_int (an, av, "val", 1), 1);
+      else if (var != NULL && g_str_equal (var, "Word42PageNumbersStart"))
+        s->pgn_start = MAX (attr_int (an, av, "val", 1), 0) + 1;
+    }
 }
 
-static void
+/* Returns whether the settings said where the page numbers begin. */
+static gboolean
 read_settings (W42Zip *zip, W42PieceTable *pt)
 {
   GBytes *xml = w42_zip_read (zip, "word/settings.xml");
   GMarkupParser parser = { settings_start, NULL, NULL, NULL, NULL };
   GMarkupParseContext *ctx;
+  Settings s = { .pt = pt };
 
   if (xml == NULL)
-    return;
-  ctx = g_markup_parse_context_new (&parser, 0, pt, NULL);
+    return FALSE;
+  ctx = g_markup_parse_context_new (&parser, 0, &s, NULL);
   g_markup_parse_context_parse (ctx, g_bytes_get_data (xml, NULL), g_bytes_get_size (xml), NULL);
   g_markup_parse_context_free (ctx);
   g_bytes_unref (xml);
+
+  if (s.pgn_from == 0 || s.pgn_start == 0)
+    return FALSE;
+  w42_pt_set_page_numbering (pt, s.pgn_from, s.pgn_start - 1);
+  return TRUE;
 }
 
 static void
@@ -1780,6 +1806,7 @@ typedef struct {
   gboolean    tbl_borders;     /* w:tblBorders, or a grid table style, said so */
 
   gboolean    in_ppr, in_rpr, in_sectpr_body;
+  gboolean    pgn_said;   /* the page numbers' start is known: the first section's, or ours */
   W42CharFmt  run_ch;             /* built from the run's rPr */
   gboolean    have_run;
 
@@ -3611,6 +3638,13 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         docx_apply_section_columns (d, attr_int (an, av, "num", 1), attr_int (an, av, "space", 720));
       else if (g_str_equal (tag, "titlePg"))
         w42_pt_set_title_page (d->pt, toggle_on (an, av));
+      else if (g_str_equal (tag, "pgNumType"))
+        {
+          /* The first section's restart numbers the document. */
+          if (!d->pgn_said && attr (an, av, "start") != NULL)
+            w42_pt_set_page_numbering (d->pt, 1, MAX (attr_int (an, av, "start", 1), 0));
+          d->pgn_said = TRUE;
+        }
       else if (g_str_equal (tag, "headerReference") || g_str_equal (tag, "footerReference"))
         {
           const char *type = attr (an, av, "type");
@@ -4052,7 +4086,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
     d.minor_font = st.minor_font;
   }
   read_core_props (zip, pt);
-  read_settings (zip, pt);
+  d.pgn_said = read_settings (zip, pt);
   d.numbering = read_numbering (zip);
   d.list_counts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   d.footnotes = read_notes (zip, "word/footnotes.xml");
@@ -4226,6 +4260,8 @@ typedef struct {
   char      *header_first_rid, *footer_first_rid;
   char      *header_even_rid, *footer_even_rid;
   gboolean    title_page, facing_pages;
+  int        pgn_from, pgn_start;   /* where the page numbers begin */
+  gboolean   pgn_written;           /* the first section says it */
   GString   *comments;      /* comments.xml body */
   int        comment_id;
   char      *author;        /* author_xml's */
@@ -4755,7 +4791,7 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
 static void
 write_sectpr (GString *out, const W42PageSetup *page, int cols, int gap,
               const char *header_rid, const char *footer_rid,
-              const Parts *parts)
+              Parts *parts)
 {
   g_string_append (out, "<w:sectPr>");
   if (parts != NULL && parts->header_first_rid != NULL)
@@ -4787,6 +4823,13 @@ write_sectpr (GString *out, const W42PageSetup *page, int cols, int gap,
         write_border_element (out, order[i], &edge, TRUE, CLAMP (page->border_space / 20, 0, 31));
       g_string_append (out, "</w:pgBorders>");
     }
+  /* Word numbers every page: it is told the number the first page would
+   * have, and settings.xml keeps the page they begin on. */
+  if (parts != NULL && !parts->pgn_written && (parts->pgn_from > 1 || parts->pgn_start != 1))
+    g_string_append_printf (out, "<w:pgNumType w:start=\"%d\"/>",
+                            MAX (parts->pgn_start - (parts->pgn_from - 1), 0));
+  if (parts != NULL)
+    parts->pgn_written = TRUE;
   if (cols > 1)
     g_string_append_printf (out, "<w:cols w:num=\"%d\" w:space=\"%d\"/>", cols, gap);
   if (parts != NULL && parts->title_page)
@@ -5448,7 +5491,9 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
       if (f != NULL && f->text != NULL && *f->text != '\0')
         parts.footer_even_rid = add_rel (&parts, "footer", "footer3.xml", FALSE);
     }
-  want_settings = (page != NULL && page->has_background) || parts.facing_pages;
+  w42_pt_get_page_numbering (pt, &parts.pgn_from, &parts.pgn_start);
+  want_settings = (page != NULL && page->has_background) || parts.facing_pages ||
+                  parts.pgn_from > 1;
   if (want_settings)
     g_free (add_rel (&parts, "settings", "settings.xml", FALSE));
 
@@ -5831,6 +5876,11 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
           g_string_append (settings, "<w:displayBackgroundShape/>");
         if (parts.facing_pages)
           g_string_append (settings, "<w:evenAndOddHeaders/>");
+        if (parts.pgn_from > 1)
+          g_string_append_printf (settings, "<w:docVars>"
+                                  "<w:docVar w:name=\"Word42PageNumbersFrom\" w:val=\"%d\"/>"
+                                  "<w:docVar w:name=\"Word42PageNumbersStart\" w:val=\"%d\"/>"
+                                  "</w:docVars>", parts.pgn_from, parts.pgn_start);
         g_string_append (settings, "</w:settings>");
         w42_zip_writer_add (zip, "word/settings.xml", settings->str, settings->len);
         g_string_free (settings, TRUE);
