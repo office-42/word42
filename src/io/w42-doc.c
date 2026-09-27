@@ -437,6 +437,9 @@ typedef struct {
   guint8   shading;                   /* sprmPShd */
   guint8   has_shading_color;
   guint32  shading_color;
+  guint8   section_break;             /* the paragraph opens a section after the first */
+  guint8   section_cols;              /* and that section's columns */
+  int      section_gap;
 } Para;
 
 typedef struct {
@@ -482,6 +485,10 @@ typedef struct {
   GArray   *lfo_lsid;     /* guint32: each LFO's list, by ilfo - 1 */
   GArray   *lst_lsid;     /* guint32: each list's id */
   GArray   *lst_nfc;      /* guint8[9]: each list's number format per level */
+  GArray   *sections;     /* Section: where each section starts, and its columns */
+  gboolean  title_page;   /* the first section's first page has its own header */
+  gboolean  pgn_restart;  /* and its pages are numbered from pgn_start */
+  int       pgn_start;
 } Doc;
 
 static gboolean
@@ -886,6 +893,83 @@ property_string (const guint8 *d, gsize len, gsize at, guint codepage)
       return s;
     }
   return NULL;
+}
+
+/* Where the page numbers begin, which Word42 keeps among the custom
+ * properties of \005DocumentSummaryInformation: its second section's
+ * dictionary names the properties, and two of them are ours. */
+static void
+read_doc_summary (Ole *ole, W42PieceTable *pt)
+{
+  static const guint8 FMTID_USER[16] = {
+    0x05, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
+    0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
+  };
+  GByteArray *stream = ole_stream (ole, "\005DocumentSummaryInformation", NULL);
+  const guint8 *d;
+  gsize len;
+  guint32 n_sections, at = 0, count, pid[2] = { 0, 0 };
+  int values[2] = { 0, 0 };
+  gboolean have[2] = { FALSE, FALSE };
+
+  if (stream == NULL)
+    return;
+  d = stream->data;
+  len = stream->len;
+  if (len < 28 || rd16 (d) != 0xFFFE)
+    goto out;
+  n_sections = MIN (rd32 (d + 24), 4);
+  for (guint32 s = 0; s < n_sections; s++)
+    if (28 + 20 * (gsize) s + 20 <= len && memcmp (d + 28 + 20 * s, FMTID_USER, 16) == 0)
+      at = rd32 (d + 28 + 20 * s + 16);
+  if (at == 0 || (gsize) at + 8 > len)
+    goto out;
+  count = MIN (rd32 (d + at + 4), 256);
+
+  /* The dictionary, property 0, first: which pids are ours. */
+  for (guint32 i = 0; i < count && (gsize) at + 8 + 8 * i + 8 <= len; i++)
+    {
+      guint32 id = rd32 (d + at + 8 + 8 * i), off = rd32 (d + at + 8 + 8 * i + 4);
+      gsize p = (gsize) at + off;
+      guint32 entries;
+
+      if (id != 0 || p + 4 > len)
+        continue;
+      entries = MIN (rd32 (d + p), 256);
+      p += 4;
+      for (guint32 e = 0; e < entries && p + 8 <= len; e++)
+        {
+          guint32 epid = rd32 (d + p), elen = rd32 (d + p + 4);
+
+          p += 8;
+          if (elen > 256 || p + elen > len)
+            break;
+          if (elen == sizeof "Word42PageNumbersFrom" &&
+              memcmp (d + p, "Word42PageNumbersFrom", elen) == 0)
+            pid[0] = epid;
+          else if (elen == sizeof "Word42PageNumbersStart" &&
+                   memcmp (d + p, "Word42PageNumbersStart", elen) == 0)
+            pid[1] = epid;
+          p += elen;
+        }
+    }
+  for (guint32 i = 0; i < count && (gsize) at + 8 + 8 * i + 8 <= len; i++)
+    {
+      guint32 id = rd32 (d + at + 8 + 8 * i), off = rd32 (d + at + 8 + 8 * i + 4);
+      gsize p = (gsize) at + off;
+
+      for (int k = 0; k < 2; k++)
+        if (id != 0 && id == pid[k] && p + 8 <= len && rd32 (d + p) == 0x03)
+          {
+            values[k] = (int) rd32 (d + p + 4);
+            have[k] = TRUE;
+          }
+    }
+  if (have[0] && have[1])
+    w42_pt_set_page_numbering (pt, CLAMP (values[0], 1, 9999), CLAMP (values[1], 0, 9999));
+
+out:
+  g_byte_array_free (stream, TRUE);
 }
 
 /* What File > Summary Info shows, out of the \005SummaryInformation
@@ -1669,6 +1753,92 @@ read_fonts (Doc *doc)
 
 /* ---- page setup ------------------------------------------------------- */
 
+typedef struct {
+  guint32 cp_start;
+  int     columns;
+  int     column_gap;
+} Section;
+
+/* The SEPX of section `k`: its grpprl, or NULL. */
+static const guint8 *
+section_sepx (Doc *doc, guint k, guint *len)
+{
+  guint32 fc, lcb, fc_sepx;
+  guint n;
+
+  *len = 0;
+  fib_fclcb (doc, 6, &fc, &lcb);
+  if (lcb < 4 + 4 + 12 || !in_tb (doc, fc, lcb))
+    return NULL;
+  n = (lcb - 4) / 16;
+  if (k >= n)
+    return NULL;
+  fc_sepx = rd32 (doc->tb + fc + 4 * (n + 1) + 12 * k + 2);
+  if (fc_sepx == 0xFFFFFFFFu || !in_wd (doc, fc_sepx, 2))
+    return NULL;
+  *len = rd16 (doc->wd + fc_sepx);
+  if (!in_wd (doc, fc_sepx + 2, *len))
+    {
+      *len = 0;
+      return NULL;
+    }
+  return doc->wd + fc_sepx + 2;
+}
+
+/* Where each section starts and how many columns it has; and from the
+ * first, whether it has a title page and where its numbers begin. */
+static void
+read_sections (Doc *doc)
+{
+  guint32 fc, lcb;
+  guint n;
+
+  doc->sections = g_array_new (FALSE, FALSE, sizeof (Section));
+  fib_fclcb (doc, 6, &fc, &lcb);
+  if (lcb < 4 + 4 + 12 || !in_tb (doc, fc, lcb))
+    return;
+  n = MIN ((lcb - 4) / 16, 4096);
+
+  for (guint k = 0; k < n; k++)
+    {
+      Section s = { rd32 (doc->tb + fc + 4 * k), 1, 720 };
+      guint len = 0, p = 0;
+      const guint8 *g = section_sepx (doc, k, &len);
+
+      while (g != NULL && p + 2 <= len)
+        {
+          guint16 sprm = rd16 (g + p);
+          const guint8 *op = g + p + 2;
+          guint avail = len - p - 2;
+          guint olen = sprm_operand_len (sprm, op, avail);
+
+          if (olen > avail)
+            break;
+          switch (sprm)
+            {
+            case 0x500B: s.columns = CLAMP (rd16 (op) + 1, 1, 6); break;
+            case 0x900C: s.column_gap = rd16 (op); break;
+            case 0x300A: if (k == 0) doc->title_page = op[0] != 0; break;
+            case 0x3011: if (k == 0) doc->pgn_restart = op[0] != 0; break;
+            case 0x501C: if (k == 0) doc->pgn_start = rd16 (op); break;
+            default: break;
+            }
+          p += 2 + olen;
+        }
+      g_array_append_val (doc->sections, s);
+    }
+}
+
+/* The section that starts at `cp`, past the first, or -1. */
+static int
+section_starting_at (Doc *doc, guint32 cp)
+{
+  for (guint k = 1; doc->sections != NULL && k < doc->sections->len; k++)
+    if (g_array_index (doc->sections, Section, k).cp_start == cp)
+      return (int) k;
+  return -1;
+}
+
 static void
 read_page_setup (Doc *doc, W42PageSetup *page)
 {
@@ -1949,6 +2119,9 @@ fill_para_fmt (Doc *doc, const DocPara *dp, W42ParaFmt *out)
   else if (!pa->f_mult && pa->dya_line != 0)
     out->line_spacing = ABS (pa->dya_line);
   out->page_break_before = pa->page_break ? 1 : 0;
+  out->section_break = pa->section_break;
+  out->columns = pa->section_break && pa->section_cols > 1 ? pa->section_cols : 0;
+  out->column_gap = pa->section_break && pa->section_cols > 1 ? pa->section_gap : 0;
   out->keep_next     = pa->keep_next ? 1 : 0;
   out->keep_together = pa->keep_together ? 1 : 0;
   out->widow_control = pa->widow ? 1 : 0;
@@ -2123,7 +2296,21 @@ collect_paragraphs (Doc *doc)
                 resolve_style (doc, 0, &dp.pa, NULL, 0);
             }
           if (break_here)
-            dp.pa.page_break = TRUE;
+            {
+              /* The mark that broke the page ended a section, or not. */
+              int k = section_starting_at (doc, start);
+
+              if (k > 0)
+                {
+                  const Section *s = &g_array_index (doc->sections, Section, k);
+
+                  dp.pa.section_break = 1;
+                  dp.pa.section_cols = (guint8) s->columns;
+                  dp.pa.section_gap = s->column_gap;
+                }
+              else
+                dp.pa.page_break = TRUE;
+            }
           break_here = break_next;
           break_next = FALSE;
 
@@ -3174,11 +3361,44 @@ story_align (Doc *doc, guint32 cp)
     }
 }
 
+/* Header story `i` of PlcfHdd: its text, with its alignment, or NULL
+ * when it is empty. */
+static char *
+hdd_story (Doc *doc, guint32 fc, guint n, guint32 base, guint i, W42Align *align)
+{
+  guint32 a, b;
+  char *text;
+
+  if (n <= i + 1)
+    return NULL;
+  a = rd32 (doc->tb + fc + 4 * i);
+  b = rd32 (doc->tb + fc + 4 * (i + 1));
+  if (b <= a)
+    return NULL;
+  text = story_text (doc, base + a, base + b);
+  if (*text == '\0')
+    {
+      g_free (text);
+      return NULL;
+    }
+  *align = story_align (doc, base + a);
+  return text;
+}
+
 static void
 read_headers (Doc *doc, W42PieceTable *pt)
 {
   guint32 fc, lcb, base;
   guint n;
+  gboolean facing = FALSE;
+
+  /* Facing pages are the document's to say, in its Dop. */
+  fib_fclcb (doc, 31, &fc, &lcb);
+  if (lcb >= 1 && in_tb (doc, fc, 1))
+    facing = (doc->tb[fc] & 0x01) != 0;
+
+  if (doc->pgn_restart)
+    w42_pt_set_page_numbering (pt, 1, doc->pgn_start);
 
   fib_fclcb (doc, 11, &fc, &lcb);
   if (lcb < 4 || !in_tb (doc, fc, lcb))
@@ -3190,40 +3410,49 @@ read_headers (Doc *doc, W42PieceTable *pt)
   /* Six separator stories come first, then per section: even header, odd
    * header, even footer, odd footer, first-page header, first-page
    * footer.  The odd ones are what every page gets without settings. */
-  /* Word puts a document's only header in the first-page story often
-   * enough -- "different first page" with one page -- that it is read
-   * when the odd pages' story is empty. */
-  {
-    static const guint ODD_FIRST[2][2] = { { 7, 10 }, { 9, 11 } };
+  for (int which = 0; which < 2; which++)
+    {
+      W42Align align = W42_ALIGN_LEFT;
+      char *odd = hdd_story (doc, fc, n, base, which == 0 ? 7 : 9, &align);
+      W42Align first_align = W42_ALIGN_LEFT, even_align = W42_ALIGN_LEFT;
+      char *first = hdd_story (doc, fc, n, base, which == 0 ? 10 : 11, &first_align);
+      char *even = facing ? hdd_story (doc, fc, n, base, which == 0 ? 6 : 8, &even_align) : NULL;
 
-    for (int which = 0; which < 2; which++)
-      for (int try = 0; try < 2; try++)
+      /* Word puts a document's only header in the first-page story often
+       * enough -- "different first page" with one page -- that it is read
+       * when the odd pages' story is empty. */
+      if (odd == NULL && first != NULL && !doc->title_page)
         {
-          guint i = ODD_FIRST[which][try];
-          guint32 a, b;
-          char *text;
-
-          if (n <= i + 1)
-            continue;
-          a = rd32 (doc->tb + fc + 4 * i);
-          b = rd32 (doc->tb + fc + 4 * (i + 1));
-          if (b <= a)
-            continue;
-          text = story_text (doc, base + a, base + b);
-          if (*text != '\0')
-            {
-              W42Align align = story_align (doc, base + a);
-
-              if (which == 0)
-                w42_pt_set_header (pt, text, align);
-              else
-                w42_pt_set_footer (pt, text, align);
-              g_free (text);
-              break;
-            }
-          g_free (text);
+          odd = g_strdup (first);
+          align = first_align;
         }
-  }
+      if (odd != NULL)
+        {
+          if (which == 0)
+            w42_pt_set_header (pt, odd, align);
+          else
+            w42_pt_set_footer (pt, odd, align);
+        }
+      if (doc->title_page)
+        {
+          if (which == 0)
+            w42_pt_set_header_kind (pt, W42_PAGE_TEXT_FIRST, first, first_align);
+          else
+            w42_pt_set_footer_kind (pt, W42_PAGE_TEXT_FIRST, first, first_align);
+        }
+      if (facing)
+        {
+          if (which == 0)
+            w42_pt_set_header_kind (pt, W42_PAGE_TEXT_EVEN, even, even_align);
+          else
+            w42_pt_set_footer_kind (pt, W42_PAGE_TEXT_EVEN, even, even_align);
+        }
+      g_free (odd);
+      g_free (first);
+      g_free (even);
+    }
+  w42_pt_set_title_page (pt, doc->title_page);
+  w42_pt_set_facing_pages (pt, facing);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -3403,6 +3632,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   read_lists (&doc);
   register_styles (&doc, pt);
   read_page_setup (&doc, page);
+  read_sections (&doc);
   {
     /* The endnote references' cps, first in PlcfendRef; the references
      * themselves are 0x02 marks in the text like a footnote's. */
@@ -3421,6 +3651,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
   build_document (&doc, pt);
   read_headers (&doc, pt);
+  read_doc_summary (&ole, pt);
   ok = TRUE;
 
 out:
@@ -3435,6 +3666,7 @@ out:
   if (doc.lfo_lsid) g_array_free (doc.lfo_lsid, TRUE);
   if (doc.lst_lsid) g_array_free (doc.lst_lsid, TRUE);
   if (doc.lst_nfc) g_array_free (doc.lst_nfc, TRUE);
+  if (doc.sections) g_array_free (doc.sections, TRUE);
   if (wd) g_byte_array_free (wd, TRUE);
   if (tb) g_byte_array_free (tb, TRUE);
   if (dt) g_byte_array_free (dt, TRUE);

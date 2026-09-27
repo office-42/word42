@@ -325,12 +325,21 @@ ole_build (OleStream *streams, guint n, const guint8 clsid[16])
 enum {
   FIB_STSHF_ORIG = 0,
   FIB_STSHF      = 1,
+  FIB_FND_REF    = 2,
+  FIB_FND_TXT    = 3,
   FIB_PLCF_SED   = 6,
+  FIB_PLCF_HDD   = 11,
   FIB_BTE_CHPX   = 12,
   FIB_BTE_PAPX   = 13,
   FIB_STTBF_FFN  = 15,
   FIB_DOP        = 31,
+  FIB_FLD_MOM    = 16,
+  FIB_FLD_HDR    = 17,
+  FIB_FLD_FTN    = 18,
   FIB_CLX        = 33,
+  FIB_END_REF    = 46,
+  FIB_END_TXT    = 47,
+  FIB_FLD_EDN    = 48,
   FIB_N_FCLCB    = 93      /* Word 97's FibRgFcLcb97 */
 };
 
@@ -359,6 +368,23 @@ typedef struct {
   GByteArray *grpprl;       /* owned: the sprms after the istd */
 } ParaRun;
 
+/* A field's mark in a story: where it is, and its FLD. */
+typedef struct {
+  guint32 cp;
+  guint8  ch;               /* 0x13 begin, 0x14 separator, 0x15 end */
+  guint8  flt;              /* the begin's field type, the end's flags */
+} FieldMark;
+
+/* A section: where it ends, and its columns. */
+typedef struct {
+  guint32 cp_end;
+  int     columns;
+  int     column_gap;
+} Section;
+
+/* The stories after the main text, in the order Word keeps them. */
+enum { STORY_MAIN = 0, STORY_FTN, STORY_HDD, STORY_EDN, N_STORIES };
+
 typedef struct {
   W42PieceTable     *pt;
   const W42PageSetup *page;
@@ -371,7 +397,16 @@ typedef struct {
   GPtrArray  *fonts;        /* the font table's names, interned */
   const W42Style *istd_style[ISTD_FIRST_USER];   /* the fixed places' styles */
   GPtrArray  *user_styles;  /* W42Style*, from istd 15 on */
-  guint32     ccp_text;
+
+  guint32     story_start[N_STORIES];
+  guint32     ccp[N_STORIES];
+  int         story;        /* the one being written */
+  GArray     *fields[N_STORIES];   /* FieldMark, cps from the story's start */
+  GArray     *note_ref[2];  /* guint32: footnotes' and endnotes' reference cps */
+  GArray     *note_id[2];   /* int: their ids, in the same order */
+  GArray     *note_txt[2];  /* guint32: where each one's text starts in its story */
+  GArray     *hdd;          /* guint32: where each header story starts */
+  GArray     *sections;     /* Section */
 } Writer;
 
 static void
@@ -919,71 +954,376 @@ add_text (Writer *w, const char *text, gsize n_bytes)
     }
 }
 
-static void
-write_main_text (Writer *w)
+/* The style a paragraph wears, and its place. */
+static const W42Style *
+para_style (Writer *w, const char *name, guint *istd)
 {
-  GPtrArray *blocks = w42_pt_snapshot_blocks (w->pt);
+  const W42Style *style;
 
+  *istd = istd_for (w, name);
+  style = *istd < ISTD_FIRST_USER ? w->istd_style[*istd]
+                                  : g_ptr_array_index (w->user_styles, *istd - ISTD_FIRST_USER);
+  if (style == NULL)
+    {
+      *istd = ISTD_NORMAL;
+      style = w->istd_style[ISTD_NORMAL];
+    }
+  return style;
+}
+
+/* Ends a paragraph at the text's end: its mark, and its PAPX. */
+static void
+end_para (Writer *w, gunichar mark, const W42CharFmt *mark_ch, const W42CharFmt *style_ch,
+          const W42ParaFmt *pa, const W42ParaFmt *style_pa, guint istd)
+{
+  GByteArray *grpprl = g_byte_array_new ();
+  ParaRun para;
+
+  add_char (w, mark);
+  if (mark_ch != NULL)
+    chp_sprms (w, grpprl, mark_ch, style_ch);
+  end_run (w, grpprl);
+
+  para.cp_end = w->text->len;
+  para.istd = istd;
+  para.grpprl = g_byte_array_new ();
+  if (pa != NULL)
+    pap_sprms (para.grpprl, pa, style_pa);
+  g_array_append_val (w->pap, para);
+}
+
+/* A note's reference mark, 2 as Word has it: a special character,
+ * superscript, over the formatting of the text around it. */
+static void
+add_note_mark (Writer *w, const W42CharFmt *ch, const W42CharFmt *style_ch)
+{
+  GByteArray *grpprl = g_byte_array_new ();
+  W42CharFmt super = *ch;
+
+  super.script = 1;
+  add_char (w, 0x02);
+  sprm8 (grpprl, 0x0855, 1);        /* sprmCFSpec */
+  chp_sprms (w, grpprl, &super, style_ch);
+  end_run (w, grpprl);
+}
+
+/* A field, as a story holds one: its begin, its code, its separator, its
+ * result and its end, the three marks special characters. */
+static void
+add_field (Writer *w, const char *code, guint flt, const char *result,
+           const W42CharFmt *ch, const W42CharFmt *style_ch)
+{
+  GArray *marks = w->fields[w->story];
+  guint32 base = w->story_start[w->story];
+  const char *parts[] = { NULL, code, NULL, result, NULL };
+  static const guint8 CH[] = { 0x13, 0, 0x14, 0, 0x15 };
+
+  for (guint i = 0; i < G_N_ELEMENTS (parts); i++)
+    {
+      GByteArray *grpprl = g_byte_array_new ();
+
+      if (CH[i] != 0)
+        {
+          FieldMark m = { w->text->len - base, CH[i], 0 };
+
+          m.flt = CH[i] == 0x13 ? (guint8) flt : CH[i] == 0x15 ? 0x80 : 0xFF;   /* fHasSep */
+          g_array_append_val (marks, m);
+          add_char (w, CH[i]);
+          sprm8 (grpprl, 0x0855, 1);
+        }
+      else
+        add_text (w, parts[i], strlen (parts[i]));
+      chp_sprms (w, grpprl, ch, style_ch);
+      end_run (w, grpprl);
+    }
+}
+
+/* One of the model's paragraphs: its runs, then its mark.  `note_mark`
+ * puts a note's reference mark and a space in front, as Word begins a
+ * note's text. */
+static void
+write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark)
+{
+  const W42Fmt *fmt = w42_ap_table_get (w->aps, block->ap);
+  guint istd;
+  const W42Style *style = para_style (w, fmt->pa.style, &istd);
+  const W42CharFmt *mark_ch = &fmt->ch;
+
+  if (note_mark)
+    {
+      GByteArray *grpprl = g_byte_array_new ();
+
+      add_note_mark (w, block->runs->len > 0
+                        ? &w42_ap_table_get (w->aps, g_array_index (block->runs, W42Run, 0).ap)->ch
+                        : &fmt->ch, &style->ch);
+      add_char (w, ' ');
+      chp_sprms (w, grpprl, &fmt->ch, &style->ch);
+      end_run (w, grpprl);
+    }
+
+  for (guint r = 0; r < block->runs->len; r++)
+    {
+      const W42Run *run = &g_array_index (block->runs, W42Run, r);
+      const W42Fmt *rf = w42_ap_table_get (w->aps, run->ap);
+      GByteArray *grpprl;
+
+      if (run->footnote > 0 && w->story == STORY_MAIN)
+        {
+          int kind = run->endnote ? 1 : 0;
+          guint32 cp = w->text->len;
+
+          g_array_append_val (w->note_ref[kind], cp);
+          g_array_append_val (w->note_id[kind], run->footnote_id);
+          add_note_mark (w, &rf->ch, &style->ch);
+          mark_ch = &rf->ch;
+          continue;
+        }
+      if (run->object != W42_OBJECT_NONE || run->footnote > 0)
+        continue;
+      grpprl = g_byte_array_new ();
+      add_text (w, block->text->str + run->byte_offset, run->n_bytes);
+      chp_sprms (w, grpprl, &rf->ch, &style->ch);
+      end_run (w, grpprl);
+      mark_ch = &rf->ch;
+    }
+
+  /* The paragraph mark: an empty paragraph's is its own, which says
+   * how tall the blank line is; any other's is its last run's, as a
+   * \par in RTF takes the formatting before it. */
+  end_para (w, mark, mark_ch, &style->ch, &fmt->pa, &style->pa, istd);
+}
+
+static void
+begin_story (Writer *w, int story)
+{
+  w->story = story;
+  w->story_start[story] = w->text->len;
+}
+
+static void
+end_story (Writer *w, int story)
+{
+  w->ccp[story] = w->text->len - w->story_start[story];
+}
+
+/* The main text, and the sections it falls into.  A paragraph that
+ * starts a section ends the one before with a section mark, 12, in
+ * place of its paragraph mark. */
+static void
+write_main_text (Writer *w, GPtrArray *blocks)
+{
+  const W42Block *prev = NULL;
+  Section sect = { 0, w42_page_columns (w->page), w42_page_column_gap (w->page) };
+
+  begin_story (w, STORY_MAIN);
   for (guint i = 0; i < blocks->len; i++)
     {
       const W42Block *block = g_ptr_array_index (blocks, i);
-      const W42Fmt *fmt = w42_ap_table_get (w->aps, block->ap);
-      guint istd;
-      const W42Style *style;
-      const W42ParaFmt *style_pa;
-      const W42CharFmt *style_ch;
-      const W42CharFmt *mark_ch;
-      ParaRun para;
+      const W42Block *next = NULL;
+      gunichar mark = 0x0D;
 
       if (block->note >= 0)
         continue;
+      for (guint j = i + 1; j < blocks->len && next == NULL; j++)
+        if (((const W42Block *) g_ptr_array_index (blocks, j))->note < 0)
+          next = g_ptr_array_index (blocks, j);
 
-      istd = istd_for (w, fmt->pa.style);
-      style = istd < ISTD_FIRST_USER ? w->istd_style[istd]
-                                     : g_ptr_array_index (w->user_styles, istd - ISTD_FIRST_USER);
-      if (style == NULL)
-        style = w->istd_style[ISTD_NORMAL];
-      style_pa = &style->pa;
-      style_ch = &style->ch;
-      mark_ch = &fmt->ch;
+      if (next != NULL && block->table < 0 &&
+          w42_ap_table_get (w->aps, next->ap)->pa.section_break)
+        mark = 0x0C;
+      write_block (w, block, mark, FALSE);
+      prev = block;
 
-      for (guint r = 0; r < block->runs->len; r++)
+      if (mark == 0x0C)
         {
-          const W42Run *run = &g_array_index (block->runs, W42Run, r);
-          const W42Fmt *rf = w42_ap_table_get (w->aps, run->ap);
+          const W42ParaFmt *npa = &w42_ap_table_get (w->aps, next->ap)->pa;
+
+          sect.cp_end = w->text->len;
+          g_array_append_val (w->sections, sect);
+          sect.columns = npa->columns > 1 ? MIN (npa->columns, 6) : 1;
+          sect.column_gap = npa->column_gap > 0 ? npa->column_gap : 720;
+        }
+    }
+  (void) prev;
+  sect.cp_end = w->text->len;     /* put right when the stories are in */
+  g_array_append_val (w->sections, sect);
+  end_story (w, STORY_MAIN);
+}
+
+/* The notes of one kind, in the order of their references, each opening
+ * with its mark and a space, then one more paragraph mark for the story. */
+static void
+write_notes (Writer *w, GPtrArray *blocks, int kind)
+{
+  int story = kind == 0 ? STORY_FTN : STORY_EDN;
+
+  begin_story (w, story);
+  if (w->note_ref[kind]->len == 0)
+    {
+      end_story (w, story);
+      return;
+    }
+  for (guint n = 0; n < w->note_id[kind]->len; n++)
+    {
+      int id = g_array_index (w->note_id[kind], int, n);
+      guint32 at = w->text->len - w->story_start[story];
+      gboolean first = TRUE;
+
+      g_array_append_val (w->note_txt[kind], at);
+      for (guint i = 0; i < blocks->len; i++)
+        {
+          const W42Block *block = g_ptr_array_index (blocks, i);
+
+          if (block->note != id)
+            continue;
+          write_block (w, block, 0x0D, first);
+          first = FALSE;
+        }
+      if (first)
+        {
+          /* A note with no paragraphs still has its mark. */
+          add_note_mark (w, &w->istd_style[ISTD_NORMAL]->ch, &w->istd_style[ISTD_NORMAL]->ch);
+          end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+        }
+    }
+  end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+  end_story (w, story);
+}
+
+/* A header or footer: its text, the fields in it made fields, as one
+ * paragraph aligned as it says, and the story's closing mark. */
+static void
+write_page_text (Writer *w, const W42PageText *pt_text)
+{
+  guint32 at = w->text->len - w->story_start[STORY_HDD];
+  const W42CharFmt *normal = &w->istd_style[ISTD_NORMAL]->ch;
+  W42ParaFmt pa = w->istd_style[ISTD_NORMAL]->pa;
+  const char *p;
+
+  g_array_append_val (w->hdd, at);
+  if (pt_text == NULL || pt_text->text == NULL || *pt_text->text == '\0')
+    return;
+
+  p = pt_text->text;
+  while (*p != '\0')
+    {
+      static const struct { const char *name; const char *code; guint flt; } FIELDS[] = {
+        { "{PAGE}", " PAGE ", 33 }, { "{NUMPAGES}", " NUMPAGES ", 26 }, { "{DATE}", " DATE ", 31 },
+      };
+      const char *brace = strchr (p, '{');
+      gboolean field = FALSE;
+
+      if (brace == NULL)
+        brace = p + strlen (p);
+      if (brace > p)
+        {
           GByteArray *grpprl = g_byte_array_new ();
 
-          if (run->object != W42_OBJECT_NONE || run->footnote > 0)
-            {
-              g_byte_array_free (grpprl, TRUE);
-              continue;
-            }
-          add_text (w, block->text->str + run->byte_offset, run->n_bytes);
-          chp_sprms (w, grpprl, &rf->ch, style_ch);
+          add_text (w, p, (gsize) (brace - p));
           end_run (w, grpprl);
-          mark_ch = &rf->ch;
+          p = brace;
+          continue;
         }
+      for (guint i = 0; i < G_N_ELEMENTS (FIELDS); i++)
+        if (g_str_has_prefix (p, FIELDS[i].name))
+          {
+            char *result;
 
-      /* The paragraph mark: an empty paragraph's is its own, which says
-       * how tall the blank line is; any other's is its last run's, as a
-       * \par in RTF takes the formatting before it. */
-      add_char (w, 0x0D);
+            if (FIELDS[i].flt == 31)
+              {
+                GDateTime *now = g_date_time_new_now_local ();
+                result = g_date_time_format (now, "%x");
+                g_date_time_unref (now);
+              }
+            else
+              result = g_strdup ("1");
+            add_field (w, FIELDS[i].code, FIELDS[i].flt, result, normal, normal);
+            g_free (result);
+            p += strlen (FIELDS[i].name);
+            field = TRUE;
+            break;
+          }
+      if (!field)
+        {
+          GByteArray *grpprl = g_byte_array_new ();
+
+          add_text (w, p, 1);
+          end_run (w, grpprl);
+          p++;
+        }
+    }
+  pa.align = pt_text->align;
+  end_para (w, 0x0D, NULL, NULL, &pa, &w->istd_style[ISTD_NORMAL]->pa, ISTD_NORMAL);
+  end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+}
+
+/* The headers and footers: six separator stories, left empty for Word's
+ * own, then for each section its even header, odd header, even footer,
+ * odd footer, first-page header and first-page footer.  The first
+ * section says them; the others follow it. */
+static void
+write_headers (Writer *w)
+{
+  gboolean title = w42_pt_get_title_page (w->pt);
+  gboolean facing = w42_pt_get_facing_pages (w->pt);
+  const W42PageText *stories[6];
+  gboolean any = FALSE;
+
+  stories[0] = facing ? w42_pt_get_header_kind (w->pt, W42_PAGE_TEXT_EVEN) : NULL;
+  stories[1] = w42_pt_get_header (w->pt);
+  stories[2] = facing ? w42_pt_get_footer_kind (w->pt, W42_PAGE_TEXT_EVEN) : NULL;
+  stories[3] = w42_pt_get_footer (w->pt);
+  stories[4] = title ? w42_pt_get_header_kind (w->pt, W42_PAGE_TEXT_FIRST) : NULL;
+  stories[5] = title ? w42_pt_get_footer_kind (w->pt, W42_PAGE_TEXT_FIRST) : NULL;
+  for (guint i = 0; i < 6; i++)
+    any |= stories[i] != NULL && stories[i]->text != NULL && *stories[i]->text != '\0';
+
+  begin_story (w, STORY_HDD);
+  if (!any && w->note_ref[0]->len == 0 && w->note_ref[1]->len == 0)
+    {
+      end_story (w, STORY_HDD);
+      return;
+    }
+  for (guint i = 0; i < 6; i++)
+    {
+      /* The notes' separators, as Word writes them whether there are
+       * notes or not: its line, 3, and the longer line when a note runs
+       * on, 4.  The continuation notices stay empty. */
+      static const gunichar SEP[6] = { 0x03, 0x04, 0, 0x03, 0x04, 0 };
+      guint32 at = w->text->len - w->story_start[STORY_HDD];
+
+      if (SEP[i] == 0)
+        {
+          write_page_text (w, NULL);
+          continue;
+        }
+      g_array_append_val (w->hdd, at);
       {
         GByteArray *grpprl = g_byte_array_new ();
 
-        chp_sprms (w, grpprl, mark_ch, style_ch);
+        add_char (w, SEP[i]);
+        sprm8 (grpprl, 0x0855, 1);
         end_run (w, grpprl);
       }
-
-      para.cp_end = w->text->len;
-      para.istd = istd;
-      para.grpprl = g_byte_array_new ();
-      pap_sprms (para.grpprl, &fmt->pa, style_pa);
-      g_array_append_val (w->pap, para);
+      end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+      end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
     }
+  for (guint i = 0; i < 6; i++)
+    write_page_text (w, stories[i]);
+  for (guint s = 1; s < w->sections->len; s++)
+    for (guint i = 0; i < 6; i++)
+      write_page_text (w, NULL);
+  /* One more mark closes the story, and the table says where it is;
+   * the table's last cp is two past it, as Word writes. */
+  {
+    guint32 at = w->text->len - w->story_start[STORY_HDD];
 
-  g_ptr_array_free (blocks, TRUE);
-  w->ccp_text = w->text->len;
+    g_array_append_val (w->hdd, at);
+    end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+    end_story (w, STORY_HDD);
+    at = w->ccp[STORY_HDD] + 2;
+    g_array_append_val (w->hdd, at);
+  }
 }
 
 /* ---- formatted disk pages --------------------------------------------- */
@@ -1142,11 +1482,13 @@ write_bin_table (GByteArray *tb, GArray *bin_fc, GArray *bin_pn)
 
 /* ---- sections --------------------------------------------------------- */
 
-/* The one section's SEPX: the page, its margins and columns, and where
- * its numbers begin. */
+/* A section's SEPX: the page, its margins and columns; the first
+ * section also whether its first page is a title page, and where its
+ * numbers begin. */
 static void
-write_sepx (Writer *w, GByteArray *wd)
+write_sepx (Writer *w, GByteArray *wd, guint index)
 {
+  const Section *sect = &g_array_index (w->sections, Section, index);
   GByteArray *s = g_byte_array_new ();
   W42PageSetup page;
   int from, start;
@@ -1173,23 +1515,226 @@ write_sepx (Writer *w, GByteArray *wd)
   sprm16 (s, 0x9024, (guint) page.margin_bottom);
   sprm16 (s, 0xB017, 720);                                     /* sprmSDyaHdrTop */
   sprm16 (s, 0xB018, 720);                                     /* sprmSDyaHdrBottom */
-  if (w42_page_columns (&page) > 1)
+  if (sect->columns > 1)
     {
-      sprm16 (s, 0x500B, (guint) w42_page_columns (&page) - 1); /* sprmSCcolumns */
-      sprm16 (s, 0x900C, (guint) w42_page_column_gap (&page));  /* sprmSDxaColumns */
+      sprm16 (s, 0x500B, (guint) sect->columns - 1);           /* sprmSCcolumns */
+      sprm16 (s, 0x900C, (guint) sect->column_gap);            /* sprmSDxaColumns */
     }
-  if (w42_pt_get_title_page (w->pt))
-    sprm8 (s, 0x300A, 1);                                      /* sprmSFTitlePage */
-  w42_pt_get_page_numbering (w->pt, &from, &start);
-  if (from > 1 || start != 1)
+  if (index == 0)
     {
-      sprm8 (s, 0x3011, 1);                                    /* sprmSFPgnRestart */
-      sprm16 (s, 0x501C, (guint) MAX (start - (from - 1), 0)); /* sprmSPgnStart97 */
+      if (w42_pt_get_title_page (w->pt))
+        sprm8 (s, 0x300A, 1);                                  /* sprmSFTitlePage */
+      w42_pt_get_page_numbering (w->pt, &from, &start);
+      if (from > 1 || start != 1)
+        {
+          sprm8 (s, 0x3011, 1);                                /* sprmSFPgnRestart */
+          sprm16 (s, 0x501C, (guint) MAX (start - (from - 1), 0)); /* sprmSPgnStart97 */
+        }
     }
 
   put16 (wd, s->len);
   g_byte_array_append (wd, s->data, s->len);
   g_byte_array_free (s, TRUE);
+}
+
+/* ---- summary information ---------------------------------------------- */
+
+/* \005DocumentSummaryInformation, for its second section: the custom
+ * properties, which is where the page the numbers begin on is kept --
+ * Word numbers every page -- with the number that page gets.  NULL when
+ * there is nothing to keep. */
+static GByteArray *
+doc_summary_info (W42PieceTable *pt)
+{
+  static const guint8 FMTID_DOC[16] = {
+    0x02, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
+    0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
+  };
+  static const guint8 FMTID_USER[16] = {
+    0x05, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
+    0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
+  };
+  static const char * const NAMES[2] = { "Word42PageNumbersFrom", "Word42PageNumbersStart" };
+  GByteArray *o, *first, *user;
+  int from, start, values[2];
+
+  w42_pt_get_page_numbering (pt, &from, &start);
+  if (from <= 1)
+    return NULL;
+  values[0] = from;
+  values[1] = start;
+
+  /* The first section: the code page and nothing else. */
+  first = g_byte_array_new ();
+  put32 (first, 8 + 8 + 8);
+  put32 (first, 1);
+  put32 (first, 1);
+  put32 (first, 16);
+  put32 (first, 0x02);
+  put16 (first, 1252);
+  put16 (first, 0);
+
+  /* The second: the dictionary naming properties 2 and 3, the code
+   * page, and the two numbers. */
+  user = g_byte_array_new ();
+  {
+    GByteArray *dict = g_byte_array_new ();
+    guint32 at_dict, at_cp, at_v[2], n = 4;
+    GByteArray *body = g_byte_array_new ();
+
+    put32 (dict, 2);
+    for (guint i = 0; i < 2; i++)
+      {
+        put32 (dict, i + 2);
+        put32 (dict, (guint32) strlen (NAMES[i]) + 1);
+        g_byte_array_append (dict, (const guint8 *) NAMES[i], (guint) strlen (NAMES[i]) + 1);
+      }
+    while (dict->len % 4)
+      put8 (dict, 0);
+
+    at_dict = 8 + 8 * n;
+    g_byte_array_append (body, dict->data, dict->len);
+    at_cp = at_dict + body->len;
+    put32 (body, 0x02);
+    put16 (body, 1252);
+    put16 (body, 0);
+    for (guint i = 0; i < 2; i++)
+      {
+        at_v[i] = at_dict + body->len;
+        put32 (body, 0x03);            /* VT_I4 */
+        put32 (body, (guint32) values[i]);
+      }
+
+    put32 (user, 8 + 8 * n + body->len);
+    put32 (user, n);
+    put32 (user, 0);  put32 (user, at_dict);
+    put32 (user, 1);  put32 (user, at_cp);
+    put32 (user, 2);  put32 (user, at_v[0]);
+    put32 (user, 3);  put32 (user, at_v[1]);
+    g_byte_array_append (user, body->data, body->len);
+    g_byte_array_free (dict, TRUE);
+    g_byte_array_free (body, TRUE);
+  }
+
+  o = g_byte_array_new ();
+  put16 (o, 0xFFFE);
+  put16 (o, 0);
+  put32 (o, 0x00020006);
+  pad_to (o, 8 + 16);
+  put32 (o, 2);
+  g_byte_array_append (o, FMTID_DOC, 16);
+  put32 (o, 68);                            /* after the two FMTID/offset pairs */
+  g_byte_array_append (o, FMTID_USER, 16);
+  put32 (o, 68 + first->len);
+  g_byte_array_append (o, first->data, first->len);
+  g_byte_array_append (o, user->data, user->len);
+  g_byte_array_free (first, TRUE);
+  g_byte_array_free (user, TRUE);
+  return o;
+}
+
+/* \005SummaryInformation: File > Summary Info, as a property set of
+ * strings -- in Western Windows when they fit it, else in UTF-16, which
+ * the set says by its code page. */
+static GByteArray *
+summary_info (W42PieceTable *pt)
+{
+  static const guint8 FMTID[16] = {
+    0xE0, 0x85, 0x9F, 0xF2, 0xF9, 0x4F, 0x68, 0x10,
+    0xAB, 0x91, 0x08, 0x00, 0x2B, 0x27, 0xB3, 0xD9,
+  };
+  const W42DocInfo *info = w42_pt_get_info (pt);
+  const char *values[5] = { NULL };
+  static const guint32 PIDS[5] = { 2, 3, 4, 5, 6 };   /* title, subject, author, keywords, comments */
+  GByteArray *o = g_byte_array_new ();
+  GByteArray *props = g_byte_array_new ();
+  GArray *offsets = g_array_new (FALSE, FALSE, sizeof (guint32));
+  GArray *ids = g_array_new (FALSE, FALSE, sizeof (guint32));
+  gboolean unicode = FALSE;
+  guint n;
+
+  if (info != NULL)
+    {
+      values[0] = info->title;
+      values[1] = info->subject;
+      values[2] = info->author;
+      values[3] = info->keywords;
+      values[4] = info->comments;
+    }
+  for (guint i = 0; i < 5; i++)
+    if (values[i] != NULL)
+      {
+        char *test = g_convert (values[i], -1, "WINDOWS-1252", "UTF-8", NULL, NULL, NULL);
+
+        unicode |= test == NULL;
+        g_free (test);
+      }
+
+  /* The code page first. */
+  {
+    guint32 id = 1, at = 0;
+
+    g_array_append_val (ids, id);
+    g_array_append_val (offsets, at);
+    put32 (props, 0x02);                    /* VT_I2 */
+    put16 (props, unicode ? 1200 : 1252);
+    put16 (props, 0);
+  }
+  for (guint i = 0; i < 5; i++)
+    {
+      guint32 at = props->len;
+
+      if (values[i] == NULL || *values[i] == '\0')
+        continue;
+      g_array_append_val (ids, PIDS[i]);
+      g_array_append_val (offsets, at);
+      put32 (props, 0x1E);                  /* VT_LPSTR */
+      if (unicode)
+        {
+          glong n16 = 0;
+          gunichar2 *u = g_utf8_to_utf16 (values[i], -1, NULL, &n16, NULL);
+
+          put32 (props, (guint32) (n16 + 1) * 2);
+          for (glong c = 0; c < n16; c++)
+            put16 (props, u[c]);
+          put16 (props, 0);
+          g_free (u);
+        }
+      else
+        {
+          gsize len = 0;
+          char *cp = g_convert (values[i], -1, "WINDOWS-1252", "UTF-8", NULL, &len, NULL);
+
+          put32 (props, (guint32) len + 1);
+          g_byte_array_append (props, (const guint8 *) cp, (guint) len);
+          put8 (props, 0);
+          g_free (cp);
+        }
+      while (props->len % 4)
+        put8 (props, 0);
+    }
+
+  n = ids->len;
+  put16 (o, 0xFFFE);
+  put16 (o, 0);
+  put32 (o, 0x00020006);                    /* the OS it was written on */
+  pad_to (o, 8 + 16);                       /* no class */
+  put32 (o, 1);
+  g_byte_array_append (o, FMTID, 16);
+  put32 (o, 48);
+  put32 (o, 8 + 8 * n + props->len);        /* the section's size */
+  put32 (o, n);
+  for (guint i = 0; i < n; i++)
+    {
+      put32 (o, g_array_index (ids, guint32, i));
+      put32 (o, 8 + 8 * n + g_array_index (offsets, guint32, i));
+    }
+  g_byte_array_append (o, props->data, props->len);
+
+  g_byte_array_free (props, TRUE);
+  g_array_free (offsets, TRUE);
+  g_array_free (ids, TRUE);
+  return o;
 }
 
 /* ---- the document properties ------------------------------------------ */
@@ -1276,7 +1821,10 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   GArray *pap_fc = g_array_new (FALSE, FALSE, sizeof (guint32));
   GArray *pap_pn = g_array_new (FALSE, FALSE, sizeof (guint32));
   guint32 fclcb[FIB_N_FCLCB][2];
-  guint32 fc_sepx, ccp_all;
+  guint32 ccp_all;
+  GArray *fc_sepx = g_array_new (FALSE, FALSE, sizeof (guint32));
+  GByteArray *si, *dsi;
+  GPtrArray *blocks;
   gboolean ok;
 
   g_return_val_if_fail (pt != NULL, FALSE);
@@ -1294,10 +1842,32 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_array_set_clear_func (w.pap, para_run_clear);
   w.fonts = g_ptr_array_new ();
   font_index (&w, "Times New Roman");     /* the first font, as Word's is */
+  for (int s = 0; s < N_STORIES; s++)
+    w.fields[s] = g_array_new (FALSE, FALSE, sizeof (FieldMark));
+  for (int k = 0; k < 2; k++)
+    {
+      w.note_ref[k] = g_array_new (FALSE, FALSE, sizeof (guint32));
+      w.note_id[k] = g_array_new (FALSE, FALSE, sizeof (int));
+      w.note_txt[k] = g_array_new (FALSE, FALSE, sizeof (guint32));
+    }
+  w.hdd = g_array_new (FALSE, FALSE, sizeof (guint32));
+  w.sections = g_array_new (FALSE, FALSE, sizeof (Section));
 
   collect_styles (&w);
-  write_main_text (&w);
+  blocks = w42_pt_snapshot_blocks (pt);
+  write_main_text (&w, blocks);
+  write_notes (&w, blocks, 0);
+  write_headers (&w);
+  write_notes (&w, blocks, 1);
+  g_ptr_array_free (blocks, TRUE);
+
+  /* With any story after the main text, one more paragraph mark ends
+   * them all, and the last section runs to it. */
+  if (w.ccp[STORY_FTN] + w.ccp[STORY_HDD] + w.ccp[STORY_EDN] > 0)
+    end_para (&w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
   ccp_all = w.text->len;
+  if (ccp_all > w.ccp[STORY_MAIN])
+    g_array_index (w.sections, Section, w.sections->len - 1).cp_end = ccp_all;
 
   /* WordDocument: the FIB's place, the text, the pages of properties. */
   pad_to (wd, TEXT_FC);
@@ -1306,8 +1876,15 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   pad_to (wd, (wd->len + 511) / 512 * 512);
   write_chpx_fkps (&w, wd, chp_fc, chp_pn);
   write_papx_fkps (&w, wd, pap_fc, pap_pn);
-  fc_sepx = wd->len;
-  write_sepx (&w, wd);
+  for (guint s = 0; s < w.sections->len; s++)
+    {
+      guint32 at = wd->len;
+
+      g_array_append_val (fc_sepx, at);
+      write_sepx (&w, wd, s);
+      if (wd->len % 2)
+        put8 (wd, 0);
+    }
 
   /* 1Table: the stylesheet first, as Word has it. */
 #define BEGIN(i) (fclcb[i][0] = tb->len)
@@ -1321,15 +1898,77 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     fclcb[FIB_STSHF_ORIG][0] = fclcb[FIB_STSHF][0];
     fclcb[FIB_STSHF_ORIG][1] = fclcb[FIB_STSHF][1];
 
-    /* PlcfSed: the section's cps, then its SED. */
+    /* The notes: where each reference is, with an FRD saying it is
+     * numbered, then where each one's text starts, the end of the last,
+     * and two past the story's end, as Word writes. */
+    for (int k = 0; k < 2; k++)
+      {
+        int story = k == 0 ? STORY_FTN : STORY_EDN;
+        GArray *refs = w.note_ref[k];
+
+        if (refs->len == 0)
+          continue;
+        BEGIN (k == 0 ? FIB_FND_REF : FIB_END_REF);
+        for (guint i = 0; i < refs->len; i++)
+          put32 (tb, g_array_index (refs, guint32, i));
+        put32 (tb, ccp_all);
+        for (guint i = 0; i < refs->len; i++)
+          put16 (tb, 1);
+        END (k == 0 ? FIB_FND_REF : FIB_END_REF);
+
+        BEGIN (k == 0 ? FIB_FND_TXT : FIB_END_TXT);
+        for (guint i = 0; i < w.note_txt[k]->len; i++)
+          put32 (tb, g_array_index (w.note_txt[k], guint32, i));
+        put32 (tb, w.ccp[story] - 1);
+        put32 (tb, w.ccp[story] + 2);
+        END (k == 0 ? FIB_FND_TXT : FIB_END_TXT);
+      }
+
+    /* PlcfSed: the sections' cps, then a SED each. */
     BEGIN (FIB_PLCF_SED);
     put32 (tb, 0);
-    put32 (tb, w.ccp_text);
-    put16 (tb, 0);
-    put32 (tb, fc_sepx);
-    put16 (tb, 0);
-    put32 (tb, 0xFFFFFFFF);
+    for (guint s = 0; s < w.sections->len; s++)
+      put32 (tb, g_array_index (w.sections, Section, s).cp_end);
+    for (guint s = 0; s < w.sections->len; s++)
+      {
+        put16 (tb, 0);
+        put32 (tb, g_array_index (fc_sepx, guint32, s));
+        put16 (tb, 0);
+        put32 (tb, 0xFFFFFFFF);
+      }
     END (FIB_PLCF_SED);
+
+    if (w.hdd->len > 0)
+      {
+        BEGIN (FIB_PLCF_HDD);
+        for (guint i = 0; i < w.hdd->len; i++)
+          put32 (tb, g_array_index (w.hdd, guint32, i));
+        END (FIB_PLCF_HDD);
+      }
+
+    /* The fields of each story: where their marks are, then an FLD
+     * each; the table's last cp is two past the story's end. */
+    {
+      static const int PLC[N_STORIES] = { FIB_FLD_MOM, FIB_FLD_FTN, FIB_FLD_HDR, FIB_FLD_EDN };
+
+      for (int s = 0; s < N_STORIES; s++)
+        {
+          GArray *marks = w.fields[s];
+
+          if (marks->len == 0)
+            continue;
+          BEGIN (PLC[s]);
+          for (guint i = 0; i < marks->len; i++)
+            put32 (tb, g_array_index (marks, FieldMark, i).cp);
+          put32 (tb, w.ccp[s] + (s == STORY_MAIN ? 1 : 2));
+          for (guint i = 0; i < marks->len; i++)
+            {
+              put8 (tb, g_array_index (marks, FieldMark, i).ch);
+              put8 (tb, g_array_index (marks, FieldMark, i).flt);
+            }
+          END (PLC[s]);
+        }
+    }
 
     BEGIN (FIB_BTE_CHPX);
     write_bin_table (tb, chp_fc, chp_pn);
@@ -1384,7 +2023,10 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     set16 (wd, 0x24, 0x6A62);
     set16 (wd, 0x3E, 22);                     /* cslw */
     set32 (wd, 0x40, cb_mac);
-    set32 (wd, 0x4C, w.ccp_text);
+    set32 (wd, 0x4C, w.ccp[STORY_MAIN]);
+    set32 (wd, 0x50, w.ccp[STORY_FTN]);
+    set32 (wd, 0x54, w.ccp[STORY_HDD]);
+    set32 (wd, 0x60, w.ccp[STORY_EDN]);
     set32 (wd, 0x40 + 4 * 11, 0xFFFFF);       /* pnFbpChpFirst */
     set32 (wd, 0x40 + 4 * 14, 0xFFFFF);       /* pnFbpPapFirst */
     set32 (wd, 0x40 + 4 * 17, 0xFFFFF);       /* pnFbpLvcFirst */
@@ -1403,14 +2045,18 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   pad_to (tb, OLE_MINI_CUTOFF);
 
   co = compobj ();
+  si = summary_info (pt);
+  dsi = doc_summary_info (pt);
   {
     OleStream streams[] = {
       { "WordDocument", wd, 0 },
       { "1Table", tb, 0 },
       { "\001CompObj", co, 0 },
+      { "\005SummaryInformation", si, 0 },
+      { "\005DocumentSummaryInformation", dsi, 0 },
     };
 
-    ole = ole_build (streams, G_N_ELEMENTS (streams), CLSID_WORD);
+    ole = ole_build (streams, G_N_ELEMENTS (streams) - (dsi == NULL ? 1 : 0), CLSID_WORD);
   }
 
   ok = g_file_replace_contents (file, (const char *) ole->data, ole->len, NULL, FALSE,
@@ -1418,6 +2064,20 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
 
   g_byte_array_free (ole, TRUE);
   g_byte_array_free (co, TRUE);
+  g_byte_array_free (si, TRUE);
+  if (dsi != NULL)
+    g_byte_array_free (dsi, TRUE);
+  g_array_free (fc_sepx, TRUE);
+  for (int s = 0; s < N_STORIES; s++)
+    g_array_free (w.fields[s], TRUE);
+  for (int k = 0; k < 2; k++)
+    {
+      g_array_free (w.note_ref[k], TRUE);
+      g_array_free (w.note_id[k], TRUE);
+      g_array_free (w.note_txt[k], TRUE);
+    }
+  g_array_free (w.hdd, TRUE);
+  g_array_free (w.sections, TRUE);
   g_byte_array_free (wd, TRUE);
   g_byte_array_free (tb, TRUE);
   g_array_free (chp_fc, TRUE);
