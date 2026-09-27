@@ -22,6 +22,8 @@ w42_core_sources = files(
   'io/w42-io.c',
   'io/w42-rtf.c',
   'io/w42-pdf.c',
+  'io/w42-pdffile.c',
+  'io/w42-pdfsec.c',
   'io/w42-doc.c',
   'io/w42-doc-write.c',
   'io/w42-wpd.c',

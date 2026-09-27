@@ -23,4 +23,11 @@ gboolean w42_odt_load (W42PieceTable *pt, W42PageSetup *page,
 gboolean w42_odt_save (W42PieceTable *pt, const W42PageSetup *page,
                        GFile *file, GError **error);
 
+/* The same with the package in memory: what a PDF carries inside it as
+ * the document it was made from, which must not pass through a file on
+ * disk when the PDF has a password. */
+gboolean w42_odt_load_bytes (W42PieceTable *pt, W42PageSetup *page,
+                             GBytes *bytes, GError **error);
+GBytes  *w42_odt_save_bytes (W42PieceTable *pt, const W42PageSetup *page);
+
 G_END_DECLS

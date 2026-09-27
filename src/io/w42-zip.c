@@ -409,14 +409,13 @@ put32 (GByteArray *out, guint32 v)
   g_byte_array_append (out, b, 4);
 }
 
-gboolean
-w42_zip_writer_save (W42ZipWriter *writer, GFile *file, GError **error)
+GBytes *
+w42_zip_writer_to_bytes (W42ZipWriter *writer)
 {
   GByteArray *out = g_byte_array_new ();
   guint32 cd_start, cd_size;
-  gboolean ok;
 
-  g_return_val_if_fail (writer != NULL, FALSE);
+  g_return_val_if_fail (writer != NULL, NULL);
 
   /* Local headers and data. */
   for (guint i = 0; i < writer->entries->len; i++)
@@ -471,9 +470,22 @@ w42_zip_writer_save (W42ZipWriter *writer, GFile *file, GError **error)
   put32 (out, cd_start);
   put16 (out, 0);
 
-  ok = g_file_replace_contents (file, (const char *) out->data, out->len, NULL, FALSE,
+  return g_byte_array_free_to_bytes (out);
+}
+
+gboolean
+w42_zip_writer_save (W42ZipWriter *writer, GFile *file, GError **error)
+{
+  GBytes *bytes;
+  gboolean ok;
+
+  g_return_val_if_fail (writer != NULL, FALSE);
+
+  bytes = w42_zip_writer_to_bytes (writer);
+  ok = g_file_replace_contents (file, g_bytes_get_data (bytes, NULL),
+                                g_bytes_get_size (bytes), NULL, FALSE,
                                 G_FILE_CREATE_NONE, NULL, NULL, error);
-  g_byte_array_free (out, TRUE);
+  g_bytes_unref (bytes);
   return ok;
 }
 

@@ -101,6 +101,14 @@ if poppler_dep.found()
   add_project_arguments('-DHAVE_POPPLER=1', language: 'c')
 endif
 
+# A password on a PDF and a signature in one need GnuTLS: AES and the
+# SHA-2 hashes for the one, PKCS #12 and CMS for the other.  Without it
+# the PDFs Word42 writes have neither, and File > PDF Options says why.
+gnutls_dep = dependency('gnutls', version: '>= 3.6', required: false)
+if gnutls_dep.found()
+  add_project_arguments('-DHAVE_GNUTLS=1', language: 'c')
+endif
+
 # Spelling needs Enchant, which finds Hunspell, Aspell or the platform's
 # own checker.  Without it there is no Spelling box and no red underlines.
 enchant_dep = dependency('enchant-2', required: false)
@@ -154,6 +162,9 @@ endif
 if poppler_dep.found()
   core_deps += [poppler_dep]
 endif
+if gnutls_dep.found()
+  core_deps += [gnutls_dep]
+endif
 if enchant_dep.found()
   core_deps += [enchant_dep]
 endif
@@ -173,6 +184,7 @@ summary({
     'Cairo'   : cairo_dep.version(),
     'Lexbor'  : lexbor_dep.version(),
     'PDF import (poppler)' : poppler_dep.found(),
+    'PDF passwords and signatures (gnutls)' : gnutls_dep.found(),
     'Spelling (enchant)'   : enchant_dep.found(),
     'Hyphenation (hyphen)' : hyphen_dep.found(),
     'Versions (libgit2)'   : libgit2_dep.found(),

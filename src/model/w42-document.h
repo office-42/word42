@@ -8,6 +8,7 @@
 
 #include <gio/gio.h>
 
+#include "w42-pdf.h"
 #include "w42-piecetable.h"
 
 G_BEGIN_DECLS
@@ -43,5 +44,20 @@ void      w42_document_set_title       (W42Document *self, const char *title);
 
 gboolean  w42_document_load            (W42Document *self, GFile *file, GError **error);
 gboolean  w42_document_save            (W42Document *self, GFile *file, GError **error);
+
+/* As w42_document_load, trying the passwords when the file is a PDF that
+ * has them; either may be NULL.  A password missing or wrong is
+ * W42_PDF_ERROR_PASSWORD. */
+gboolean  w42_document_load_with       (W42Document *self, GFile *file,
+                                        const char *password,
+                                        const char *modify_password,
+                                        GError **error);
+
+/* How the document is written when it is written as a PDF -- its
+ * passwords, compression, signature -- and what reading one found.
+ * Owned by the document, and never NULL.  Loading a file keeps the
+ * settings that are the writer's taste and clears what belonged to the
+ * last file: its passwords, and the signing. */
+W42PdfOptions *w42_document_pdf_options (W42Document *self);
 
 G_END_DECLS

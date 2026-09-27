@@ -58,6 +58,7 @@ jobs:
             gdk-pixbuf2:p
             lexbor:p
             poppler:p
+            gnutls:p
             libgit2:p
             enchant:p
             hunspell-en:p

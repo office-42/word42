@@ -352,3 +352,98 @@ w42_image_surface_to_png (cairo_surface_t *surface)
 
   return g_byte_array_free_to_bytes (array);
 }
+
+/* The surface's pixels as gdk-pixbuf keeps them: straight RGB, the
+ * alpha undone and the ground made white, since a JPEG has no alpha. */
+static GdkPixbuf *
+surface_to_rgb (cairo_surface_t *surface)
+{
+  int width = cairo_image_surface_get_width (surface);
+  int height = cairo_image_surface_get_height (surface);
+  int src_stride = cairo_image_surface_get_stride (surface);
+  const guint8 *src;
+  GdkPixbuf *pixbuf = gdk_pixbuf_new (GDK_COLORSPACE_RGB, FALSE, 8, width, height);
+  int dst_stride;
+  guint8 *dst;
+
+  if (pixbuf == NULL)
+    return NULL;
+  cairo_surface_flush (surface);
+  src = cairo_image_surface_get_data (surface);
+  dst = gdk_pixbuf_get_pixels (pixbuf);
+  dst_stride = gdk_pixbuf_get_rowstride (pixbuf);
+  for (int y = 0; y < height; y++)
+    {
+      const guint32 *s = (const guint32 *) (src + y * src_stride);
+      guint8 *d = dst + y * dst_stride;
+
+      for (int x = 0; x < width; x++)
+        {
+          guint32 p = s[x];
+          guint32 a = p >> 24;
+
+          /* Premultiplied, so a colour over white is the colour plus
+           * what the alpha leaves of the white. */
+          d[3 * x]     = (guint8) (((p >> 16) & 0xFF) + (255 - a));
+          d[3 * x + 1] = (guint8) (((p >> 8) & 0xFF) + (255 - a));
+          d[3 * x + 2] = (guint8) ((p & 0xFF) + (255 - a));
+        }
+    }
+  return pixbuf;
+}
+
+cairo_surface_t *
+w42_image_surface_reduced (cairo_surface_t *surface, int width, int height,
+                           int jpeg_quality)
+{
+  cairo_surface_t *out;
+  cairo_t *cr;
+  int sw, sh;
+
+  g_return_val_if_fail (surface != NULL, NULL);
+
+  sw = cairo_image_surface_get_width (surface);
+  sh = cairo_image_surface_get_height (surface);
+  if (width < 1 || height < 1 || sw < 1 || sh < 1)
+    return NULL;
+  out = cairo_image_surface_create (jpeg_quality > 0 ? CAIRO_FORMAT_RGB24 : CAIRO_FORMAT_ARGB32,
+                                    width, height);
+  if (cairo_surface_status (out) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_surface_destroy (out);
+      return NULL;
+    }
+  cr = cairo_create (out);
+  if (jpeg_quality > 0)
+    {
+      cairo_set_source_rgb (cr, 1, 1, 1);
+      cairo_paint (cr);
+    }
+  cairo_scale (cr, (double) width / sw, (double) height / sh);
+  cairo_set_source_surface (cr, surface, 0, 0);
+  cairo_pattern_set_filter (cairo_get_source (cr), CAIRO_FILTER_GOOD);
+  cairo_pattern_set_extend (cairo_get_source (cr), CAIRO_EXTEND_PAD);
+  cairo_paint (cr);
+  cairo_destroy (cr);
+
+  if (jpeg_quality > 0)
+    {
+      GdkPixbuf *pixbuf = surface_to_rgb (out);
+      char *buffer = NULL, *quality = g_strdup_printf ("%d", CLAMP (jpeg_quality, 1, 100));
+      gsize length = 0;
+
+      if (pixbuf != NULL &&
+          gdk_pixbuf_save_to_buffer (pixbuf, &buffer, &length, "jpeg", NULL,
+                                     "quality", quality, NULL))
+        {
+          GBytes *jpeg = g_bytes_new_take (buffer, length);
+
+          cairo_surface_set_mime_data (out, CAIRO_MIME_TYPE_JPEG,
+                                       g_bytes_get_data (jpeg, NULL), length,
+                                       (cairo_destroy_func_t) g_bytes_unref, jpeg);
+        }
+      g_free (quality);
+      g_clear_object (&pixbuf);
+    }
+  return out;
+}

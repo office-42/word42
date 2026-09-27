@@ -77,27 +77,117 @@ init_translations (void)
  * an author's script does to make the proofs, the e-book and the copy
  * for the publisher out of one manuscript.  Handled before GTK is
  * started, since GTK wants a display even to say what it would do.
+ * A PDF made so is an export, as File > Export as PDF makes one: the
+ * pages, compressed, with a password, a signature or the document inside
+ * only when the --pdf- options ask for them.
  *
  * Returns -1 when the command line asks for no conversion. */
+/* The value of --name=VALUE or --name VALUE at argv[*i], moving *i past
+ * a value given as the next argument; NULL when argv[*i] is not --name. */
+static const char *
+option_value (int argc, char *argv[], int *i, const char *name)
+{
+  const char *arg = argv[*i];
+  gsize n = strlen (name);
+
+  if (strncmp (arg, name, n) != 0)
+    return NULL;
+  if (arg[n] == '=')
+    return arg + n + 1;
+  if (arg[n] == '\0' && *i + 1 < argc)
+    return argv[++*i];
+  return NULL;
+}
+
+/* A password as OpenSSL takes one: env:NAME is the environment variable
+ * NAME, file:PATH the first line of the file, and anything else the
+ * password itself -- which every user of the machine can see in the list
+ * of running programs, where the other two are not. */
+static char *
+secret_value (const char *value)
+{
+  if (g_str_has_prefix (value, "env:"))
+    return g_strdup (g_getenv (value + 4));
+  if (g_str_has_prefix (value, "file:"))
+    {
+      char *contents = NULL;
+
+      if (!g_file_get_contents (value + 5, &contents, NULL, NULL))
+        return NULL;
+      contents[strcspn (contents, "\r\n")] = '\0';
+      return contents;
+    }
+  return g_strdup (value);
+}
+
+/* Sets `field` to the password `value` names. */
+static void
+set_secret (char **field, const char *value)
+{
+  char *secret = secret_value (value);
+
+  w42_pdf_options_set (field, secret);
+  if (secret != NULL)
+    memset (secret, 0, strlen (secret));
+  g_free (secret);
+}
+
+/* --pdf-pictures: a resolution, or the name Word gave it. */
+static int
+picture_ppi (const char *value)
+{
+  if (g_ascii_strcasecmp (value, "print") == 0)
+    return W42_PDF_PPI_PRINT;
+  if (g_ascii_strcasecmp (value, "screen") == 0)
+    return W42_PDF_PPI_SCREEN;
+  if (g_ascii_strcasecmp (value, "email") == 0 || g_ascii_strcasecmp (value, "e-mail") == 0)
+    return W42_PDF_PPI_EMAIL;
+  return (int) CLAMP (g_ascii_strtoll (value, NULL, 10), 0, 2400);
+}
+
 static int
 convert_main (int argc, char *argv[])
 {
   const char *format = NULL, *outdir = NULL;
+  char *password = NULL;
   GPtrArray *files = g_ptr_array_new ();
+  W42PdfOptions *pdf = w42_pdf_options_new ();
   int failed = 0;
 
   for (int i = 1; i < argc; i++)
     {
       const char *arg = argv[i];
+      const char *v;
 
-      if (g_str_has_prefix (arg, "--convert-to="))
-        format = arg + strlen ("--convert-to=");
-      else if (g_str_equal (arg, "--convert-to") && i + 1 < argc)
-        format = argv[++i];
-      else if (g_str_has_prefix (arg, "--outdir="))
-        outdir = arg + strlen ("--outdir=");
-      else if (g_str_equal (arg, "--outdir") && i + 1 < argc)
-        outdir = argv[++i];
+      if ((v = option_value (argc, argv, &i, "--convert-to")) != NULL)
+        format = v;
+      else if ((v = option_value (argc, argv, &i, "--outdir")) != NULL)
+        outdir = v;
+      else if ((v = option_value (argc, argv, &i, "--password")) != NULL)
+        set_secret (&password, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-password")) != NULL)
+        set_secret (&pdf->open_password, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-modify-password")) != NULL)
+        set_secret (&pdf->modify_password, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-sign")) != NULL)
+        {
+          w42_pdf_options_set (&pdf->certificate, v);
+          pdf->sign = TRUE;
+        }
+      else if ((v = option_value (argc, argv, &i, "--pdf-sign-password")) != NULL)
+        set_secret (&pdf->certificate_password, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-reason")) != NULL)
+        w42_pdf_options_set (&pdf->reason, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-location")) != NULL)
+        w42_pdf_options_set (&pdf->location, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-contact")) != NULL)
+        w42_pdf_options_set (&pdf->contact, v);
+      else if ((v = option_value (argc, argv, &i, "--pdf-pictures")) != NULL)
+        pdf->picture_ppi = picture_ppi (v);
+      else if (g_str_equal (arg, "--pdf-uncompressed"))
+        pdf->compress = FALSE;
+      else if (g_str_equal (arg, "--pdf-keep-document"))
+        pdf->keep_document = TRUE;
       else if (arg[0] != '-')
         g_ptr_array_add (files, (gpointer) arg);
     }
@@ -105,6 +195,8 @@ convert_main (int argc, char *argv[])
   if (format == NULL)
     {
       g_ptr_array_free (files, TRUE);
+      w42_pdf_options_free (pdf);
+      w42_pdf_options_set (&password, NULL);
       return -1;
     }
   if (*format == '.')
@@ -116,6 +208,8 @@ convert_main (int argc, char *argv[])
                _("FORMAT is the extension to write: pdf, epub, odt, docx, "
                  "rtf, html, txt, abw or tex."));
       g_ptr_array_free (files, TRUE);
+      w42_pdf_options_free (pdf);
+      w42_pdf_options_set (&password, NULL);
       return 2;
     }
 
@@ -125,6 +219,8 @@ convert_main (int argc, char *argv[])
     {
       fprintf (stderr, "word42: %s: %s\n", outdir, _("the folder could not be made"));
       g_ptr_array_free (files, TRUE);
+      w42_pdf_options_free (pdf);
+      w42_pdf_options_set (&password, NULL);
       return 1;
     }
 
@@ -159,9 +255,9 @@ convert_main (int argc, char *argv[])
           fprintf (stderr, "word42: %s: %s\n", out_path, _("already in that format"));
           failed++;
         }
-      else if (!w42_document_load (doc, in, &error) ||
-               !w42_io_save (w42_document_pt (doc), w42_document_page_setup (doc),
-                             out, &error))
+      else if (!w42_document_load_with (doc, in, password, NULL, &error) ||
+               !w42_io_save_with (w42_document_pt (doc), w42_document_page_setup (doc),
+                                  out, pdf, &error))
         {
           char *shown = g_file_get_parse_name (in);
 
@@ -183,6 +279,8 @@ convert_main (int argc, char *argv[])
     }
 
   g_ptr_array_free (files, TRUE);
+  w42_pdf_options_free (pdf);
+  w42_pdf_options_set (&password, NULL);
   return failed > 0 ? 1 : 0;
 }
 

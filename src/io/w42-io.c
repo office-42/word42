@@ -76,7 +76,6 @@ w42_io_format_round_trips (GFile *file)
 
   switch (w42_io_guess_format (file))
     {
-    case W42_FORMAT_PDF:
     case W42_FORMAT_LATEX:
     case W42_FORMAT_HTML:
     case W42_FORMAT_PPTX:
@@ -220,6 +219,13 @@ text_to_utf8 (const char *contents, gsize length)
 gboolean
 w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 {
+  return w42_io_load_with (pt, page, file, NULL, error);
+}
+
+gboolean
+w42_io_load_with (W42PieceTable *pt, W42PageSetup *page, GFile *file,
+                  W42PdfOptions *pdf, GError **error)
+{
   char *contents = NULL;
   gsize length = 0;
   char *utf8 = NULL;
@@ -280,7 +286,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
     switch (format)
       {
       case W42_FORMAT_RTF:  ok = w42_rtf_load (pt, page, file, error); break;
-      case W42_FORMAT_PDF:  ok = w42_pdf_import (pt, page, file, error); break;
+      case W42_FORMAT_PDF:  ok = w42_pdf_import_with (pt, page, file, pdf, error); break;
       case W42_FORMAT_DOC:  ok = w42_doc_load (pt, page, file, error); break;
       case W42_FORMAT_HTML: ok = w42_html_import (pt, page, file, error); break;
       case W42_FORMAT_DOCX: ok = w42_docx_load (pt, page, file, error); break;
@@ -322,6 +328,13 @@ gboolean
 w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
              GFile *file, GError **error)
 {
+  return w42_io_save_with (pt, page, file, NULL, error);
+}
+
+gboolean
+w42_io_save_with (W42PieceTable *pt, const W42PageSetup *page,
+                  GFile *file, const W42PdfOptions *pdf, GError **error)
+{
   char *text;
   gsize first;
   gboolean ok;
@@ -334,7 +347,16 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
     case W42_FORMAT_RTF:
       return w42_rtf_save (pt, page, file, error);
     case W42_FORMAT_PDF:
-      return w42_pdf_export (pt, page, file, error);
+      if (pdf == NULL)
+        {
+          W42PdfOptions *saved = w42_pdf_options_new ();
+
+          saved->keep_document = TRUE;
+          ok = w42_pdf_export_with (pt, page, file, saved, error);
+          w42_pdf_options_free (saved);
+          return ok;
+        }
+      return w42_pdf_export_with (pt, page, file, pdf, error);
     case W42_FORMAT_HTML:
       return w42_html_export (pt, page, file, error);
     case W42_FORMAT_EPUB:

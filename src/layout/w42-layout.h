@@ -49,6 +49,12 @@ typedef struct _W42Layout W42Layout;
 W42Layout *w42_layout_new  (void);
 void       w42_layout_free (W42Layout *self);
 
+/* Pictures drawn at no more than `ppi` pixels to the inch of the page:
+ * a larger one is scaled down to that as it is painted, and a JPEG is
+ * encoded again as a JPEG.  What a PDF uses to be small; 0, the
+ * default, draws every picture as it is. */
+void       w42_layout_set_picture_ppi (W42Layout *self, int ppi);
+
 /* Normal view formats the document as one continuous galley: the text column
  * keeps its width, but nothing is broken into pages.  Page Layout view is
  * the same engine with the breaks left in. */

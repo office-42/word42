@@ -74,6 +74,10 @@
           <attribute name="action">win.export-pdf</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">PD_F Options...</attribute>
+          <attribute name="action">win.pdf-options</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">LaTeX Mode</attribute>
           <attribute name="action">win.latex-mode</attribute>
         </item>

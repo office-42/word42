@@ -87,4 +87,20 @@ void w42_choice_show (GtkWindow *parent, const char *heading,
 void w42_message_show (GtkWindow *parent, const char *heading,
                        const char *detail);
 
+/* The same as w42_choice_show with a password to type: what was typed
+ * comes back with the button pressed, or NULL when the box was
+ * dismissed.  The password is wiped once `func` returns. */
+typedef void (*W42PasswordFunc) (int choice, const char *password, gpointer data);
+
+void w42_password_show (GtkWindow *parent, const char *heading,
+                        const char *detail, const char *prompt,
+                        const char * const *labels,
+                        int default_button, int cancel_button,
+                        W42PasswordFunc func, gpointer data);
+
+/* File > PDF Options: the passwords to open and to modify, how small the
+ * file is made, and the certificate it is signed with -- for the PDFs
+ * this document is saved or exported as. */
+void w42_pdf_options_dialog_show (GtkWindow *parent, W42View *view);
+
 G_END_DECLS

@@ -15,6 +15,9 @@
 #include "w42-lang.h"
 #include "w42-spell.h"
 
+#include "w42-io.h"
+#include "w42-pdf.h"
+#include "w42-pdfsec.h"
 #include "w42-settings.h"
 #include "w42-merge.h"
 #include "w42-shape.h"
@@ -4957,6 +4960,7 @@ on_template_ok (GtkButton *button, gpointer data)
 
       w42_template_make (w42_document_pt (doc), &page, which);
       w42_window_apply_default_language (doc);
+      w42_window_apply_pdf_settings (doc);
       w42_document_set_page_setup (doc, &page);
       w42_document_set_modified (doc, which != 0);
       w42_document_touch (doc);
@@ -7280,4 +7284,451 @@ w42_macros_dialog_show (GtkWindow *parent, W42View *view)
   macros_sync (box);
   gtk_window_present (GTK_WINDOW (box->window));
   gtk_widget_grab_focus (box->entry);
+}
+
+/* ---------------------------------------------------------------------- */
+/* A password                                                              */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  W42PasswordFunc func;
+  gpointer        data;
+  GtkWidget      *entry;
+  int             answer;
+  int             cancel;
+  gboolean        answered;
+  char           *password;
+} PasswordBox;
+
+static void
+password_free (gpointer data, GObject *gone)
+{
+  PasswordBox *box = data;
+
+  (void) gone;
+  if (box->func != NULL)
+    box->func (box->answered ? box->answer : box->cancel,
+               box->answered ? box->password : NULL, box->data);
+  if (box->password != NULL)
+    {
+      memset (box->password, 0, strlen (box->password));
+      g_free (box->password);
+    }
+  g_free (box);
+}
+
+static void
+on_password_clicked (GtkButton *button, gpointer data)
+{
+  PasswordBox *box = data;
+
+  box->answer = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "w42-choice"));
+  box->answered = TRUE;
+  box->password = g_strdup (gtk_editable_get_text (GTK_EDITABLE (box->entry)));
+  gtk_window_destroy (GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (button))));
+}
+
+void
+w42_password_show (GtkWindow          *parent,
+                   const char         *heading,
+                   const char         *detail,
+                   const char         *prompt,
+                   const char * const *labels,
+                   int                 default_button,
+                   int                 cancel_button,
+                   W42PasswordFunc     func,
+                   gpointer            data)
+{
+  GtkWidget *window, *content, *label, *row, *field;
+  PasswordBox *box;
+
+  g_return_if_fail (heading != NULL);
+  g_return_if_fail (labels != NULL && labels[0] != NULL);
+
+  box = g_new0 (PasswordBox, 1);
+  box->func = func;
+  box->data = data;
+  box->cancel = cancel_button;
+
+  /* Translators: the title of the box that asks for a password. */
+  window = dialog_shell (parent, _("Password"), &content, NULL);
+  g_object_weak_ref (G_OBJECT (window), password_free, box);
+
+  label = gtk_label_new (heading);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 52);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_box_append (GTK_BOX (content), label);
+  if (detail != NULL && *detail != '\0')
+    {
+      GtkWidget *more = gtk_label_new (detail);
+
+      gtk_label_set_wrap (GTK_LABEL (more), TRUE);
+      gtk_label_set_max_width_chars (GTK_LABEL (more), 52);
+      gtk_label_set_xalign (GTK_LABEL (more), 0.0);
+      gtk_widget_add_css_class (more, "w42-dialog-status");
+      gtk_box_append (GTK_BOX (content), more);
+    }
+
+  field = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
+  label = gtk_label_new_with_mnemonic (prompt);
+  box->entry = gtk_password_entry_new ();
+  gtk_password_entry_set_show_peek_icon (GTK_PASSWORD_ENTRY (box->entry), TRUE);
+  g_object_set (box->entry, "activates-default", TRUE, NULL);
+  gtk_widget_set_hexpand (box->entry, TRUE);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->entry);
+  gtk_box_append (GTK_BOX (field), label);
+  gtk_box_append (GTK_BOX (field), box->entry);
+  gtk_box_append (GTK_BOX (content), field);
+
+  row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_set_halign (row, GTK_ALIGN_END);
+  for (int i = 0; labels[i] != NULL; i++)
+    {
+      GtkWidget *button = gtk_button_new_with_mnemonic (labels[i]);
+
+      gtk_widget_set_size_request (button, 92, 26);
+      g_object_set_data (G_OBJECT (button), "w42-choice", GINT_TO_POINTER (i));
+      g_signal_connect (button, "clicked", G_CALLBACK (on_password_clicked), box);
+      gtk_box_append (GTK_BOX (row), button);
+      if (i == default_button)
+        gtk_window_set_default_widget (GTK_WINDOW (window), button);
+    }
+  gtk_box_append (GTK_BOX (content), row);
+
+  gtk_window_present (GTK_WINDOW (window));
+  gtk_widget_grab_focus (box->entry);
+}
+
+/* ---------------------------------------------------------------------- */
+/* PDF Options                                                             */
+/* ---------------------------------------------------------------------- */
+
+typedef struct {
+  GtkWidget *window;
+  W42View   *view;
+  GtkWidget *open_pw;
+  GtkWidget *modify_pw;
+  GtkWidget *compress;
+  GtkWidget *pictures;
+  GtkWidget *sign;
+  GtkWidget *cert_name;
+  GtkWidget *cert_pw;
+  GtkWidget *reason;
+  GtkWidget *location;
+  GtkWidget *contact;
+  GtkWidget *sign_grid;
+  char      *certificate;
+} PdfOptionsBox;
+
+/* Word's Compress Pictures: as they are, and its three resolutions. */
+static const char * const PICTURE_NAMES[] = {
+  N_("As they are"), N_("Print (220 ppi)"), N_("Screen (150 ppi)"), N_("E-mail (96 ppi)"), NULL
+};
+static const int PICTURE_PPI[] = { 0, W42_PDF_PPI_PRINT, W42_PDF_PPI_SCREEN, W42_PDF_PPI_EMAIL };
+
+static void
+pdf_options_free (gpointer data, GObject *gone)
+{
+  PdfOptionsBox *box = data;
+
+  (void) gone;
+  g_free (box->certificate);
+  g_free (box);
+}
+
+static GtkWidget *
+password_row (GtkWidget *grid, int row, const char *label, const char *value)
+{
+  GtkWidget *text = gtk_label_new_with_mnemonic (label);
+  GtkWidget *entry = gtk_password_entry_new ();
+
+  gtk_password_entry_set_show_peek_icon (GTK_PASSWORD_ENTRY (entry), TRUE);
+  gtk_editable_set_text (GTK_EDITABLE (entry), value != NULL ? value : "");
+  gtk_widget_set_size_request (entry, 220, -1);
+  gtk_label_set_xalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (text), entry);
+  gtk_grid_attach (GTK_GRID (grid), text, 0, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), entry, 1, row, 2, 1);
+  return entry;
+}
+
+static GtkWidget *
+text_row (GtkWidget *grid, int row, const char *label, const char *value)
+{
+  GtkWidget *text = gtk_label_new_with_mnemonic (label);
+  GtkWidget *entry = gtk_entry_new ();
+
+  gtk_editable_set_text (GTK_EDITABLE (entry), value != NULL ? value : "");
+  gtk_widget_set_size_request (entry, 220, -1);
+  gtk_label_set_xalign (GTK_LABEL (text), 0.0);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (text), entry);
+  gtk_grid_attach (GTK_GRID (grid), text, 0, row, 1, 1);
+  gtk_grid_attach (GTK_GRID (grid), entry, 1, row, 2, 1);
+  return entry;
+}
+
+static void
+pdf_options_show_certificate (PdfOptionsBox *box)
+{
+  char *base = box->certificate != NULL ? g_path_get_basename (box->certificate) : NULL;
+
+  /* Translators: in place of a certificate's file name, when none has
+   * been chosen. */
+  gtk_label_set_text (GTK_LABEL (box->cert_name), base != NULL ? base : _("(none chosen)"));
+  gtk_widget_set_tooltip_text (box->cert_name, box->certificate);
+  g_free (base);
+}
+
+static void
+on_pdf_sign_toggled (GtkCheckButton *check, gpointer data)
+{
+  PdfOptionsBox *box = data;
+
+  gtk_widget_set_sensitive (box->sign_grid, gtk_check_button_get_active (check));
+}
+
+static void
+on_certificate_chosen (GObject *source, GAsyncResult *result, gpointer data)
+{
+  PdfOptionsBox *box = data;
+  GFile *file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, NULL);
+
+  if (file != NULL && GTK_IS_WIDGET (box->window))
+    {
+      g_free (box->certificate);
+      box->certificate = g_file_get_path (file);
+      pdf_options_show_certificate (box);
+    }
+  g_clear_object (&file);
+  g_object_unref (box->window);
+}
+
+static void
+on_certificate_browse (GtkButton *button, gpointer data)
+{
+  PdfOptionsBox *box = data;
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
+  GListStore *filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
+  GtkFileFilter *p12 = gtk_file_filter_new ();
+  GtkFileFilter *all = gtk_file_filter_new ();
+
+  (void) button;
+  gtk_file_filter_set_name (p12, _("Certificates (*.p12, *.pfx)"));
+  gtk_file_filter_add_pattern (p12, "*.p12");
+  gtk_file_filter_add_pattern (p12, "*.pfx");
+  gtk_file_filter_add_pattern (p12, "*.P12");
+  gtk_file_filter_add_pattern (p12, "*.PFX");
+  gtk_file_filter_set_name (all, _("All Files (*.*)"));
+  gtk_file_filter_add_pattern (all, "*");
+  g_list_store_append (filters, p12);
+  g_list_store_append (filters, all);
+  gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
+  gtk_file_dialog_set_title (dialog, _("Choose a Certificate"));
+  if (box->certificate != NULL)
+    {
+      GFile *current = g_file_new_for_path (box->certificate);
+
+      gtk_file_dialog_set_initial_file (dialog, current);
+      g_object_unref (current);
+    }
+  gtk_file_dialog_open (dialog, GTK_WINDOW (box->window), NULL, on_certificate_chosen,
+                        g_object_ref (box->window));
+  g_object_unref (p12);
+  g_object_unref (all);
+  g_object_unref (filters);
+  g_object_unref (dialog);
+}
+
+static void
+on_pdf_options_ok (GtkButton *button, gpointer data)
+{
+  PdfOptionsBox *box = data;
+  W42Document *doc = w42_view_get_document (box->view);
+  W42PdfOptions *o = w42_document_pdf_options (doc);
+  const char *open_pw = gtk_editable_get_text (GTK_EDITABLE (box->open_pw));
+  const char *modify_pw = gtk_editable_get_text (GTK_EDITABLE (box->modify_pw));
+  const char *cert_pw = gtk_editable_get_text (GTK_EDITABLE (box->cert_pw));
+  gboolean sign = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->sign));
+  gboolean compress = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->compress));
+  guint pictures = gtk_drop_down_get_selected (GTK_DROP_DOWN (box->pictures));
+  int ppi = pictures < G_N_ELEMENTS (PICTURE_PPI) ? PICTURE_PPI[pictures] : 0;
+  gboolean changed;
+  GFile *file;
+
+  (void) button;
+
+  /* The certificate is tried now, while the box that chose it is still
+   * open, rather than when the PDF is written and the box is gone. */
+  if (sign)
+    {
+      W42PdfSigner *signer;
+      GError *error = NULL;
+
+      if (box->certificate == NULL)
+        {
+          w42_message_show (GTK_WINDOW (box->window),
+                            _("Choose the certificate to sign the PDF with."), NULL);
+          return;
+        }
+      signer = w42_pdf_signer_new (box->certificate, cert_pw, &error);
+      if (signer == NULL)
+        {
+          w42_message_show (GTK_WINDOW (box->window),
+                            _("Word42 cannot sign with that certificate."),
+                            error != NULL ? error->message : NULL);
+          g_clear_error (&error);
+          return;
+        }
+      w42_pdf_signer_free (signer);
+    }
+
+  changed = g_strcmp0 (*open_pw != '\0' ? open_pw : NULL, o->open_password) != 0 ||
+            g_strcmp0 (*modify_pw != '\0' ? modify_pw : NULL, o->modify_password) != 0 ||
+            sign != o->sign || compress != o->compress || ppi != o->picture_ppi ||
+            (sign && g_strcmp0 (box->certificate, o->certificate) != 0);
+
+  w42_pdf_options_set (&o->open_password, open_pw);
+  w42_pdf_options_set (&o->modify_password, modify_pw);
+  o->compress = compress;
+  o->picture_ppi = ppi;
+  o->sign = sign;
+  w42_pdf_options_set (&o->certificate, box->certificate);
+  w42_pdf_options_set (&o->certificate_password, sign ? cert_pw : NULL);
+  w42_pdf_options_set (&o->reason, gtk_editable_get_text (GTK_EDITABLE (box->reason)));
+  w42_pdf_options_set (&o->location, gtk_editable_get_text (GTK_EDITABLE (box->location)));
+  w42_pdf_options_set (&o->contact, gtk_editable_get_text (GTK_EDITABLE (box->contact)));
+
+  /* How a PDF is packed and who signs it are the writer's, and kept for
+   * the next document; the passwords, and whether to sign, are this
+   * document's alone and never written down. */
+  w42_settings_set_bool ("pdf-compress", compress);
+  w42_settings_set_int ("pdf-picture-ppi", ppi);
+  w42_settings_set_string ("pdf-certificate", box->certificate != NULL ? box->certificate : "");
+  w42_settings_set_string ("pdf-reason", o->reason != NULL ? o->reason : "");
+  w42_settings_set_string ("pdf-location", o->location != NULL ? o->location : "");
+  w42_settings_set_string ("pdf-contact", o->contact != NULL ? o->contact : "");
+
+  /* A PDF that is the document's own file has to be saved again for a
+   * new password or a signature to be in it. */
+  file = w42_document_get_file (doc);
+  if (changed && file != NULL && w42_io_guess_format (file) == W42_FORMAT_PDF)
+    {
+      w42_document_mark_unsaved (doc);
+      w42_document_touch (doc);
+    }
+
+  gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_pdf_options_dialog_show (GtkWindow *parent, W42View *view)
+{
+  PdfOptionsBox *box;
+  GtkWidget *content, *grid, *label, *browse;
+  W42PdfOptions *o;
+  guint picture = 0;
+  gboolean secure = w42_pdf_security_available ();
+
+  g_return_if_fail (W42_IS_VIEW (view));
+
+  o = w42_document_pdf_options (w42_view_get_document (view));
+  box = g_new0 (PdfOptionsBox, 1);
+  box->view = view;
+  box->certificate = g_strdup (o->certificate);
+  box->window = dialog_shell (parent, _("PDF Options"), &content, view);
+  g_object_weak_ref (G_OBJECT (box->window), pdf_options_free, box);
+
+  /* Word 97's File Sharing options, as a PDF has them. */
+  grid = group (content, _("Security"));
+  box->open_pw = password_row (grid, 0, _("Password to _open:"), o->open_password);
+  gtk_widget_set_tooltip_text (box->open_pw,
+    _("Without it the PDF cannot be opened at all: its text, its pictures "
+      "and the document inside it are encrypted with AES-256."));
+  box->modify_pw = password_row (grid, 1, _("Password to _modify:"), o->modify_password);
+  gtk_widget_set_tooltip_text (box->modify_pw,
+    _("Without it a PDF reader allows printing and copying, and no changes; "
+      "Word42 opens it read only."));
+
+  grid = group (content, _("File Size"));
+  box->compress = gtk_check_button_new_with_mnemonic (_("_Compress the file"));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->compress), o->compress);
+  gtk_widget_set_tooltip_text (box->compress,
+    _("Packs the PDF into compressed object streams, as PDF 1.5 and every "
+      "reader since allow. Off, the file is written as PDF 1.4 readers read it."));
+  gtk_grid_attach (GTK_GRID (grid), box->compress, 0, 0, 3, 1);
+  for (guint i = 0; i < G_N_ELEMENTS (PICTURE_PPI); i++)
+    if (PICTURE_PPI[i] == o->picture_ppi)
+      picture = i;
+  box->pictures = choice_row (grid, 1, 0, _("_Pictures:"), PICTURE_NAMES, picture);
+  gtk_widget_set_tooltip_text (box->pictures,
+    _("Pictures shown larger than this resolution are scaled down in the PDF, "
+      "and photographs saved again as JPEG. The document keeps them as they are."));
+
+  grid = group (content, _("Digital Signature"));
+  box->sign = gtk_check_button_new_with_mnemonic (_("_Sign the PDF"));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->sign), o->sign);
+  gtk_widget_set_tooltip_text (box->sign,
+    _("Signs the PDF with a certificate, so that a reader can show who signed "
+      "it and that nothing has changed since."));
+  gtk_grid_attach (GTK_GRID (grid), box->sign, 0, 0, 3, 1);
+  box->sign_grid = gtk_grid_new ();
+  gtk_grid_set_row_spacing (GTK_GRID (box->sign_grid), 6);
+  gtk_grid_set_column_spacing (GTK_GRID (box->sign_grid), 10);
+  gtk_grid_attach (GTK_GRID (grid), box->sign_grid, 0, 1, 3, 1);
+  label = gtk_label_new (_("Certificate:"));
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  box->cert_name = gtk_label_new (NULL);
+  gtk_label_set_xalign (GTK_LABEL (box->cert_name), 0.0);
+  gtk_label_set_ellipsize (GTK_LABEL (box->cert_name), PANGO_ELLIPSIZE_MIDDLE);
+  gtk_widget_set_hexpand (box->cert_name, TRUE);
+  browse = gtk_button_new_with_mnemonic (_("_Browse..."));
+  g_signal_connect (browse, "clicked", G_CALLBACK (on_certificate_browse), box);
+  gtk_grid_attach (GTK_GRID (box->sign_grid), label, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (box->sign_grid), box->cert_name, 1, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (box->sign_grid), browse, 2, 0, 1, 1);
+  pdf_options_show_certificate (box);
+  box->cert_pw = password_row (box->sign_grid, 1, _("Certificate pass_word:"),
+                               o->certificate_password);
+  box->reason = text_row (box->sign_grid, 2, _("_Reason:"), o->reason);
+  box->location = text_row (box->sign_grid, 3, _("_Location:"), o->location);
+  box->contact = text_row (box->sign_grid, 4, _("Con_tact:"), o->contact);
+  gtk_widget_set_sensitive (box->sign_grid, o->sign);
+  g_signal_connect (box->sign, "toggled", G_CALLBACK (on_pdf_sign_toggled), box);
+
+  if (!secure)
+    {
+      GtkWidget *why = gtk_label_new (
+        /* Translators: GnuTLS is the name of a program library; keep it
+         * as it is. */
+        _("This build of Word42 cannot put a password on a PDF or sign one. "
+          "It was built without GnuTLS."));
+
+      gtk_label_set_wrap (GTK_LABEL (why), TRUE);
+      gtk_label_set_max_width_chars (GTK_LABEL (why), 52);
+      gtk_label_set_xalign (GTK_LABEL (why), 0.0);
+      gtk_widget_add_css_class (why, "w42-dialog-status");
+      gtk_box_append (GTK_BOX (content), why);
+      gtk_widget_set_sensitive (box->open_pw, FALSE);
+      gtk_widget_set_sensitive (box->modify_pw, FALSE);
+      gtk_widget_set_sensitive (box->sign, FALSE);
+      gtk_widget_set_sensitive (box->sign_grid, FALSE);
+    }
+
+  {
+    GtkWidget *note = gtk_label_new (
+      _("These apply when this document is saved as a PDF, and to File \342\226\270 "
+        "Export as PDF. Word42 keeps the document itself inside a PDF it saves, "
+        "so that it opens again as it was."));
+
+    gtk_label_set_wrap (GTK_LABEL (note), TRUE);
+    gtk_label_set_max_width_chars (GTK_LABEL (note), 52);
+    gtk_label_set_xalign (GTK_LABEL (note), 0.0);
+    gtk_widget_add_css_class (note, "w42-dialog-status");
+    gtk_box_append (GTK_BOX (content), note);
+  }
+
+  button_row (content, box->window, G_CALLBACK (on_pdf_options_ok), box);
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (secure ? box->open_pw : box->compress);
 }

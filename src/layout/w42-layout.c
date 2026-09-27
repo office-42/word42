@@ -6,6 +6,8 @@
 
 #include "w42-layout.h"
 
+#include "w42-image.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -68,7 +70,27 @@ struct _W42Layout {
   gpointer      cache_pt;    /* the document the cache belongs to */
   gpointer      cache_aps;
   guint         hits, misses;   /* what the last pass did */
+
+  /* w42_layout_set_picture_ppi: the most pixels to the inch a picture is
+   * drawn with, and the pictures scaled down to it, by object. */
+  int           picture_ppi;
+  GHashTable   *reduced;     /* GUINT idx -> Reduced* */
 };
+
+typedef struct {
+  int              width, height;
+  cairo_surface_t *surface;
+} Reduced;
+
+static void
+reduced_free (gpointer data)
+{
+  Reduced *r = data;
+
+  if (r->surface != NULL)
+    cairo_surface_destroy (r->surface);
+  g_free (r);
+}
 
 /* One shaped paragraph, and the pass that last wanted it. */
 typedef struct {
@@ -220,6 +242,37 @@ paint_object (W42Layout *self, cairo_t *cr, W42ObjectIdx idx,
   surface = w42_object_surface (self->objects, idx);
   if (surface == NULL)
     return;
+  if (self->picture_ppi > 0)
+    {
+      /* The box is in layout pixels, 96 to the inch. */
+      int want_w = (int) ceil (w / W42_LAYOUT_DPI * self->picture_ppi);
+      int want_h = (int) ceil (h / W42_LAYOUT_DPI * self->picture_ppi);
+      int have_w = cairo_image_surface_get_width (surface);
+      int have_h = cairo_image_surface_get_height (surface);
+
+      /* A picture only a little over is left alone: scaling it would
+       * cost it sharpness and save next to nothing. */
+      if (want_w > 0 && want_h > 0 && have_w > want_w * 1.2 && have_h > want_h * 1.2)
+        {
+          Reduced *r;
+
+          if (self->reduced == NULL)
+            self->reduced = g_hash_table_new_full (NULL, NULL, NULL, reduced_free);
+          r = g_hash_table_lookup (self->reduced, GUINT_TO_POINTER (idx));
+          if (r == NULL || r->width != want_w || r->height != want_h)
+            {
+              r = g_new0 (Reduced, 1);
+              r->width = want_w;
+              r->height = want_h;
+              r->surface = w42_image_surface_reduced (surface, want_w, want_h,
+                                                      object->format != NULL &&
+                                                      g_str_equal (object->format, "jpeg") ? 85 : 0);
+              g_hash_table_replace (self->reduced, GUINT_TO_POINTER (idx), r);
+            }
+          if (r->surface != NULL)
+            surface = r->surface;
+        }
+    }
   cairo_save (cr);
   cairo_translate (cr, x, y);
   cairo_scale (cr, w / cairo_image_surface_get_width (surface),
@@ -638,9 +691,18 @@ w42_layout_free (W42Layout *self)
   g_array_free (self->lines, TRUE);
   g_hash_table_destroy (self->shaped);
   g_byte_array_free (self->keybuf, TRUE);
+  g_clear_pointer (&self->reduced, g_hash_table_destroy);
   g_object_unref (self->ctx);
   g_object_unref (self->ctx_rtl);
   g_free (self);
+}
+
+void
+w42_layout_set_picture_ppi (W42Layout *self, int ppi)
+{
+  g_return_if_fail (self != NULL);
+  self->picture_ppi = MAX (ppi, 0);
+  g_clear_pointer (&self->reduced, g_hash_table_destroy);
 }
 
 void

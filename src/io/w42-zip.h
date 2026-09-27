@@ -37,6 +37,9 @@ void          w42_zip_writer_add  (W42ZipWriter *writer, const char *name,
 void          w42_zip_writer_add_stored (W42ZipWriter *writer, const char *name,
                                          const void *data, gsize length);
 gboolean      w42_zip_writer_save (W42ZipWriter *writer, GFile *file, GError **error);
+/* The archive as it would be saved, for a container that goes inside
+ * another file rather than on disk. */
+GBytes       *w42_zip_writer_to_bytes (W42ZipWriter *writer);
 void          w42_zip_writer_free (W42ZipWriter *writer);
 
 G_END_DECLS

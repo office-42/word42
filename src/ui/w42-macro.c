@@ -2111,8 +2111,8 @@ NATIVE (n_doc_save)
     /* Translators: ActiveDocument.SaveAs is macro code: keep it in
      * English. */
     return fail (s, l, _("The document has never been saved: use ActiveDocument.SaveAs \"name\""));
-  /* As File > Save: written back to a PDF, a web page or a presentation,
-   * the file it was read from would be replaced by Word42's rendering of
+  /* As File > Save: written back to a web page or a presentation, the
+   * file it was read from would be replaced by Word42's rendering of
    * it. */
   if (!w42_io_format_round_trips (file))
     /* Translators: ActiveDocument.SaveAs is macro code: keep it in

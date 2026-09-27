@@ -10,6 +10,8 @@ src/io/w42-io.c
 src/io/w42-merge.c
 src/io/w42-odt.c
 src/io/w42-pdf.c
+src/io/w42-pdffile.c
+src/io/w42-pdfsec.c
 src/io/w42-pptx.c
 src/io/w42-rtf.c
 src/io/w42-zip.c

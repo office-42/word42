@@ -2691,22 +2691,16 @@ parse_part (Odt *o, GBytes *xml, GError **error)
   return ok;
 }
 
-gboolean
-w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
+/* Takes the archive, and frees it. */
+static gboolean
+odt_load_zip (W42PieceTable *pt, W42PageSetup *page, W42Zip *zip, GError **error)
 {
-  W42Zip *zip;
   GBytes *styles, *content;
   Odt o;
   int pgn[2] = { 0, 0 };
   W42PageSetup local_page;
   gboolean ok = TRUE;
 
-  g_return_val_if_fail (pt != NULL, FALSE);
-  g_return_val_if_fail (G_IS_FILE (file), FALSE);
-
-  zip = w42_zip_open (file, error);
-  if (zip == NULL)
-    return FALSE;
   content = w42_zip_read (zip, "content.xml");
   if (content == NULL)
     {
@@ -2842,6 +2836,35 @@ w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_bytes_unref (content);
   w42_zip_free (zip);
   return ok;
+}
+
+gboolean
+w42_odt_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
+{
+  W42Zip *zip;
+
+  g_return_val_if_fail (pt != NULL, FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  zip = w42_zip_open (file, error);
+  if (zip == NULL)
+    return FALSE;
+  return odt_load_zip (pt, page, zip, error);
+}
+
+gboolean
+w42_odt_load_bytes (W42PieceTable *pt, W42PageSetup *page, GBytes *bytes,
+                    GError **error)
+{
+  W42Zip *zip;
+
+  g_return_val_if_fail (pt != NULL, FALSE);
+  g_return_val_if_fail (bytes != NULL, FALSE);
+
+  zip = w42_zip_new_from_bytes (bytes, error);
+  if (zip == NULL)
+    return FALSE;
+  return odt_load_zip (pt, page, zip, error);
 }
 
 /* ====================================================================== */
@@ -3851,8 +3874,10 @@ write_page_text_style (GString *s, int idx, const W42PageText *text)
                              : text != NULL && text->align == W42_ALIGN_RIGHT ? "end" : "start");
 }
 
-gboolean
-w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError **error)
+/* Into `file`, or when that is NULL into `*bytes`. */
+static gboolean
+odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
+          GBytes **bytes, GError **error)
 {
   GPtrArray *blocks;
   W42ApTable *aps;
@@ -3868,9 +3893,6 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   W42ZipWriter *zip;
   GString *content, *stylesxml, *manifest;
   gboolean ok;
-
-  g_return_val_if_fail (pt != NULL, FALSE);
-  g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
   if (page != NULL)
     pg = *page;
@@ -4548,7 +4570,13 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
       g_free (name);
     }
   w42_zip_writer_add (zip, "META-INF/manifest.xml", manifest->str, manifest->len);
-  ok = w42_zip_writer_save (zip, file, error);
+  if (file != NULL)
+    ok = w42_zip_writer_save (zip, file, error);
+  else
+    {
+      *bytes = w42_zip_writer_to_bytes (zip);
+      ok = TRUE;
+    }
   w42_zip_writer_free (zip);
 
   g_string_free (content, TRUE);
@@ -4565,4 +4593,25 @@ w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_ptr_array_free (w.picture_mimes, TRUE);
   g_ptr_array_free (blocks, TRUE);
   return ok;
+}
+
+gboolean
+w42_odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError **error)
+{
+  g_return_val_if_fail (pt != NULL, FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  return odt_save (pt, page, file, NULL, error);
+}
+
+GBytes *
+w42_odt_save_bytes (W42PieceTable *pt, const W42PageSetup *page)
+{
+  GBytes *bytes = NULL;
+
+  g_return_val_if_fail (pt != NULL, NULL);
+
+  if (!odt_save (pt, page, NULL, &bytes, NULL))
+    return NULL;
+  return bytes;
 }

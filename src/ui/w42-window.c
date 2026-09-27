@@ -521,6 +521,20 @@ on_autosave (gpointer data)
   if (!self->autosave_dirty)
     return G_SOURCE_CONTINUE;
 
+  /* A document with a password is not copied for recovery: the copy
+   * would be the document without it -- readable by anyone who finds the
+   * folder, and saved back over the PDF without its protection. */
+  {
+    const W42PdfOptions *pdf = w42_document_pdf_options (self->doc);
+
+    if (pdf->open_password != NULL || pdf->modify_password != NULL)
+      {
+        if (self->autosave_path != NULL)
+          autosave_remove (self);
+        return G_SOURCE_CONTINUE;
+      }
+  }
+
   path = autosave_path_for (self);
 
   dir = autosave_dir ();
@@ -829,12 +843,13 @@ w42_window_new_document (GtkWindow *from)
  * and the words counted afresh.  The callers say what file the document
  * now is and whom to tell. */
 static gboolean
-window_read (W42Window *self, GFile *file, GError **error)
+window_read (W42Window *self, GFile *file, const char *password,
+             const char *modify_password, GError **error)
 {
   W42View *views[2];
   gsize first;
 
-  if (!w42_document_load (self->doc, file, error))
+  if (!w42_document_load_with (self->doc, file, password, modify_password, error))
     return FALSE;
   w42_pt_set_author (w42_document_pt (self->doc), window_author_name ());
 
@@ -856,13 +871,11 @@ window_read (W42Window *self, GFile *file, GError **error)
 
 /* Reads `file` into the window's document, and says nothing if it cannot:
  * the caller knows which window should carry the message. */
-gboolean
-w42_window_load (W42Window *self, GFile *file, GError **error)
+static gboolean
+window_load_with (W42Window *self, GFile *file, const char *password,
+                  const char *modify_password, GError **error)
 {
-  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
-  g_return_val_if_fail (G_IS_FILE (file), FALSE);
-
-  if (!window_read (self, file, error))
+  if (!window_read (self, file, password, modify_password, error))
     return FALSE;
 
   /* Another document: its own goal. */
@@ -873,6 +886,15 @@ w42_window_load (W42Window *self, GFile *file, GError **error)
   window_update_title (self);
   window_sync_state (self);
   return TRUE;
+}
+
+gboolean
+w42_window_load (W42Window *self, GFile *file, GError **error)
+{
+  g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
+  g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  return window_load_with (self, file, NULL, NULL, error);
 }
 
 gboolean
@@ -888,7 +910,7 @@ w42_window_open_version (W42Window *self, GFile *file, const char *title, GError
   if (app == NULL)
     return FALSE;
   other = W42_WINDOW (w42_window_new (app));
-  if (!window_read (other, file, error))
+  if (!window_read (other, file, NULL, NULL, error))
     {
       gtk_window_destroy (GTK_WINDOW (other));
       return FALSE;
@@ -916,7 +938,7 @@ w42_window_restore_version (W42Window *self, GFile *file, GError **error)
   own = w42_document_get_file (self->doc);
   if (own != NULL)
     g_object_ref (own);
-  if (!window_read (self, file, error))
+  if (!window_read (self, file, NULL, NULL, error))
     {
       g_clear_object (&own);
       return FALSE;
@@ -933,17 +955,56 @@ gboolean
 w42_window_open (W42Window *self, GFile *file)
 {
   GError *error = NULL;
+  W42PdfOptions *pdf;
+  char *password, *modify;
+  gboolean ok;
 
   g_return_val_if_fail (W42_IS_WINDOW (self), FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
-  if (!w42_window_load (self, file, &error))
+  /* Read again, a PDF opens with the passwords it was opened with. */
+  pdf = w42_document_pdf_options (self->doc);
+  password = g_strdup (pdf->open_password);
+  modify = g_strdup (pdf->modify_password);
+  ok = window_load_with (self, file, password, modify, &error);
+  if (password != NULL)
+    memset (password, 0, strlen (password));
+  if (modify != NULL)
+    memset (modify, 0, strlen (modify));
+  g_free (password);
+  g_free (modify);
+  if (!ok)
     {
       show_error (self, _("Word42 could not open that file."), error);
       g_clear_error (&error);
       return FALSE;
     }
   return TRUE;
+}
+
+void
+w42_window_apply_pdf_settings (W42Document *doc)
+{
+  W42PdfOptions *pdf;
+  char *value;
+
+  g_return_if_fail (W42_IS_DOCUMENT (doc));
+
+  pdf = w42_document_pdf_options (doc);
+  pdf->compress = w42_settings_get_bool ("pdf-compress", TRUE);
+  pdf->picture_ppi = CLAMP (w42_settings_get_int ("pdf-picture-ppi", 0), 0, 2400);
+  value = w42_settings_get_string ("pdf-certificate", "");
+  w42_pdf_options_set (&pdf->certificate, value);
+  g_free (value);
+  value = w42_settings_get_string ("pdf-reason", "");
+  w42_pdf_options_set (&pdf->reason, value);
+  g_free (value);
+  value = w42_settings_get_string ("pdf-location", "");
+  w42_pdf_options_set (&pdf->location, value);
+  g_free (value);
+  value = w42_settings_get_string ("pdf-contact", "");
+  w42_pdf_options_set (&pdf->contact, value);
+  g_free (value);
 }
 
 void
@@ -994,8 +1055,156 @@ w42_window_find_file (GtkApplication *app, GFile *file)
  * goes again if the file cannot be read -- the message goes on the
  * window the command came from, since a message on the new one would go
  * with it. */
+static void window_open_file_with (W42Window *self, GFile *file, const char *password,
+                                   const char *modify_password, gboolean read_only);
+
+/* ---- a PDF with passwords ------------------------------------------------ */
+
+typedef struct {
+  W42Window *self;
+  GFile     *file;
+  char      *password;     /* the password to open that opened it */
+} PdfAsk;
+
+static PdfAsk *
+pdf_ask_new (W42Window *self, GFile *file, const char *password)
+{
+  PdfAsk *ask = g_new0 (PdfAsk, 1);
+
+  ask->self = g_object_ref (self);
+  ask->file = g_object_ref (file);
+  ask->password = g_strdup (password);
+  return ask;
+}
+
 static void
-window_open_file (W42Window *self, GFile *file)
+pdf_ask_free (PdfAsk *ask)
+{
+  g_object_unref (ask->self);
+  g_object_unref (ask->file);
+  if (ask->password != NULL)
+    memset (ask->password, 0, strlen (ask->password));
+  g_free (ask->password);
+  g_free (ask);
+}
+
+static void
+on_open_password (int choice, const char *password, gpointer data)
+{
+  PdfAsk *ask = data;
+
+  if (choice == 0 && password != NULL && !window_gone (ask->self))
+    window_open_file_with (ask->self, ask->file, password, NULL, FALSE);
+  pdf_ask_free (ask);
+}
+
+/* Word 97's question for a document with a password: it cannot be opened
+ * without it. */
+static void
+window_ask_open_password (W42Window *self, GFile *file, gboolean wrong)
+{
+  const char *const buttons[] = { _("_OK"), _("Cancel"), NULL };
+  char *name = g_file_get_basename (file);
+  /* Translators: %s is the file's name. */
+  char *heading = g_strdup_printf (_("\342\200\234%s\342\200\235 is protected with a password."), name);
+
+  w42_password_show (GTK_WINDOW (self), heading,
+                     wrong ? _("The password is not correct. Passwords tell capital "
+                               "letters from small ones.") : NULL,
+                     _("_Password:"), buttons, 0, 1, on_open_password,
+                     pdf_ask_new (self, file, NULL));
+  g_free (heading);
+  g_free (name);
+}
+
+static void
+on_modify_password (int choice, const char *password, gpointer data)
+{
+  PdfAsk *ask = data;
+
+  if (!window_gone (ask->self))
+    {
+      if (choice == 0 && password != NULL)
+        window_open_file_with (ask->self, ask->file, ask->password, password, FALSE);
+      else if (choice == 1)
+        window_open_file_with (ask->self, ask->file, ask->password, NULL, TRUE);
+    }
+  pdf_ask_free (ask);
+}
+
+/* And its question for one with a password to modify: that password, or
+ * the document read only. */
+static void
+window_ask_modify_password (W42Window *self, GFile *file, const char *password,
+                            gboolean wrong)
+{
+  const char *const buttons[] = { _("_OK"), _("_Read Only"), _("Cancel"), NULL };
+  char *name = g_file_get_basename (file);
+  /* Translators: %s is the file's name. */
+  char *heading = g_strdup_printf (_("\342\200\234%s\342\200\235 is reserved: it allows no "
+                                     "changes without its password to modify."), name);
+
+  w42_password_show (GTK_WINDOW (self), heading,
+                     wrong ? _("That is not its password to modify. Enter the password, "
+                               "or open the PDF read only.")
+                           : _("Enter the password to modify it, or open it read only."),
+                     _("_Password:"), buttons, 0, 2, on_modify_password,
+                     pdf_ask_new (self, file, password));
+  g_free (heading);
+  g_free (name);
+}
+
+/* A document opened read only is not its file's: Save asks for another
+ * name, and the file stays as it was. */
+static void
+window_make_read_only (W42Window *self)
+{
+  GFile *file = w42_document_get_file (self->doc);
+  char *base = file != NULL ? g_file_get_basename (file) : g_strdup ("");
+  char *dot = strrchr (base, '.');
+  char *title;
+
+  if (dot != NULL && dot != base)
+    *dot = '\0';
+  /* Translators: the title of a document opened read only; %s is its
+   * name. */
+  title = g_strdup_printf (_("%s (Read-Only)"), base);
+  w42_document_set_file (self->doc, NULL);
+  w42_document_set_title (self->doc, title);
+  w42_document_set_modified (self->doc, FALSE);
+  window_update_title (self);
+  window_sync_state (self);
+  window_flash (self, "%s", _("Opened read only. File \342\226\270 Save As saves it under "
+                              "a name of its own."));
+  g_free (title);
+  g_free (base);
+}
+
+/* What there is to know about a PDF just opened, said once in the status
+ * bar: what saving it will do to its signature, and how it was read. */
+static void
+window_pdf_notice (W42Window *self)
+{
+  GFile *file = w42_document_get_file (self->doc);
+  const W42PdfOptions *pdf = w42_document_pdf_options (self->doc);
+
+  if (file == NULL || w42_io_guess_format (file) != W42_FORMAT_PDF)
+    return;
+  if (pdf->n_signatures > 0)
+    window_flash (self, "%s", _("This PDF is signed. Saved again it is a new file, which the "
+                                "signature does not cover: File \342\226\270 PDF Options signs "
+                                "it anew."));
+  else if (pdf->source_stale)
+    window_flash (self, "%s", _("Another program has changed this PDF since Word42 saved it. "
+                                "What is open is the document as Word42 saved it."));
+  else if (!pdf->read_source)
+    window_flash (self, "%s", _("Word42 read this PDF from its pages. Saving it writes the "
+                                "pages again, with the document inside for next time."));
+}
+
+static void
+window_open_file_with (W42Window *self, GFile *file, const char *password,
+                       const char *modify_password, gboolean read_only)
 {
   W42Window *target = self;
   GError *error = NULL;
@@ -1006,10 +1215,38 @@ window_open_file (W42Window *self, GFile *file)
       gtk_window_present (GTK_WINDOW (open));
       return;
     }
+
+  /* A PDF's passwords are asked for before a window is given to it. */
+  if (w42_io_guess_format (file) == W42_FORMAT_PDF)
+    {
+      gboolean restricted = FALSE;
+
+      if (!w42_pdf_probe (file, modify_password != NULL ? modify_password : password,
+                          &restricted, &error))
+        {
+          if (g_error_matches (error, W42_PDF_ERROR, W42_PDF_ERROR_PASSWORD))
+            {
+              if (modify_password != NULL)
+                window_ask_modify_password (self, file, password, TRUE);
+              else
+                window_ask_open_password (self, file, password != NULL);
+            }
+          else
+            show_error (self, _("Word42 could not open that file."), error);
+          g_clear_error (&error);
+          return;
+        }
+      if (restricted && !read_only)
+        {
+          window_ask_modify_password (self, file, password, modify_password != NULL);
+          return;
+        }
+    }
+
   if (w42_document_get_modified (self->doc) || w42_document_get_file (self->doc) != NULL)
     target = W42_WINDOW (w42_window_new (gtk_window_get_application (GTK_WINDOW (self))));
 
-  if (!w42_window_load (target, file, &error))
+  if (!window_load_with (target, file, password, modify_password, &error))
     {
       if (target != self)
         gtk_window_destroy (GTK_WINDOW (target));
@@ -1017,8 +1254,27 @@ window_open_file (W42Window *self, GFile *file)
       g_clear_error (&error);
       return;
     }
+  if (read_only)
+    window_make_read_only (target);
+  else
+    window_pdf_notice (target);
   if (target != self)
     gtk_window_present (GTK_WINDOW (target));
+}
+
+static void
+window_open_file (W42Window *self, GFile *file)
+{
+  window_open_file_with (self, file, NULL, NULL, FALSE);
+}
+
+void
+w42_window_open_file (W42Window *self, GFile *file)
+{
+  g_return_if_fail (W42_IS_WINDOW (self));
+  g_return_if_fail (G_IS_FILE (file));
+
+  window_open_file (self, file);
 }
 
 void
@@ -1028,8 +1284,8 @@ w42_window_flash_status (W42Window *self, const char *text)
   window_flash (self, "%s", text != NULL ? text : "");
 }
 
-/* A PDF, a web page or a presentation made from the document.  The file
- * is written, and the document stays what it was and where it was: made
+/* A web page or a presentation made from the document.  The file is
+ * written, and the document stays what it was and where it was: made
  * the document's own file, it would be marked saved, and closing would
  * lose everything that format cannot hold without a word. */
 static gboolean
@@ -1392,8 +1648,8 @@ window_save_as (W42Window *self)
   /* A document read from a format Word42 writes back is offered under
    * its own name.  Anything else -- never saved, or read from a file that
    * does not round trip -- is offered as a Word 97 .doc, the format
-   * documents are saved in: "report.pdf" becomes "report.doc", not
-   * "report.pdf.doc". */
+   * documents are saved in: "report.html" becomes "report.doc", not
+   * "report.html.doc". */
   if (file != NULL && w42_io_format_round_trips (file))
     gtk_file_dialog_set_initial_name (dialog, name);
   else
@@ -1427,13 +1683,31 @@ window_save_as (W42Window *self)
   g_object_unref (dialog);
 }
 
+static void window_save_in_place (W42Window *self);
+
+/* A PDF Word42 did not make was read from its pages; saved over, the
+ * pages it had are gone, so the first time is asked about. */
+static void
+on_replace_pdf_choice (int choice, gpointer data)
+{
+  W42Window *self = window_from_weak_ref (data);
+
+  if (self == NULL)
+    return;
+  if (choice == 0)
+    window_save_in_place (self);
+  else if (choice == 1)
+    window_save_as (self);
+  else
+    window_saved (self, FALSE);
+  g_object_unref (self);
+}
+
 static void
 action_save (GSimpleAction *action, GVariant *param, gpointer data)
 {
   W42Window *self = data;
   GFile *file = w42_document_get_file (self->doc);
-  GError *error = NULL;
-  gboolean saved;
 
   (void) action; (void) param;
 
@@ -1445,7 +1719,39 @@ action_save (GSimpleAction *action, GVariant *param, gpointer data)
       window_save_as (self);
       return;
     }
+  if (w42_io_guess_format (file) == W42_FORMAT_PDF &&
+      !w42_document_pdf_options (self->doc)->read_source)
+    {
+      const char *const buttons[] = { _("_Save"), _("Save _As..."), _("Cancel"), NULL };
+      char *name = g_file_get_basename (file);
+      /* Translators: %s is the PDF's file name. */
+      char *heading = g_strdup_printf (_("Replace \342\200\234%s\342\200\235 with Word42's pages?"), name);
 
+      w42_choice_show (GTK_WINDOW (self), heading,
+                       _("Word42 read this PDF from its pages, not from a document of its "
+                         "own. Saved, the PDF is laid out again by Word42, with the document "
+                         "inside it so that it opens as it is now; the pages it has now "
+                         "are not kept."),
+                       buttons, 0, 2, on_replace_pdf_choice, window_weak_ref (self));
+      g_free (heading);
+      g_free (name);
+      return;
+    }
+  window_save_in_place (self);
+}
+
+static void
+window_save_in_place (W42Window *self)
+{
+  GFile *file = w42_document_get_file (self->doc);
+  GError *error = NULL;
+  gboolean saved;
+
+  if (file == NULL)
+    {
+      window_save_as (self);
+      return;
+    }
   saved = window_save_document (self->doc, file, &error);
   if (!saved)
     {
@@ -2511,9 +2817,18 @@ on_export_pdf_response (GObject *source, GAsyncResult *result, gpointer data)
        * In LaTeX mode LaTeX typesets it, in the background. */
       if (window_action_state (self, "latex-mode"))
         w42_latex_typeset (GTK_WINDOW (self), self->doc, file);
-      else if (!w42_pdf_export (w42_document_pt (self->doc),
-                                w42_document_page_setup (self->doc), file, &error))
-        show_error (self, _("Word42 could not export the PDF."), error);
+      else
+        {
+          /* With the document's passwords, packing and signature, and
+           * without the document inside: an export is the pages. */
+          W42PdfOptions *pdf = w42_pdf_options_copy (w42_document_pdf_options (self->doc));
+
+          pdf->keep_document = FALSE;
+          if (!w42_pdf_export_with (w42_document_pt (self->doc),
+                                    w42_document_page_setup (self->doc), file, pdf, &error))
+            show_error (self, _("Word42 could not export the PDF."), error);
+          w42_pdf_options_free (pdf);
+        }
 
       g_object_unref (file);
     }
@@ -5305,6 +5620,16 @@ action_clear (GSimpleAction *action, GVariant *param, gpointer data)
 }
 
 /* File > Save All: every window whose document has changes. */
+/* File > PDF Options */
+static void
+action_pdf_options (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_pdf_options_dialog_show (GTK_WINDOW (self), self->view);
+}
+
 static void
 action_summary (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -5331,10 +5656,13 @@ action_save_all (GSimpleAction *action, GVariant *param, gpointer data)
       if (w == NULL || !w42_document_get_modified (w->doc))
         continue;
       file = w42_document_get_file (w->doc);
-      if (file == NULL || !w42_io_format_round_trips (file))
+      if (file == NULL || !w42_io_format_round_trips (file) ||
+          (w42_io_guess_format (file) == W42_FORMAT_PDF &&
+           !w42_document_pdf_options (w->doc)->read_source))
         {
           /* Never saved, or read from a format Save turns into Save As
-           * for: either way it needs a name of its own. */
+           * for, or a PDF that Save asks about writing over: each needs
+           * its own answer. */
           asked++;
           continue;
         }
@@ -5950,6 +6278,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "find-next",  action_find_next,  NULL, NULL,    NULL, { 0 } },
   { "print",         action_print,         NULL, NULL, NULL, { 0 } },
   { "export-pdf",    action_export_pdf,    NULL, NULL, NULL, { 0 } },
+  { "pdf-options",   action_pdf_options,   NULL, NULL, NULL, { 0 } },
   { "insert-picture", action_insert_picture, NULL, NULL, NULL, { 0 } },
   { "insert-scan", action_insert_scan, NULL, NULL, NULL, { 0 } },
   { "print-preview", action_print_preview, NULL, NULL, NULL, { 0 } },
@@ -6194,6 +6523,7 @@ w42_window_init (W42Window *self)
   self->words_at_open = -1;
 
   w42_window_apply_default_language (self->doc);
+  w42_window_apply_pdf_settings (self->doc);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), WINDOW_ACTIONS,
                                    G_N_ELEMENTS (WINDOW_ACTIONS), self);

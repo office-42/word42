@@ -6,6 +6,8 @@
 
 #include "w42-application.h"
 
+#include "w42-io.h"
+
 #include "w42-dialogs.h"
 #include "w42-settings.h"
 
@@ -335,6 +337,15 @@ w42_application_open (GApplication  *app,
         }
       window = w42_window_new (GTK_APPLICATION (app));
 
+      /* A PDF may have a password to ask for, which File > Open's way
+       * does, over the window it is to open in. */
+      if (w42_io_guess_format (files[i]) == W42_FORMAT_PDF)
+        {
+          gtk_window_present (GTK_WINDOW (window));
+          show_splash (GTK_WINDOW (window));
+          w42_window_open_file (W42_WINDOW (window), files[i]);
+          continue;
+        }
       if (w42_window_load (W42_WINDOW (window), files[i], &error))
         {
           gtk_window_present (GTK_WINDOW (window));
@@ -387,6 +398,29 @@ static const GOptionEntry OPTIONS[] = {
     "(pdf, epub, odt, docx, rtf, html, txt, abw, tex)", "FORMAT" },
   { "outdir", 0, 0, G_OPTION_ARG_FILENAME, NULL,
     "Where --convert-to writes; beside each file if not given", "DIR" },
+  { "password", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "The password --convert-to opens protected PDFs with; each password "
+    "may be given as env:NAME or file:PATH, out of sight of other users", "PASSWORD" },
+  { "pdf-password", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "A PDF written needs this password to be opened", "PASSWORD" },
+  { "pdf-modify-password", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "A PDF written allows printing and copying, and changes only with this password", "PASSWORD" },
+  { "pdf-sign", 0, 0, G_OPTION_ARG_FILENAME, NULL,
+    "Sign each PDF written with the certificate in this PKCS #12 file (.p12, .pfx)", "FILE" },
+  { "pdf-sign-password", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "The certificate file's password", "PASSWORD" },
+  { "pdf-reason", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "Why the PDF is signed", "TEXT" },
+  { "pdf-location", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "Where the PDF is signed", "TEXT" },
+  { "pdf-contact", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "How to reach the signer", "TEXT" },
+  { "pdf-pictures", 0, 0, G_OPTION_ARG_STRING, NULL,
+    "Scale pictures in a PDF down to this many pixels an inch: print (220), screen (150), email (96) or a number", "PPI" },
+  { "pdf-uncompressed", 0, 0, G_OPTION_ARG_NONE, NULL,
+    "Write the PDF plainly, for readers older than PDF 1.5", NULL },
+  { "pdf-keep-document", 0, 0, G_OPTION_ARG_NONE, NULL,
+    "Put the document inside the PDF, so that Word42 opens it for editing as it was", NULL },
   { NULL, 0, 0, 0, NULL, NULL, NULL }
 };
 

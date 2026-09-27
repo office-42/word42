@@ -21,6 +21,7 @@ struct _W42Document {
   gsize          saved_undo_pos;    /* the undo state when last clean */
   guint64        saved_serial;
   gboolean       unrecorded;      /* a change the undo history does not hold */
+  W42PdfOptions *pdf;
 };
 
 G_DEFINE_FINAL_TYPE (W42Document, w42_document, G_TYPE_OBJECT)
@@ -40,6 +41,7 @@ w42_document_finalize (GObject *object)
   g_clear_object (&self->file);
   g_clear_pointer (&self->title, g_free);
   g_clear_pointer (&self->pt, w42_pt_free);
+  g_clear_pointer (&self->pdf, w42_pdf_options_free);
 
   G_OBJECT_CLASS (w42_document_parent_class)->finalize (object);
 }
@@ -64,6 +66,8 @@ w42_document_init (W42Document *self)
 
   self->pt = w42_pt_new ();
   self->untitled_number = ++counter;
+  self->pdf = w42_pdf_options_new ();
+  self->pdf->keep_document = TRUE;
 
   /* US Letter with one-inch margins, as Word 97 shipped. */
   self->page.width         = 12240;
@@ -212,11 +216,34 @@ w42_document_set_title (W42Document *self, const char *title)
 gboolean
 w42_document_load (W42Document *self, GFile *file, GError **error)
 {
+  return w42_document_load_with (self, file, NULL, NULL, error);
+}
+
+W42PdfOptions *
+w42_document_pdf_options (W42Document *self)
+{
+  g_return_val_if_fail (W42_IS_DOCUMENT (self), NULL);
+  return self->pdf;
+}
+
+gboolean
+w42_document_load_with (W42Document *self, GFile *file, const char *password,
+                        const char *modify_password, GError **error)
+{
   W42PieceTable *fresh;
   W42PageSetup page;
+  W42PdfOptions *pdf;
 
   g_return_val_if_fail (W42_IS_DOCUMENT (self), FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
+
+  /* The last file's passwords and signing do not carry over to this
+   * one; how the writer likes a PDF packed does. */
+  pdf = w42_pdf_options_copy (self->pdf);
+  w42_pdf_options_set (&pdf->open_password, password);
+  w42_pdf_options_set (&pdf->modify_password, modify_password);
+  w42_pdf_options_set (&pdf->certificate_password, NULL);
+  pdf->sign = FALSE;
 
   /* Into a table and a page of their own, swapped in only once the file
    * has been read: most readers empty the table they are given before
@@ -225,11 +252,14 @@ w42_document_load (W42Document *self, GFile *file, GError **error)
    * for the next Save to write over it. */
   fresh = w42_pt_new ();
   page = self->page;
-  if (!w42_io_load (fresh, &page, file, error))
+  if (!w42_io_load_with (fresh, &page, file, pdf, error))
     {
       w42_pt_free (fresh);
+      w42_pdf_options_free (pdf);
       return FALSE;
     }
+  w42_pdf_options_free (self->pdf);
+  self->pdf = pdf;
 
   /* The author is the person editing, not something the file says. */
   w42_pt_set_author (fresh, w42_pt_get_author (self->pt));
@@ -250,8 +280,19 @@ w42_document_save (W42Document *self, GFile *file, GError **error)
   g_return_val_if_fail (W42_IS_DOCUMENT (self), FALSE);
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
 
-  if (!w42_io_save (self->pt, &self->page, file, error))
+  /* Saved as a PDF, the PDF is the document's file and has to hold the
+   * document; exported as one, it need not. */
+  self->pdf->keep_document = TRUE;
+  if (!w42_io_save_with (self->pt, &self->page, file, self->pdf, error))
     return FALSE;
+  if (w42_io_guess_format (file) == W42_FORMAT_PDF)
+    {
+      /* It is one of Word42's now, with what it was saved with. */
+      self->pdf->read_source = TRUE;
+      self->pdf->source_stale = FALSE;
+      self->pdf->restricted = FALSE;
+      self->pdf->n_signatures = self->pdf->sign ? 1 : 0;
+    }
 
   g_set_object (&self->file, file);
   w42_document_set_modified (self, FALSE);

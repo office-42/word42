@@ -26,6 +26,10 @@ GtkWidget *w42_window_new_for_document (GtkApplication *app, W42Document *doc);
  * w42_window_open says so in a message on the window. */
 gboolean   w42_window_load (W42Window *self, GFile *file, GError **error);
 gboolean   w42_window_open (W42Window *self, GFile *file);
+/* File > Open's way with a file: in this window if it is untouched and
+ * in a new one if not, asking first for the passwords of a PDF that has
+ * them.  Says in a message on this window when the file cannot be read. */
+void       w42_window_open_file (W42Window *self, GFile *file);
 /* File > Versions.  `file` holds an earlier version of this window's
  * document.  w42_window_open_version shows it in a window of its own, as
  * an unsaved document called `title`; w42_window_restore_version puts it
@@ -63,6 +67,8 @@ W42Document *w42_window_new_document (GtkWindow *from);
  * last chose: Normal is marked with it, without the document being
  * marked as changed for it. */
 void       w42_window_apply_default_language (W42Document *doc);
+/* How PDFs are packed and signed, as File > PDF Options last left it. */
+void       w42_window_apply_pdf_settings (W42Document *doc);
 
 /* The window already showing `file`, or NULL.  Opening a file twice
  * makes two documents of it, and whichever is saved last silently

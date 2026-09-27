@@ -55,4 +55,14 @@ GBytes  *w42_image_for_container (GBytes      *data,
 /* Encodes a cairo image surface as PNG, for pictures pulled out of a PDF. */
 GBytes  *w42_image_surface_to_png (cairo_surface_t *surface);
 
+/* A picture made smaller: `surface` drawn into `width` by `height`
+ * pixels with a filter that averages rather than drops them.  When
+ * `jpeg_quality` is above 0 the result carries a JPEG of itself at that
+ * quality, which is what a PDF then embeds -- a photograph's pixels as
+ * a photograph is kept.  NULL on failure. */
+cairo_surface_t *w42_image_surface_reduced (cairo_surface_t *surface,
+                                            int              width,
+                                            int              height,
+                                            int              jpeg_quality);
+
 G_END_DECLS
