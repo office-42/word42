@@ -487,6 +487,7 @@ typedef struct {
   GArray   *lst_nfc;      /* guint8[9]: each list's number format per level */
   GArray   *sections;     /* Section: where each section starts, and its columns */
   GArray   *bookmarks;    /* DocBookmark, the main text's */
+  GArray   *comments;     /* DocBookmark: the text each comment is on, named by what it says */
   gboolean  title_page;   /* the first section's first page has its own header */
   gboolean  pgn_restart;  /* and its pages are numbered from pgn_start */
   int       pgn_start;
@@ -1847,6 +1848,8 @@ read_bookmarks (Doc *doc)
   g_ptr_array_free (names, TRUE);
 }
 
+static const char *comment_at (Doc *doc, guint32 cp);
+
 /* The bookmark the character at `cp` is in, or NULL. */
 static const char *
 bookmark_at (Doc *doc, guint32 cp)
@@ -2831,6 +2834,7 @@ emit_text (Builder *b, const DocPara *dp)
       fmt.ch.link = link;
       fmt.ch.field = field;
       fmt.ch.bookmark = bookmark_at (doc, cp);
+      fmt.ch.comment = comment_at (doc, cp);
       if (ch.rmark_del)
         fmt.ch.revision = 2;    /* a tracked change: kept, and marked */
       else if (ch.rmark_ins)
@@ -3468,6 +3472,78 @@ story_align (Doc *doc, guint32 cp)
     }
 }
 
+/* The comments: PlcfandRef has a mark for each, with the tag of the
+ * bookmark over the text it is on; PlcfandTxt where its words are in the
+ * comments' story; SttbfAtnBkmk, PlcfAtnBkf and PlcfAtnBkl the tagged
+ * bookmarks. */
+static void
+read_comments (Doc *doc)
+{
+  guint32 fc_r, lcb_r, fc_t, lcb_t, fc_s, lcb_s, fc_f, lcb_f, fc_l, lcb_l, base;
+  guint n, n_bk = 0;
+
+  doc->comments = g_array_new (FALSE, FALSE, sizeof (DocBookmark));
+  fib_fclcb (doc, 4, &fc_r, &lcb_r);
+  fib_fclcb (doc, 5, &fc_t, &lcb_t);
+  if (lcb_r < 4 + 34 || !in_tb (doc, fc_r, lcb_r) || lcb_t < 8 || !in_tb (doc, fc_t, lcb_t))
+    return;
+  n = MIN ((lcb_r - 4) / 34, 16384);
+  base = (guint32) doc->ccp_text + (guint32) doc->ccp_ftn + (guint32) doc->ccp_hdd +
+         (guint32) doc->ccp_mcr;
+
+  fib_fclcb (doc, 37, &fc_s, &lcb_s);
+  fib_fclcb (doc, 42, &fc_f, &lcb_f);
+  fib_fclcb (doc, 43, &fc_l, &lcb_l);
+  if (lcb_s >= 6 && in_tb (doc, fc_s, lcb_s) && lcb_f >= 8 && in_tb (doc, fc_f, lcb_f) &&
+      lcb_l >= 8 && in_tb (doc, fc_l, lcb_l) && rd16 (doc->tb + fc_s) == 0xFFFF)
+    n_bk = MIN (MIN (rd16 (doc->tb + fc_s + 2), (lcb_f - 4) / 8), 16384);
+
+  for (guint i = 0; i < n && (i + 2) * 4 <= lcb_t; i++)
+    {
+      guint32 ref = rd32 (doc->tb + fc_r + 4 * i);
+      guint32 tag = rd32 (doc->tb + fc_r + 4 * (n + 1) + 30 * i + 26);
+      guint32 a = rd32 (doc->tb + fc_t + 4 * i), b = rd32 (doc->tb + fc_t + 4 * (i + 1));
+      DocBookmark c = { ref, ref, NULL };
+      char *text;
+
+      if (b <= a || b > (guint32) doc->ccp_atn + 1)
+        continue;
+      /* The comment's bookmark: the one with its tag.  Each entry of
+       * SttbfAtnBkmk is an empty name and ten bytes, the tag at 2. */
+      for (guint k = 0, p = fc_s + 6; k < n_bk && p + 12 <= fc_s + lcb_s; k++, p += 12)
+        if (rd32 (doc->tb + p + 4) == tag)
+          {
+            guint n_l = (lcb_l - 4) / 4;
+            guint ibkl = rd16 (doc->tb + fc_f + 4 * (n_bk + 1) + 4 * k);
+
+            c.start = rd32 (doc->tb + fc_f + 4 * k);
+            if (ibkl < n_l)
+              c.end = rd32 (doc->tb + fc_l + 4 * ibkl);
+            break;
+          }
+      if (c.end <= c.start)
+        continue;
+      text = story_text (doc, base + a, base + b);
+      c.name = g_intern_string (text);
+      g_free (text);
+      g_array_append_val (doc->comments, c);
+    }
+}
+
+/* What the comment on the character at `cp` says, or NULL. */
+static const char *
+comment_at (Doc *doc, guint32 cp)
+{
+  for (guint i = 0; doc->comments != NULL && i < doc->comments->len; i++)
+    {
+      const DocBookmark *c = &g_array_index (doc->comments, DocBookmark, i);
+
+      if (cp >= c->start && cp < c->end)
+        return c->name;
+    }
+  return NULL;
+}
+
 /* Header story `i` of PlcfHdd: its text, with its alignment, or NULL
  * when it is empty. */
 static char *
@@ -3741,6 +3817,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   read_page_setup (&doc, page);
   read_sections (&doc);
   read_bookmarks (&doc);
+  read_comments (&doc);
   {
     /* The endnote references' cps, first in PlcfendRef; the references
      * themselves are 0x02 marks in the text like a footnote's. */
@@ -3776,6 +3853,7 @@ out:
   if (doc.lst_nfc) g_array_free (doc.lst_nfc, TRUE);
   if (doc.sections) g_array_free (doc.sections, TRUE);
   if (doc.bookmarks) g_array_free (doc.bookmarks, TRUE);
+  if (doc.comments) g_array_free (doc.comments, TRUE);
   if (wd) g_byte_array_free (wd, TRUE);
   if (tb) g_byte_array_free (tb, TRUE);
   if (dt) g_byte_array_free (dt, TRUE);

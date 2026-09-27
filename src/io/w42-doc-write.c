@@ -328,6 +328,8 @@ enum {
   FIB_STSHF      = 1,
   FIB_FND_REF    = 2,
   FIB_FND_TXT    = 3,
+  FIB_AND_REF    = 4,
+  FIB_AND_TXT    = 5,
   FIB_PLCF_SED   = 6,
   FIB_PLCF_HDD   = 11,
   FIB_BTE_CHPX   = 12,
@@ -340,7 +342,13 @@ enum {
   FIB_PLCF_BKL   = 23,
   FIB_FLD_HDR    = 17,
   FIB_FLD_FTN    = 18,
+  FIB_FLD_ATN    = 19,
   FIB_CLX        = 33,
+  FIB_GRP_ATN_OWNERS = 36,
+  FIB_STTBF_ATN_BKMK = 37,
+  FIB_ATN_BKF    = 42,
+  FIB_ATN_BKL    = 43,
+  FIB_STTBF_RMARK = 51,
   FIB_PLF_LST    = 73,
   FIB_PLF_LFO    = 74,
   FIB_END_REF    = 46,
@@ -388,7 +396,7 @@ typedef struct {
 } Section;
 
 /* The stories after the main text, in the order Word keeps them. */
-enum { STORY_MAIN = 0, STORY_FTN, STORY_HDD, STORY_EDN, N_STORIES };
+enum { STORY_MAIN = 0, STORY_FTN, STORY_HDD, STORY_ATN, STORY_EDN, N_STORIES };
 
 typedef struct {
   W42PieceTable     *pt;
@@ -418,7 +426,21 @@ typedef struct {
   GArray     *row_cells;    /* CellInfo: the cells of the row being written */
   GHashTable *bookmarks;    /* name -> Bookmark*, the main text's */
   guint       n_pictures;
+  const W42Block *next_block;   /* the main text's paragraph after the one being written */
+  const char *open_comment; /* the comment whose text is being written, or NULL */
+  guint32     comment_start;
+  GArray     *comments;     /* Comment */
+  GArray     *comment_txt;  /* guint32: where each comment's text starts in its story */
+  const char *author;       /* whose the comments and the changes are */
+  gboolean    rmarks;       /* a change is marked: SttbfRMark is wanted */
+  guint32     dttm;         /* now, as Word dates a change */
 } Writer;
+
+/* A comment: the text it is on, where its mark is, and what it says. */
+typedef struct {
+  guint32     start, ref;
+  const char *text;
+} Comment;
 
 /* A bookmark: the cps it covers. */
 typedef struct {
@@ -588,6 +610,20 @@ chp_sprms (Writer *w, GByteArray *o, const W42CharFmt *ch, const W42CharFmt *bas
           sprm8 (o, 0x2A42, (guint) nearest_ico (ch->color));
           sprm32 (o, 0x6870, ((ch->color >> 16) & 0xFF) | (ch->color & 0xFF00) |
                              ((ch->color & 0xFF) << 16));
+        }
+    }
+  if (ch->revision != b->revision)
+    {
+      /* A marked change: inserted or deleted, by whom and when. */
+      gboolean del = ch->revision == 2;
+
+      sprm8 (o, 0x0801, ch->revision == 1);            /* sprmCFRMarkIns */
+      sprm8 (o, 0x0800, del);                          /* sprmCFRMarkDel */
+      if (ch->revision != 0)
+        {
+          sprm16 (o, del ? 0x4863 : 0x4804, 1);        /* the author, the first after "Unknown" */
+          sprm32 (o, del ? 0x6864 : 0x6805, w->dttm);
+          w->rmarks = TRUE;
         }
     }
   if (ch->lang != b->lang && ch->lang != NULL)
@@ -1286,6 +1322,22 @@ list_sprms (Writer *w, GByteArray *o, const W42ParaFmt *pa)
   sprm16 (o, 0x8411, (guint16) pa->indent_first);
 }
 
+/* Ends the comment being written: its mark, 5, special, after the text
+ * it is on. */
+static void
+close_comment (Writer *w, const W42CharFmt *ch, const W42CharFmt *style_ch)
+{
+  GByteArray *grpprl = g_byte_array_new ();
+  Comment c = { w->comment_start, w->text->len, w->open_comment };
+
+  add_char (w, 0x05);
+  sprm8 (grpprl, 0x0855, 1);
+  chp_sprms (w, grpprl, ch, style_ch);
+  end_run (w, grpprl);
+  g_array_append_val (w->comments, c);
+  w->open_comment = NULL;
+}
+
 /* One of the model's paragraphs: its runs, then its mark.  `note_mark`
  * puts a note's reference mark and a space in front, as Word begins a
  * note's text. */
@@ -1352,6 +1404,18 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
           g_free (code);
           open_field = field;
         }
+      /* A comment covers from the first of its runs to the last, which
+       * may be in a later paragraph. */
+      if (w->story == STORY_MAIN && w->open_comment != rf->ch.comment)
+        {
+          if (w->open_comment != NULL)
+            close_comment (w, mark_ch, &style->ch);
+          if (rf->ch.comment != NULL)
+            {
+              w->open_comment = rf->ch.comment;
+              w->comment_start = w->text->len;
+            }
+        }
       run_start = w->text->len;
 
       if (run->object != W42_OBJECT_NONE && w->story == STORY_MAIN)
@@ -1410,6 +1474,18 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
     }
   if (open_link != NULL || open_field != NULL)
     add_field_mark (w, 0x15, 0, &open_ch, &style->ch);
+  if (w->open_comment != NULL && w->story == STORY_MAIN)
+    {
+      /* The comment goes on into the next paragraph if its first run is
+       * in it too. */
+      const W42Block *next = w->next_block;
+      const char *goes_on = next != NULL && next->runs->len > 0
+                            ? w42_ap_table_get (w->aps, g_array_index (next->runs, W42Run, 0).ap)->ch.comment
+                            : NULL;
+
+      if (goes_on != w->open_comment)
+        close_comment (w, mark_ch, &style->ch);
+    }
 
   /* The paragraph mark: an empty paragraph's is its own, which says
    * how tall the blank line is; any other's is its last run's, as a
@@ -1609,12 +1685,14 @@ write_main_text (Writer *w, GPtrArray *blocks)
               CellInfo c = { block->col, MAX (block->span, 1), block->cell_ap };
               g_array_append_val (w->row_cells, c);
             }
+          w->next_block = next;
           write_block (w, block, cell_end ? 0x07 : 0x0D, FALSE);
           if (row_end)
             end_row (w, block->table, block->row);
           prev = block;
           continue;
         }
+      w->next_block = next;
       write_block (w, block, mark, FALSE);
       prev = block;
 
@@ -1808,6 +1886,175 @@ write_headers (Writer *w)
     at = w->ccp[STORY_HDD] + 2;
     g_array_append_val (w->hdd, at);
   }
+}
+
+/* The comments' story: each one's mark, 5, then its text, a paragraph a
+ * line, and one more paragraph mark for the story. */
+static void
+write_comments (Writer *w)
+{
+  begin_story (w, STORY_ATN);
+  if (w->comments->len == 0)
+    {
+      end_story (w, STORY_ATN);
+      return;
+    }
+  for (guint i = 0; i < w->comments->len; i++)
+    {
+      const Comment *c = &g_array_index (w->comments, Comment, i);
+      guint32 at = w->text->len - w->story_start[STORY_ATN];
+      char **lines = g_strsplit (c->text != NULL ? c->text : "", "\n", -1);
+
+      g_array_append_val (w->comment_txt, at);
+      {
+        GByteArray *grpprl = g_byte_array_new ();
+
+        add_char (w, 0x05);
+        sprm8 (grpprl, 0x0855, 1);
+        end_run (w, grpprl);
+      }
+      for (guint l = 0; lines[l] != NULL; l++)
+        {
+          GByteArray *grpprl = g_byte_array_new ();
+
+          add_text (w, lines[l], strlen (lines[l]));
+          end_run (w, grpprl);
+          end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+        }
+      g_strfreev (lines);
+    }
+  end_para (w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+  end_story (w, STORY_ATN);
+}
+
+/* The comments' tables: where each mark is, with its author's initials
+ * and the tag of the bookmark over its text; where each one's text
+ * starts; the authors; and the bookmarks, tagged. */
+static void
+write_comment_tables (Writer *w, GByteArray *tb, guint32 fclcb[][2], guint32 ccp_all)
+{
+  guint n = w->comments->len;
+  const char *author = w->author;
+  char initials[10] = { 0 };
+  guint ni = 0;
+  guint *order = g_new (guint, n);
+  guint32 *ends = g_new (guint32, n);
+
+  /* Initials: the first letter of each word of the name. */
+  for (const char *p = author; *p != '\0' && ni < 9; p = g_utf8_next_char (p))
+    if ((p == author || p[-1] == ' ') && g_ascii_isalnum (*p))
+      initials[ni++] = *p;
+
+  fclcb[FIB_AND_REF][0] = tb->len;
+  for (guint i = 0; i < n; i++)
+    put32 (tb, g_array_index (w->comments, Comment, i).ref);
+  put32 (tb, ccp_all);
+  for (guint i = 0; i < n; i++)
+    {
+      /* ATRDPre10: the initials as a counted string in ten places, the
+       * author, and the tag of the comment's bookmark. */
+      put16 (tb, ni);
+      for (guint k = 0; k < 9; k++)
+        put16 (tb, k < ni ? (guchar) initials[k] : 0);
+      put16 (tb, 0);                         /* ibst: the first author */
+      put16 (tb, 0);
+      put16 (tb, 0);
+      put32 (tb, i + 1);                     /* ITagBkmk */
+    }
+  fclcb[FIB_AND_REF][1] = tb->len - fclcb[FIB_AND_REF][0];
+
+  fclcb[FIB_AND_TXT][0] = tb->len;
+  for (guint i = 0; i < n; i++)
+    put32 (tb, g_array_index (w->comment_txt, guint32, i));
+  put32 (tb, w->ccp[STORY_ATN] - 1);
+  put32 (tb, w->ccp[STORY_ATN] + 2);
+  fclcb[FIB_AND_TXT][1] = tb->len - fclcb[FIB_AND_TXT][0];
+
+  fclcb[FIB_GRP_ATN_OWNERS][0] = tb->len;
+  {
+    glong n16 = 0;
+    gunichar2 *u = g_utf8_to_utf16 (author, -1, NULL, &n16, NULL);
+
+    put16 (tb, (guint) n16);
+    for (glong c = 0; c < n16; c++)
+      put16 (tb, u[c]);
+    g_free (u);
+  }
+  fclcb[FIB_GRP_ATN_OWNERS][1] = tb->len - fclcb[FIB_GRP_ATN_OWNERS][0];
+
+  /* The bookmarks in the order they start, and their ends in order. */
+  for (guint i = 0; i < n; i++)
+    {
+      order[i] = i;
+      ends[i] = g_array_index (w->comments, Comment, i).ref;
+    }
+  for (guint i = 1; i < n; i++)
+    for (guint j = i; j > 0 && g_array_index (w->comments, Comment, order[j - 1]).start >
+                               g_array_index (w->comments, Comment, order[j]).start; j--)
+      {
+        guint t = order[j];
+        order[j] = order[j - 1];
+        order[j - 1] = t;
+      }
+  /* The comments were closed in order, so their ends are sorted. */
+
+  fclcb[FIB_STTBF_ATN_BKMK][0] = tb->len;
+  put16 (tb, 0xFFFF);
+  put16 (tb, n);
+  put16 (tb, 10);
+  for (guint i = 0; i < n; i++)
+    {
+      put16 (tb, 0);                         /* no name */
+      put16 (tb, 0x0100);                    /* bmc */
+      put32 (tb, order[i] + 1);              /* lTag */
+      put32 (tb, 0xFFFFFFFF);                /* lTagOld */
+    }
+  fclcb[FIB_STTBF_ATN_BKMK][1] = tb->len - fclcb[FIB_STTBF_ATN_BKMK][0];
+
+  fclcb[FIB_ATN_BKF][0] = tb->len;
+  for (guint i = 0; i < n; i++)
+    put32 (tb, g_array_index (w->comments, Comment, order[i]).start);
+  put32 (tb, w->ccp[STORY_MAIN] + 2);
+  for (guint i = 0; i < n; i++)
+    {
+      put16 (tb, order[i]);                  /* its end, in PlcfAtnBkl */
+      put16 (tb, 0);
+    }
+  fclcb[FIB_ATN_BKF][1] = tb->len - fclcb[FIB_ATN_BKF][0];
+
+  fclcb[FIB_ATN_BKL][0] = tb->len;
+  for (guint i = 0; i < n; i++)
+    put32 (tb, ends[i]);
+  put32 (tb, w->ccp[STORY_MAIN] + 2);
+  fclcb[FIB_ATN_BKL][1] = tb->len - fclcb[FIB_ATN_BKL][0];
+
+  (void) ccp_all;
+  g_free (order);
+  g_free (ends);
+}
+
+/* SttbfRMark: who made the marked changes -- "Unknown" first, as Word
+ * has it, then the document's author. */
+static void
+write_rmark_authors (Writer *w, GByteArray *tb, guint32 fclcb[][2])
+{
+  const char *names[2] = { "Unknown", w->author };
+
+  fclcb[FIB_STTBF_RMARK][0] = tb->len;
+  put16 (tb, 0xFFFF);
+  put16 (tb, 2);
+  put16 (tb, 0);
+  for (guint i = 0; i < 2; i++)
+    {
+      glong n16 = 0;
+      gunichar2 *u = g_utf8_to_utf16 (names[i], -1, NULL, &n16, NULL);
+
+      put16 (tb, (guint) n16);
+      for (glong c = 0; c < n16; c++)
+        put16 (tb, u[c]);
+      g_free (u);
+    }
+  fclcb[FIB_STTBF_RMARK][1] = tb->len - fclcb[FIB_STTBF_RMARK][0];
 }
 
 /* ---- formatted disk pages --------------------------------------------- */
@@ -2578,18 +2825,44 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.cur_list[0] = w.cur_list[1] = -1;
   w.row_cells = g_array_new (FALSE, FALSE, sizeof (CellInfo));
   w.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
+  w.comments = g_array_new (FALSE, FALSE, sizeof (Comment));
+  w.comment_txt = g_array_new (FALSE, FALSE, sizeof (guint32));
+  {
+    const W42DocInfo *info = w42_pt_get_info (pt);
+
+    w.author = w42_pt_get_author (pt);
+    if (w.author == NULL && info != NULL)
+      w.author = info->author;
+    if (w.author == NULL || *w.author == '\0')
+      w.author = g_get_real_name ();
+    if (w.author == NULL || *w.author == '\0' || g_str_equal (w.author, "Unknown"))
+      w.author = "Word42";
+  }
+  {
+    /* A DTTM: minutes, hours, day, month, years since 1900, weekday. */
+    GDateTime *now = g_date_time_new_now_local ();
+
+    w.dttm = (guint32) g_date_time_get_minute (now) |
+             ((guint32) g_date_time_get_hour (now) << 6) |
+             ((guint32) g_date_time_get_day_of_month (now) << 11) |
+             ((guint32) g_date_time_get_month (now) << 16) |
+             ((guint32) (g_date_time_get_year (now) - 1900) << 20) |
+             ((guint32) (g_date_time_get_day_of_week (now) % 7) << 29);
+    g_date_time_unref (now);
+  }
 
   collect_styles (&w);
   blocks = w42_pt_snapshot_blocks (pt);
   write_main_text (&w, blocks);
   write_notes (&w, blocks, 0);
   write_headers (&w);
+  write_comments (&w);
   write_notes (&w, blocks, 1);
   g_ptr_array_free (blocks, TRUE);
 
   /* With any story after the main text, one more paragraph mark ends
    * them all, and the last section runs to it. */
-  if (w.ccp[STORY_FTN] + w.ccp[STORY_HDD] + w.ccp[STORY_EDN] > 0)
+  if (w.ccp[STORY_FTN] + w.ccp[STORY_HDD] + w.ccp[STORY_ATN] + w.ccp[STORY_EDN] > 0)
     end_para (&w, 0x0D, NULL, NULL, NULL, NULL, ISTD_NORMAL);
   ccp_all = w.text->len;
   if (ccp_all > w.ccp[STORY_MAIN])
@@ -2675,7 +2948,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     /* The fields of each story: where their marks are, then an FLD
      * each; the table's last cp is two past the story's end. */
     {
-      static const int PLC[N_STORIES] = { FIB_FLD_MOM, FIB_FLD_FTN, FIB_FLD_HDR, FIB_FLD_EDN };
+      static const int PLC[N_STORIES] = { FIB_FLD_MOM, FIB_FLD_FTN, FIB_FLD_HDR, FIB_FLD_ATN, FIB_FLD_EDN };
 
       for (int s = 0; s < N_STORIES; s++)
         {
@@ -2705,6 +2978,10 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
 
     if (g_hash_table_size (w.bookmarks) > 0)
       write_bookmarks (&w, tb, fclcb, ccp_all);
+    if (w.comments->len > 0)
+      write_comment_tables (&w, tb, fclcb, ccp_all);
+    if (w.rmarks)
+      write_rmark_authors (&w, tb, fclcb);
 
     if (w.lists->len > 0)
       {
@@ -2764,6 +3041,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     set32 (wd, 0x4C, w.ccp[STORY_MAIN]);
     set32 (wd, 0x50, w.ccp[STORY_FTN]);
     set32 (wd, 0x54, w.ccp[STORY_HDD]);
+    set32 (wd, 0x5C, w.ccp[STORY_ATN]);
     set32 (wd, 0x60, w.ccp[STORY_EDN]);
     set32 (wd, 0x40 + 4 * 11, 0xFFFFF);       /* pnFbpChpFirst */
     set32 (wd, 0x40 + 4 * 14, 0xFFFFF);       /* pnFbpPapFirst */
@@ -2830,6 +3108,8 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_array_free (w.lists, TRUE);
   g_array_free (w.row_cells, TRUE);
   g_hash_table_destroy (w.bookmarks);
+  g_array_free (w.comments, TRUE);
+  g_array_free (w.comment_txt, TRUE);
   g_byte_array_free (wd, TRUE);
   g_byte_array_free (tb, TRUE);
   g_array_free (chp_fc, TRUE);
