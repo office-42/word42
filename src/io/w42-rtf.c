@@ -3752,14 +3752,22 @@ scan_list_tables (const char *d, gsize len)
       {
         gsize open = i;
         gsize end;
+        /* How far back a word's brace is looked for.  Behind a word that
+         * turned out to have no group of its own there is only the closed
+         * group already found for it, so the next word stops there: each
+         * of a run of such words walking back to the same brace made the
+         * run cost the square of its length, and a file of 600 kB of
+         * \list took many seconds to open. */
+        gsize bound;
 
         while (open > 0 && d[open] != '{')
           open--;
         end = group_end (d, len, open);
+        bound = open;
 
         for (gsize j = open; j < end; j++)
           {
-            gsize list_open, list_end;
+            gsize list_open, list_end, level_bound;
             int id, level = 0;
             ListShape *shape;
 
@@ -3767,14 +3775,17 @@ scan_list_tables (const char *d, gsize len)
                 g_ascii_isalpha (d[j + 5]))
               continue;
             list_open = j;
-            while (list_open > open && d[list_open] != '{')
+            while (list_open > bound && d[list_open] != '{')
               list_open--;
-            list_end = group_end (d, len, list_open);
+            list_end = d[list_open] == '{' ? group_end (d, len, list_open) : list_open;
             /* A \list with no group of its own: the brace found behind it
              * is an earlier group's, which ends before the word, and going
              * on from that end would come back to the word for ever. */
             if (list_end <= j)
-              continue;
+              {
+                bound = j;
+                continue;
+              }
             id = word_param (d, len, list_open, list_end, "listid");
             if (id < 0)
               {
@@ -3787,6 +3798,7 @@ scan_list_tables (const char *d, gsize len)
               shape->kind[k] = W42_LIST_NUMBER;
 
             /* Each {\listlevel ...} in turn is one level of the list. */
+            level_bound = list_open;
             for (gsize k = list_open; k < list_end && level < 9; k++)
               {
                 gsize lvl_open, lvl_end;
@@ -3795,11 +3807,14 @@ scan_list_tables (const char *d, gsize len)
                 if (d[k] != '\\' || strncmp (d + k + 1, "listlevel", 9) != 0)
                   continue;
                 lvl_open = k;
-                while (lvl_open > list_open && d[lvl_open] != '{')
+                while (lvl_open > level_bound && d[lvl_open] != '{')
                   lvl_open--;
-                lvl_end = group_end (d, len, lvl_open);
+                lvl_end = d[lvl_open] == '{' ? group_end (d, len, lvl_open) : lvl_open;
                 if (lvl_end <= k)
-                  continue;
+                  {
+                    level_bound = k;
+                    continue;
+                  }
                 nfc = word_param (d, len, lvl_open, lvl_end, "levelnfc");
                 shape->kind[level++] = level_kind (nfc);
                 k = lvl_end;
@@ -3817,11 +3832,12 @@ scan_list_tables (const char *d, gsize len)
       if (d[i] != '\\' || strncmp (d + i + 1, "listoverridetable", 17) != 0)
         continue;
       {
-        gsize open = i, end;
+        gsize open = i, end, bound;
 
         while (open > 0 && d[open] != '{')
           open--;
         end = group_end (d, len, open);
+        bound = open;              /* as for the \list words above */
 
         for (gsize j = open; j < end; j++)
           {
@@ -3833,11 +3849,14 @@ scan_list_tables (const char *d, gsize len)
                 g_ascii_isalpha (d[j + 13]))
               continue;
             ov_open = j;
-            while (ov_open > open && d[ov_open] != '{')
+            while (ov_open > bound && d[ov_open] != '{')
               ov_open--;
-            ov_end = group_end (d, len, ov_open);
+            ov_end = d[ov_open] == '{' ? group_end (d, len, ov_open) : ov_open;
             if (ov_end <= j)
-              continue;
+              {
+                bound = j;
+                continue;
+              }
             id = word_param (d, len, ov_open, ov_end, "listid");
             ls = word_param (d, len, ov_open, ov_end, "ls");
             shape = id >= 0 ? g_hash_table_lookup (by_id, GINT_TO_POINTER (id)) : NULL;
