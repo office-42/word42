@@ -2,6 +2,44 @@
 
 ## 1.0.6 (in development)
 
+### Security
+
+- **LaTeX is run sandboxed.** A document's mathematics goes to LaTeX as
+  the TeX it is written in, so a document that said `$\input{...}$`
+  could have LaTeX set any file the user can read into the preview or
+  the exported PDF. The engine now runs with no shell escape and may only
+  read and write in its own working folder: TeX Live's `openin_any` and
+  `openout_any` in paranoid mode, MiKTeX's own switches for the same, and
+  Tectonic's untrusted mode.
+- **Web pages written by Word42 keep a font name to a name.** A font name
+  with a line break in it, from a crafted RTF or HTML file, could add
+  style rules of its own to an exported page -- an image fetched from
+  elsewhere, or a box laid over the page.
+- **A crafted file can no longer make Word42 read past the end of its
+  data** in a .docx's HYPERLINK field that ends in a backslash, or in a
+  .doc's bookmark table that ends halfway through a name's length.
+- **Files made to be expensive open in reasonable time and memory.**
+  Small .odt, .abw and .docx files whose tables made millions of empty
+  cells, .odt files of repeated spaces, WordPerfect files whose notes all
+  name one packet, a picture set in many places, RTF list tables and
+  stylesheets, and HTML style sheets and notes built to cost the square
+  of their size each took minutes or gigabytes; they are now held to a
+  budget, shared, or read in one pass.
+- Page numbers, tab stops, indents, column gaps and paragraph spacing
+  near the limits of an integer are held to a page's range, where they
+  overflowed on the way into the layout.
+
+### Fixed
+
+- The WordPerfect writer numbers a numbered list's items 1, 2, 3 rather
+  than 1 for each.
+- A .doc file's language is read, so spelling, hyphenation and LaTeX
+  follow it; .doc files came back in no language at all.
+- A .doc table row of more than 22 shaded cells keeps every cell's
+  shading.
+- A plain-text file in UTF-16 keeps what follows a NUL character, and a
+  text file of many line breaks saves at once.
+
 ## 1.0.5
 
 ### New
