@@ -1776,8 +1776,11 @@ w42_abw_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
       info.comments = a.meta[4];
       w42_pt_set_info (pt, &info);
     }
+  /* In the range the Page Numbers dialog gives, as the .doc reader takes
+   * them: numbering the pages from near the largest int overflowed. */
   if (a.meta[5] != NULL && a.meta[6] != NULL)
-    w42_pt_set_page_numbering (pt, atoi (a.meta[5]), atoi (a.meta[6]));
+    w42_pt_set_page_numbering (pt, CLAMP (atoi (a.meta[5]), 1, 9999),
+                               CLAMP (atoi (a.meta[6]), 0, 9999));
 
   w42_pt_clear_undo (pt);
   g_string_free (a.text, TRUE);

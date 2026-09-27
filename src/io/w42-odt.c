@@ -2622,10 +2622,13 @@ meta_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
     m->ours = g_str_has_prefix (m->text->str, "Word42");
   else if (g_str_equal (tag, "user-defined") && m->user_name != NULL)
     {
+      /* In the range the Page Numbers dialog gives, as the .doc reader
+       * takes them: the largest int, with one added, overflowed, and
+       * numbering the pages from near it did again. */
       if (g_str_equal (m->user_name, "Word42PageNumbersFrom"))
-        m->pgn_from = MAX (atoi (m->text->str), 1);
+        m->pgn_from = CLAMP (atoi (m->text->str), 1, 9999);
       else if (g_str_equal (m->user_name, "Word42PageNumbersStart"))
-        m->pgn_start = MAX (atoi (m->text->str), 0) + 1;
+        m->pgn_start = CLAMP (atoi (m->text->str), 0, 9999) + 1;
       g_clear_pointer (&m->user_name, g_free);
     }
   if (slot != NULL && m->text->len > 0 && *slot == NULL)
