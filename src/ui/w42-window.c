@@ -4391,6 +4391,18 @@ on_highlight_clicked (GtkButton *button, gpointer data)
   apply_highlight (data);
 }
 
+/* A drop-down's list scrolls past 400 pixels; lift that cap so every
+ * entry shows at once. */
+static void
+unlimit_list_height (GtkWidget *widget)
+{
+  if (GTK_IS_SCROLLED_WINDOW (widget))
+    gtk_scrolled_window_set_max_content_height (GTK_SCROLLED_WINDOW (widget), -1);
+  for (GtkWidget *c = gtk_widget_get_first_child (widget); c;
+       c = gtk_widget_get_next_sibling (c))
+    unlimit_list_height (c);
+}
+
 /* A colour chosen from the popover becomes the button's, and goes on. */
 static void
 on_colour_chosen (GtkButton *button, gpointer data)
@@ -4577,6 +4589,7 @@ build_format_bar (W42Window *self)
 
   self->size_drop = gtk_drop_down_new (G_LIST_MODEL (sizes), NULL);
   gtk_widget_set_size_request (self->size_drop, 70, -1);
+  unlimit_list_height (self->size_drop);
   gtk_widget_set_tooltip_text (self->size_drop, _("Font Size"));
   g_signal_connect (self->size_drop, "notify::selected",
                     G_CALLBACK (on_size_selected), self);
