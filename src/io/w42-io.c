@@ -17,6 +17,7 @@
 #include "w42-pdf.h"
 #include "w42-rtf.h"
 #include "w42-wpd.h"
+#include "w42-latex.h"
 
 #include <string.h>
 #include <glib/gi18n.h>
@@ -61,6 +62,8 @@ w42_io_guess_format (GFile *file)
            g_str_has_suffix (name, ".wp5") || g_str_has_suffix (name, ".wp6") ||
            g_str_has_suffix (name, ".wp7"))
     format = W42_FORMAT_WPD;
+  else if (g_str_has_suffix (name, ".tex") || g_str_has_suffix (name, ".latex"))
+    format = W42_FORMAT_LATEX;
 
   g_free (name);
   return format;
@@ -74,6 +77,7 @@ w42_io_format_round_trips (GFile *file)
   switch (w42_io_guess_format (file))
     {
     case W42_FORMAT_PDF:
+    case W42_FORMAT_LATEX:
     case W42_FORMAT_HTML:
     case W42_FORMAT_PPTX:
     case W42_FORMAT_EPUB:
@@ -228,6 +232,12 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
                    _("Word42 writes EPUB but does not read it."));
       return FALSE;
     }
+  if (w42_io_guess_format (file) == W42_FORMAT_LATEX)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                   _("Word42 writes LaTeX but does not read it."));
+      return FALSE;
+    }
 
   /* A file says what colour its page is and whether it has a border, or
    * says nothing; either way the page it is read into does not keep the
@@ -337,6 +347,8 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
       return w42_doc_save (pt, page, file, error);
     case W42_FORMAT_WPD:
       return w42_wpd_save (pt, page, file, error);
+    case W42_FORMAT_LATEX:
+      return w42_latex_export (pt, page, file, error);
     default:
       break;
     }

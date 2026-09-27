@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.5 (in development)
+
+### New
+
+- **LaTeX mode** (File ▸ LaTeX Mode). With it on, File ▸ Export as PDF
+  and File ▸ LaTeX Preview hand the document to LaTeX, which typesets it
+  in Latin Modern, the Computer Modern of theses and papers. LaTeX breaks
+  the lines with Knuth's algorithm and sets ligatures, hyphenation and
+  microtype. Headings become numbered or unnumbered sections, and the
+  Title, Subtitle and author become the title block. Footnotes, endnotes,
+  lists, tables, pictures, links, headers, footers and page numbers are
+  carried over. Word42 uses Tectonic, LuaLaTeX, XeLaTeX or pdfLaTeX,
+  whichever is installed. Save As also writes the LaTeX source (.tex).
+
 ## 1.0.4
 
 ### New

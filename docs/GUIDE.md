@@ -102,6 +102,7 @@ throw away.
 | Presentation (`.pptx`) | yes, as an outline, with pictures and notes | yes, from the outline |
 | E-book (`.epub`) | — | export only |
 | PDF (`.pdf`) | text only, where the PDF library is present | export only |
+| LaTeX (`.tex`) | — | yes |
 
 **File ▸ Save** (Ctrl+S) writes the document back in the format it came in.
 **File ▸ Save As** (Ctrl+Shift+S or F12) writes it somewhere else, or in
@@ -115,6 +116,35 @@ headers and footers, revision marks. HTML carries the text and most of its
 formatting, the Summary Info, bookmarks, frames and drop caps included; a
 page from Word or LibreOffice comes in with its stylesheet followed. Plain
 text carries the text.
+
+### LaTeX mode
+
+**File ▸ LaTeX Mode** makes LaTeX the typesetter behind your PDFs. While it
+is on, **File ▸ Export as PDF** and **File ▸ LaTeX Preview** hand the
+document to LaTeX. The PDF comes out in Latin Modern, the typeface of
+scientific papers and master's theses, with lines broken by Knuth's
+algorithm, ligatures, hyphenation and microtype.
+
+The document is carried over as follows:
+
+- Headings become sections, numbered when the headings are numbered.
+- The Title and Subtitle paragraphs and the author from Summary Info
+  become the title block.
+- The document language selects the hyphenation.
+- Footnotes and endnotes, lists, tables, pictures, links, headers and
+  footers, and the page setup all go across.
+
+LaTeX sets the body type and spacing itself; that is the point of it. The
+setting is remembered from one session to the next.
+
+LaTeX mode needs a TeX engine. Word42 looks for Tectonic, LuaLaTeX, XeLaTeX
+and pdfLaTeX, in that order, on the PATH and where their installers put
+them. [Tectonic](https://tectonic-typesetting.github.io) is the simplest to
+install: it is one program and fetches the packages it needs. Its first run
+takes about a minute. MiKTeX and TeX Live work as well.
+
+**File ▸ Save As** with the `.tex` extension writes the LaTeX source, with
+the pictures beside it, to edit or compile yourself.
 
 ### Summary Info
 

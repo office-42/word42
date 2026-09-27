@@ -70,6 +70,14 @@
           <attribute name="action">win.export-pdf</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">LaTeX Mode</attribute>
+          <attribute name="action">win.latex-mode</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">LaTeX Preview</attribute>
+          <attribute name="action">win.latex-preview</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Export as _Web Page...</attribute>
           <attribute name="action">win.export-html</attribute>
         </item>

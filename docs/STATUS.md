@@ -453,6 +453,23 @@ Early, but real. Word42 today is a working word processor:
   the text running down the other side; the paragraphs that follow stay
   beside it until they pass its foot, a paragraph at a time as the classic
   frames did. Word, OpenDocument, AbiWord and HTML files carry the wrap.
+- **LaTeX** — File ▸ LaTeX Mode makes LaTeX the PDF backend: Export as PDF
+  and LaTeX Preview write the document as LaTeX and typeset it with
+  Tectonic, LuaLaTeX, XeLaTeX or pdfLaTeX (found on the PATH or in their
+  install folders), in Latin Modern with microtype and babel hyphenation.
+  The source carries:
+  - headings, as starred or numbered sections;
+  - the title block, from the Title and Subtitle paragraphs and the author;
+  - character formatting and colour;
+  - footnotes and endnotes;
+  - bulleted and numbered lists;
+  - tables, as longtables with merged cells, rules and shading;
+  - pictures, at their width;
+  - links;
+  - fancyhdr headers and footers, with PAGE and NUMPAGES;
+  - the page setup and columns.
+
+  Save As writes the .tex. LaTeX is not read.
 - **PDF** — File ▸ Export as PDF writes the document through the same layout
   engine and painting code the screen and printer use. Opening a `.pdf`
   imports it: each run's font, size, colour and underline; the columns read

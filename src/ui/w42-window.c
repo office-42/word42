@@ -41,6 +41,7 @@
 #include "w42-help.h"
 #include "w42-macro.h"
 #include "w42-view.h"
+#include "w42-latex-run.h"
 
 static const char *window_author_name (void);
 static void window_saved (W42Window *self, gboolean succeeded);
@@ -314,6 +315,7 @@ file_filters (gboolean saving)
   static const char * const all_docs[] = { "*.rtf", "*.docx", "*.doc", "*.odt", "*.abw", "*.zabw", "*.wpd", "*.wp", "*.wp5", "*.wp6", "*.wp7", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
   static const char * const all_written[] = { "*.doc", "*.rtf", "*.docx", "*.odt", "*.abw", "*.zabw", "*.wpd", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
   static const char * const wpd[] = { "*.wpd", "*.wp", "*.wp5", "*.wp6", "*.wp7", NULL };
+  static const char * const tex[] = { "*.tex", NULL };
   static const char * const odt[] = { "*.odt", NULL };
   static const char * const pptx[] = { "*.pptx", NULL };
   static const char * const docx[] = { "*.docx", NULL };
@@ -337,6 +339,8 @@ file_filters (gboolean saving)
   append_filter (store, named_filter (_("OpenDocument Text (*.odt)"), odt));
   append_filter (store, named_filter (_("AbiWord (*.abw, *.zabw)"), abw));
   append_filter (store, named_filter (saving ? _("WordPerfect 6 (*.wpd)") : _("WordPerfect (*.wpd, *.wp)"), wpd));
+  if (saving)
+    append_filter (store, named_filter (_("LaTeX (*.tex)"), tex));
   append_filter (store, named_filter (_("Web Pages (*.html)"), web));
   append_filter (store, named_filter (_("Presentations (*.pptx)"), pptx));
   append_filter (store, named_filter (_("Text Documents (*.txt)"), text));
@@ -351,7 +355,7 @@ gboolean
 w42_window_name_has_extension (const char *name)
 {
   static const char * const known[] = { ".rtf", ".docx", ".doc", ".odt", ".abw",
-                                        ".zabw", ".wpd", ".wp", ".wp5", ".wp6", ".wp7",
+                                        ".zabw", ".wpd", ".wp", ".wp5", ".wp6", ".wp7", ".tex",
                                         ".txt", ".text", ".html", ".htm",
                                         ".pdf", ".pptx", ".ppsx", ".epub", NULL };
   char *lower;
@@ -2331,9 +2335,12 @@ on_export_pdf_response (GObject *source, GAsyncResult *result, gpointer data)
   else if (file != NULL)
     {
       /* Export does not make the PDF the document's file: the document is
-       * still the RTF or text it came from, and Save keeps going there. */
-      if (!w42_pdf_export (w42_document_pt (self->doc),
-                           w42_document_page_setup (self->doc), file, &error))
+       * still the RTF or text it came from, and Save keeps going there.
+       * In LaTeX mode LaTeX typesets it, in the background. */
+      if (window_action_state (self, "latex-mode"))
+        w42_latex_typeset (GTK_WINDOW (self), self->doc, file);
+      else if (!w42_pdf_export (w42_document_pt (self->doc),
+                                w42_document_page_setup (self->doc), file, &error))
         show_error (self, _("Word42 could not export the PDF."), error);
 
       g_object_unref (file);
@@ -2380,6 +2387,48 @@ on_export_html_response (GObject *source, GAsyncResult *result, gpointer data)
  * and opened it in the browser, so that what a reader on the web would
  * see could be seen.  The page goes to the cache folder, one file written
  * over each time, so nothing is left lying about. */
+/* File > LaTeX Mode: PDFs typeset by LaTeX, in Latin Modern, as papers
+ * and theses are.  Remembered from one run to the next. */
+static void
+action_latex_mode (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+  GVariant *state = g_action_get_state (G_ACTION (action));
+  gboolean on = !g_variant_get_boolean (state);
+
+  (void) param;
+  g_variant_unref (state);
+
+  g_simple_action_set_state (action, g_variant_new_boolean (on));
+  w42_settings_set_bool ("latex-mode", on);
+  if (on)
+    {
+      char *engine = w42_latex_find_engine ();
+
+      if (engine != NULL)
+        window_flash (self, _("LaTeX mode: Export as PDF and LaTeX Preview typeset with LaTeX."));
+      else
+        show_message (self, _("LaTeX mode is on, but no TeX engine is installed."),
+                      _("Install Tectonic (tectonic-typesetting.github.io), which fetches what "
+                        "it needs by itself, or MiKTeX (miktex.org) or TeX Live (tug.org/texlive). "
+                        "Until then, File > Save As can still write the document as LaTeX (.tex)."));
+      g_free (engine);
+    }
+  else
+    window_flash (self, _("LaTeX mode is off: Word42 makes the PDFs itself."));
+}
+
+/* File > LaTeX Preview: the document typeset by LaTeX, opened to look at. */
+static void
+action_latex_preview (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_view_update_fields (self->view);
+  w42_latex_typeset (GTK_WINDOW (self), self->doc, NULL);
+}
+
 static void
 action_web_preview (GSimpleAction *action, GVariant *param, gpointer data)
 {
@@ -5728,6 +5777,8 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "export-html",   action_export_html,   NULL, NULL, NULL, { 0 } },
   { "export-epub",   action_export_epub,   NULL, NULL, NULL, { 0 } },
   { "web-preview",   action_web_preview,   NULL, NULL, NULL, { 0 } },
+  { "latex-mode",    action_latex_mode,    NULL, "false", NULL, { 0 } },
+  { "latex-preview", action_latex_preview, NULL, NULL, NULL, { 0 } },
   { "table-of-figures", action_table_of_figures, NULL, NULL, NULL, { 0 } },
   { "compare-documents", action_compare_documents, NULL, NULL, NULL, { 0 } },
   { "bookmark",      action_bookmark,      NULL, NULL, NULL, { 0 } },
@@ -5982,6 +6033,14 @@ w42_window_init (W42Window *self)
     w42_view_set_gridlines (self->view, on);
     if (gridlines != NULL)
       g_simple_action_set_state (G_SIMPLE_ACTION (gridlines), g_variant_new_boolean (on));
+  }
+
+  {
+    GAction *latex = g_action_map_lookup_action (G_ACTION_MAP (self), "latex-mode");
+
+    if (latex != NULL)
+      g_simple_action_set_state (G_SIMPLE_ACTION (latex),
+                                 g_variant_new_boolean (w42_settings_get_bool ("latex-mode", FALSE)));
   }
 
   self->spell = w42_spell_new ();

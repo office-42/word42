@@ -108,6 +108,7 @@ yardstick.
 | OpenDocument .odt | read and written | no | yes |
 | HTML read/write | full | read and write | full |
 | PDF write | full | no | yes |
+| LaTeX write, and PDF typeset by LaTeX | yes | no | write |
 | PDF read (poppler) | text and pictures | no | no |
 | Plain text | full | full | full |
 
