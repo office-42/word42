@@ -11,6 +11,7 @@
 #include <glib/gi18n.h>
 
 #include "w42-image.h"
+#include "w42-lang.h"
 #include "w42-shape.h"
 
 /* ---------------------------------------------------------------------- */
@@ -462,6 +463,7 @@ typedef struct {
   int      rmark_ins;    /* ... and a tracked insertion */
   guint32  pic_fc;       /* sprmCPicLocation: into the Data stream */
   gboolean has_pic;
+  const char *lang;      /* sprmCRgLid0: an interned tag, or NULL */
 } Char;
 
 typedef struct {
@@ -1628,6 +1630,18 @@ apply_chpx (Doc *doc, const guint8 *grpprl, guint len, Char *ch, int depth)
         case 0x2A48: ch->iss = op[0]; break;
         case 0x0855: ch->spec = op[0] != 0; break;
         case 0x6A03: ch->pic_fc = rd32 (op); ch->has_pic = TRUE; break;
+        case 0x486D: case 0x4873:
+          /* sprmCRgLid0_80 and sprmCRgLid0: the language of the run's
+           * text, 1024 for none at all.  One Word42 does not know leaves
+           * the run in the language it had.  The East Asian one, Lid1, is
+           * a slot the model does not have. */
+          {
+            const char *lang = w42_lang_from_lcid (rd16 (op));
+
+            if (lang != NULL)
+              ch->lang = lang;
+          }
+          break;
         default:
           break;
         }
@@ -2206,6 +2220,7 @@ fill_char_fmt (Doc *doc, const Char *ch, W42CharFmt *out)
   out->highlight = (guint8) CLAMP (ch->highlight, 0, 16);
   out->spacing   = (gint16) CLAMP (ch->dxa_space, -720, 720);
   out->color     = ch->has_rgb ? ch->rgb : word_colour (ch->ico);
+  out->lang      = ch->lang;
 }
 
 /* ---- lists -------------------------------------------------------------- */
@@ -2955,6 +2970,10 @@ emit_text (Builder *b, const DocPara *dp)
 
       w42_fmt_init_default (&fmt);
       fill_char_fmt (doc, &ch, &fmt.ch);
+      /* A run in its paragraph style's language has none of its own, as
+       * the other readers leave it, and so follows the style. */
+      if (ch.lang == style_ch.lang)
+        fmt.ch.lang = NULL;
       fmt.ch.link = link;
       fmt.ch.field = field;
       fmt.ch.bookmark = span_at (doc->bookmarks, cp, &b->bookmark_cache);
