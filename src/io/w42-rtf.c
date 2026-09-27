@@ -3449,9 +3449,12 @@ formatting:
       st->pa.align = W42_ALIGN_JUSTIFY;
       st->align_said = TRUE;
     }
-  else if (g_str_equal (word, "li") && has_param) st->pa.indent_left = param;
-  else if (g_str_equal (word, "ri") && has_param) st->pa.indent_right = param;
-  else if (g_str_equal (word, "fi") && has_param) st->pa.indent_first = param;
+  /* No indent wider than Word's widest page, as the .docx reader has
+   * them: the layout hands the first line's to Pango in Pango units, and
+   * a table's fitted width adds all three up in an int. */
+  else if (g_str_equal (word, "li") && has_param) st->pa.indent_left = CLAMP (param, -31680, 31680);
+  else if (g_str_equal (word, "ri") && has_param) st->pa.indent_right = CLAMP (param, -31680, 31680);
+  else if (g_str_equal (word, "fi") && has_param) st->pa.indent_first = CLAMP (param, -31680, 31680);
   else if (g_str_equal (word, "pagebb")) st->pa.page_break_before = 1;
   else if (g_str_equal (word, "keepn"))  st->pa.keep_next = 1;
   else if (g_str_equal (word, "keep"))   st->pa.keep_together = 1;
@@ -3624,10 +3627,18 @@ formatting:
         }
       else if (g_str_equal (word, "colsx"))
         {
+          /* The gaps have to leave the columns some width, as the .docx
+           * reader has them: \colsx999999999 made them less than none,
+           * a letter or two to a line, and the view's arithmetic on them
+           * overflowed an int. */
+          int cols = r->sect_pending ? r->sect_cols : w42_page_columns (r->page);
+          int text_w = r->page->width - r->page->margin_left - r->page->margin_right;
+          int gap = CLAMP (param, 0, MAX (text_w, 1440) / CLAMP (cols, 1, 9));
+
           if (r->sect_pending)
-            r->sect_gap = st->pa.column_gap = param;
+            r->sect_gap = st->pa.column_gap = gap;
           else
-            r->page->column_gap = param;
+            r->page->column_gap = gap;
         }
     }
 }
