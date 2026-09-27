@@ -76,7 +76,16 @@ Early, but real. Word42 today is a working word processor:
   pictures at the size Word showed them — and a metafile picture as a
   labelled box its size, its bytes kept for a save as .docx — page setup, header and footer with
   their page-number fields, footnotes. A .doc from before Word 97
-  yields its text and paragraphs. Saving goes to RTF or .docx, which Word opens.
+  yields its text and paragraphs.
+- **Word .doc export** — .doc is the format documents are saved in unless
+  another is chosen, written as Word 97 wrote it: text, character and
+  paragraph formatting, the stylesheet, sections with their columns,
+  headers and footers with their fields, footnotes and endnotes, tables,
+  lists, pictures, links, fields, bookmarks, comments and marked changes,
+  and Summary Info.  What a .doc has no place for -- where the page
+  numbers begin, the page's colour, heading numbers, how a picture
+  floats -- goes in the document's custom properties for Word42 to read
+  back; Word shows those pictures inline.
   Lists are read from the list tables, so numbered lists come in
   numbered and bulleted ones bulleted.
 - **Table of Contents** — Insert ▸ Index and Tables ▸ Table of Contents puts one paragraph per

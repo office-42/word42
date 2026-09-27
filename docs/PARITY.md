@@ -101,7 +101,7 @@ yardstick.
 |---|---|---|---|
 | RTF read/write | full | full | full |
 | Word .doc read | Word 97's format; older files' text | native | yes |
-| Word .doc write | no | native | yes |
+| Word .doc write | Word 97's format, the default | native | yes |
 | Word .docx read/write | full for the model above | — | yes |
 | AbiWord .abw/.zabw | full for the model above | — | native |
 | OpenDocument .odt | read and written | no | yes |
@@ -147,7 +147,7 @@ page borders, headers and footers, notes, fields, a table of contents
 and an index, comments and revisions, spelling and the thesaurus,
 AutoCorrect, AutoText with its tips, the Document Map, mail merge,
 macros in a VBA dialect, Online Layout view, Compare Documents, the
-table of figures, and Word 97's own .doc read.  It lacks positioned text
+table of figures, and Word 97's own .doc read and written.  It lacks positioned text
 boxes and the Drawing toolbar's editable objects, Outline view, grammar,
 Equation Editor, versions, and vertical text; it exceeds Word 97 in
 Unicode, right-to-left text, PDF and every file format made since.

@@ -334,6 +334,18 @@ than their name, since names are localized. Tables are the cell and
 row-end marks in the text with the row's shape in the row-end
 paragraph's properties, emitted the same way the RTF reader emits them.
 
+`w42-doc-write.c` writes them, as Word 97 did, and is the default for
+Save.  The text of every story -- the main text, then footnotes, headers
+and footers, comments and endnotes -- goes as one piece of UTF-16, so
+nothing needs a code page; each run of character formatting and each
+paragraph becomes sprms in formatted disk pages, relative to the
+paragraph's style, which the stylesheet carries with the built-ins in
+Word's fixed places.  A second OLE2 writer builds the compound file,
+with a mini stream for the small streams.  Where Word's own files and the
+specification disagree, Word's files win: the tables of story positions
+end two past the story, as Word writes them, and Word opens nothing
+else.
+
 ## Spelling
 
 `w42-spell.c` wraps Enchant behind a five-call interface — check, suggest,

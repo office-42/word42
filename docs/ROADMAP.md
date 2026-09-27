@@ -78,7 +78,7 @@ and ruler following the pane being edited.
 - Drawing Windows metafiles: a metafile picture in a .doc or a .docx
   keeps its place as a labelled box and its bytes, but is not drawn.
 - Word .doc: the formatting of files from before Word 97 (only their
-  text is read today).  Writing .doc is probably never worth doing.
+  text is read today).
 - Translations (gettext; the menus are already marked translatable).
 - Accessibility: the drawn canvas exposes no text to screen readers.
 - Publishing: the Windows Store submission itself (the MSIX is built

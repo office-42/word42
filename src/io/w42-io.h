@@ -22,7 +22,7 @@ typedef enum {
   W42_FORMAT_TEXT,
   W42_FORMAT_RTF,
   W42_FORMAT_PDF,      /* written always; read when built with poppler */
-  W42_FORMAT_DOC,      /* Word 97's .doc; read only */
+  W42_FORMAT_DOC,      /* Word 97's .doc, the default for Save */
   W42_FORMAT_HTML,     /* read and written */
   W42_FORMAT_DOCX,     /* .docx, Word's XML format; read and written */
   W42_FORMAT_ABW,      /* AbiWord, plain or gzipped; read and written */
@@ -34,7 +34,7 @@ typedef enum {
 W42Format w42_io_guess_format (GFile *file);
 
 /* Whether a document read from `file` and written back to it comes out
- * as it went in.  Word 97 .doc is not written at all; a PDF, a web page,
+ * as it went in.  A PDF, a web page,
  * a presentation and an e-book are written as a rendering of the
  * document, which reading back does not undo -- an e-book is not read
  * back at all.  A document from one of those is saved somewhere else,

@@ -2111,9 +2111,9 @@ NATIVE (n_doc_save)
     /* Translators: ActiveDocument.SaveAs is macro code: keep it in
      * English. */
     return fail (s, l, _("The document has never been saved: use ActiveDocument.SaveAs \"name\""));
-  /* As File > Save: written back to a .doc, a PDF, a web page or a
-   * presentation, the file it was read from would be replaced by
-   * Word42's rendering of it. */
+  /* As File > Save: written back to a PDF, a web page or a presentation,
+   * the file it was read from would be replaced by Word42's rendering of
+   * it. */
   if (!w42_io_format_round_trips (file))
     /* Translators: ActiveDocument.SaveAs is macro code: keep it in
      * English. */
@@ -2130,7 +2130,8 @@ NATIVE (n_doc_save)
 }
 
 /* SaveAs(FileName[, FileFormat]): the extension decides the format, and
- * a name without one is Rich Text, as File > Save As has it. */
+ * a name without one takes Word's FileFormat -- wdFormatDocument, 0, the
+ * default, is a Word 97 .doc, as File > Save As has it. */
 NATIVE (n_doc_saveas)
 {
   Ctx *c = ctx_of (s);
@@ -2158,7 +2159,8 @@ NATIVE (n_doc_saveas)
     if (!w42_window_name_has_extension (base))
       {
         const char *ext = format == 16 || format == 12 ? ".docx" : format == 23 ? ".odt"
-                        : format == 8 ? ".html" : format == 17 ? ".pdf" : format == 2 ? ".txt" : ".rtf";
+                        : format == 8 ? ".html" : format == 17 ? ".pdf" : format == 2 ? ".txt"
+                        : format == 6 ? ".rtf" : ".doc";
         char *with = g_strconcat (name, ext, NULL);
 
         g_free (name);

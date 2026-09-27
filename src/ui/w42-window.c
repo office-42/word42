@@ -305,13 +305,14 @@ append_filter (GListStore *store, GtkFileFilter *filter)
 }
 
 /* What Open lists, or, with `saving`, what Save As offers: only what
- * Word42 writes, so no Word 97, whose .doc it reads and cannot write. */
+ * Word42 writes.  Word 97's .doc comes first, as the format documents
+ * are saved in unless another is chosen. */
 static GListModel *
 file_filters (gboolean saving)
 {
   GListStore *store = g_list_store_new (GTK_TYPE_FILE_FILTER);
   static const char * const all_docs[] = { "*.rtf", "*.docx", "*.doc", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
-  static const char * const all_written[] = { "*.rtf", "*.docx", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
+  static const char * const all_written[] = { "*.doc", "*.rtf", "*.docx", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
   static const char * const odt[] = { "*.odt", NULL };
   static const char * const pptx[] = { "*.pptx", NULL };
   static const char * const docx[] = { "*.docx", NULL };
@@ -324,15 +325,14 @@ file_filters (gboolean saving)
   static const char * const any[] = { "*", NULL };
 
   if (saving)
-    append_filter (store, named_filter (_("All Documents (*.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"),
+    append_filter (store, named_filter (_("All Documents (*.doc, *.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"),
                                         all_written));
   else
     append_filter (store, named_filter (_("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"),
                                         all_docs));
+  append_filter (store, named_filter (_("Word 97 (*.doc)"), doc));
   append_filter (store, named_filter (_("Rich Text Format (*.rtf)"), rtf));
   append_filter (store, named_filter (_("Word Document (*.docx)"), docx));
-  if (!saving)
-    append_filter (store, named_filter (_("Word 97 (*.doc)"), doc));
   append_filter (store, named_filter (_("OpenDocument Text (*.odt)"), odt));
   append_filter (store, named_filter (_("AbiWord (*.abw, *.zabw)"), abw));
   append_filter (store, named_filter (_("Web Pages (*.html)"), web));
@@ -1142,13 +1142,13 @@ on_replace_choice (int choice, gpointer data)
   g_free (r);
 }
 
-/* A name typed with no extension Word42 knows is saved as Rich Text,
- * which keeps everything, rather than as the plain text an unknown
- * extension would make of it -- and a dot does not make an extension:
- * "Mr. Smith" is a letter, not a file of type " Smith".  The box asked
- * about replacing the name as it was typed, though, not the name with
- * .rtf on the end, so a file already there under that name is asked
- * about here before anything is written over it. */
+/* A name typed with no extension Word42 knows is saved as a Word 97
+ * .doc, the format documents are saved in, rather than as the plain text
+ * an unknown extension would make of it -- and a dot does not make an
+ * extension: "Mr. Smith" is a letter, not a file of type " Smith".  The
+ * box asked about replacing the name as it was typed, though, not the
+ * name with .doc on the end, so a file already there under that name is
+ * asked about here before anything is written over it. */
 static void
 window_save_chosen (W42Window *self, GFile *chosen, SaveFinish finish)
 {
@@ -1164,7 +1164,7 @@ window_save_chosen (W42Window *self, GFile *chosen, SaveFinish finish)
     }
 
   parent = g_file_get_parent (chosen);
-  named = g_strconcat (base, ".rtf", NULL);
+  named = g_strconcat (base, ".doc", NULL);
   file = parent != NULL ? g_file_get_child (parent, named) : g_file_new_for_path (named);
   g_clear_object (&parent);
   g_free (base);
@@ -1252,9 +1252,9 @@ window_save_as (W42Window *self)
 
   /* A document read from a format Word42 writes back is offered under
    * its own name.  Anything else -- never saved, or read from a file that
-   * does not round trip -- is offered as Rich Text, the one format Word42
-   * writes that keeps all the document has: "letter.doc" becomes
-   * "letter.rtf", not "letter.doc.rtf". */
+   * does not round trip -- is offered as a Word 97 .doc, the format
+   * documents are saved in: "report.pdf" becomes "report.doc", not
+   * "report.pdf.doc". */
   if (file != NULL && w42_io_format_round_trips (file))
     gtk_file_dialog_set_initial_name (dialog, name);
   else
@@ -1264,7 +1264,7 @@ window_save_as (W42Window *self)
 
       if (file != NULL && dot != NULL && dot != name)
         *dot = '\0';
-      suggested = g_strconcat (name, ".rtf", NULL);
+      suggested = g_strconcat (name, ".doc", NULL);
       gtk_file_dialog_set_initial_name (dialog, suggested);
       g_free (suggested);
     }

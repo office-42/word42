@@ -93,7 +93,7 @@ throw away.
 | --- | --- | --- |
 | Rich Text Format (`.rtf`) | yes | yes |
 | Word document (`.docx`) | yes | yes |
-| Word 97 (`.doc`) | yes | — (save as `.rtf` or `.docx`) |
+| Word 97 (`.doc`) | yes | yes — the default |
 | OpenDocument Text (`.odt`) | yes | yes |
 | AbiWord (`.abw`, `.zabw`) | yes | yes |
 | Web page (`.html`, `.htm`) | yes | yes |
@@ -914,7 +914,7 @@ is read in an expression and set by assignment.
 | `Selection.Font` | `Bold`, `Italic`, `Underline` (`wdUnderlineNone`, `Single`, `Words`, `Double`), `StrikeThrough`, `Superscript`, `Subscript`, `AllCaps`, `SmallCaps`, `Size` (points), `Name`, `Color` (Word's `vb`/`wd` colours); a switch set to `wdToggle` turns over |
 | `Selection.ParagraphFormat` | `Alignment` (`wdAlignParagraphLeft`, `Center`, `Right`, `Justify`), `LeftIndent`, `RightIndent`, `FirstLineIndent`, `SpaceBefore`, `SpaceAfter` (points), `PageBreakBefore`, `KeepWithNext` (`True`, `False` or `wdToggle`) |
 | `Selection.Find` | `Text`, `Replacement.Text`, `MatchCase`, `MatchWholeWord`, `Forward`, `Wrap`, `ClearFormatting`; `Execute([FindText, MatchCase, MatchWholeWord, , , , Forward, Wrap, , ReplaceWith, Replace])` selects the next match and is True when one was found; `Replace:=wdReplaceOne` replaces the selected match, or the next, and selects the one after, and `wdReplaceAll` replaces them all; an empty `ReplaceWith` deletes |
-| `ActiveDocument` | `Name`, `FullName`, `Path`, `Saved`, `Save`, `SaveAs name[, format]` (the extension decides the format; none is Rich Text), `Close [wdDoNotSaveChanges]`, `Content.Text` / `Range.Text` (the whole text, read and set), `Words.Count`, `Characters.Count`, `Paragraphs.Count`, `Pages.Count`, `Tables.Count`, `ComputeStatistics(wdStatisticWords`...`)`, `Undo`, `Redo`, `Select`, `PrintOut` |
+| `ActiveDocument` | `Name`, `FullName`, `Path`, `Saved`, `Save`, `SaveAs name[, format]` (the extension decides the format; none is a Word 97 .doc, or Rich Text with `wdFormatRTF`), `Close [wdDoNotSaveChanges]`, `Content.Text` / `Range.Text` (the whole text, read and set), `Words.Count`, `Characters.Count`, `Paragraphs.Count`, `Pages.Count`, `Tables.Count`, `ComputeStatistics(wdStatisticWords`...`)`, `Undo`, `Redo`, `Select`, `PrintOut` |
 | `Application` | `Name`, `Version`, `StatusBar = text`, `ScreenUpdating`, `DisplayAlerts` (accepted), `ActiveWindow.Caption`, `Quit` |
 | `Documents` | `Count`, `Add`, `Open name`; the new document is the active one, and `Selection` and `ActiveDocument` go on in its window |
 | `Debug` | `Print a, b` to the editor's pane and the status bar |

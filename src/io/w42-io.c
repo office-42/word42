@@ -68,7 +68,6 @@ w42_io_format_round_trips (GFile *file)
 
   switch (w42_io_guess_format (file))
     {
-    case W42_FORMAT_DOC:
     case W42_FORMAT_PDF:
     case W42_FORMAT_HTML:
     case W42_FORMAT_PPTX:
