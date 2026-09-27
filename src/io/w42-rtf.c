@@ -1007,6 +1007,10 @@ w42_rtf_save (W42PieceTable      *pt,
     g_string_append_printf (out, "\\sectd\\cols%d\\colsx%d\n",
                             w42_page_columns (page), w42_page_column_gap (page));
 
+  /* Footnotes and endnotes both: without \fet2 Word reads \ftnalt the
+   * other way round, and every note is the other kind. */
+  g_string_append (out, "\\fet2");
+
   /* \titlepg and \facingp say that a title page and the left-hand pages
    * have their own, which \headerf and \headerl carry. */
   if (w42_pt_get_title_page (pt))
@@ -1423,6 +1427,7 @@ struct _RtfReader {
   gboolean       have_pending;
   gboolean       sect_pending;  /* a \\sect was read; the next paragraph starts it */
   gboolean       sect_seen;     /* past the first section */
+  int            fet;           /* \\fet: 1 when a plain \\footnote is an endnote */
   gboolean       pgn_restart;   /* the first section's \\pgnrestart */
   int            pgn_starts;    /* and its \\pgnstarts, 0 when none */
   int            pgn_from;      /* \\wordpgnfrom and \\wordpgnstart, ours; 0 when none */
@@ -2870,7 +2875,10 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
 
       table_sync (r);
       flush_text (r);
-      body = w42_pt_insert_footnote (r->pt, r->pos, reader_ap (r));
+      /* Under \\fet1 the document's notes are endnotes, and \\ftnalt
+       * makes one a footnote. */
+      body = r->fet == 1 ? w42_pt_insert_endnote (r->pt, r->pos, reader_ap (r))
+                         : w42_pt_insert_footnote (r->pt, r->pos, reader_ap (r));
       r->note_return = r->pos + 1;
       r->pos = body;
       r->in_note = TRUE;
@@ -2895,11 +2903,17 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     return;                 /* the mark is made by the footnote itself */
   if (g_str_equal (word, "ftnalt") && r->in_note)
     {
-      /* An endnote: the mark just made is one. */
+      /* The other kind than the document's: an endnote, unless \\fet1
+       * made endnotes the rule. */
       int id = w42_pt_footnote_at (r->pt, r->note_return - 1);
 
       if (id >= 0)
-        w42_pt_set_note_endnote (r->pt, id, TRUE);
+        w42_pt_set_note_endnote (r->pt, id, r->fet != 1);
+      return;
+    }
+  if (g_str_equal (word, "fet"))
+    {
+      r->fet = has_param ? param : 0;
       return;
     }
 
