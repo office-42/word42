@@ -312,10 +312,7 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
     case W42_FORMAT_ODT:
       return w42_odt_save (pt, page, file, error);
     case W42_FORMAT_DOC:
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                   _("Word42 reads Word .doc files but does not write them. "
-                     "Save as RTF or .docx, which other word processors read."));
-      return FALSE;
+      return w42_doc_save (pt, page, file, error);
     default:
       break;
     }

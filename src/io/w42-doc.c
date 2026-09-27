@@ -393,6 +393,7 @@ typedef struct {
   guint         papx_len;
   const guint8 *chpx;
   guint         chpx_len;
+  const char   *name;       /* interned; NULL when it has none */
 } DocStyle;
 
 /* A row's shape, from the table sprms on its row-end mark: its cells'
@@ -1532,6 +1533,21 @@ read_styles (Doc *doc)
       name_len = rd16 (std + cb_base);
       q = cb_base + 2 + 2 * name_len + 2;   /* past the name and its null */
       q = (q + 1) & ~1u;
+      if (name_len > 0 && cb_base + 2 + 2 * name_len <= cb)
+        {
+          GString *name = g_string_new (NULL);
+
+          for (guint c = 0; c < name_len; c++)
+            {
+              guint16 u = rd16 (std + cb_base + 2 + 2 * c);
+
+              if (u >= 0x20 && (u < 0xD800 || u >= 0xE000))
+                g_string_append_unichar (name, u);
+            }
+          if (name->len > 0)
+            style.name = g_intern_string (name->str);
+          g_string_free (name, TRUE);
+        }
 
       if (style.sgc == 1 && q + 2 <= cb)
         {
@@ -1591,11 +1607,20 @@ style_name_for (Doc *doc, int istd)
   style = &g_array_index (doc->styles, DocStyle, istd);
   switch (style->sti)
     {
+    case 0: return "Normal";
     case 1: return "Heading 1";
     case 2: return "Heading 2";
-    case 3: case 4: case 5: case 6: case 7: case 8: case 9: return "Heading 3";
+    case 3: return "Heading 3";
+    case 4: return "Heading 4";
+    case 5: return "Heading 5";
+    case 6: return "Heading 6";
+    case 7: return "Heading 7";
+    case 8: return "Heading 8";
+    case 9: return "Heading 9";
     case 62: return "Title";
-    default: return "Normal";
+    default:
+      /* Any other paragraph style by the name the file gives it. */
+      return style->sgc == 1 && style->name != NULL ? style->name : "Normal";
     }
 }
 
@@ -1920,7 +1945,7 @@ fill_para_fmt (Doc *doc, const DocPara *dp, W42ParaFmt *out)
   out->line_spacing = 0;
   out->line_spacing_pct = 0;
   if (pa->f_mult && pa->dya_line > 0 && pa->dya_line != 240)
-    out->line_spacing_pct = pa->dya_line * 100 / 240;
+    out->line_spacing_pct = (pa->dya_line * 100 + 120) / 240;
   else if (!pa->f_mult && pa->dya_line != 0)
     out->line_spacing = ABS (pa->dya_line);
   out->page_break_before = pa->page_break ? 1 : 0;
@@ -1946,6 +1971,62 @@ fill_para_fmt (Doc *doc, const DocPara *dp, W42ParaFmt *out)
     {
       out->indent_left = MAX (out->indent_left, 360);
       out->indent_first = -360;
+    }
+}
+
+/* The file's paragraph styles into the document's stylesheet, each with
+ * its formatting as its base and its own sprms make it. */
+static void
+register_styles (Doc *doc, W42PieceTable *pt)
+{
+  W42StyleSheet *sheet = w42_pt_stylesheet (pt);
+
+  for (guint i = 0; i < doc->styles->len; i++)
+    {
+      const DocStyle *s = &g_array_index (doc->styles, DocStyle, i);
+      const char *name = style_name_for (doc, (int) i);
+      DocPara dp;
+      Char ch;
+      W42Style style;
+
+      if (s->sgc != 1 || (i != 0 && g_str_equal (name, "Normal")))
+        continue;
+
+      memset (&dp, 0, sizeof dp);
+      para_defaults (&dp.pa);
+      char_defaults (&ch);
+      resolve_style (doc, (int) i, &dp.pa, &ch, 0);
+      dp.istd = (int) i;
+
+      memset (&style, 0, sizeof style);
+      style.name = g_intern_string (name);
+      fill_para_fmt (doc, &dp, &style.pa);
+      fill_char_fmt (doc, &ch, &style.ch);
+      style.pa.style = style.name;
+      style.outline = s->sti >= 1 && s->sti <= 9 ? s->sti : 0;
+      if (s->istd_base < doc->styles->len && s->istd_base != i &&
+          g_array_index (doc->styles, DocStyle, s->istd_base).sgc == 1)
+        style.based_on = g_intern_string (style_name_for (doc, s->istd_base));
+      style.pa_own = W42_STYLE_PA_ALL;
+      style.ch_own = W42_STYLE_CH_ALL;
+      g_free (dp.pa.row);
+      w42_stylesheet_set (sheet, &style);
+    }
+
+  /* What each style owns is what differs from its base, so that an edit
+   * to the base reaches it. */
+  for (guint i = 0; i < w42_stylesheet_size (sheet); i++)
+    {
+      const W42Style *style = w42_stylesheet_get (sheet, i);
+      const W42Style *base = style->based_on != NULL ? w42_stylesheet_find (sheet, style->based_on) : NULL;
+
+      if (base != NULL && base != style)
+        {
+          W42Style copy = *style;
+
+          w42_style_own_from_base (&copy, base, &copy.pa_own, &copy.ch_own);
+          w42_stylesheet_set (sheet, &copy);
+        }
     }
 }
 
@@ -3320,6 +3401,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   read_styles (&doc);
   read_fonts (&doc);
   read_lists (&doc);
+  register_styles (&doc, pt);
   read_page_setup (&doc, page);
   {
     /* The endnote references' cps, first in PlcfendRef; the references

@@ -1,4 +1,4 @@
-/* w42-doc.h - reading Word .doc files
+/* w42-doc.h - reading and writing Word .doc files
  *
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -12,7 +12,10 @@
  * header and footer, and footnotes.  Fields keep their result.  A file from before Word 97, whose
  * insides are laid out differently, yields its text and paragraphs and
  * nothing more.
- * Nothing here writes .doc; RTF is the way out.
+ *
+ * Writing makes what Word 97 wrote: the text as one piece of UTF-16,
+ * its character and paragraph formatting, the styles and fonts, and
+ * the page.
  */
 
 #pragma once
@@ -28,5 +31,10 @@ gboolean w42_doc_load (W42PieceTable *pt,
                        W42PageSetup  *page,
                        GFile         *file,
                        GError       **error);
+
+gboolean w42_doc_save (W42PieceTable      *pt,
+                       const W42PageSetup *page,
+                       GFile              *file,
+                       GError            **error);
 
 G_END_DECLS
