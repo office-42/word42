@@ -170,6 +170,13 @@ w42_para_fmt_set_tab_leader (W42ParaFmt *pa, int pos, W42TabKind kind,
   if (pos <= 0)
     return;
 
+  /* A tab stop is twips from the left margin, and the layout reads it as
+   * `pos - indent_left`; a .docx w:pos near the top of an int, with a
+   * hanging indent to subtract, overflowed that.  No stop past the widest
+   * page there is means anything, so the readers that pass a file's value
+   * straight through are held to it here, where they all come. */
+  pos = MIN (pos, 100800);
+
   w42_para_fmt_clear_tab (pa, pos);
   if (pa->n_tabs >= W42_MAX_TABS)
     return;
