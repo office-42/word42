@@ -16,6 +16,7 @@
 #include "w42-odt.h"
 #include "w42-pdf.h"
 #include "w42-rtf.h"
+#include "w42-wpd.h"
 
 #include <string.h>
 #include <glib/gi18n.h>
@@ -56,6 +57,10 @@ w42_io_guess_format (GFile *file)
     format = W42_FORMAT_PPTX;
   else if (g_str_has_suffix (name, ".epub"))
     format = W42_FORMAT_EPUB;
+  else if (g_str_has_suffix (name, ".wpd") || g_str_has_suffix (name, ".wp") ||
+           g_str_has_suffix (name, ".wp5") || g_str_has_suffix (name, ".wp6") ||
+           g_str_has_suffix (name, ".wp7"))
+    format = W42_FORMAT_WPD;
 
   g_free (name);
   return format;
@@ -240,8 +245,25 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
 
   {
     gboolean ok = FALSE, handled = TRUE;
+    W42Format format = w42_io_guess_format (file);
 
-    switch (w42_io_guess_format (file))
+    /* A WordPerfect document is one whatever it is called: DOS
+     * WordPerfect's were as often .doc as anything. */
+    {
+      GFileInputStream *in = g_file_read (file, NULL, NULL);
+      guint8 head[16];
+      gsize got = 0;
+
+      if (in != NULL)
+        {
+          g_input_stream_read_all (G_INPUT_STREAM (in), head, sizeof head, &got, NULL, NULL);
+          g_object_unref (in);
+          if (w42_wpd_sniff (head, got))
+            format = W42_FORMAT_WPD;
+        }
+    }
+
+    switch (format)
       {
       case W42_FORMAT_RTF:  ok = w42_rtf_load (pt, page, file, error); break;
       case W42_FORMAT_PDF:  ok = w42_pdf_import (pt, page, file, error); break;
@@ -251,6 +273,7 @@ w42_io_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error)
       case W42_FORMAT_ABW:  ok = w42_abw_load (pt, page, file, error); break;
       case W42_FORMAT_ODT:  ok = w42_odt_load (pt, page, file, error); break;
       case W42_FORMAT_PPTX: ok = w42_pptx_load (pt, page, file, error); break;
+      case W42_FORMAT_WPD:  ok = w42_wpd_load (pt, page, file, error); break;
       default: handled = FALSE; break;
       }
     if (handled)
@@ -312,6 +335,8 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
       return w42_odt_save (pt, page, file, error);
     case W42_FORMAT_DOC:
       return w42_doc_save (pt, page, file, error);
+    case W42_FORMAT_WPD:
+      return w42_wpd_save (pt, page, file, error);
     default:
       break;
     }

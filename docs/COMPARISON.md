@@ -41,7 +41,8 @@ short table.
 | HTML | read and write | read and write | read and write | read and write |
 | PDF | write; read text and pictures | write; read (converted) | write | write; read (as drawing) |
 | Plain text | read and write | read and write | read and write | read and write |
-| WordPerfect, and the rest | no | .wpd | .wpd, .kwd, and others | dozens |
+| WordPerfect .wpd | read (5.x and 6+) and write (6+) | read (converted) | read | read |
+| The rest | no | a few | .kwd, and others | dozens |
 | Presentations | .pptx as an outline, and a slide show | via PowerPoint | no | via Impress |
 
 ## What it can do

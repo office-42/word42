@@ -77,6 +77,17 @@ Early, but real. Word42 today is a working word processor:
   labelled box its size, its bytes kept for a save as .docx — page setup, header and footer with
   their page-number fields, footnotes. A .doc from before Word 97
   yields its text and paragraphs.
+- **WordPerfect** — File ▸ Open reads WordPerfect 6 and every version
+  since (.wpd), and the WordPerfect 5.x files of DOS -- known by what is
+  in them, since they were as often called .doc: text in every one of
+  WordPerfect's character sets, fonts, sizes and attributes, colour,
+  justification, spacing, indents, tab stops, margins and paper, columns,
+  tables with their merges and fills, headers and footers with their page
+  numbers, footnotes, endnotes and comments, and the document summary.
+  WordPerfect 5 gives its text, character formatting, paragraphs and
+  margins.  Save As writes WordPerfect 6, which every WordPerfect since
+  opens; pictures, bookmarks, links and styles' names are left out, and
+  lists are written as the numbers and bullets they show.
 - **Word .doc export** — .doc is the format documents are saved in unless
   another is chosen, written as Word 97 wrote it: text, character and
   paragraph formatting, the stylesheet, sections with their columns,

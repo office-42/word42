@@ -96,6 +96,7 @@ throw away.
 | Word 97 (`.doc`) | yes | yes — the default |
 | OpenDocument Text (`.odt`) | yes | yes |
 | AbiWord (`.abw`, `.zabw`) | yes | yes |
+| WordPerfect (`.wpd`, `.wp`) | 5.x and 6 onwards | 6 onwards |
 | Web page (`.html`, `.htm`) | yes | yes |
 | Plain text (`.txt`) | yes | yes |
 | Presentation (`.pptx`) | yes, as an outline, with pictures and notes | yes, from the outline |

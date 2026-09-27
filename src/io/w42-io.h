@@ -28,7 +28,8 @@ typedef enum {
   W42_FORMAT_ABW,      /* AbiWord, plain or gzipped; read and written */
   W42_FORMAT_ODT,      /* OpenDocument text; read and written */
   W42_FORMAT_PPTX,     /* slides: PowerPoint's presentation, read and written */
-  W42_FORMAT_EPUB      /* an e-book; written only */
+  W42_FORMAT_EPUB,     /* an e-book; written only */
+  W42_FORMAT_WPD       /* WordPerfect: 5 and 6 on read, 6 written */
 } W42Format;
 
 W42Format w42_io_guess_format (GFile *file);

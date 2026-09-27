@@ -311,8 +311,9 @@ static GListModel *
 file_filters (gboolean saving)
 {
   GListStore *store = g_list_store_new (GTK_TYPE_FILE_FILTER);
-  static const char * const all_docs[] = { "*.rtf", "*.docx", "*.doc", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
-  static const char * const all_written[] = { "*.doc", "*.rtf", "*.docx", "*.odt", "*.abw", "*.zabw", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
+  static const char * const all_docs[] = { "*.rtf", "*.docx", "*.doc", "*.odt", "*.abw", "*.zabw", "*.wpd", "*.wp", "*.wp5", "*.wp6", "*.wp7", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
+  static const char * const all_written[] = { "*.doc", "*.rtf", "*.docx", "*.odt", "*.abw", "*.zabw", "*.wpd", "*.txt", "*.text", "*.pdf", "*.html", "*.htm", "*.pptx", NULL };
+  static const char * const wpd[] = { "*.wpd", "*.wp", "*.wp5", "*.wp6", "*.wp7", NULL };
   static const char * const odt[] = { "*.odt", NULL };
   static const char * const pptx[] = { "*.pptx", NULL };
   static const char * const docx[] = { "*.docx", NULL };
@@ -325,16 +326,17 @@ file_filters (gboolean saving)
   static const char * const any[] = { "*", NULL };
 
   if (saving)
-    append_filter (store, named_filter (_("All Documents (*.doc, *.rtf, *.docx, *.odt, *.abw, *.txt, *.pdf, *.html)"),
+    append_filter (store, named_filter (_("All Documents (*.doc, *.rtf, *.docx, *.odt, *.abw, *.wpd, *.txt, *.pdf, *.html)"),
                                         all_written));
   else
-    append_filter (store, named_filter (_("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.txt, *.pdf, *.html)"),
+    append_filter (store, named_filter (_("All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.wpd, *.txt, *.pdf, *.html)"),
                                         all_docs));
   append_filter (store, named_filter (_("Word 97 (*.doc)"), doc));
   append_filter (store, named_filter (_("Rich Text Format (*.rtf)"), rtf));
   append_filter (store, named_filter (_("Word Document (*.docx)"), docx));
   append_filter (store, named_filter (_("OpenDocument Text (*.odt)"), odt));
   append_filter (store, named_filter (_("AbiWord (*.abw, *.zabw)"), abw));
+  append_filter (store, named_filter (saving ? _("WordPerfect 6 (*.wpd)") : _("WordPerfect (*.wpd, *.wp)"), wpd));
   append_filter (store, named_filter (_("Web Pages (*.html)"), web));
   append_filter (store, named_filter (_("Presentations (*.pptx)"), pptx));
   append_filter (store, named_filter (_("Text Documents (*.txt)"), text));
@@ -349,7 +351,8 @@ gboolean
 w42_window_name_has_extension (const char *name)
 {
   static const char * const known[] = { ".rtf", ".docx", ".doc", ".odt", ".abw",
-                                        ".zabw", ".txt", ".text", ".html", ".htm",
+                                        ".zabw", ".wpd", ".wp", ".wp5", ".wp6", ".wp7",
+                                        ".txt", ".text", ".html", ".htm",
                                         ".pdf", ".pptx", ".ppsx", ".epub", NULL };
   char *lower;
   gboolean yes = FALSE;

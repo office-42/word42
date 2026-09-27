@@ -102,6 +102,7 @@ yardstick.
 | RTF read/write | full | full | full |
 | Word .doc read | Word 97's format; older files' text | native | yes |
 | Word .doc write | Word 97's format, the default | native | yes |
+| WordPerfect .wpd | 5.x and 6+ read, 6+ written | read (converter) | read |
 | Word .docx read/write | full for the model above | — | yes |
 | AbiWord .abw/.zabw | full for the model above | — | native |
 | OpenDocument .odt | read and written | no | yes |

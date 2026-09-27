@@ -14,8 +14,8 @@ columns, page borders, find and replace, spelling, a thesaurus,
 hyphenation, mail merge, macros in a dialect of VBA, a Document Map,
 Compare Documents, a split window, Normal, Online Layout and Page Layout
 views and print preview — reading and writing
-RTF, OpenDocument .odt, Word .docx and .doc, AbiWord .abw, HTML, PDF and
-plain text, and writing EPUB e-books. Word 97 is the yardstick: its menus
+RTF, OpenDocument .odt, Word .docx and .doc, WordPerfect .wpd, AbiWord .abw,
+HTML, PDF and plain text, and writing EPUB e-books. Word 97 is the yardstick: its menus
 are the specification and [docs/PARITY.md](docs/PARITY.md) keeps the score against it.
 [docs/STATUS.md](docs/STATUS.md) lists what it does,
 [Word42.md](Word42.md) what it does not do yet,
