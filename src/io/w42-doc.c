@@ -1928,20 +1928,39 @@ read_bookmarks (Doc *doc)
   g_ptr_array_free (names, TRUE);
 }
 
-static const char *comment_at (Doc *doc, guint32 cp);
+/* What span_at answered last, and the cps it holds for, [from, until). */
+typedef struct {
+  guint32     from, until;
+  const char *name;
+} SpanCache;
 
-/* The bookmark the character at `cp` is in, or NULL. */
+/* The first of `spans` -- the bookmarks, or the comments -- the
+ * character at `cp` is in: its name, or NULL.  Every character asks, so
+ * the answer is kept until the next cp where one of them starts or ends,
+ * since nothing changes before that.  Asked of all of them each time,
+ * sixteen thousand bookmarks made every character of the text a walk
+ * through the lot. */
 static const char *
-bookmark_at (Doc *doc, guint32 cp)
+span_at (GArray *spans, guint32 cp, SpanCache *cache)
 {
-  for (guint i = 0; doc->bookmarks != NULL && i < doc->bookmarks->len; i++)
-    {
-      const DocBookmark *bm = &g_array_index (doc->bookmarks, DocBookmark, i);
+  if (cp >= cache->from && cp < cache->until)
+    return cache->name;
 
-      if (cp >= bm->start && cp < bm->end)
-        return bm->name;
+  cache->from = cp;
+  cache->until = G_MAXUINT32;
+  cache->name = NULL;
+  for (guint i = 0; spans != NULL && i < spans->len; i++)
+    {
+      const DocBookmark *s = &g_array_index (spans, DocBookmark, i);
+
+      if (cache->name == NULL && cp >= s->start && cp < s->end)
+        cache->name = s->name;
+      if (s->start > cp)
+        cache->until = MIN (cache->until, s->start);
+      if (s->end > cp)
+        cache->until = MIN (cache->until, s->end);
     }
-  return NULL;
+  return cache->name;
 }
 
 /* The SEPX of section `k`: its grpprl, or NULL. */
@@ -2714,6 +2733,7 @@ typedef struct {
    * is the same. */
   guint          shape_from, shape_to;
   const RowShape *shape;
+  SpanCache      bookmark_cache, comment_cache;   /* span_at's */
 } Builder;
 
 static void
@@ -2725,6 +2745,14 @@ flush_run (Builder *b)
       b->pos += g_utf8_strlen (b->run->str, -1);
       g_string_truncate (b->run, 0);
     }
+}
+
+static int
+cp_cmp (gconstpointer a, gconstpointer b)
+{
+  guint32 x = *(const guint32 *) a, y = *(const guint32 *) b;
+
+  return x < y ? -1 : x > y ? 1 : 0;
 }
 
 /* The text of one paragraph, run by run of character formatting. */
@@ -2828,11 +2856,11 @@ emit_text (Builder *b, const DocPara *dp)
            * together. */
           W42Fmt pfmt;
           int id = (int) (b->note_ids->len + b->end_ids->len);
-          gboolean endnote = FALSE;
+          gboolean endnote;
           W42ApIdx mark_ap;
 
-          for (guint k = 0; doc->edn_refs != NULL && k < doc->edn_refs->len && !endnote; k++)
-            endnote = g_array_index (doc->edn_refs, guint32, k) == cp;
+          endnote = doc->edn_refs != NULL &&
+                    g_array_binary_search (doc->edn_refs, &cp, cp_cmp, NULL);
           w42_fmt_init_default (&pfmt);
           fill_char_fmt (doc, &ch, &pfmt.ch);
           flush_run (b);
@@ -2929,8 +2957,8 @@ emit_text (Builder *b, const DocPara *dp)
       fill_char_fmt (doc, &ch, &fmt.ch);
       fmt.ch.link = link;
       fmt.ch.field = field;
-      fmt.ch.bookmark = bookmark_at (doc, cp);
-      fmt.ch.comment = comment_at (doc, cp);
+      fmt.ch.bookmark = span_at (doc->bookmarks, cp, &b->bookmark_cache);
+      fmt.ch.comment = span_at (doc->comments, cp, &b->comment_cache);
       if (ch.rmark_del)
         fmt.ch.revision = 2;    /* a tracked change: kept, and marked */
       else if (ch.rmark_ins)
@@ -3251,6 +3279,7 @@ static void
 fill_notes (Doc *doc, W42PieceTable *pt, GArray *ids, guint plc, guint32 base, guint32 ccp)
 {
   guint32 fc, lcb;
+  guint32 done = 0;             /* where the last note's text ended */
 
   if (ids->len == 0)
     return;
@@ -3268,8 +3297,13 @@ fill_notes (Doc *doc, W42PieceTable *pt, GArray *ids, guint plc, guint32 base, g
       gboolean first = TRUE;
       int field_depth = 0, code_depth = 0;
 
-      if (pos == (gsize) -1 || e <= a || e > ccp)
+      /* The notes follow one another through the story.  One that starts
+       * before the last ended is not a note but the same text again: a
+       * table going 0, n, 0, n made every other note the whole story,
+       * and a few thousand of them gigabytes of text. */
+      if (pos == (gsize) -1 || e <= a || e > ccp || a < done)
         continue;               /* a note the file does not really have */
+      done = e;
       text = g_string_new (NULL);
 
       /* Word's note text starts with the mark and a space; the space
@@ -3577,6 +3611,7 @@ read_comments (Doc *doc)
 {
   guint32 fc_r, lcb_r, fc_t, lcb_t, fc_s, lcb_s, fc_f, lcb_f, fc_l, lcb_l, base;
   guint n, n_bk = 0;
+  guint32 done = 0;             /* where the last comment's words ended */
 
   doc->comments = g_array_new (FALSE, FALSE, sizeof (DocBookmark));
   fib_fclcb (doc, 4, &fc_r, &lcb_r);
@@ -3602,7 +3637,9 @@ read_comments (Doc *doc)
       DocBookmark c = { ref, ref, NULL };
       char *text;
 
-      if (b <= a || b > (guint32) doc->ccp_atn + 1)
+      /* As with the notes: each comment's words start where the last
+       * one's ended or later, or the story is read again for each. */
+      if (b <= a || b > (guint32) doc->ccp_atn + 1 || a < done)
         continue;
       /* The comment's bookmark: the one with its tag.  Each entry of
        * SttbfAtnBkmk is an empty name and ten bytes, the tag at 2. */
@@ -3619,25 +3656,12 @@ read_comments (Doc *doc)
           }
       if (c.end <= c.start)
         continue;
+      done = b;
       text = story_text (doc, base + a, base + b);
       c.name = g_intern_string (text);
       g_free (text);
       g_array_append_val (doc->comments, c);
     }
-}
-
-/* What the comment on the character at `cp` says, or NULL. */
-static const char *
-comment_at (Doc *doc, guint32 cp)
-{
-  for (guint i = 0; doc->comments != NULL && i < doc->comments->len; i++)
-    {
-      const DocBookmark *c = &g_array_index (doc->comments, DocBookmark, i);
-
-      if (cp >= c->start && cp < c->end)
-        return c->name;
-    }
-  return NULL;
 }
 
 /* Header story `i` of PlcfHdd: its text, with its alignment, or NULL
@@ -3928,6 +3952,10 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
 
           g_array_append_val (doc.edn_refs, cp);
         }
+    /* In order, to be looked up by halves: each of the text's note marks
+     * asks, and a scan of them all for each took the square of what a
+     * table stream of them can hold. */
+    g_array_sort (doc.edn_refs, cp_cmp);
   }
 
   build_document (&doc, pt);
