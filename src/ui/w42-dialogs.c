@@ -64,6 +64,30 @@ on_dialog_key (GtkEventControllerKey *controller, guint keyval,
   return GDK_EVENT_PROPAGATE;
 }
 
+/* Enter in a number field presses the box's default button, with the
+ * number as typed.  The spin button is asked to, but keeps Enter to
+ * itself; so the box takes it first, before the field sees it. */
+static gboolean
+on_dialog_enter (GtkEventControllerKey *controller, guint keyval,
+                 guint keycode, GdkModifierType state, gpointer data)
+{
+  GtkWindow *window = GTK_WINDOW (data);
+  GtkWidget *focus = gtk_window_get_focus (window);
+  GtkWidget *spin = focus != NULL ? gtk_widget_get_ancestor (focus, GTK_TYPE_SPIN_BUTTON) : NULL;
+  GtkWidget *ok = gtk_window_get_default_widget (window);
+
+  (void) controller; (void) keycode;
+
+  if ((keyval != GDK_KEY_Return && keyval != GDK_KEY_KP_Enter) ||
+      (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SHIFT_MASK)) != 0 ||
+      spin == NULL || ok == NULL || !gtk_widget_is_sensitive (ok))
+    return GDK_EVENT_PROPAGATE;
+
+  gtk_spin_button_update (GTK_SPIN_BUTTON (spin));
+  gtk_widget_activate (ok);
+  return GDK_EVENT_STOP;
+}
+
 /* When a dialog goes, the keyboard goes back to the document.  Left to
  * itself GTK hands focus to whichever widget is next in the window, and the
  * first Tab after closing a dialog then walks the toolbar instead of the
@@ -86,6 +110,10 @@ dialog_shell (GtkWindow *parent, const char *title, GtkWidget **content,
   GtkEventController *key = gtk_event_controller_key_new ();
 
   g_signal_connect (key, "key-pressed", G_CALLBACK (on_dialog_key), window);
+  gtk_widget_add_controller (window, key);
+  key = gtk_event_controller_key_new ();
+  gtk_event_controller_set_propagation_phase (key, GTK_PHASE_CAPTURE);
+  g_signal_connect (key, "key-pressed", G_CALLBACK (on_dialog_enter), window);
   gtk_widget_add_controller (window, key);
   /* Bound to the view's life: a box destroyed after its window's children
    * must not reach into a view that is gone. */

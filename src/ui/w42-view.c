@@ -1540,6 +1540,22 @@ w42_view_go_to_page (W42View *self, int page)
 
   if (hit != NULL)
     view_set_caret (self, line_box_pos (layout, hit), FALSE);
+
+  /* In Page Layout the page is shown from its top edge, as a page turned
+   * to is, rather than scrolled only as far as its first line. */
+  if (hit != NULL && paged == NULL && self->mode == W42_VIEW_PAGE_LAYOUT)
+    {
+      GtkWidget *sw = gtk_widget_get_ancestor (GTK_WIDGET (self), GTK_TYPE_SCROLLED_WINDOW);
+
+      if (sw != NULL)
+        {
+          GtkAdjustment *vadj = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (sw));
+          double top = view_page_origin_y (self, hit->page) - PAGE_GAP / 2.0;
+          double upper = gtk_adjustment_get_upper (vadj) - gtk_adjustment_get_page_size (vadj);
+
+          gtk_adjustment_set_value (vadj, CLAMP (top, 0.0, MAX (upper, 0.0)));
+        }
+    }
   g_clear_pointer (&paged, w42_layout_free);
 }
 
