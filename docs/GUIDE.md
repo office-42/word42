@@ -101,7 +101,7 @@ throw away.
 | Plain text (`.txt`) | yes | yes |
 | Presentation (`.pptx`) | yes, as an outline, with pictures and notes | yes, from the outline |
 | E-book (`.epub`) | — | export only |
-| PDF (`.pdf`) | text only, where the PDF library is present | export only |
+| PDF (`.pdf`) | yes, where the PDF library is present: the whole document from one Word42 saved, the text, pictures, headings and links from any other | yes, with the document inside |
 | LaTeX (`.tex`) | — | yes |
 
 **File ▸ Save** (Ctrl+S) writes the document back in the format it came in.
@@ -115,7 +115,76 @@ What survives a round trip depends on the format. RTF, `.docx`, `.odt` and
 headers and footers, revision marks. HTML carries the text and most of its
 formatting, the Summary Info, bookmarks, frames and drop caps included; a
 page from Word or LibreOffice comes in with its stylesheet followed. Plain
-text carries the text.
+text carries the text. A PDF saved by Word42 carries the whole document
+too, inside it; one made by another program comes in as its pages can be
+read (see **PDF files** below).
+
+### PDF files
+
+Word42 opens a PDF, lets you edit it, and saves it back as a PDF.
+
+**Opening a PDF.** A PDF that Word42 saved opens as the document it was —
+styles, tables, notes, fields, headers and footers, revision marks — because
+Word42 keeps the document inside every PDF it saves, as an OpenDocument
+file attached to it (any PDF reader lists it among the file's attachments).
+A PDF from anywhere else is read from its pages, which is all any program
+can do with one: the text with its fonts, sizes and colours; the columns in
+the order they are read; the paragraphs found from where the lines sit,
+with their alignment — left, centred, right or justified — their indents
+and the space above them; the pictures where they stood between the
+paragraphs; the web links, still links; the PDF's bookmarks as headings,
+so that its outline comes back as the Document Map; the header and footer
+that repeat on every page as the document's own, with the page number a
+{PAGE} field; the title, author, subject and keywords as the Summary Info;
+right-to-left text in the order it is read; and each page after the first
+starting a new page, so that the pages come out where they were for as
+long as the text still fits them. Tables come in as their text.
+
+A PDF that has a **password to open** asks for it before it opens. One with
+a **password to modify** — a PDF that allows printing and copying but no
+changes — asks for that password, or offers to open it **Read Only**, as
+Word 97 did for a reserved document: a read-only document is saved under a
+new name with **File ▸ Save As**, and the PDF stays as it was.
+
+**Saving a PDF.** **File ▸ Save** writes the document back to its PDF, with
+the passwords it was opened with, and the document inside it again. The
+first time a PDF made by another program is saved, Word42 asks first,
+since Word42 lays the pages out again in its own way and the pages the PDF
+had are not kept. **File ▸ Save As** saves any document as a PDF the same
+way: pick *PDF Documents* in the dialog, or type `.pdf`. A signed PDF is a
+new file once it is saved, which the old signature does not cover; sign it
+again in PDF Options.
+
+**File ▸ PDF Options** sets how this document's PDFs are written — the ones
+it is saved as, and the ones File ▸ Export as PDF makes:
+
+- **Password to open** encrypts the PDF with AES-256, the strongest the
+  format has (PDF 2.0's, which every reader since Acrobat X opens). Without
+  the password nothing in the file can be read, the document inside it
+  included.
+- **Password to modify** is the owner password: a reader allows printing
+  and copying, and no changes, to anyone who does not have it. Without a
+  password to open, anyone can still read the PDF.
+- **Compress the file** packs the PDF into compressed object streams,
+  deflates everything as far as it goes, and writes a picture that appears
+  twice only once. Off, the PDF is written as PDF 1.4 readers read it.
+- **Pictures** scales down any picture shown larger than *Print (220
+  ppi)*, *Screen (150 ppi)* or *E-mail (96 ppi)*, and saves photographs
+  again as JPEG; the document keeps its pictures as they are. A novel with
+  a photograph on every chapter's first page goes from megabytes to a few
+  hundred kilobytes.
+- **Sign the PDF** signs it with the certificate and private key in a
+  PKCS #12 file (`.p12` or `.pfx`) and its password, with a reason, a
+  place and a way to reach you if you like. The signature is PAdES's
+  (CMS, SHA-256), invisible on the page and shown in the reader's
+  signature panel; it covers every byte of the file, so that any change
+  afterwards shows. Word42 tries the certificate when you press OK.
+
+The passwords, the certificate's password and whether to sign belong to
+this document and are never written to disk; how PDFs are packed, and which
+certificate signs, are kept for the next document. A document with a
+password is not copied to the AutoRecover folder, since the copy would be
+the document without it.
 
 ### LaTeX mode
 
@@ -214,7 +283,8 @@ Tools ▸ Options the first time.
 Every two minutes — or as often as Tools ▸ Options ▸ Save says — a
 document with unsaved changes is copied into Word42's data directory.
 Saving or closing cleanly removes the copy, and so does undoing or
-reverting back to the saved text. If Word42 stops without either — a power
+reverting back to the saved text. A PDF with a password is not copied: the
+copy would be the document without its password. If Word42 stops without either — a power
 cut, a crash — the next start opens the copy as the document it was,
 marked as changed, and tells you so. The copy stays on disk until the
 recovered document is saved, closed or copied again, so a second crash
@@ -1243,7 +1313,11 @@ print.
 all, with its headings as the PDF's bookmarks — a book's parts and
 chapters in the reader's side panel — and the Summary Info's title,
 author, subject and keywords as the PDF's own. A JPEG picture goes in as
-the JPEG it is, so an illustrated book stays a few megabytes.
+the JPEG it is, so an illustrated book stays a few megabytes. The PDF has
+the passwords, packing and signature that File ▸ PDF Options sets, but not
+the document inside it: an export is the pages, to send, and the document
+stays in the file it came from. To keep a document as a PDF that Word42 can
+open again as it was, save it as one.
 
 **File ▸ Export as Web Page** writes one self-contained HTML file:
 headings, paragraphs with their alignment and indents, runs with their
@@ -1287,6 +1361,32 @@ word42 --convert-to=docx Morild.odt              # for an editor who uses Word
 FORMAT is the extension to write: `pdf`, `epub`, `odt`, `docx`, `rtf`,
 `html`, `txt`, `abw` or `pptx`. The exit status is 0 when every file was
 converted and 1 when one could not be; each file written is printed.
+
+A PDF made this way is an export, compressed and nothing more, unless
+these ask for more:
+
+| Option | What it does |
+| --- | --- |
+| `--pdf-password=PASSWORD` | the password to open |
+| `--pdf-modify-password=PASSWORD` | the password to modify |
+| `--pdf-sign=FILE.p12` | sign with the certificate in this PKCS #12 file |
+| `--pdf-sign-password=PASSWORD` | that file's password |
+| `--pdf-reason=`, `--pdf-location=`, `--pdf-contact=` | the signature's reason, place and contact |
+| `--pdf-pictures=print\|screen\|email\|PPI` | scale pictures down to 220, 150, 96 or PPI pixels an inch |
+| `--pdf-uncompressed` | write the PDF plainly, for PDF 1.4 readers |
+| `--pdf-keep-document` | put the document inside, so that Word42 opens it as it was |
+| `--password=PASSWORD` | open protected PDFs given as FILE with this password |
+
+A password typed on the command line can be seen by every user of the
+machine in the list of running programs. Each one can instead be given as
+`env:NAME`, the environment variable NAME, or `file:PATH`, the first line
+of a file, as OpenSSL takes them:
+
+```sh
+export CERT_PASS=...
+word42 --convert-to=pdf --pdf-pictures=email --pdf-sign=kari.p12 \
+       --pdf-sign-password=env:CERT_PASS --pdf-reason="Approved" Contract.odt
+```
 
 ---
 

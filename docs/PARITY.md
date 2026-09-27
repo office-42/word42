@@ -107,9 +107,9 @@ yardstick.
 | AbiWord .abw/.zabw | full for the model above | — | native |
 | OpenDocument .odt | read and written | no | yes |
 | HTML read/write | full | read and write | full |
-| PDF write | full | no | yes |
+| PDF write | full, with the document inside; compressed, with pictures scaled down; passwords (AES-256) and signatures (PAdES) | no | yes |
 | LaTeX write, and PDF typeset by LaTeX | yes | no | write |
-| PDF read (poppler) | text and pictures | no | no |
+| PDF read (poppler) | Word42's own as the document it was; any other's text, pictures, paragraphs, headings, links, header and footer; with its passwords | no | no |
 | Plain text | full | full | full |
 
 ## Views and application

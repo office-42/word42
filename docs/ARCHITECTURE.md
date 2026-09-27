@@ -429,13 +429,51 @@ keeps the size that was asked for; only the display yields.
 
 ## PDF
 
-Export is cairo's PDF surface fed by the same line boxes the screen paints.
-Import is poppler, and is lossy by nature: a PDF holds characters with
-positions, not paragraphs, so the paragraphs are guessed — a line ending in
-sentence punctuation followed by one starting with a capital is a break; a
-hyphen at a line end is a word the typesetter broke; anything else is a wrap.
-The pictures come out as PNG and go in after the text, each in a paragraph of
-its own, since a text flow cannot represent where on the page they were.
+Export is cairo's PDF surface fed by the same line boxes the screen paints,
+into memory. `w42-pdffile.c` then reads cairo's output back as objects — a
+classic cross-reference table or a compressed one, object streams, lengths
+given as references — and writes the whole file out again: the objects
+nothing reaches (cairo's length objects) left out, the rest numbered afresh,
+every stream deflated at the best level or left as it was when that is not
+smaller, byte-identical streams written once, and the non-stream objects
+packed into object streams behind a compressed cross-reference stream. Before
+it is written, `w42-pdf.c` adds what cairo has no way to say: the document
+itself as an `.odt` embedded file marked `/AFRelationship /Source`, the
+`/Encrypt` dictionary, and a signature field. The writer takes an encryption
+callback, which `w42-pdfsec.c` supplies — the standard security handler at
+revision 6, AES-256 with the SASLprep-normalised password hashed by ISO
+32000-2's Algorithm 2.B, through GnuTLS — and a RAW object kind whose text
+and offset it reports, which is how the signature's `/ByteRange` and
+`/Contents` placeholders are found once the file is final. The CMS
+signature (GnuTLS's PKCS #7, detached, SHA-256, with the ESS
+signing-certificate-v2 attribute PAdES requires) is computed over the file
+less the `/Contents` string and written into it in hexadecimal. The parser
+reads only what this process has just written; foreign PDFs go through
+poppler.
+
+A picture shown larger than the chosen resolution is scaled down as it is
+painted (`w42_layout_set_picture_ppi`), and a JPEG is encoded again as a
+JPEG with the result attached as cairo's JPEG MIME data, so that cairo
+embeds it with DCTDecode.
+
+Import of a PDF Word42 saved reads the embedded `.odt` (after checking its
+MD5 against the file specification's) and is lossless. Any other goes
+through poppler and is lossy by nature: a PDF holds characters with
+positions, not paragraphs, so the paragraphs are guessed — a gap, a step in
+or out, a line that stopped short of its column's edge, a change of font, a
+sentence that ended followed by one that begins. The column's edges are the
+furthest out that two lines agree on, so one stop hung in the margin does
+not move them. A paragraph's lines then say its alignment — all centred,
+all flush right, all but the last filling the measure — and its first-line
+and left indents. The PDF's outline gives the headings, matched against
+paragraphs on the page it points to; a first pass over the pages' top and
+bottom eighths finds the running header and footer, which become the
+document's with the page number as a field. Poppler marks each right-to-left
+word with embedding controls and gives the words in the order they stand on
+the page; the controls are taken out, so that the text and the glyph boxes
+line up, and remembered, so that each line can be put back into reading
+order. The pictures come out as PNG and go in between the paragraphs, at
+the height they stood in their column.
 
 ## Two views, one engine
 

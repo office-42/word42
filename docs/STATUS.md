@@ -336,8 +336,8 @@ Early, but real. Word42 today is a working word processor:
 - **Two views** — Normal, a continuous galley, and Page Layout, with real
   pagination onto US Letter sheets, margins and text boundaries. Both share
   one layout engine and one ruler; zoom runs from 25% to 500%.
-- **Files** — RTF, Word .docx, AbiWord .abw, HTML and plain text, read
-  and written; Word .doc and PDF read. The RTF reader handles
+- **Files** — RTF, Word .docx, AbiWord .abw, HTML, PDF and plain text,
+  read and written; Word .doc read. The RTF reader handles
   what Word and WordPad actually emit: font and colour tables, character runs,
   alignment, indents including hanging ones, space before and after, line
   spacing multiples, code-page bytes, Unicode escapes with surrogate pairs,
@@ -484,15 +484,30 @@ Early, but real. Word42 today is a working word processor:
   comment, a version at every save when the document asks for it, and
   the list, to open, compare with or restore. A commit takes the
   document's file alone, whatever else is staged.
-- **PDF** — File ▸ Export as PDF writes the document through the same layout
-  engine and painting code the screen and printer use. Opening a `.pdf`
-  imports it: each run's font, size, colour and underline; the columns read
-  in order, found from the bands of the page no character sits in, so a
-  two-column CV does not come back interleaved line by line; paragraphs
-  recovered from the geometry — a gap, a line that stopped short of its
-  column, a step in or out, a change of type, a bullet or a number; a
-  heading set in tracked capitals closed back up; the pictures; and the page
-  with its margins. A PDF is a picture of a document rather than the
+- **PDF** — read, edited and saved back. File ▸ Export as PDF and Save As
+  a PDF write the document through the same layout engine and painting code
+  the screen and printer use; what cairo writes is then read back as
+  objects and finished: packed into compressed object streams with copies
+  written once, pictures scaled down to a chosen resolution, encrypted with
+  AES-256 behind a password to open and a password to modify, and signed
+  with a PKCS #12 certificate (PAdES, CMS over the whole file). A PDF that
+  is the document's own file carries the document inside it as `.odt`, so
+  that opening it gives back the document as it was and File ▸ Save writes
+  it back with its passwords; a PDF from another program asks before it is
+  first saved over. File ▸ PDF Options sets all of it, and `--convert-to=pdf`
+  takes the same as `--pdf-` options. Opening a `.pdf` from elsewhere asks
+  for its password, offers Read Only for one reserved by a password to
+  modify, and imports it: each run's font, size, colour and underline; the
+  columns read in order, found from the bands of the page no character sits
+  in, so a two-column CV does not come back interleaved line by line;
+  paragraphs recovered from the geometry — a gap, a line that stopped short
+  of its column, a step in or out, a change of type, a bullet or a number —
+  with their alignment, indents and space above; a heading set in tracked
+  capitals closed back up; the bookmarks as headings; web links; the
+  pictures between the paragraphs where they stood; the running header and
+  footer as the document's own, page numbers as fields; right-to-left text
+  in reading order; a page break for each page; the Summary Info; and the
+  page with its margins. A PDF is a picture of a document rather than the
   document, so that is what there is to recover.
 - **Printing** — File ▸ Print opens Word42's Print box, Word 97's layout:
   page range (All, Current page, Selection, Pages as `1,3,5-12`), copies

@@ -39,7 +39,7 @@ short table.
 | OpenDocument .odt | read and write | read and write | read and write | native |
 | AbiWord .abw | read and write | no | native | read (import filter) |
 | HTML | read and write | read and write | read and write | read and write |
-| PDF | write; read text and pictures | write; read (converted) | write | write; read (as drawing) |
+| PDF | read, edit and save back; passwords, signatures | write; read (converted) | write | write; read (as drawing) |
 | Plain text | read and write | read and write | read and write | read and write |
 | WordPerfect .wpd | read (5.x and 6+) and write (6+) | read (converted) | read | read |
 | LaTeX .tex | write, typeset to PDF, and a live preview | no | write | write |

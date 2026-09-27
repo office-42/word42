@@ -2,6 +2,41 @@
 
 ## 1.0.6 (in development)
 
+### New
+
+- **PDFs are read, edited and saved back as PDFs.** Every PDF Word42
+  saves carries the document inside it, as an OpenDocument file attached
+  to it, so that opening the PDF again gives back the document as it was
+  -- styles, tables, notes, fields -- and File ▸ Save writes it back.
+  Save As a PDF makes one; a PDF from another program asks before it is
+  first saved over, since its pages are laid out again.
+- **PDF passwords.** File ▸ PDF Options sets Word 97's two: a password to
+  open, which encrypts the PDF with AES-256 (PDF 2.0's), and a password to
+  modify, without which a reader allows printing and copying and no
+  changes. Opening a PDF asks for its password, and offers Read Only for
+  one reserved by a password to modify, as Word 97 did.
+- **Signed PDFs.** PDF Options signs the PDF with the certificate in a
+  PKCS #12 file (.p12, .pfx): a PAdES signature, CMS with SHA-256 over
+  the whole file, with a reason, a place and a contact.
+- **Smaller PDFs.** Every PDF is packed into compressed object streams,
+  with a picture used twice written once, and PDF Options can scale the
+  pictures down to Print (220 ppi), Screen (150 ppi) or E-mail (96 ppi):
+  the *Morild* sample goes from 2.2 MB to 0.5 MB.
+- `--convert-to=pdf` takes the same as options: `--pdf-password`,
+  `--pdf-modify-password`, `--pdf-sign` and its `--pdf-sign-password`,
+  `--pdf-pictures`, `--pdf-uncompressed`, `--pdf-keep-document`, and
+  `--password` to open a protected PDF. A password can be given as
+  `env:NAME` or `file:PATH`, out of sight of the other users.
+
+### Improved
+
+- A PDF from another program comes in closer to what it was: paragraphs
+  with their alignment, indents and space above; its bookmarks as
+  headings; its web links; the pictures where they stood between the
+  paragraphs; the header and footer on every page as the document's own,
+  the page number a field; a page break for each page; its title and
+  author as the Summary Info; and right-to-left text in reading order.
+
 ### Security
 
 - **LaTeX is run sandboxed.** A document's mathematics goes to LaTeX as
@@ -31,6 +66,9 @@
 
 ### Fixed
 
+- A paragraph of a PDF whose first line was indented came in as two, its
+  first line and the rest; and a page with right-to-left text on it came
+  in as bare lines, without its fonts.
 - The WordPerfect writer numbers a numbered list's items 1, 2, 3 rather
   than 1 for each.
 - A .doc file's language is read, so spelling, hyphenation and LaTeX

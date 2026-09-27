@@ -15,7 +15,10 @@ hyphenation, mail merge, macros in a dialect of VBA, a Document Map,
 Compare Documents, a split window, Normal, Online Layout and Page Layout
 views and print preview — reading and writing
 RTF, OpenDocument .odt, Word .docx and .doc, WordPerfect .wpd, AbiWord .abw,
-HTML, PDF and plain text, and writing EPUB e-books and LaTeX. A LaTeX mode
+HTML, PDF and plain text, and writing EPUB e-books and LaTeX. A PDF opens,
+is edited and is saved back as a PDF, with the document kept inside it; PDFs
+can have a password to open and one to modify, be signed with a
+certificate, and be compressed down to their pictures' resolution. A LaTeX mode
 typesets PDFs with LaTeX, in the Latin Modern of scientific papers and
 theses, with mathematics typed as LaTeX writes it and a preview beside
 the page that follows the typing. File ▸ Versions keeps a document's
@@ -57,8 +60,8 @@ from source; a Flatpak manifest is in `build-aux/`.
 
 Word42 needs a C11 compiler, Meson, Ninja, and GTK 4.10 or newer with
 Pango, Cairo and gdk-pixbuf, plus [Lexbor](https://lexbor.com/) for HTML.
-Reading PDF and the LaTeX preview need poppler-glib, File ▸ Versions
-libgit2, spelling Enchant, hyphenation libhyphen and the thesaurus a
+Reading PDF and the LaTeX preview need poppler-glib, passwords on PDFs and
+signing them GnuTLS, File ▸ Versions libgit2, spelling Enchant, hyphenation libhyphen and the thesaurus a
 MyThes file; without any of them Word42 still builds and says which is
 missing. Per-platform dependency lists are
 in [docs/BUILD.md](docs/BUILD.md).
