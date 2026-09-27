@@ -86,6 +86,31 @@ w42_object_table_size (W42ObjectTable *table)
   return table->objects->len;
 }
 
+/* A picture another object has already decoded, so the same bytes are
+ * decoded once however many times a file sets them: the same GBytes,
+ * which is what a reader hands every frame of one drawing, or an equal
+ * one of the same size, which is what a .docx reading the same part
+ * twice makes.  The surface is cairo's, reference counted, so each
+ * object that shares it holds one reference and object_free lets go of
+ * one; the byte compare is only reached when the sizes already match and
+ * the pointers differ, so it is rare and never on the common path. */
+static cairo_surface_t *
+shared_surface (W42ObjectTable *table, const W42Object *object)
+{
+  for (guint i = 0; i < table->objects->len; i++)
+    {
+      const W42Object *other = g_ptr_array_index (table->objects, i);
+
+      if (other == object || other->surface == NULL || other->data == NULL)
+        continue;
+      if (other->data == object->data ||
+          (other->pixel_w == object->pixel_w && other->pixel_h == object->pixel_h &&
+           object->data != NULL && g_bytes_equal (other->data, object->data)))
+        return cairo_surface_reference (other->surface);
+    }
+  return NULL;
+}
+
 cairo_surface_t *
 w42_object_surface (W42ObjectTable *table, W42ObjectIdx idx)
 {
@@ -98,8 +123,15 @@ w42_object_surface (W42ObjectTable *table, W42ObjectIdx idx)
 
   object = g_ptr_array_index (table->objects, idx);
 
-  if (object->surface == NULL)
-    object->surface = w42_image_surface (object->data);
+  if (object->surface == NULL && object->data != NULL)
+    {
+      /* A picture bomb -- a small file whose forty frames all name one
+       * large picture -- would otherwise decode and cache a full-size
+       * surface for each; they share the one decode instead. */
+      object->surface = shared_surface (table, object);
+      if (object->surface == NULL)
+        object->surface = w42_image_surface (object->data);
+    }
 
   return object->surface;
 }
