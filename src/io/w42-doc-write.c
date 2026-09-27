@@ -1672,15 +1672,24 @@ end_row (Writer *w, int table, int row)
   if (any_fill)
     {
       /* sprmTDefTableShd: a SHD per cell, the background its colour or
-       * its grey. */
-      put16 (s, 0xD612);
-      put8 (s, (guint) (10 * n));
+       * its grey.  Its count is a byte and it holds 22 cells at most, so
+       * the rest go in sprmTDefTableShd2nd and 3rd; one sprm for all 63
+       * said 630 bytes in 118, and Word read the rest as sprms. */
+      static const guint16 SHD_SPRMS[3] = { 0xD612, 0xD616, 0xD60C };
+
       for (int i = 0; i < n; i++)
         {
           const W42ParaFmt *pa = &w42_ap_table_get (w->aps, g_array_index (w->row_cells, CellInfo, i).cell_ap)->pa;
-          guint32 rgb = pa->has_shading_color ? pa->shading_color
-                        : pa->shading > 0 ? 0x010101u * (guint32) (255 * (100 - MIN (pa->shading, 100)) / 100)
-                        : 0;
+          guint32 rgb;
+
+          if (i % 22 == 0)
+            {
+              put16 (s, SHD_SPRMS[i / 22]);
+              put8 (s, (guint) (10 * MIN (n - i, 22)));
+            }
+          rgb = pa->has_shading_color ? pa->shading_color
+                : pa->shading > 0 ? 0x010101u * (guint32) (255 * (100 - MIN (pa->shading, 100)) / 100)
+                : 0;
 
           put32 (s, 0xFF000000u);
           if (pa->has_shading_color || pa->shading > 0)

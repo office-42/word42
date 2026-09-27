@@ -1504,17 +1504,19 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                 }
             }
           break;
-        case 0xD612:
+        case 0xD612: case 0xD616: case 0xD60C:
           /* sprmTDefTableShd: cb, then one ten-byte SHD per cell in column
            * order.  A background of "automatic" leaves the cell as the
            * page; anything else is the colour it is filled with.  Word 97's
            * own sprmTDefTableShd80 (0xD609) could only name one of sixteen
            * palette colours, so it is left alone: a file that has it also
-           * has this. */
+           * has this.  It holds 22 cells; sprmTDefTableShd2nd and 3rd
+           * hold the ones from 22 and from 44. */
           {
             guint n = olen > 0 ? (guint) (olen - 1) / 10 : 0;
+            guint first = sprm == 0xD612 ? 0 : sprm == 0xD616 ? 22 : 44;
 
-            for (guint c = 0; c < n && c < 64; c++)
+            for (guint c = 0; c < n && first + c < 64; c++)
               {
                 const guint8 *shd = op + 1 + 10 * c;
                 guint32 back = rd32 (shd + 4);
@@ -1525,10 +1527,10 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
                   {
                     RowShape *row = para_row (pa);
 
-                    row->cell_shade[c] = ((back & 0xFF) << 16) |
-                                         (back & 0xFF00) |
-                                         ((back >> 16) & 0xFF);
-                    row->has_cell_shade[c] = 1;
+                    row->cell_shade[first + c] = ((back & 0xFF) << 16) |
+                                                 (back & 0xFF00) |
+                                                 ((back >> 16) & 0xFF);
+                    row->has_cell_shade[first + c] = 1;
                   }
               }
           }
