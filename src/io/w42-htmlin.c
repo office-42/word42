@@ -1601,13 +1601,17 @@ parse_stylesheet (Html *h, const char *css, gsize len)
         break;
       if (*p == '@')
         {
-          /* An at-rule: to its semicolon, or over its block. */
-          const char *semi = memchr (p, ';', end - p);
-          const char *open = memchr (p, '{', end - p);
+          /* An at-rule: to its semicolon, or over its block, whichever
+           * comes first.  Only that far is looked at: a search of the
+           * whole rest of the sheet for each at-rule would cost a sheet
+           * of them the square of its length. */
+          const char *open = p;
 
-          if (open == NULL || (semi != NULL && semi < open))
+          while (open < end && *open != ';' && *open != '{')
+            open++;
+          if (open >= end || *open == ';')
             {
-              p = semi != NULL ? semi + 1 : end;
+              p = open < end ? open + 1 : end;
               continue;
             }
           {
@@ -1692,6 +1696,44 @@ collect_styles (Html *h, lxb_dom_node_t *root)
     }
 }
 
+/* The order the cascade applies rules in, the last winning: by weight,
+ * and then by where they came in the sheet. */
+static int
+rule_cmp (gconstpointer a, gconstpointer b)
+{
+  const CssRule *p = *(CssRule *const *) a;
+  const CssRule *q = *(CssRule *const *) b;
+
+  if (p->weight != q->weight)
+    return p->weight < q->weight ? -1 : 1;
+  return p->order < q->order ? -1 : p->order > q->order ? 1 : 0;
+}
+
+/* The rules of one list of the index that match the element, added to
+ * `hits` as they come; `sorted` is cleared when one belongs before what
+ * is there already. */
+static void
+gather_rules (GPtrArray *hits, GPtrArray *list, const char *name,
+              const char *id, GHashTable *classes, gboolean *sorted)
+{
+  for (guint i = 0; list != NULL && i < list->len; i++)
+    {
+      CssRule *rule = g_ptr_array_index (list, i);
+
+      if (rule->tag != NULL && !g_str_equal (rule->tag, name))
+        continue;
+      if (rule->id != NULL && rule->id != id)
+        continue;
+      if (rule->cls != NULL &&
+          (classes == NULL || !g_hash_table_contains (classes, rule->cls)))
+        continue;
+      if (hits->len > 0 &&
+          rule_cmp (&g_ptr_array_index (hits, hits->len - 1), &rule) > 0)
+        *sorted = FALSE;
+      g_ptr_array_add (hits, rule);
+    }
+}
+
 /* The declarations that apply to an element: the sheet's matching rules
  * by weight and then by order, and its own style attribute last, as the
  * cascade has it.  Freed by the caller; NULL when there are none. */
@@ -1699,11 +1741,13 @@ static char *
 elem_style (Html *h, lxb_dom_element_t *el)
 {
   char *inline_style = elem_attr (el, "style");
-  char *cls, *id, **classes = NULL;
+  char *cls, *id;
   const char *id_i = NULL;
+  GHashTable *classes = NULL;
   char name[24];
   GPtrArray *hits;
   GString *out;
+  gboolean sorted = TRUE;
 
   if (h->rules == NULL || h->rules->len == 0)
     return inline_style;
@@ -1712,66 +1756,50 @@ elem_style (Html *h, lxb_dom_element_t *el)
   cls = elem_attr (el, "class");
   id = elem_attr (el, "id");
   if (cls != NULL)
-    classes = g_strsplit_set (cls, " \t\r\n", -1);
+    {
+      /* Each class once, however often the element names it: a class
+       * named a thousand times had its rules gathered a thousand times,
+       * for every element that did it. */
+      char **names = g_strsplit_set (cls, " \t\r\n", -1);
+
+      classes = g_hash_table_new (g_direct_hash, g_direct_equal);
+      for (guint k = 0; names[k] != NULL; k++)
+        if (*names[k] != '\0')
+          g_hash_table_add (classes, (gpointer) g_intern_string (names[k]));
+      g_strfreev (names);
+    }
   if (id != NULL && *id != '\0')
     id_i = g_intern_string (id);
 
   /* The rules that could match: those filed under the element's name,
-   * each of its classes, and its id. */
+   * its id, and each of its classes.  They are sorted once, when they did
+   * not come in order, rather than each put in its place as it came: that
+   * walked back over the rules before it, and a sheet that mixed its
+   * weights cost the square of its size for every element. */
   hits = g_ptr_array_new ();
-  for (int pass = 0; pass < 2 + (classes != NULL ? (int) g_strv_length (classes) : 0); pass++)
+  gather_rules (hits, g_hash_table_lookup (h->rules_by_tag, g_intern_string (name)),
+                name, id_i, classes, &sorted);
+  if (id_i != NULL)
+    gather_rules (hits, g_hash_table_lookup (h->rules_by_id, id_i),
+                  name, id_i, classes, &sorted);
+  if (classes != NULL)
     {
-      GPtrArray *list;
+      GHashTableIter iter;
+      gpointer key;
 
-      if (pass == 0)
-        list = g_hash_table_lookup (h->rules_by_tag, g_intern_string (name));
-      else if (pass == 1)
-        list = id_i != NULL ? g_hash_table_lookup (h->rules_by_id, id_i) : NULL;
-      else
-        list = *classes[pass - 2] != '\0'
-                 ? g_hash_table_lookup (h->rules_by_class, g_intern_string (classes[pass - 2])) : NULL;
-      for (guint i = 0; list != NULL && i < list->len; i++)
-        {
-          CssRule *rule = g_ptr_array_index (list, i);
-          gboolean ok = TRUE;
-
-          if (rule->tag != NULL && !g_str_equal (rule->tag, name))
-            ok = FALSE;
-          if (ok && rule->id != NULL && rule->id != id_i)
-            ok = FALSE;
-          if (ok && rule->cls != NULL)
-            {
-              ok = FALSE;
-              for (guint k = 0; classes != NULL && classes[k] != NULL; k++)
-                if (g_str_equal (classes[k], rule->cls))
-                  {
-                    ok = TRUE;
-                    break;
-                  }
-            }
-          if (ok)
-            {
-              /* Kept in order of weight, then of the sheet. */
-              guint at = hits->len;
-
-              while (at > 0)
-                {
-                  const CssRule *before = g_ptr_array_index (hits, at - 1);
-
-                  if (before->weight < rule->weight ||
-                      (before->weight == rule->weight && before->order < rule->order))
-                    break;
-                  at--;
-                }
-              g_ptr_array_insert (hits, (gint) at, rule);
-            }
-        }
+      g_hash_table_iter_init (&iter, classes);
+      while (g_hash_table_iter_next (&iter, &key, NULL))
+        gather_rules (hits, g_hash_table_lookup (h->rules_by_class, key),
+                      name, id_i, classes, &sorted);
     }
+  if (!sorted)
+    g_ptr_array_sort (hits, rule_cmp);
 
   if (hits->len == 0)
     {
       g_ptr_array_free (hits, TRUE);
-      g_strfreev (classes);
+      if (classes != NULL)
+        g_hash_table_destroy (classes);
       g_free (cls);
       g_free (id);
       return inline_style;
@@ -1803,7 +1831,8 @@ elem_style (Html *h, lxb_dom_element_t *el)
   if (inline_style != NULL)
     g_string_append (out, inline_style);
   g_ptr_array_free (hits, TRUE);
-  g_strfreev (classes);
+  if (classes != NULL)
+    g_hash_table_destroy (classes);
   g_free (cls);
   g_free (id);
   g_free (inline_style);
@@ -1909,9 +1938,18 @@ harvest_notes (Html *h, lxb_dom_node_t *root)
       if (n->type == LXB_DOM_NODE_TYPE_ELEMENT)
         {
           char *id = elem_attr (lxb_dom_interface_element (n), "id");
+          gboolean named = id != NULL && is_note_id (id) &&
+                           !g_hash_table_contains (h->notes, id);
 
-          if (id != NULL && is_note_id (id) &&
-              !g_hash_table_contains (h->notes, id) && has_content (n))
+          if (named && !has_content (n))
+            {
+              /* Nothing to read in it, so no note in it either: gone
+               * over again for each element of it that has a note's id,
+               * a page of them nested empty would cost the square of its
+               * depth. */
+              descend = FALSE;
+            }
+          else if (named)
             {
               Note *note = g_new0 (Note, 1);
 

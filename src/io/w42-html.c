@@ -117,13 +117,17 @@ css_num (GString *css, const char *name, double value, const char *unit)
  * quotes of either kind, and the markup characters escaped, or a font
  * called "</style><script>" would be exactly that in the output.  In a
  * <style> element nothing is unescaped, so there a "<" is left out
- * rather than written as "&lt;", which would be read back as its name. */
+ * rather than written as "&lt;", which would be read back as its name.
+ * Nor may anything end the quotes from inside: a line break ends a CSS
+ * string, and a backslash escapes its closing quote, and either way what
+ * the name says after it would be declarations of the page's own. */
 static void
 append_family (GString *css, const char *family, gboolean in_sheet)
 {
   g_string_append (css, "font-family:'");
   for (const char *p = family; *p; p++)
     if (*p == '<' && in_sheet) continue;
+    else if ((guchar) *p < 0x20 || *p == 0x7F || *p == '\\') continue;
     else if (*p == '&' && !in_sheet) g_string_append (css, "&amp;");
     else if (*p == '<') g_string_append (css, "&lt;");
     else if (*p != '\'' && *p != '"') g_string_append_c (css, *p);
