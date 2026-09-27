@@ -152,17 +152,19 @@ static char *
 text_to_utf8 (const char *contents, gsize length)
 {
   char *utf8 = NULL;
+  gsize utf8_len = 0;
   GString *clean;
 
   if (length >= 2 && ((guchar) contents[0] == 0xFF || (guchar) contents[0] == 0xFE) &&
       (guchar) contents[1] == ((guchar) contents[0] ^ 0x01))
     {
-      /* An odd byte at the end is half a character: dropped. */
+      /* An odd byte at the end is half a character: dropped.  A NUL
+       * comes through as one, and is dropped below with the rest. */
       gsize n = (length - 2) & ~(gsize) 1;
 
       utf8 = g_convert (contents + 2, n, "UTF-8",
                         (guchar) contents[0] == 0xFF ? "UTF-16LE" : "UTF-16BE",
-                        NULL, NULL, NULL);
+                        NULL, &utf8_len, NULL);
     }
   else
     {
@@ -194,9 +196,11 @@ text_to_utf8 (const char *contents, gsize length)
     }
   if (utf8 == NULL)
     return NULL;
+  if (utf8_len == 0)
+    utf8_len = strlen (utf8);
 
-  clean = g_string_sized_new (strlen (utf8));
-  for (const char *p = utf8; *p != '\0'; p = g_utf8_next_char (p))
+  clean = g_string_sized_new (utf8_len);
+  for (const char *p = utf8; p < utf8 + utf8_len; p = g_utf8_next_char (p))
     {
       gunichar c = g_utf8_get_char (p);
 
@@ -357,15 +361,21 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
   text = w42_pt_get_text (pt, first, w42_pt_length (pt) - first);
 
   /* A line break inside a paragraph is U+2028 to the model and a new
-   * line to a text file; left as it is, other editors show a box. */
+   * line to a text file; left as it is, other editors show a box.  In
+   * one pass: searched for from the top and the rest moved up for each,
+   * a file that is all line breaks took minutes to save. */
   {
-    char *p;
+    char *to = text;
 
-    while ((p = strstr (text, "\342\200\250")) != NULL)
-      {
-        *p = '\n';
-        memmove (p + 1, p + 3, strlen (p + 3) + 1);
-      }
+    for (const char *from = text; *from != '\0'; )
+      if (strncmp (from, "\342\200\250", 3) == 0)
+        {
+          *to++ = '\n';
+          from += 3;
+        }
+      else
+        *to++ = *from++;
+    *to = '\0';
   }
 
   ok = g_file_replace_contents (file, text, strlen (text), NULL, FALSE,
