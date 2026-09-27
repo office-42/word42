@@ -1555,6 +1555,10 @@ typedef struct {
   guint32       color;
   W42ParaFmt    pa;
   GPtrArray    *all;           /* every paragraph, notes' too */
+
+  /* Each list level's count so far, and the kind it counts in. */
+  int           level_n[9];
+  W42ListKind   level_kind[9];
 } Writer;
 
 static void
@@ -2104,12 +2108,18 @@ write_runs (Writer *w, GByteArray *o, const W42Block *block)
           memset (w->attr, 0, sizeof w->attr);
           w->family = NULL;
           w->pa = (W42ParaFmt) { 0 };
+          /* The note's lists count on their own, and the list the note
+           * is in counts on after it. */
+          memset (w->level_n, 0, sizeof w->level_n);
+          memset (w->level_kind, 0, sizeof w->level_kind);
           write_blocks (w, note, mine, run->footnote_id);
           w->family = saved.family;
           w->size = saved.size;
           w->color = saved.color;
           memcpy (w->attr, saved.attr, sizeof w->attr);
           w->pa = saved.pa;
+          memcpy (w->level_n, saved.level_n, sizeof w->level_n);
+          memcpy (w->level_kind, saved.level_kind, sizeof w->level_kind);
           pid = (guint16) text_packet (w, note);
           g_byte_array_free (note, TRUE);
           g_ptr_array_free (mine, TRUE);
@@ -2199,11 +2209,38 @@ write_blocks (Writer *w, GByteArray *o, GPtrArray *blocks, int note)
       /* A list item's marker, as the text it shows: WordPerfect's lists
        * are outlines of its own. */
       set_para (w, o, &pa);
-      if (pa.list != W42_LIST_NONE && pa.list < W42_LIST_KINDS)
+      if (pa.list == W42_LIST_NONE)
+        {
+          memset (w->level_n, 0, sizeof w->level_n);
+          memset (w->level_kind, 0, sizeof w->level_kind);
+        }
+      else if (pa.list < W42_LIST_KINDS)
         {
           char marker[16];
+          int n = 1;
 
-          w42_list_marker ((W42ListKind) pa.list, 1, marker, sizeof marker);
+          /* A numbered item counts on from the one before it at its
+           * level, as the RTF writer counts: from its own start, or from
+           * one when the kind changes; the levels inside it start again. */
+          if (w42_list_is_numbered (pa.list))
+            {
+              int lv = MIN (pa.list_level, 8);
+
+              if (pa.list_start > 0)
+                w->level_n[lv] = pa.list_start;
+              else if (pa.list != w->level_kind[lv])
+                w->level_n[lv] = 1;
+              else
+                w->level_n[lv]++;
+              w->level_kind[lv] = pa.list;
+              for (int deeper = lv + 1; deeper < 9; deeper++)
+                {
+                  w->level_n[deeper] = 0;
+                  w->level_kind[deeper] = W42_LIST_NONE;
+                }
+              n = w->level_n[lv];
+            }
+          w42_list_marker ((W42ListKind) pa.list, n, marker, sizeof marker);
           set_char (w, o, &fmt->ch);
           for (const char *p = marker; *p != '\0'; p = g_utf8_next_char (p))
             put_uchar (w, o, g_utf8_get_char (p));
