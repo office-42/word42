@@ -486,6 +486,7 @@ typedef struct {
   GArray   *lst_lsid;     /* guint32: each list's id */
   GArray   *lst_nfc;      /* guint8[9]: each list's number format per level */
   GArray   *sections;     /* Section: where each section starts, and its columns */
+  GArray   *bookmarks;    /* DocBookmark, the main text's */
   gboolean  title_page;   /* the first section's first page has its own header */
   gboolean  pgn_restart;  /* and its pages are numbered from pgn_start */
   int       pgn_start;
@@ -1775,6 +1776,91 @@ typedef struct {
   int     column_gap;
 } Section;
 
+typedef struct {
+  guint32     start, end;
+  const char *name;       /* interned */
+} DocBookmark;
+
+/* The bookmarks: SttbfBkmk names them, PlcfBkf says where each starts
+ * and which end in PlcfBkl is its own. */
+static void
+read_bookmarks (Doc *doc)
+{
+  guint32 fc_n, lcb_n, fc_f, lcb_f, fc_l, lcb_l;
+  guint n, p;
+  gboolean wide;
+  GPtrArray *names;
+
+  doc->bookmarks = g_array_new (FALSE, FALSE, sizeof (DocBookmark));
+  fib_fclcb (doc, 21, &fc_n, &lcb_n);
+  fib_fclcb (doc, 22, &fc_f, &lcb_f);
+  fib_fclcb (doc, 23, &fc_l, &lcb_l);
+  if (lcb_n < 6 || !in_tb (doc, fc_n, lcb_n) || lcb_f < 8 || !in_tb (doc, fc_f, lcb_f) ||
+      lcb_l < 8 || !in_tb (doc, fc_l, lcb_l))
+    return;
+
+  wide = rd16 (doc->tb + fc_n) == 0xFFFF;
+  p = fc_n + (wide ? 2 : 0);
+  n = MIN (rd16 (doc->tb + p), 16384);
+  p += 4;
+  names = g_ptr_array_new ();
+  for (guint i = 0; i < n && p < fc_n + lcb_n; i++)
+    {
+      guint cch = wide ? rd16 (doc->tb + p) : doc->tb[p];
+      GString *name = g_string_new (NULL);
+
+      p += wide ? 2 : 1;
+      if (!in_tb (doc, p, cch * (wide ? 2 : 1)))
+        {
+          g_string_free (name, TRUE);
+          break;
+        }
+      for (guint c = 0; c < cch; c++)
+        {
+          gunichar u = wide ? rd16 (doc->tb + p + 2 * c) : cp1252 (doc->tb[p + c]);
+
+          if (u >= 0x20 && (u < 0xD800 || u >= 0xE000))
+            g_string_append_unichar (name, u);
+        }
+      p += cch * (wide ? 2 : 1);
+      g_ptr_array_add (names, (gpointer) g_intern_string (name->str));
+      g_string_free (name, TRUE);
+    }
+
+  {
+    guint n_f = (lcb_f - 4) / 8, n_l = (lcb_l - 4) / 4;
+
+    for (guint i = 0; i < n_f && i < names->len; i++)
+      {
+        DocBookmark bm;
+        guint ibkl = rd16 (doc->tb + fc_f + 4 * (n_f + 1) + 4 * i);
+
+        if (ibkl >= n_l)
+          continue;
+        bm.start = rd32 (doc->tb + fc_f + 4 * i);
+        bm.end = rd32 (doc->tb + fc_l + 4 * ibkl);
+        bm.name = g_ptr_array_index (names, i);
+        if (bm.end > bm.start && *bm.name != '\0')
+          g_array_append_val (doc->bookmarks, bm);
+      }
+  }
+  g_ptr_array_free (names, TRUE);
+}
+
+/* The bookmark the character at `cp` is in, or NULL. */
+static const char *
+bookmark_at (Doc *doc, guint32 cp)
+{
+  for (guint i = 0; doc->bookmarks != NULL && i < doc->bookmarks->len; i++)
+    {
+      const DocBookmark *bm = &g_array_index (doc->bookmarks, DocBookmark, i);
+
+      if (cp >= bm->start && cp < bm->end)
+        return bm->name;
+    }
+  return NULL;
+}
+
 /* The SEPX of section `k`: its grpprl, or NULL. */
 static const guint8 *
 section_sepx (Doc *doc, guint k, guint *len)
@@ -2553,6 +2639,7 @@ emit_text (Builder *b, const DocPara *dp)
   int code_depth = 0;         /* the field whose code is being read, or 0 */
   GString *field_code = g_string_new (NULL);
   const char *link = NULL;
+  const char *field = NULL;   /* the code of the field whose result this is */
   W42ApIdx current = ((W42ApIdx) G_MAXUINT32);
 
   char_defaults (&style_ch);
@@ -2601,6 +2688,7 @@ emit_text (Builder *b, const DocPara *dp)
               /* HYPERLINK "url": the result is the link. */
               code_depth = 0;
               link = NULL;
+              field = w42_field_code (field_code->str);
               if (g_ascii_strncasecmp (g_strstrip (field_code->str), "HYPERLINK", 9) == 0)
                 {
                   const char *q = strchr (field_code->str, '"');
@@ -2622,6 +2710,7 @@ emit_text (Builder *b, const DocPara *dp)
           if (code_depth > field_depth)
             code_depth = 0;
           link = NULL;
+          field = NULL;
           continue;
         }
       if (code_depth > 0)
@@ -2740,6 +2829,8 @@ emit_text (Builder *b, const DocPara *dp)
       w42_fmt_init_default (&fmt);
       fill_char_fmt (doc, &ch, &fmt.ch);
       fmt.ch.link = link;
+      fmt.ch.field = field;
+      fmt.ch.bookmark = bookmark_at (doc, cp);
       if (ch.rmark_del)
         fmt.ch.revision = 2;    /* a tracked change: kept, and marked */
       else if (ch.rmark_ins)
@@ -3649,6 +3740,7 @@ w42_doc_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   register_styles (&doc, pt);
   read_page_setup (&doc, page);
   read_sections (&doc);
+  read_bookmarks (&doc);
   {
     /* The endnote references' cps, first in PlcfendRef; the references
      * themselves are 0x02 marks in the text like a footnote's. */
@@ -3683,6 +3775,7 @@ out:
   if (doc.lst_lsid) g_array_free (doc.lst_lsid, TRUE);
   if (doc.lst_nfc) g_array_free (doc.lst_nfc, TRUE);
   if (doc.sections) g_array_free (doc.sections, TRUE);
+  if (doc.bookmarks) g_array_free (doc.bookmarks, TRUE);
   if (wd) g_byte_array_free (wd, TRUE);
   if (tb) g_byte_array_free (tb, TRUE);
   if (dt) g_byte_array_free (dt, TRUE);

@@ -16,6 +16,7 @@
 #include <string.h>
 #include <glib/gi18n.h>
 
+#include "w42-image.h"
 #include "w42-lang.h"
 
 /* ---------------------------------------------------------------------- */
@@ -334,6 +335,9 @@ enum {
   FIB_STTBF_FFN  = 15,
   FIB_DOP        = 31,
   FIB_FLD_MOM    = 16,
+  FIB_STTBF_BKMK = 21,
+  FIB_PLCF_BKF   = 22,
+  FIB_PLCF_BKL   = 23,
   FIB_FLD_HDR    = 17,
   FIB_FLD_FTN    = 18,
   FIB_CLX        = 33,
@@ -412,7 +416,15 @@ typedef struct {
   GArray     *lists;        /* ListDef: one per list, its LFO the same place + 1 */
   int         cur_list[2];  /* the numbered and the bulleted list going on, or -1 */
   GArray     *row_cells;    /* CellInfo: the cells of the row being written */
+  GHashTable *bookmarks;    /* name -> Bookmark*, the main text's */
+  guint       n_pictures;
 } Writer;
+
+/* A bookmark: the cps it covers. */
+typedef struct {
+  const char *name;
+  guint32     start, end;
+} Bookmark;
 
 /* A list, as Word defines one: nine levels, each with its kind and the
  * number it starts at. */
@@ -1051,35 +1063,169 @@ add_note_mark (Writer *w, const W42CharFmt *ch, const W42CharFmt *style_ch)
   end_run (w, grpprl);
 }
 
-/* A field, as a story holds one: its begin, its code, its separator, its
- * result and its end, the three marks special characters. */
+/* One of a field's three marks, a special character, in the story's
+ * table of fields: the begin with the field's type, the separator, and
+ * the end saying the field has a result. */
+static void
+add_field_mark (Writer *w, gunichar2 mark, guint flt, const W42CharFmt *ch,
+                const W42CharFmt *style_ch)
+{
+  GByteArray *grpprl = g_byte_array_new ();
+  FieldMark m = { w->text->len - w->story_start[w->story], (guint8) mark, 0 };
+
+  m.flt = mark == 0x13 ? (guint8) flt : mark == 0x15 ? 0x80 : 0xFF;   /* fHasSep */
+  g_array_append_val (w->fields[w->story], m);
+  add_char (w, mark);
+  sprm8 (grpprl, 0x0855, 1);                   /* sprmCFSpec */
+  chp_sprms (w, grpprl, ch, style_ch);
+  end_run (w, grpprl);
+}
+
+/* A field's begin, its code and its separator: its result follows. */
+static void
+begin_field (Writer *w, const char *code, guint flt, const W42CharFmt *ch,
+             const W42CharFmt *style_ch)
+{
+  GByteArray *grpprl = g_byte_array_new ();
+
+  add_field_mark (w, 0x13, flt, ch, style_ch);
+  add_text (w, code, strlen (code));
+  chp_sprms (w, grpprl, ch, style_ch);
+  end_run (w, grpprl);
+  add_field_mark (w, 0x14, 0, ch, style_ch);
+}
+
+/* A whole field, code and result. */
 static void
 add_field (Writer *w, const char *code, guint flt, const char *result,
            const W42CharFmt *ch, const W42CharFmt *style_ch)
 {
-  GArray *marks = w->fields[w->story];
-  guint32 base = w->story_start[w->story];
-  const char *parts[] = { NULL, code, NULL, result, NULL };
-  static const guint8 CH[] = { 0x13, 0, 0x14, 0, 0x15 };
+  GByteArray *grpprl = g_byte_array_new ();
 
-  for (guint i = 0; i < G_N_ELEMENTS (parts); i++)
-    {
-      GByteArray *grpprl = g_byte_array_new ();
+  begin_field (w, code, flt, ch, style_ch);
+  add_text (w, result, strlen (result));
+  chp_sprms (w, grpprl, ch, style_ch);
+  end_run (w, grpprl);
+  add_field_mark (w, 0x15, 0, ch, style_ch);
+}
 
-      if (CH[i] != 0)
-        {
-          FieldMark m = { w->text->len - base, CH[i], 0 };
+/* Word's type for a field Word42 knows, 0 for one it cannot say. */
+static guint
+field_type (const char *code)
+{
+  static const struct { const char *code; guint flt; } TYPES[] = {
+    { "PAGE", 33 }, { "NUMPAGES", 26 }, { "DATE", 31 }, { "TIME", 32 },
+    { "FILENAME", 29 }, { "NUMWORDS", 27 },
+  };
 
-          m.flt = CH[i] == 0x13 ? (guint8) flt : CH[i] == 0x15 ? 0x80 : 0xFF;   /* fHasSep */
-          g_array_append_val (marks, m);
-          add_char (w, CH[i]);
-          sprm8 (grpprl, 0x0855, 1);
-        }
-      else
-        add_text (w, parts[i], strlen (parts[i]));
-      chp_sprms (w, grpprl, ch, style_ch);
-      end_run (w, grpprl);
-    }
+  for (guint i = 0; i < G_N_ELEMENTS (TYPES); i++)
+    if (g_str_equal (code, TYPES[i].code))
+      return TYPES[i].flt;
+  return 0;
+}
+
+/* ---- pictures --------------------------------------------------------- */
+
+/* A picture into the Data stream, as Word puts an inline one: a PICF --
+ * the size it is shown at, as its own size in twips and a scale -- then
+ * an OfficeArt shape container, a picture frame whose one property names
+ * the first blip, and the blip-store entry holding the PNG or JPEG
+ * itself.  Returns where it starts, or -1 when there is nothing a Word
+ * file can hold. */
+static gint64
+write_picture (Writer *w, const W42Object *obj)
+{
+  GBytes *bytes = NULL;
+  gboolean jpeg = obj->format != NULL && g_str_equal (obj->format, "jpeg");
+  const guint8 *d;
+  gsize n;
+  GByteArray *o = w->data;
+  guint32 at = o->len, blip_len, fbse_len, sp_len;
+  int goal_w, goal_h, mx, my;
+
+  if (obj->data == NULL)
+    return -1;
+  if (jpeg || (obj->format != NULL && g_str_equal (obj->format, "png")))
+    bytes = g_bytes_ref (obj->data);
+  else
+    bytes = w42_image_to_png (obj->data);
+  if (bytes == NULL)
+    return -1;
+  d = g_bytes_get_data (bytes, &n);
+
+  goal_w = CLAMP (obj->pixel_w > 0 ? obj->pixel_w * 15 : obj->width, 15, 31680);
+  goal_h = CLAMP (obj->pixel_h > 0 ? obj->pixel_h * 15 : obj->height, 15, 31680);
+  mx = CLAMP ((int) ((gint64) MAX (obj->width, 15) * 1000 / goal_w), 1, 32767);
+  my = CLAMP ((int) ((gint64) MAX (obj->height, 15) * 1000 / goal_h), 1, 32767);
+
+  blip_len = 16 + 1 + (guint32) n;               /* a UID, the tag, the file */
+  fbse_len = 36 + 8 + blip_len;
+  sp_len = (8 + 8) + (8 + 18) + (8 + 4);         /* FSP, FOPT, the anchor */
+
+  /* The PICF. */
+  put32 (o, 68 + 8 + sp_len + 8 + fbse_len);
+  put16 (o, 68);
+  put16 (o, 0x64);                               /* mm: a shape follows */
+  pad_to (o, at + 14);
+  put16 (o, 0x0008);
+  pad_to (o, at + 28);
+  put16 (o, (guint) goal_w);
+  put16 (o, (guint) goal_h);
+  put16 (o, (guint) mx);
+  put16 (o, (guint) my);
+  pad_to (o, at + 68);
+
+  /* The shape: a picture frame, 75, with no line and no fill of its own. */
+  put16 (o, 0x000F);
+  put16 (o, 0xF004);
+  put32 (o, sp_len);
+  put16 (o, 0x0002 | (75 << 4));
+  put16 (o, 0xF00A);
+  put32 (o, 8);
+  put32 (o, 1025 + w->n_pictures++);
+  put32 (o, 0x00000A00);                         /* fHaveAnchor, fHaveSpt */
+  put16 (o, 0x0003 | (3 << 4));
+  put16 (o, 0xF00B);
+  put32 (o, 18);
+  put16 (o, 0x4104); put32 (o, 1);               /* pib: the first blip */
+  put16 (o, 0x01BF); put32 (o, 0x00100000);      /* no fill */
+  put16 (o, 0x01FF); put32 (o, 0x00080000);      /* no line */
+  put16 (o, 0x0000);
+  put16 (o, 0xF010);
+  put32 (o, 4);
+  put32 (o, 0x80000000u);
+
+  /* The blip-store entry, and the blip in it. */
+  put16 (o, 0x0002 | ((jpeg ? 5u : 6u) << 4));
+  put16 (o, 0xF007);
+  put32 (o, fbse_len);
+  put8 (o, jpeg ? 5 : 6);                        /* btWin32 */
+  put8 (o, jpeg ? 5 : 6);                        /* btMacOS */
+  {
+    /* The UID is the file's digest, as Word makes it. */
+    GChecksum *sum = g_checksum_new (G_CHECKSUM_MD5);
+    guint8 uid[16];
+    gsize len = sizeof uid;
+
+    g_checksum_update (sum, d, n);
+    g_checksum_get_digest (sum, uid, &len);
+    g_checksum_free (sum);
+    g_byte_array_append (o, uid, 16);
+    put16 (o, 0x00FF);                           /* tag */
+    put32 (o, 8 + blip_len);                     /* the blip's size */
+    put32 (o, 1);                                /* cRef */
+    put32 (o, at + 68);                          /* foDelay, as Word has it */
+    put32 (o, 0);
+    put16 (o, jpeg ? 0x46A0 : 0x6E00);           /* one UID */
+    put16 (o, jpeg ? 0xF01D : 0xF01E);
+    put32 (o, blip_len);
+    g_byte_array_append (o, uid, 16);
+  }
+  put8 (o, 0xFF);
+  g_byte_array_append (o, d, (guint) n);
+
+  g_bytes_unref (bytes);
+  return at;
 }
 
 /* Appends sprms to the paragraph just ended. */
@@ -1150,7 +1296,10 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
   guint istd;
   const W42Style *style = para_style (w, fmt->pa.style, &istd);
   const W42CharFmt *mark_ch = &fmt->ch;
+  const char *open_link = NULL, *open_field = NULL;
+  W42CharFmt open_ch;
 
+  memset (&open_ch, 0, sizeof open_ch);
   if (note_mark)
     {
       GByteArray *grpprl = g_byte_array_new ();
@@ -1168,6 +1317,62 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
       const W42Run *run = &g_array_index (block->runs, W42Run, r);
       const W42Fmt *rf = w42_ap_table_get (w->aps, run->ap);
       GByteArray *grpprl;
+      const char *link = rf->ch.link;
+      const char *field = rf->ch.field != NULL && field_type (rf->ch.field) != 0 && link == NULL
+                          ? rf->ch.field : NULL;
+      guint32 run_start;
+
+      /* A link or a field is its result's runs, put between the field's
+       * marks: the one open ends where they stop, a new one opens. */
+      if (open_link != NULL && open_link != link)
+        {
+          add_field_mark (w, 0x15, 0, &open_ch, &style->ch);
+          open_link = NULL;
+        }
+      if (open_field != NULL && open_field != field)
+        {
+          add_field_mark (w, 0x15, 0, &open_ch, &style->ch);
+          open_field = NULL;
+        }
+      if (link != NULL && open_link == NULL)
+        {
+          char *code = g_strdup_printf ("HYPERLINK \"%s\"", link);
+
+          open_ch = rf->ch;
+          begin_field (w, code, 88, &open_ch, &style->ch);
+          g_free (code);
+          open_link = link;
+        }
+      if (field != NULL && open_field == NULL)
+        {
+          char *code = g_strdup_printf (" %s ", field);
+
+          open_ch = rf->ch;
+          begin_field (w, code, field_type (field), &open_ch, &style->ch);
+          g_free (code);
+          open_field = field;
+        }
+      run_start = w->text->len;
+
+      if (run->object != W42_OBJECT_NONE && w->story == STORY_MAIN)
+        {
+          const W42Object *obj = w42_object_table_get (w42_pt_object_table (w->pt), run->object);
+          gint64 at = obj != NULL ? write_picture (w, obj) : -1;
+
+          if (at >= 0)
+            {
+              /* The picture's place in the text: 1, special, saying where
+               * in the Data stream it is. */
+              grpprl = g_byte_array_new ();
+              add_char (w, 0x01);
+              sprm32 (grpprl, 0x6A03, (guint32) at);   /* sprmCPicLocation */
+              sprm8 (grpprl, 0x0855, 1);
+              chp_sprms (w, grpprl, &rf->ch, &style->ch);
+              end_run (w, grpprl);
+              mark_ch = &rf->ch;
+            }
+          continue;
+        }
 
       if (run->footnote > 0 && w->story == STORY_MAIN)
         {
@@ -1187,7 +1392,24 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
       chp_sprms (w, grpprl, &rf->ch, &style->ch);
       end_run (w, grpprl);
       mark_ch = &rf->ch;
+
+      /* A bookmark covers from the first of its runs to the last. */
+      if (rf->ch.bookmark != NULL && w->story == STORY_MAIN && w->text->len > run_start)
+        {
+          Bookmark *bm = g_hash_table_lookup (w->bookmarks, rf->ch.bookmark);
+
+          if (bm == NULL)
+            {
+              bm = g_new (Bookmark, 1);
+              bm->name = rf->ch.bookmark;
+              bm->start = run_start;
+              g_hash_table_insert (w->bookmarks, (gpointer) bm->name, bm);
+            }
+          bm->end = w->text->len;
+        }
     }
+  if (open_link != NULL || open_field != NULL)
+    add_field_mark (w, 0x15, 0, &open_ch, &style->ch);
 
   /* The paragraph mark: an empty paragraph's is its own, which says
    * how tall the blank line is; any other's is its last run's, as a
@@ -1812,6 +2034,94 @@ write_sepx (Writer *w, GByteArray *wd, guint index)
   g_byte_array_free (s, TRUE);
 }
 
+/* ---- bookmarks -------------------------------------------------------- */
+
+static int
+bookmark_by_start (gconstpointer a, gconstpointer b)
+{
+  const Bookmark *x = *(Bookmark * const *) a, *y = *(Bookmark * const *) b;
+
+  return x->start != y->start ? (x->start < y->start ? -1 : 1) : g_strcmp0 (x->name, y->name);
+}
+
+/* SttbfBkmk, the names; PlcfBkf, where each starts with the place of its
+ * end in PlcfBkl, which is the ends in order.  Word ends each table
+ * with the length of the text. */
+static void
+write_bookmarks (Writer *w, GByteArray *tb, guint32 fclcb[][2], guint32 ccp_all)
+{
+  GPtrArray *starts = g_ptr_array_new ();
+  GArray *ends = g_array_new (FALSE, FALSE, sizeof (guint32));
+  GHashTableIter iter;
+  gpointer value;
+
+  g_hash_table_iter_init (&iter, w->bookmarks);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    g_ptr_array_add (starts, value);
+  g_ptr_array_sort (starts, bookmark_by_start);
+  for (guint i = 0; i < starts->len; i++)
+    g_array_append_val (ends, ((Bookmark *) g_ptr_array_index (starts, i))->end);
+  for (guint i = 1; i < ends->len; i++)
+    for (guint j = i; j > 0 && g_array_index (ends, guint32, j - 1) > g_array_index (ends, guint32, j); j--)
+      {
+        guint32 t = g_array_index (ends, guint32, j);
+        g_array_index (ends, guint32, j) = g_array_index (ends, guint32, j - 1);
+        g_array_index (ends, guint32, j - 1) = t;
+      }
+
+  fclcb[FIB_STTBF_BKMK][0] = tb->len;
+  put16 (tb, 0xFFFF);                             /* fExtend: UTF-16 */
+  put16 (tb, starts->len);
+  put16 (tb, 0);
+  for (guint i = 0; i < starts->len; i++)
+    {
+      const Bookmark *bm = g_ptr_array_index (starts, i);
+      glong n16 = 0;
+      gunichar2 *u = g_utf8_to_utf16 (bm->name, -1, NULL, &n16, NULL);
+
+      n16 = MIN (n16, 40);
+      put16 (tb, (guint) n16);
+      for (glong c = 0; c < n16; c++)
+        put16 (tb, u[c]);
+      g_free (u);
+    }
+  fclcb[FIB_STTBF_BKMK][1] = tb->len - fclcb[FIB_STTBF_BKMK][0];
+
+  fclcb[FIB_PLCF_BKF][0] = tb->len;
+  for (guint i = 0; i < starts->len; i++)
+    put32 (tb, ((Bookmark *) g_ptr_array_index (starts, i))->start);
+  put32 (tb, ccp_all);
+  {
+    /* Each start's end, in the table of ends: the first of that cp not
+     * already taken. */
+    guint8 *taken = g_new0 (guint8, ends->len);
+
+    for (guint i = 0; i < starts->len; i++)
+      {
+        guint32 end = ((Bookmark *) g_ptr_array_index (starts, i))->end;
+        guint k = 0;
+
+        while (k < ends->len && (taken[k] || g_array_index (ends, guint32, k) != end))
+          k++;
+        if (k < ends->len)
+          taken[k] = 1;
+        put16 (tb, MIN (k, ends->len - 1));
+        put16 (tb, 0);
+      }
+    g_free (taken);
+  }
+  fclcb[FIB_PLCF_BKF][1] = tb->len - fclcb[FIB_PLCF_BKF][0];
+
+  fclcb[FIB_PLCF_BKL][0] = tb->len;
+  for (guint i = 0; i < ends->len; i++)
+    put32 (tb, g_array_index (ends, guint32, i));
+  put32 (tb, ccp_all);
+  fclcb[FIB_PLCF_BKL][1] = tb->len - fclcb[FIB_PLCF_BKL][0];
+
+  g_ptr_array_free (starts, TRUE);
+  g_array_free (ends, TRUE);
+}
+
 /* ---- lists ------------------------------------------------------------ */
 
 /* Word's number format for a kind of list. */
@@ -2267,6 +2577,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.lists = g_array_new (FALSE, FALSE, sizeof (ListDef));
   w.cur_list[0] = w.cur_list[1] = -1;
   w.row_cells = g_array_new (FALSE, FALSE, sizeof (CellInfo));
+  w.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
 
   collect_styles (&w);
   blocks = w42_pt_snapshot_blocks (pt);
@@ -2375,7 +2686,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
           BEGIN (PLC[s]);
           for (guint i = 0; i < marks->len; i++)
             put32 (tb, g_array_index (marks, FieldMark, i).cp);
-          put32 (tb, w.ccp[s] + (s == STORY_MAIN ? 1 : 2));
+          put32 (tb, w.ccp[s] + (s == STORY_MAIN ? 0 : 2));
           for (guint i = 0; i < marks->len; i++)
             {
               put8 (tb, g_array_index (marks, FieldMark, i).ch);
@@ -2391,6 +2702,9 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     BEGIN (FIB_BTE_PAPX);
     write_bin_table (tb, pap_fc, pap_pn);
     END (FIB_BTE_PAPX);
+
+    if (g_hash_table_size (w.bookmarks) > 0)
+      write_bookmarks (&w, tb, fclcb, ccp_all);
 
     if (w.lists->len > 0)
       {
@@ -2438,7 +2752,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
     set16 (wd, 0x00, 0xA5EC);                 /* wIdent */
     set16 (wd, 0x02, 0x00C1);                 /* nFib: Word 97 */
     set16 (wd, 0x06, (guint) lid);
-    set16 (wd, 0x0A, 0x1200);                 /* fWhichTblStm, fExtChar */
+    set16 (wd, 0x0A, 0x1200 | (w.n_pictures > 0 ? 0x0008 : 0));   /* fWhichTblStm, fExtChar, fHasPic */
     set16 (wd, 0x0C, 0x00BF);                 /* nFibBack */
     set32 (wd, 0x18, TEXT_FC);                /* fcMin */
     set32 (wd, 0x1C, TEXT_FC + 2 * ccp_all);  /* fcMac */
@@ -2515,6 +2829,7 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_byte_array_free (w.data, TRUE);
   g_array_free (w.lists, TRUE);
   g_array_free (w.row_cells, TRUE);
+  g_hash_table_destroy (w.bookmarks);
   g_byte_array_free (wd, TRUE);
   g_byte_array_free (tb, TRUE);
   g_array_free (chp_fc, TRUE);
