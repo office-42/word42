@@ -2107,9 +2107,18 @@ finish_style (RtfReader *r)
             }
         }
 
-      w42_stylesheet_set (w42_pt_stylesheet (r->pt), &style);
-      g_hash_table_insert (r->style_names, GINT_TO_POINTER (r->style_index),
-                           (gpointer) style.name);
+      /* As many as a document means to have, as the .docx reader takes:
+       * every one more makes each after it slower to add, and every
+       * paragraph slower to save -- twenty thousand held a file of 766 kB
+       * for half a minute.  Word writes Normal and the headings first,
+       * and one left out leaves its paragraphs their own formatting. */
+      if (w42_stylesheet_find (w42_pt_stylesheet (r->pt), style.name) != NULL ||
+          w42_stylesheet_size (w42_pt_stylesheet (r->pt)) < 512)
+        {
+          w42_stylesheet_set (w42_pt_stylesheet (r->pt), &style);
+          g_hash_table_insert (r->style_names, GINT_TO_POINTER (r->style_index),
+                               (gpointer) style.name);
+        }
     }
 
   g_free (name);
