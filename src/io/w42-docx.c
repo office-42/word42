@@ -1196,10 +1196,12 @@ settings_start (GMarkupParseContext *ctx, const char *name, const char **an,
     {
       const char *var = attr (an, av, "name");
 
+      /* Held to what the .doc reader allows: the start is kept one up,
+       * and a number near the top of an int would overflow on the way. */
       if (var != NULL && g_str_equal (var, "Word42PageNumbersFrom"))
-        s->pgn_from = MAX (attr_int (an, av, "val", 1), 1);
+        s->pgn_from = CLAMP (attr_int (an, av, "val", 1), 1, 9999);
       else if (var != NULL && g_str_equal (var, "Word42PageNumbersStart"))
-        s->pgn_start = MAX (attr_int (an, av, "val", 1), 0) + 1;
+        s->pgn_start = CLAMP (attr_int (an, av, "val", 1), 0, 9999) + 1;
     }
 }
 
