@@ -331,6 +331,13 @@ compile_run (Compile *c)
   g_subprocess_launcher_setenv (launcher, "openin_any", "p", TRUE);
   g_subprocess_launcher_setenv (launcher, "openout_any", "p", TRUE);
   g_subprocess_launcher_setenv (launcher, "TECTONIC_UNTRUSTED_MODE", "1", TRUE);
+  /* MiKTeX has no kpathsea and takes the same two from its own settings,
+   * [Core] AllowUnsafeInputFiles and AllowUnsafeOutputFiles, which it
+   * ships switched on.  It reads a setting from MIKTEX_<tag>_<section>_
+   * <name> before its .ini files, and "miktex" is the tag every engine
+   * of its answers to. */
+  g_subprocess_launcher_setenv (launcher, "MIKTEX_MIKTEX_CORE_ALLOWUNSAFEINPUTFILES", "false", TRUE);
+  g_subprocess_launcher_setenv (launcher, "MIKTEX_MIKTEX_CORE_ALLOWUNSAFEOUTPUTFILES", "false", TRUE);
   if (c->tectonic)
     proc = g_subprocess_launcher_spawn (launcher, &error, c->engine,
                                         c->synctex ? "--synctex" : "document.tex",
