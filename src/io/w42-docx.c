@@ -1770,6 +1770,14 @@ read_notes (W42Zip *zip, const char *part)
 
 /* ---- the document ------------------------------------------------------- */
 
+/* The cells the tables of a document may make between them: a million,
+ * far beyond any document's, as the .odt and .abw readers have it.  Every
+ * row is as wide as its grid, the builder making the cells it leaves out,
+ * so an empty <w:tr> under a thousand w:gridCol is a thousand cells: a
+ * file of 9 KB of them took 700 MB, and a few more tables all there is.
+ * The tables and rows past it are not read. */
+#define DOCX_MAX_CELLS (1u << 20)
+
 typedef struct {
   W42Builder  b;
   W42PieceTable *pt;
@@ -1799,6 +1807,7 @@ typedef struct {
   int         cell_vmerge;   /* 0 none, 1 the merge starts here, 2 it carries on */
   GArray     *grid;               /* int widths of the table being read */
   gboolean    table_started;
+  gsize       table_cells;        /* the cells the rows of every table have made */
   gboolean    in_tblborders;
   int         fld_state;          /* 0 none, 1 after begin (code), 2 after separate (result) */
   GString    *fld_instr;
@@ -3348,6 +3357,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     }
 
   /* Tables. */
+  else if (g_str_equal (tag, "tbl") && d->depth_tbl == 0 && d->table_cells >= DOCX_MAX_CELLS)
+    d->skip_depth = 1;                /* the tables have made all they may */
   else if (g_str_equal (tag, "tbl"))
     {
       d->depth_tbl++;
@@ -3441,6 +3452,8 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
 
       g_array_append_val (d->grid, w);
     }
+  else if (g_str_equal (tag, "tr") && d->depth_tbl == 1 && d->table_cells >= DOCX_MAX_CELLS)
+    d->skip_depth = 1;
   else if (g_str_equal (tag, "tr") && d->depth_tbl == 1)
     {
       if (!d->table_started)
@@ -3454,6 +3467,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           for (int e = 0; e < W42_N_EDGES; e++)
             w42_pt_table_set_edge (d->pt, d->b.table, e, &d->tbl_edge[e]);
         }
+      d->table_cells += (gsize) MAX (d->b.n_cols, 1);
     }
   else if (g_str_equal (tag, "trHeight") && d->depth_tbl == 1 && d->table_started)
     {
