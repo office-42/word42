@@ -1047,8 +1047,10 @@ end_run (Writer *w, GByteArray *grpprl)
       g_byte_array_free (grpprl, TRUE);
       return;
     }
+  /* Two empty grpprls are alike without a look: an empty array has no
+   * bytes at all, and memcmp may not be handed that. */
   if (last != NULL && last->grpprl->len == grpprl->len &&
-      memcmp (last->grpprl->data, grpprl->data, grpprl->len) == 0)
+      (grpprl->len == 0 || memcmp (last->grpprl->data, grpprl->data, grpprl->len) == 0))
     {
       last->cp_end = w->text->len;
       g_byte_array_free (grpprl, TRUE);
@@ -2240,7 +2242,10 @@ write_papx_fkps (Writer *w, GByteArray *wd, GArray *bin_fc, GArray *bin_pn)
               page[top + 1] = (guint8) (len / 2);
               page[top + 2] = (guint8) para->istd;
               page[top + 3] = (guint8) (para->istd >> 8);
-              memcpy (page + top + 4, para->grpprl->data, para->grpprl->len);
+              /* A paragraph with no sprms of its own has no bytes to copy,
+               * and its empty array no memory for memcpy to be given. */
+              if (para->grpprl->len > 0)
+                memcpy (page + top + 4, para->grpprl->data, para->grpprl->len);
             }
           offsets[crun] = (guint8) (top / 2);
           crun++;
