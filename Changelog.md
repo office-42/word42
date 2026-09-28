@@ -77,6 +77,12 @@
   shading.
 - A plain-text file in UTF-16 keeps what follows a NUL character, and a
   text file of many line breaks saves at once.
+- On Windows, a window dragged by its title bar to the top of a screen
+  is maximized on that screen, whichever screen it is, with the screen
+  shaded while the pointer is at the top to show where the window will
+  go, as Windows' own title bars do. GTK 4.18 had stopped doing this for
+  the title bar Word42 draws, and before that did it only where no other
+  screen lay anywhere above. The Snap windows setting is followed.
 
 ## 1.0.5
 

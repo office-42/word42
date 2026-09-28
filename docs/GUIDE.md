@@ -39,7 +39,7 @@ From the top down:
 
 | Part | What it is |
 | --- | --- |
-| **Title bar** | The document's name and the program's version. Word42 draws it itself, so it looks the same on every system. |
+| **Title bar** | The document's name and the program's version. Word42 draws it itself, so it looks the same on every system. Drag it to move the window; on Windows, drag it to the top of a screen to maximize the window on that screen. |
 | **Menu bar** | File, Edit, View, Insert, Format, Tools, Table, Window, Help. Every command in the program is on it. |
 | **Standard toolbar** | New, Open, Save, Print, Print Preview, Spelling, Cut, Copy, Paste, Undo, Redo, Find, and the zoom box. |
 | **Formatting toolbar** | The Style box, the font box, the size box, Bold, Italic, Underline, the four alignments, and the bullet and numbering buttons. |

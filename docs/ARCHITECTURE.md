@@ -503,6 +503,13 @@ and double-click-to-maximise keep working. The desktop's title bar cannot be
 made navy with centred white text, and without that the window does not read
 as the right program.
 
+On Windows the one thing a drawn title bar loses is Aero Snap: GTK 4.18 moves
+the window and no more. `title_drag_filter` in `w42-window.c`, a GDK Win32
+message filter, watches for a drag that moves the window without resizing it,
+shades the work area of a screen whose top the pointer touches, and when the
+button comes up there maximises the window on that screen, moving it onto the
+screen first if most of it is still on another.
+
 ## The view
 
 `W42View` is a `GtkWidget` subclass that paints through
