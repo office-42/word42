@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.7
+
+### Fixed
+
+- On Windows, a window restored from the maximized size it opens at can
+  be made smaller again; it stayed the size of the screen.
+
 ## 1.0.6
 
 ### New
@@ -85,8 +92,6 @@
   text file of many line breaks saves at once.
 - On Windows, a window dragged by its title bar to the top of a screen
   is maximized on that screen again, whichever screen it is.
-- On Windows, a window restored from the maximized size it opens at can
-  be made smaller again; it stayed the size of the screen.
 
 ## 1.0.5
 
