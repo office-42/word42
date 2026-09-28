@@ -6361,6 +6361,21 @@ window_first_map (GtkWidget *widget, gpointer data)
 {
   (void) data;
   g_signal_handlers_disconnect_by_func (widget, window_first_map, NULL);
+#ifdef G_OS_WIN32
+  /* Windows maximises it, not GTK: after gtk_window_maximize() GTK 4.22
+   * keeps the window at the size of the screen once it is restored, and
+   * it cannot be made smaller.  Maximised by Windows, it goes back to its
+   * default size and is resized like any other. */
+  {
+    GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (widget));
+
+    if (GDK_IS_WIN32_SURFACE (surface))
+      {
+        ShowWindow (gdk_win32_surface_get_handle (surface), SW_MAXIMIZE);
+        return;
+      }
+  }
+#endif
   gtk_window_maximize (GTK_WINDOW (widget));
 }
 
