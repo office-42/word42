@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.8 (in development)
+## 1.0.8
 
 ### Fixed
 

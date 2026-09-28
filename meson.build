@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 project('word42', 'c',
-  version: '1.0.7',
+  version: '1.0.8',
   license: 'GPL-3.0-or-later',
   meson_version: '>= 1.0',
   default_options: [
