@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.8 (in development)
+
+### Fixed
+
+- On Windows, a maximized window no longer shrinks when a menu is opened
+  with the mouse.
+
 ## 1.0.7
 
 ### Fixed
