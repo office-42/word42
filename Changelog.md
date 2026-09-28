@@ -30,6 +30,12 @@
 
 ### Improved
 
+- **The title bar is the system's own**, in place of the navy one Word42
+  drew, on Windows, macOS and Linux alike. It moves, maximizes and snaps
+  the window as every other program's does -- on Windows to the top,
+  sides and corners of every screen, with Snap Layouts and the window
+  menu -- and takes the system's colours and dark mode. On Windows the
+  dialogs have Windows' title bar too, where GTK drew one of its own.
 - A PDF from another program comes in closer to what it was: paragraphs
   with their alignment, indents and space above; its bookmarks as
   headings; its web links; the pictures where they stood between the
@@ -78,11 +84,7 @@
 - A plain-text file in UTF-16 keeps what follows a NUL character, and a
   text file of many line breaks saves at once.
 - On Windows, a window dragged by its title bar to the top of a screen
-  is maximized on that screen, whichever screen it is, with the screen
-  shaded while the pointer is at the top to show where the window will
-  go, as Windows' own title bars do. GTK 4.18 had stopped doing this for
-  the title bar Word42 draws, and before that did it only where no other
-  screen lay anywhere above. The Snap windows setting is followed.
+  is maximized on that screen again, whichever screen it is.
 
 ## 1.0.5
 

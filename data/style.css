@@ -44,8 +44,7 @@ window.w42 button,
 .w42-dialog checkbutton,
 .w42-dialog spinbutton,
 .w42-dialog dropdown,
-.w42-dialog dropdown label,
-.w42-titlebar label {
+.w42-dialog dropdown label {
   font-family: "MS Sans Serif", "Segoe UI", "DejaVu Sans", sans-serif;
   font-size: 12px;
   font-weight: normal;
@@ -67,7 +66,6 @@ popover.menu contents modelbutton accelerator {
 /* --- the raised bevel, shared by everything that can be pressed -------- */
 
 .w42-toolbar button,
-.w42-titlebar button,
 .w42-dialog button,
 .w42-about button {
   background-color: @w42_face;
@@ -89,7 +87,6 @@ popover.menu contents modelbutton accelerator {
 }
 
 .w42-toolbar button:hover,
-.w42-titlebar button:hover,
 .w42-dialog button:hover,
 .w42-about button:hover {
   background-color: @w42_light;
@@ -99,7 +96,6 @@ popover.menu contents modelbutton accelerator {
  * how a 1993 toolbar showed you that bold was on. */
 .w42-toolbar button:active,
 .w42-toolbar button:checked,
-.w42-titlebar button:active,
 .w42-dialog button:active,
 .w42-about button:active {
   border-top-color: @w42_dark;
@@ -119,59 +115,6 @@ popover.menu contents modelbutton accelerator {
 
 .w42-toolbar button:disabled image {
   opacity: 0.4;
-}
-
-/* --- title bar -------------------------------------------------------- */
-
-.w42-titlebar {
-  background-color: @w42_title;
-  background-image: none;
-  color: @w42_title_text;
-  border: none;
-  border-bottom: 1px solid @w42_dark;
-  min-height: 18px;
-  padding: 0 2px;
-}
-
-/* GtkWindowHandle and the headerbar slot around it both want a minimum
- * height of their own; without these the caption ends up three times the
- * height of the original. */
-windowhandle,
-window.w42 headerbar,
-window.w42 .titlebar {
-  min-height: 18px;
-  padding: 0;
-  margin: 0;
-  background: none;
-  border: none;
-  box-shadow: none;
-}
-
-/* The caption is set in the menus' size and weight, as other Windows
- * programs set theirs; the class is qualified so that it outranks the
- * chrome's rule for every label. */
-.w42-titlebar .w42-titlebar-label {
-  color: @w42_title_text;
-  font-size: 14px;
-  padding: 0;
-  margin: 0;
-}
-
-.w42-titlebar button {
-  min-width: 16px;
-  min-height: 14px;
-  padding: 0;
-  margin: 1px 1px;
-}
-
-.w42-titlebar image {
-  margin: 0;
-}
-
-/* The window is inactive: Windows 3.1 greyed the bar rather than fading the
- * text, and the difference is easy to miss if you do it the modern way. */
-.w42-titlebar:backdrop {
-  background-color: @w42_shadow;
 }
 
 /* --- menu bar --------------------------------------------------------- */
@@ -508,7 +451,8 @@ w42view {
   font-size: 10.5pt;
 }
 
-/* The splash screen: a white card with the blue edge of the title bar. */
+/* The splash screen: a white card with a navy edge, Word 97's title bar
+ * blue. */
 .w42-splash {
   background-color: #ffffff;
   border: 2px solid #000080;

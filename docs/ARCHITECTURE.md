@@ -498,17 +498,13 @@ ones. Every raised control is that four-tone bevel and every field is the same
 bevel turned inside out. Pressed and toggled-on invert it, which is the whole
 of how a 1993 toolbar told you bold was on.
 
-The title bar is Word42's own, drawn into a `GtkWindowHandle` so that dragging
-and double-click-to-maximise keep working. The desktop's title bar cannot be
-made navy with centred white text, and without that the window does not read
-as the right program.
-
-On Windows the one thing a drawn title bar loses is Aero Snap: GTK 4.18 moves
-the window and no more. `title_drag_filter` in `w42-window.c`, a GDK Win32
-message filter, watches for a drag that moves the window without resizing it,
-shades the work area of a screen whose top the pointer touches, and when the
-button comes up there maximises the window on that screen, moving it onto the
-screen first if most of it is still on another.
+The title bar is the system's own, not part of the look: moving the window,
+snapping it to the edges of the screens and the window menu then work as they
+do for every other program, which a title bar drawn by the program has to
+imitate and never quite does. GTK draws its own title bars on Windows unless
+`GTK_CSD` is `0`, so `main.c` sets that before GTK starts, leaving alone a
+value the user has set. Elsewhere GTK asks the window manager for one, and
+draws its own only where the desktop wants programs to, as GNOME does.
 
 ## The view
 
