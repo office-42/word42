@@ -708,6 +708,15 @@ write_block_runs (GString *out, RtfRuns *rw, const W42Block *block,
           const W42Object *object = w42_object_table_get (objects, run->object);
 
           write_char_props (out, &fmt->ch, over_ch, rw->tables);
+          /* An equation: its picture, which every reader shows, after its
+           * MathML in a destination of Word42's own, which the others
+           * pass over and Word42 reads back as the equation. */
+          if (object != NULL && object->mathml != NULL)
+            {
+              g_string_append (out, "{\\*\\wordmathml ");
+              write_text (out, object->mathml, strlen (object->mathml));
+              g_string_append (out, "}");
+            }
           if (object != NULL && (!rtf_is_picture (object) || object->wrap != W42_WRAP_INLINE))
             write_shape (out, objects, run->object);
           else
@@ -1679,6 +1688,10 @@ struct _RtfReader {
   int            note_last_cell_span;
   W42Align       hf_align;
   W42PageTextKind hf_kind;   /* which of the three is being read */
+  gboolean       in_mathml;      /* inside {\*\wordmathml ...}: an equation's */
+  guint          mathml_depth;
+  GString       *mathml;
+  char          *pending_mathml; /* for the picture after it */
   gboolean       in_fldinst;     /* inside {\*\fldinst ...}: the field's code */
   guint          fldinst_depth;
   GString       *fldinst;
@@ -2200,6 +2213,14 @@ append_char (RtfReader *r, gunichar c)
       return;
     }
 
+  if (r->in_mathml)
+    {
+      g_string_append_unichar (r->mathml, c);
+      return;
+    }
+  /* An equation's MathML belongs to the picture right after it, and to
+   * nothing further on. */
+  g_clear_pointer (&r->pending_mathml, g_free);
   if (r->in_fldinst)
     {
       g_string_append_unichar (r->fldinst, c);
@@ -2713,8 +2734,15 @@ finish_pict (RtfReader *r)
   width = CLAMP (width, 15, 100800);
   height = CLAMP (height, 15, 100800);
 
-  idx = w42_object_table_add (w42_pt_object_table (r->pt), data, format,
-                              pw, ph, width, height);
+  /* The picture of an equation Word42 wrote: the equation again. */
+  idx = W42_OBJECT_NONE;
+  if (r->pending_mathml != NULL)
+    idx = w42_object_table_add_math (w42_pt_object_table (r->pt), r->pending_mathml,
+                                     r->state.ch.size > 0 ? r->state.ch.size / 2.0 : 10.0);
+  g_clear_pointer (&r->pending_mathml, g_free);
+  if (idx == W42_OBJECT_NONE)
+    idx = w42_object_table_add (w42_pt_object_table (r->pt), data, format,
+                                pw, ph, width, height);
   g_bytes_unref (data);
   place_pict (r, idx);
 }
@@ -2769,6 +2797,7 @@ finish_shape (RtfReader *r)
 
   r->in_shp = FALSE;
   r->in_sn = r->in_sv = r->in_shptxt = FALSE;
+  g_clear_pointer (&r->pending_mathml, g_free);
 
   /* A shape in a header or an annotation has nowhere to go in the model,
    * and is not the body's. */
@@ -3260,6 +3289,15 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       r->bkmk_kind = g_str_equal (word, "bkmkstart") ? 1 : 2;
       r->bkmk_depth = r->stack->len;
       g_string_truncate (r->bkmk_name, 0);
+      return;
+    }
+
+  /* An equation's MathML, which the picture after it shows. */
+  if (g_str_equal (word, "wordmathml"))
+    {
+      r->in_mathml = TRUE;
+      r->mathml_depth = r->stack->len;
+      g_string_truncate (r->mathml, 0);
       return;
     }
 
@@ -4340,7 +4378,7 @@ rtf_known_destination (const char *word)
     "footer", "footerl", "footerr", "footerf",
     "wfnumhead", "pn", "bkmkstart", "bkmkend",
     "atrfstart", "atrfend", "atnref", "annotation",
-    "ud", "wordpgnfrom", "wordpgnstart", "nesttableprops",
+    "ud", "wordpgnfrom", "wordpgnstart", "nesttableprops", "wordmathml",
   };
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
@@ -4426,6 +4464,7 @@ w42_rtf_load (W42PieceTable *pt,
   r.cur_ilvl = 0;
   r.hf_text = g_string_new (NULL);
   r.fldinst = g_string_new (NULL);
+  r.mathml = g_string_new (NULL);
   r.bkmk_name = g_string_new (NULL);
   r.atn_text = g_string_new (NULL);
   r.atn_ref = g_string_new (NULL);
@@ -4671,6 +4710,12 @@ w42_rtf_load (W42PieceTable *pt,
               r.table_col = r.note_table_col;
               r.last_cell_pos = r.note_last_cell_pos;
               r.last_cell_span = r.note_last_cell_span;
+            }
+          if (r.in_mathml && r.stack->len == r.mathml_depth)
+            {
+              r.in_mathml = FALSE;
+              g_free (r.pending_mathml);
+              r.pending_mathml = g_strdup (r.mathml->str);
             }
           if (r.dest == DEST_PICT && r.stack->len == r.pict_depth)
             finish_pict (&r);
@@ -5144,6 +5189,8 @@ w42_rtf_load (W42PieceTable *pt,
   g_string_free (r.style_name, TRUE);
   g_string_free (r.hf_text, TRUE);
   g_string_free (r.fldinst, TRUE);
+  g_string_free (r.mathml, TRUE);
+  g_free (r.pending_mathml);
   g_string_free (r.bkmk_name, TRUE);
   g_string_free (r.atn_text, TRUE);
   g_string_free (r.atn_ref, TRUE);

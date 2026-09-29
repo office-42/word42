@@ -360,6 +360,30 @@ The Spelling box walks the document with the same word splitter, selects
 each unknown word in the view and edits through the view's ordinary
 insert-over-selection, so Change is undoable like any other typing.
 
+## Equations
+
+An equation is an object like a picture -- one position in the text, a
+U+FFFC to the layout -- whose `W42Object.mathml` holds MathML, the one
+form the document keeps; its `data` is a PNG of it, so that a writer that
+knows only pictures still has something to write, and `descent` says how
+far below the baseline it goes, which the shape attribute's logical
+rectangle carries into the line.  `util/w42-math.c` reads MathML into a
+small tree (GMarkup, with MathML's named entities made characters first)
+and sets it as TeX's Appendix G sets mathematics: boxes with a width, a
+height and a depth, scripts raised by the TeX parameters in ems, fractions
+on the axis, delimiters and radical signs drawn with Cairo when what they
+hold is taller than a glyph, and the glyphs from Pango with their ink as
+their height.  An object sets its equation once, at a fixed size, and the
+layout scales that to the box it is given.  `util/w42-mathtex.c` turns
+LaTeX's notation into MathML, keeping the LaTeX as an `<annotation>` so
+that the equation opens as it was typed, and MathML back into LaTeX for
+the LaTeX export and for formulas that came without it.  The formats say
+it their own ways: HTML and EPUB inline MathML, OpenDocument a formula
+object (`Object N/content.xml`), .docx Office Math through
+`io/w42-omml.c`, which maps the two element sets both ways, AbiWord a
+`<math>` whose data item is the MathML, RTF a picture with the MathML in
+a `{\*\wordmathml}` destination of Word42's own.
+
 ## Code
 
 Three built-in paragraph styles -- HTML Source, JavaScript Source, XML

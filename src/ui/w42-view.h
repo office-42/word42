@@ -182,6 +182,12 @@ const W42Object *w42_view_get_object (W42View *self);
 /* Makes the selected object the shape described, as one undo step. */
 void w42_view_set_shape (W42View *self, W42ShapeKind kind, double line_pt, guint32 line_rgb,
                          gboolean filled, guint32 fill_rgb, const char *text);
+/* Insert > Equation: the equation `mathml` at the caret, in place of any
+ * selection, at the size of the text it goes in.  FALSE when it is not
+ * MathML. */
+gboolean w42_view_insert_equation (W42View *self, const char *mathml);
+/* Makes the selected equation `mathml`, as one undo step. */
+gboolean w42_view_set_equation (W42View *self, const char *mathml);
 /* Format > Picture: the selected picture's size in twips and its wrap,
  * FALSE when no picture is selected; and setting them. */
 gboolean w42_view_get_picture (W42View *self, int *width, int *height, W42Wrap *wrap);

@@ -26,6 +26,7 @@
 #include <glib/gi18n.h>
 
 #include "w42-build.h"
+#include "w42-mathtex.h"
 #include "w42-wpd-charsets.h"
 
 #define FAIL(err, ...) \
@@ -2143,7 +2144,23 @@ write_runs (Writer *w, GByteArray *o, const W42Block *block)
           continue;
         }
       if (run->object != W42_OBJECT_NONE)
-        continue;                          /* pictures are not written */
+        {
+          /* Pictures are not written; an equation is, as it reads. */
+          const W42Object *object = w42_object_table_get (w42_pt_object_table (w->pt), run->object);
+          W42MathNode *root = object != NULL && object->mathml != NULL
+                                ? w42_math_parse (object->mathml, -1, NULL) : NULL;
+
+          if (root != NULL)
+            {
+              char *said = w42_mathml_to_text (root);
+
+              for (const char *p = said; *p != '\0'; p = g_utf8_next_char (p))
+                put_uchar (w, o, g_utf8_get_char (p));
+              g_free (said);
+              w42_math_node_free (root);
+            }
+          continue;
+        }
 
       if (rf->ch.field != NULL && (g_str_equal (rf->ch.field, "PAGE") || g_str_equal (rf->ch.field, "NUMPAGES")))
         {

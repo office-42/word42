@@ -100,6 +100,7 @@ typedef struct {
   GString *body;
   GArray  *notes;      /* int: the ids of the notes it refers to, in order */
   gboolean opens_with_heading;
+  gboolean has_math;   /* it holds an equation: its manifest item says so */
 } Chapter;
 
 typedef struct {
@@ -912,7 +913,19 @@ write_runs (Epub *e, GString *out, guint b, const CharLook *base, int chapter)
       if (ch->revision == 2)
         continue;
       if (run->object != W42_OBJECT_NONE)
-        write_picture (e, out, run->object);
+        {
+          const W42Object *object = w42_object_table_get (w42_pt_object_table (e->pt), run->object);
+
+          /* An equation is MathML, which EPUB 3 carries and a reader sets. */
+          if (object != NULL && object->mathml != NULL)
+            {
+              g_string_append (out, object->mathml);
+              if (chapter >= 0 && (guint) chapter < e->chapters->len)
+                ((Chapter *) g_ptr_array_index (e->chapters, chapter))->has_math = TRUE;
+            }
+          else
+            write_picture (e, out, run->object);
+        }
       else if (run->footnote > 0)
         write_noteref (e, out, run, chapter);
       else if (run->n_bytes > 0)
@@ -1151,7 +1164,7 @@ plan_chapters (Epub *e)
               if (run->object == W42_OBJECT_NONE)
                 continue;
               object = w42_object_table_get (w42_pt_object_table (e->pt), run->object);
-              if (object != NULL && object->width >= 2880)
+              if (object != NULL && object->width >= 2880 && object->mathml == NULL)
                 e->cover = run->object;
               break;
             }
@@ -2184,7 +2197,9 @@ make_opf (Epub *e, const char *uid, const char *title)
     {
       g_string_append_printf (out, "<item id=\"c%u\" href=\"", c + 1);
       append_href (out, chapter_file (e, (int) c));
-      g_string_append (out, "\" media-type=\"application/xhtml+xml\"/>\n");
+      g_string_append_printf (out, "\" media-type=\"application/xhtml+xml\"%s/>\n",
+                              ((Chapter *) g_ptr_array_index (e->chapters, c))->has_math
+                                ? " properties=\"mathml\"" : "");
     }
   for (guint i = 0; i < e->image_list->len; i++)
     {

@@ -3679,6 +3679,12 @@ action_format_picture (GSimpleAction *action, GVariant *param, gpointer data)
   {
     const W42Object *object = w42_view_get_object (self->view);
 
+    /* An equation, the equation box. */
+    if (object != NULL && object->mathml != NULL)
+      {
+        w42_equation_dialog_show (GTK_WINDOW (self), self->view);
+        return;
+      }
     if (object != NULL && object->shape != W42_SHAPE_PICTURE)
       {
         w42_drawing_dialog_show (GTK_WINDOW (self), self->view);
@@ -4007,6 +4013,17 @@ action_insert_symbol (GSimpleAction *action, GVariant *param, gpointer data)
 
   (void) action; (void) param;
   w42_symbol_dialog_show (GTK_WINDOW (self), self->view);
+}
+
+/* Insert > Equation, which Word 97 put under Insert > Object as Microsoft
+ * Equation 3.0. */
+static void
+action_insert_equation (GSimpleAction *action, GVariant *param, gpointer data)
+{
+  W42Window *self = data;
+
+  (void) action; (void) param;
+  w42_equation_dialog_show (GTK_WINDOW (self), self->view);
 }
 
 /* Tools > Language > Thesaurus (Shift+F7).  The thesaurus is read the
@@ -6239,6 +6256,7 @@ static const GActionEntry WINDOW_ACTIONS[] = {
   { "gridlines",     action_gridlines,     NULL, "false", NULL, { 0 } },
   { "insert-date",   action_insert_date,   NULL, NULL, NULL, { 0 } },
   { "insert-symbol", action_insert_symbol, NULL, NULL, NULL, { 0 } },
+  { "insert-equation", action_insert_equation, NULL, NULL, NULL, { 0 } },
   { "auto-spell", action_auto_spell, NULL, "true", NULL, { 0 } },
   { "track-changes", action_track_changes, NULL, "false", NULL, { 0 } },
   { "accept-revisions", action_accept_revisions, NULL, NULL, NULL, { 0 } },

@@ -41,3 +41,5 @@ src/ui/w42-view.c
 src/ui/w42-window.c
 src/util/w42-image.c
 src/util/w42-lang.c
+src/util/w42-math.c
+src/util/w42-mathtex.c

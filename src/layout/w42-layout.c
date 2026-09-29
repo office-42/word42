@@ -255,6 +255,17 @@ paint_object (W42Layout *self, cairo_t *cr, W42ObjectIdx idx,
 
   if (object == NULL || w <= 0.0 || h <= 0.0)
     return;
+  /* An equation is set as type, sharp at any size. */
+  if (object->mathml != NULL)
+    {
+      const W42MathBox *math = w42_object_math (self->objects, idx);
+
+      if (math != NULL)
+        {
+          w42_math_box_draw_in (math, cr, x, y, w, h);
+          return;
+        }
+    }
   if (object->shape != W42_SHAPE_PICTURE)
     {
       cairo_save (cr);
@@ -965,6 +976,10 @@ build_attributes (W42Layout *self, const W42Block *block, W42ApTable *aps,
 
           rect.x = 0;
           rect.y = -(int) (h * PANGO_SCALE);
+          /* An equation sits on the baseline as its letters do, what is
+           * under them -- a fraction's lower half -- below it. */
+          if (object->mathml != NULL && object->height > 0)
+            rect.y += (int) (h * object->descent / object->height * PANGO_SCALE);
           rect.width = (int) (w * PANGO_SCALE);
           rect.height = (int) (h * PANGO_SCALE);
 
@@ -4808,6 +4823,8 @@ w42_layout_object_rect (W42Layout *self, gsize pos, int *page,
   if (page)   *page   = box->page;
   if (x)      *x      = box->x + (double) MIN (px0, px1) / PANGO_SCALE;
   if (y)      *y      = box->y + box->baseline - h;
+  if (y && object->mathml != NULL && object->height > 0)
+    *y += h * object->descent / object->height;     /* its depth under the line */
   if (width)  *width  = w;
   if (height) *height = h;
 

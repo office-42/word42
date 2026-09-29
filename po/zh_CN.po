@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: word42\n"
 "Report-Msgid-Bugs-To: https://github.com/office-42/word42/issues\n"
-"POT-Creation-Date: 2026-09-29 11:59+0000\n"
+"POT-Creation-Date: 2026-09-29 13:16+0000\n"
 "PO-Revision-Date: 2026-09-25 12:00+0000\n"
 "Last-Translator: Word42 translators\n"
 "Language-Team: Chinese (Simplified)\n"
@@ -42,12 +42,12 @@ msgstr "根据模板新建(_M)..."
 msgid "_Open..."
 msgstr "打开(_O)..."
 
-#: data/ui/menus.ui:25 src/ui/w42-dialogs.c:5572 src/ui/w42-dialogs.c:5777
-#: src/ui/w42-dialogs.c:6933 src/ui/w42-help.c:676 src/ui/w42-preview.c:597
+#: data/ui/menus.ui:25 src/ui/w42-dialogs.c:5974 src/ui/w42-dialogs.c:6179
+#: src/ui/w42-dialogs.c:7335 src/ui/w42-help.c:676 src/ui/w42-preview.c:597
 msgid "_Close"
 msgstr "关闭(_C)"
 
-#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6930 src/ui/w42-window.c:1712
+#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:7332 src/ui/w42-window.c:1712
 #: src/ui/w42-window.c:1924
 msgid "_Save"
 msgstr "保存(_S)"
@@ -124,7 +124,7 @@ msgstr "导出为演示文稿(_T)..."
 msgid "E_xit"
 msgstr "退出(_X)"
 
-#: data/ui/menus.ui:116 src/ui/w42-dialogs.c:7254
+#: data/ui/menus.ui:116 src/ui/w42-dialogs.c:7656
 msgid "_Edit"
 msgstr "编辑(_E)"
 
@@ -140,7 +140,7 @@ msgstr "恢复(_D)"
 msgid "_Repeat"
 msgstr "重复(_R)"
 
-#: data/ui/menus.ui:133 src/ui/w42-view.c:6082
+#: data/ui/menus.ui:133 src/ui/w42-view.c:6209
 msgid "Cu_t"
 msgstr "剪切(_T)"
 
@@ -260,11 +260,11 @@ msgstr "1_50%"
 msgid "_200%"
 msgstr "_200%"
 
-#: data/ui/menus.ui:270 src/ui/w42-dialogs.c:6635
+#: data/ui/menus.ui:270 src/ui/w42-dialogs.c:7037
 msgid "Page _Width"
 msgstr "页宽(_W)"
 
-#: data/ui/menus.ui:275 src/ui/w42-dialogs.c:6635
+#: data/ui/menus.ui:275 src/ui/w42-dialogs.c:7037
 msgid "W_hole Page"
 msgstr "整页(_H)"
 
@@ -272,7 +272,7 @@ msgstr "整页(_H)"
 msgid "_Zoom..."
 msgstr "显示比例(_Z)..."
 
-#: data/ui/menus.ui:288 data/ui/menus.ui:662 src/ui/w42-dialogs.c:5570
+#: data/ui/menus.ui:288 data/ui/menus.ui:666 src/ui/w42-dialogs.c:5972
 msgid "_Insert"
 msgstr "插入(_I)"
 
@@ -309,470 +309,474 @@ msgid "S_ymbol..."
 msgstr "符号(_Y)..."
 
 #: data/ui/menus.ui:325
+msgid "E_quation..."
+msgstr "方程式(_Q)..."
+
+#: data/ui/menus.ui:329
 msgid "F_ootnote"
 msgstr "脚注(_O)"
 
-#: data/ui/menus.ui:329
+#: data/ui/menus.ui:333
 msgid "_Endnote"
 msgstr "尾注(_E)"
 
-#: data/ui/menus.ui:333
+#: data/ui/menus.ui:337
 msgid "_Go to Note"
 msgstr "转到注释(_G)"
 
-#: data/ui/menus.ui:339
+#: data/ui/menus.ui:343
 msgid "Boo_kmark..."
 msgstr "书签(_K)..."
 
-#: data/ui/menus.ui:343 src/ui/w42-view.c:6091
+#: data/ui/menus.ui:347 src/ui/w42-view.c:6218
 msgid "_Hyperlink..."
 msgstr "超链接(_H)..."
 
-#: data/ui/menus.ui:347
+#: data/ui/menus.ui:351
 msgid "Inde_x and Tables"
 msgstr "索引和目录(_X)"
 
-#: data/ui/menus.ui:350
+#: data/ui/menus.ui:354
 msgid "_Table of Contents"
 msgstr "目录(_T)"
 
-#: data/ui/menus.ui:354
+#: data/ui/menus.ui:358
 msgid "_Update Table of Contents"
 msgstr "更新目录(_U)"
 
-#: data/ui/menus.ui:360
+#: data/ui/menus.ui:364
 msgid "_Mark Index Entry..."
 msgstr "标记索引项(_M)..."
 
-#: data/ui/menus.ui:364 data/ui/menus.ui:843 src/ui/w42-help.c:625
+#: data/ui/menus.ui:368 data/ui/menus.ui:847 src/ui/w42-help.c:625
 msgid "_Index"
 msgstr "索引(_I)"
 
-#: data/ui/menus.ui:370
+#: data/ui/menus.ui:374
 msgid "Table of _Figures"
 msgstr "图表目录(_F)"
 
-#: data/ui/menus.ui:376
+#: data/ui/menus.ui:380
 msgid "Cross-_reference..."
 msgstr "交叉引用(_R)..."
 
-#: data/ui/menus.ui:380
+#: data/ui/menus.ui:384
 msgid "C_aption"
 msgstr "题注(_A)"
 
-#: data/ui/menus.ui:384
+#: data/ui/menus.ui:388
 msgid "Comme_nt..."
 msgstr "批注(_N)..."
 
-#: data/ui/menus.ui:388
+#: data/ui/menus.ui:392
 msgid "Pi_cture"
 msgstr "图片(_C)"
 
-#: data/ui/menus.ui:391
+#: data/ui/menus.ui:395
 msgid "From _File..."
 msgstr "来自文件(_F)..."
 
-#: data/ui/menus.ui:395
+#: data/ui/menus.ui:399
 msgid "From _Scanner or Camera..."
 msgstr "来自扫描仪或照相机(_S)..."
 
-#: data/ui/menus.ui:399
+#: data/ui/menus.ui:403
 msgid "_AutoShape..."
 msgstr "自选图形(_A)..."
 
-#: data/ui/menus.ui:405
+#: data/ui/menus.ui:409
 msgid "_File..."
 msgstr "文件(_F)..."
 
-#: data/ui/menus.ui:412
+#: data/ui/menus.ui:416
 msgid "F_ormat"
 msgstr "格式(_O)"
 
-#: data/ui/menus.ui:415 src/ui/w42-view.c:6088
+#: data/ui/menus.ui:419 src/ui/w42-view.c:6215
 msgid "_Font..."
 msgstr "字体(_F)..."
 
-#: data/ui/menus.ui:419 src/ui/w42-view.c:6089
+#: data/ui/menus.ui:423 src/ui/w42-view.c:6216
 msgid "P_aragraph..."
 msgstr "段落(_A)..."
 
-#: data/ui/menus.ui:423
+#: data/ui/menus.ui:427
 msgid "Font _Effects..."
 msgstr "字体效果(_E)..."
 
-#: data/ui/menus.ui:427
+#: data/ui/menus.ui:431
 msgid "_Tabs..."
 msgstr "制表位(_T)..."
 
-#: data/ui/menus.ui:431
+#: data/ui/menus.ui:435
 msgid "_Picture..."
 msgstr "图片(_P)..."
 
-#: data/ui/menus.ui:435
+#: data/ui/menus.ui:439
 msgid "_Drop Cap..."
 msgstr "首字下沉(_D)..."
 
-#: data/ui/menus.ui:439
+#: data/ui/menus.ui:443
 msgid "F_rame..."
 msgstr "图文框(_R)..."
 
-#: data/ui/menus.ui:443
+#: data/ui/menus.ui:447
 msgid "C_hange Case"
 msgstr "更改大小写(_H)"
 
-#: data/ui/menus.ui:446
+#: data/ui/menus.ui:450
 msgid "_Sentence case"
 msgstr "句首字母大写(_S)"
 
-#: data/ui/menus.ui:451
+#: data/ui/menus.ui:455
 msgid "_lowercase"
 msgstr "全部小写(_L)"
 
-#: data/ui/menus.ui:456
+#: data/ui/menus.ui:460
 msgid "_UPPERCASE"
 msgstr "全部大写(_U)"
 
-#: data/ui/menus.ui:461
+#: data/ui/menus.ui:465
 msgid "_Title Case"
 msgstr "词首字母大写(_T)"
 
-#: data/ui/menus.ui:466
+#: data/ui/menus.ui:470
 msgid "t_OGGLE cASE"
 msgstr "切换大小写(_O)"
 
-#: data/ui/menus.ui:473
+#: data/ui/menus.ui:477
 msgid "AutoFormat the _Whole Document..."
 msgstr "对整篇文档自动套用格式(_W)..."
 
-#: data/ui/menus.ui:477
+#: data/ui/menus.ui:481
 msgid "Bac_kground..."
 msgstr "背景(_K)..."
 
-#: data/ui/menus.ui:481
+#: data/ui/menus.ui:485
 msgid "Borders and _Shading..."
 msgstr "边框和底纹(_S)..."
 
-#: data/ui/menus.ui:485
+#: data/ui/menus.ui:489
 msgid "Make It Fit..."
 msgstr "调整页数..."
 
-#: data/ui/menus.ui:489
+#: data/ui/menus.ui:493
 msgid "Colu_mns..."
 msgstr "分栏(_M)..."
 
-#: data/ui/menus.ui:495
+#: data/ui/menus.ui:499
 msgid "B_old"
 msgstr "加粗(_O)"
 
-#: data/ui/menus.ui:499 src/ui/w42-dialogs.c:1205
+#: data/ui/menus.ui:503 src/ui/w42-dialogs.c:1206
 msgid "_Italic"
 msgstr "倾斜(_I)"
 
-#: data/ui/menus.ui:503
+#: data/ui/menus.ui:507
 msgid "U_nderline"
 msgstr "下划线(_N)"
 
-#: data/ui/menus.ui:509
+#: data/ui/menus.ui:513
 msgid "Align _Left"
 msgstr "左对齐(_L)"
 
-#: data/ui/menus.ui:514
+#: data/ui/menus.ui:518
 msgid "_Center"
 msgstr "居中(_C)"
 
-#: data/ui/menus.ui:519
+#: data/ui/menus.ui:523
 msgid "Ali_gn Right"
 msgstr "右对齐(_G)"
 
-#: data/ui/menus.ui:524
+#: data/ui/menus.ui:528
 msgid "_Justify"
 msgstr "两端对齐(_J)"
 
-#: data/ui/menus.ui:531
+#: data/ui/menus.ui:535
 msgid "B_ullets"
 msgstr "项目符号(_U)"
 
-#: data/ui/menus.ui:535
+#: data/ui/menus.ui:539
 msgid "Num_bering"
 msgstr "编号(_B)"
 
-#: data/ui/menus.ui:539
+#: data/ui/menus.ui:543
 msgid "Bullets and Numbering..."
 msgstr "项目符号和编号..."
 
-#: data/ui/menus.ui:543
+#: data/ui/menus.ui:547
 msgid "St_yle..."
 msgstr "样式(_Y)..."
 
-#: data/ui/menus.ui:547
+#: data/ui/menus.ui:551
 msgid "Heading Numbering"
 msgstr "标题编号"
 
-#: data/ui/menus.ui:554
+#: data/ui/menus.ui:558
 msgid "_Tools"
 msgstr "工具(_T)"
 
-#: data/ui/menus.ui:557
+#: data/ui/menus.ui:561
 msgid "_Spelling..."
 msgstr "拼写(_S)..."
 
-#: data/ui/menus.ui:561
+#: data/ui/menus.ui:565
 msgid "_Automatic Spell Checking"
 msgstr "自动拼写检查(_A)"
 
-#: data/ui/menus.ui:565
+#: data/ui/menus.ui:569
 msgid "A_utoCorrect..."
 msgstr "自动更正(_U)..."
 
-#: data/ui/menus.ui:569
+#: data/ui/menus.ui:573
 msgid "_Language"
 msgstr "语言(_L)"
 
-#: data/ui/menus.ui:572
+#: data/ui/menus.ui:576
 msgid "_Set Language..."
 msgstr "设置语言(_S)..."
 
-#: data/ui/menus.ui:576
+#: data/ui/menus.ui:580
 msgid "_Thesaurus..."
 msgstr "同义词库(_T)..."
 
-#: data/ui/menus.ui:582
+#: data/ui/menus.ui:586
 msgid "_Hyphenate Document"
 msgstr "对文档断字(_H)"
 
-#: data/ui/menus.ui:586
+#: data/ui/menus.ui:590
 msgid "Remo_ve Hyphenation"
 msgstr "取消断字(_V)"
 
-#: data/ui/menus.ui:592
+#: data/ui/menus.ui:596
 msgid "_Word Count..."
 msgstr "字数统计(_W)..."
 
-#: data/ui/menus.ui:596
+#: data/ui/menus.ui:600
 msgid "Word Count _Goal..."
 msgstr "字数目标(_G)..."
 
-#: data/ui/menus.ui:602
+#: data/ui/menus.ui:606
 msgid "_Track Changes"
 msgstr "修订(_T)"
 
-#: data/ui/menus.ui:605
+#: data/ui/menus.ui:609
 msgid "_Highlight Changes"
 msgstr "突出显示修订(_H)"
 
-#: data/ui/menus.ui:611
+#: data/ui/menus.ui:615
 msgid "Acce_pt All Changes"
 msgstr "接受所有修订(_P)"
 
-#: data/ui/menus.ui:615
+#: data/ui/menus.ui:619
 msgid "Re_ject All Changes"
 msgstr "拒绝所有修订(_J)"
 
-#: data/ui/menus.ui:621
+#: data/ui/menus.ui:625
 msgid "_Compare Documents..."
 msgstr "比较文档(_C)..."
 
-#: data/ui/menus.ui:627
+#: data/ui/menus.ui:631
 msgid "En_velopes and Labels..."
 msgstr "信封和标签(_V)..."
 
-#: data/ui/menus.ui:631
+#: data/ui/menus.ui:635
 msgid "Mail Mer_ge..."
 msgstr "邮件合并(_G)..."
 
-#: data/ui/menus.ui:637
+#: data/ui/menus.ui:641
 msgid "Mac_ro"
 msgstr "宏(_R)"
 
-#: data/ui/menus.ui:639
+#: data/ui/menus.ui:643
 msgid "_Macros..."
 msgstr "宏(_M)..."
 
-#: data/ui/menus.ui:643
+#: data/ui/menus.ui:647
 msgid "Macro _Editor..."
 msgstr "宏编辑器(_E)..."
 
-#: data/ui/menus.ui:650
+#: data/ui/menus.ui:654
 msgid "_Options..."
 msgstr "选项(_O)..."
 
-#: data/ui/menus.ui:657
+#: data/ui/menus.ui:661
 msgid "T_able"
 msgstr "表格(_A)"
 
-#: data/ui/menus.ui:665
+#: data/ui/menus.ui:669
 msgid "_Table..."
 msgstr "表格(_T)..."
 
-#: data/ui/menus.ui:671
+#: data/ui/menus.ui:675
 msgid "Columns to the _Left"
 msgstr "列(在左侧)(_L)"
 
-#: data/ui/menus.ui:675
+#: data/ui/menus.ui:679
 msgid "Columns to the _Right"
 msgstr "列(在右侧)(_R)"
 
-#: data/ui/menus.ui:679
+#: data/ui/menus.ui:683
 msgid "Rows _Above"
 msgstr "行(在上方)(_A)"
 
-#: data/ui/menus.ui:683
+#: data/ui/menus.ui:687
 msgid "Rows _Below"
 msgstr "行(在下方)(_B)"
 
-#: data/ui/menus.ui:689 src/ui/w42-dialogs.c:1171 src/ui/w42-dialogs.c:3172
-#: src/ui/w42-dialogs.c:3674 src/ui/w42-dialogs.c:5571
-#: src/ui/w42-dialogs.c:7193 src/ui/w42-dialogs.c:7255
+#: data/ui/menus.ui:693 src/ui/w42-dialogs.c:1172 src/ui/w42-dialogs.c:3173
+#: src/ui/w42-dialogs.c:3675 src/ui/w42-dialogs.c:5973
+#: src/ui/w42-dialogs.c:7595 src/ui/w42-dialogs.c:7657
 msgid "_Delete"
 msgstr "删除(_D)"
 
-#: data/ui/menus.ui:692 data/ui/menus.ui:709
+#: data/ui/menus.ui:696 data/ui/menus.ui:713
 msgid "_Table"
 msgstr "表格(_T)"
 
-#: data/ui/menus.ui:696
+#: data/ui/menus.ui:700
 msgid "_Columns"
 msgstr "列(_C)"
 
-#: data/ui/menus.ui:700
+#: data/ui/menus.ui:704
 msgid "_Rows"
 msgstr "行(_R)"
 
-#: data/ui/menus.ui:706
+#: data/ui/menus.ui:710
 msgid "Se_lect"
 msgstr "选择(_L)"
 
-#: data/ui/menus.ui:714
+#: data/ui/menus.ui:718
 msgid "_Column"
 msgstr "列(_C)"
 
-#: data/ui/menus.ui:719
+#: data/ui/menus.ui:723
 msgid "_Row"
 msgstr "行(_R)"
 
-#: data/ui/menus.ui:724
+#: data/ui/menus.ui:728
 msgid "C_ell"
 msgstr "单元格(_E)"
 
-#: data/ui/menus.ui:733
+#: data/ui/menus.ui:737
 msgid "_Merge Cells"
 msgstr "合并单元格(_M)"
 
-#: data/ui/menus.ui:737
+#: data/ui/menus.ui:741
 msgid "Split C_ells"
 msgstr "拆分单元格(_E)"
 
-#: data/ui/menus.ui:741
+#: data/ui/menus.ui:745
 msgid "Split _Table"
 msgstr "拆分表格(_T)"
 
-#: data/ui/menus.ui:747
+#: data/ui/menus.ui:751
 msgid "Table Auto_Format..."
 msgstr "表格自动套用格式(_F)..."
 
-#: data/ui/menus.ui:751
+#: data/ui/menus.ui:755
 msgid "_AutoFit"
 msgstr "自动调整(_A)"
 
-#: data/ui/menus.ui:754
+#: data/ui/menus.ui:758
 msgid "AutoFit to _Contents"
 msgstr "根据内容调整表格(_C)"
 
-#: data/ui/menus.ui:759
+#: data/ui/menus.ui:763
 msgid "AutoFit to _Window"
 msgstr "根据窗口调整表格(_W)"
 
-#: data/ui/menus.ui:764
+#: data/ui/menus.ui:768
 msgid "Distribute _Rows Evenly"
 msgstr "平均分布各行(_R)"
 
-#: data/ui/menus.ui:769
+#: data/ui/menus.ui:773
 msgid "Distribute Co_lumns Evenly"
 msgstr "平均分布各列(_L)"
 
-#: data/ui/menus.ui:776
+#: data/ui/menus.ui:780
 msgid "_Heading Rows Repeat"
 msgstr "标题行重复(_H)"
 
-#: data/ui/menus.ui:782
+#: data/ui/menus.ui:786
 msgid "Con_vert Text to Table"
 msgstr "文本转换成表格(_V)"
 
-#: data/ui/menus.ui:786
+#: data/ui/menus.ui:790
 msgid "S_ort Ascending"
 msgstr "升序排序(_O)"
 
-#: data/ui/menus.ui:791
+#: data/ui/menus.ui:795
 msgid "Sort Desce_nding"
 msgstr "降序排序(_N)"
 
-#: data/ui/menus.ui:796
+#: data/ui/menus.ui:800
 msgid "Form_ula..."
 msgstr "公式(_U)..."
 
-#: data/ui/menus.ui:802
+#: data/ui/menus.ui:806
 msgid "Table _Gridlines"
 msgstr "表格虚框(_G)"
 
-#: data/ui/menus.ui:806
+#: data/ui/menus.ui:810
 msgid "Table _Properties..."
 msgstr "表格属性(_P)..."
 
-#: data/ui/menus.ui:813
+#: data/ui/menus.ui:817
 msgid "_Window"
 msgstr "窗口(_W)"
 
-#: data/ui/menus.ui:816
+#: data/ui/menus.ui:820
 msgid "_New Window"
 msgstr "新建窗口(_N)"
 
-#: data/ui/menus.ui:820
+#: data/ui/menus.ui:824
 msgid "_Split"
 msgstr "拆分(_S)"
 
-#: data/ui/menus.ui:824
+#: data/ui/menus.ui:828
 msgid "_Arrange All"
 msgstr "全部重排(_A)"
 
-#: data/ui/menus.ui:832
+#: data/ui/menus.ui:836
 msgid "_Help"
 msgstr "帮助(_H)"
 
-#: data/ui/menus.ui:835 src/ui/w42-help.c:624
+#: data/ui/menus.ui:839 src/ui/w42-help.c:624
 msgid "_Contents"
 msgstr "目录(_C)"
 
-#: data/ui/menus.ui:839
+#: data/ui/menus.ui:843
 msgid "_Search for Help on..."
 msgstr "搜索帮助主题(_S)..."
 
-#: data/ui/menus.ui:849
+#: data/ui/menus.ui:853
 msgid "Word42 on the _Web"
 msgstr "Web 上的 Word42(_W)"
 
-#: data/ui/menus.ui:853
+#: data/ui/menus.ui:857
 msgid "Report a _Bug"
 msgstr "报告错误(_B)"
 
-#: data/ui/menus.ui:859
+#: data/ui/menus.ui:863
 msgid "_About Word42"
 msgstr "关于 Word42(_A)"
 
 #. Translators: %s says what the fault is.
-#: src/io/w42-abw.c:1679
+#: src/io/w42-abw.c:1705
 #, c-format
 msgid "The compressed AbiWord file is damaged: %s"
 msgstr "压缩的 AbiWord 文件已损坏：%s"
 
-#: src/io/w42-abw.c:1687
+#: src/io/w42-abw.c:1713
 msgid "The compressed AbiWord file unpacks to more than 256 MB."
 msgstr "压缩的 AbiWord 文件解压后超过 256 MB。"
 
-#: src/io/w42-abw.c:1704
+#: src/io/w42-abw.c:1730
 msgid "The compressed AbiWord file is cut short."
 msgstr "压缩的 AbiWord 文件不完整。"
 
-#: src/io/w42-abw.c:3063
+#: src/io/w42-abw.c:3141
 msgid "The document could not be compressed."
 msgstr "无法压缩该文档。"
 
@@ -855,7 +859,7 @@ msgstr "该文档已加密，Word42 无法打开加密的文档。"
 
 #. Translators: word/document.xml is the name of a file
 #. * inside a .docx; keep it as it is.
-#: src/io/w42-docx.c:4208
+#: src/io/w42-docx.c:4283
 #, c-format
 msgid "The file is not a Word document: it has no word/document.xml."
 msgstr "该文件不是 Word 文档：其中没有 word/document.xml。"
@@ -904,29 +908,29 @@ msgstr "文档所在的文件夹不在 Git 仓库中。"
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
-#: src/io/w42-htmlin.c:3719
+#: src/io/w42-htmlin.c:3811
 #, c-format
 msgid "The page nests its elements too deeply to be a document."
 msgstr "该网页的元素嵌套过深，无法作为文档打开。"
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
-#: src/io/w42-htmlin.c:3733
+#: src/io/w42-htmlin.c:3825
 #, c-format
 msgid "The page could not be parsed."
 msgstr "无法解析该网页。"
 
-#: src/io/w42-io.c:242
+#: src/io/w42-io.c:243
 #, c-format
 msgid "Word42 writes EPUB but does not read it."
 msgstr "Word42 可以写入 EPUB，但不能读取。"
 
-#: src/io/w42-io.c:248
+#: src/io/w42-io.c:249
 #, c-format
 msgid "Word42 writes LaTeX but does not read it."
 msgstr "Word42 可以写入 LaTeX，但不能读取 LaTeX。"
 
-#: src/io/w42-io.c:316
+#: src/io/w42-io.c:317
 #, c-format
 msgid "The file is not text in any encoding Word42 recognises."
 msgstr "该文件不是采用 Word42 可识别的任何编码的文本。"
@@ -943,7 +947,7 @@ msgstr "无法创建临时文件。"
 
 #. Translators: content.xml is the name of a file inside
 #. * an .odt; keep it as it is.
-#: src/io/w42-odt.c:2823
+#: src/io/w42-odt.c:2902
 #, c-format
 msgid "The file is not an OpenDocument text: it has no content.xml."
 msgstr "该文件不是 OpenDocument 文本：其中没有 content.xml。"
@@ -1045,7 +1049,7 @@ msgstr "Word42 无法签署 PDF：%s"
 #. * keep it as it is.
 #. Translators: GnuTLS is the name of a program library; keep it
 #. * as it is.
-#: src/io/w42-pdfsec.c:530 src/ui/w42-dialogs.c:7704
+#: src/io/w42-pdfsec.c:530 src/ui/w42-dialogs.c:8106
 #, c-format
 msgid ""
 "This build of Word42 cannot put a password on a PDF or sign one. It was "
@@ -1066,7 +1070,7 @@ msgstr "幻灯片"
 msgid "That file is not a presentation: it has no ppt/presentation.xml."
 msgstr "该文件不是演示文稿：其中没有 ppt/presentation.xml。"
 
-#: src/io/w42-rtf.c:4397
+#: src/io/w42-rtf.c:4435
 #, c-format
 msgid "That file does not begin like an RTF document."
 msgstr "该文件的开头不像 RTF 文档。"
@@ -1388,7 +1392,7 @@ msgstr "标题底纹"
 msgid "A grid, with the heading row shaded."
 msgstr "网格，标题行加底纹。"
 
-#: src/model/w42-tableformat.c:26 src/ui/w42-dialogs.c:3456
+#: src/model/w42-tableformat.c:26 src/ui/w42-dialogs.c:3457
 msgid "Columns"
 msgstr "分栏"
 
@@ -1740,415 +1744,415 @@ msgstr "场景分隔是单独占一行的井号。"
 msgid "default:LTR"
 msgstr "default:LTR"
 
-#: src/ui/w42-dialogs.c:264 src/ui/w42-dialogs.c:318 src/ui/w42-dialogs.c:1264
+#: src/ui/w42-dialogs.c:265 src/ui/w42-dialogs.c:319 src/ui/w42-dialogs.c:1265
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:402 src/ui/w42-versions.c:610
-#: src/ui/w42-window.c:1093 src/ui/w42-window.c:1128 src/ui/w42-window.c:4420
+#: src/ui/w42-window.c:1093 src/ui/w42-window.c:1128 src/ui/w42-window.c:4437
 msgid "_OK"
 msgstr "确定(_O)"
 
-#: src/ui/w42-dialogs.c:265 src/ui/w42-dialogs.c:1265 src/ui/w42-dialogs.c:7193
+#: src/ui/w42-dialogs.c:266 src/ui/w42-dialogs.c:1266 src/ui/w42-dialogs.c:7595
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:369 src/ui/w42-macro.c:370
 #: src/ui/w42-macro.c:402 src/ui/w42-print.c:379 src/ui/w42-print.c:883
 #: src/ui/w42-thesaurus-dialog.c:360 src/ui/w42-versions.c:409
-#: src/ui/w42-versions.c:611 src/ui/w42-view.c:1273 src/ui/w42-window.c:1093
+#: src/ui/w42-versions.c:611 src/ui/w42-view.c:1274 src/ui/w42-window.c:1093
 #: src/ui/w42-window.c:1128 src/ui/w42-window.c:1374 src/ui/w42-window.c:1556
 #: src/ui/w42-window.c:1712 src/ui/w42-window.c:1924
 msgid "Cancel"
 msgstr "取消"
 
 #. Translators: paper sizes; "in" is inches and "mm" millimetres.
-#: src/ui/w42-dialogs.c:447
+#: src/ui/w42-dialogs.c:448
 msgid "Letter  8½ x 11 in"
 msgstr "信纸  8½ x 11 英寸"
 
-#: src/ui/w42-dialogs.c:448
+#: src/ui/w42-dialogs.c:449
 msgid "Legal  8½ x 14 in"
 msgstr "法律专用纸  8½ x 14 英寸"
 
-#: src/ui/w42-dialogs.c:449
+#: src/ui/w42-dialogs.c:450
 msgid "A4  210 x 297 mm"
 msgstr "A4  210 x 297 毫米"
 
-#: src/ui/w42-dialogs.c:450
+#: src/ui/w42-dialogs.c:451
 msgid "A5  148 x 210 mm"
 msgstr "A5  148 x 210 毫米"
 
 #. Translators: the page keeps the size it has, which is not in the list.
-#: src/ui/w42-dialogs.c:452
+#: src/ui/w42-dialogs.c:453
 msgid "Custom (as it is)"
 msgstr "自定义(保持原样)"
 
-#: src/ui/w42-dialogs.c:455
+#: src/ui/w42-dialogs.c:456
 msgid "Portrait"
 msgstr "纵向"
 
-#: src/ui/w42-dialogs.c:455
+#: src/ui/w42-dialogs.c:456
 msgid "Landscape"
 msgstr "横向"
 
-#: src/ui/w42-dialogs.c:503
+#: src/ui/w42-dialogs.c:504
 msgid "The margins leave no room for text: an inch or less each, please."
 msgstr "页边距过大，没有留出放置文本的空间：请将每边设为 1 英寸或更小。"
 
-#: src/ui/w42-dialogs.c:547
+#: src/ui/w42-dialogs.c:548
 msgid "Page Setup"
 msgstr "页面设置"
 
-#: src/ui/w42-dialogs.c:550
+#: src/ui/w42-dialogs.c:551
 msgid "Margins"
 msgstr "页边距"
 
-#: src/ui/w42-dialogs.c:551
+#: src/ui/w42-dialogs.c:552
 msgid "_Top:"
 msgstr "上(_T):"
 
-#: src/ui/w42-dialogs.c:552
+#: src/ui/w42-dialogs.c:553
 msgid "_Bottom:"
 msgstr "下(_B):"
 
-#: src/ui/w42-dialogs.c:553 src/ui/w42-dialogs.c:741
+#: src/ui/w42-dialogs.c:554 src/ui/w42-dialogs.c:742
 msgid "_Left:"
 msgstr "左(_L):"
 
-#: src/ui/w42-dialogs.c:554 src/ui/w42-dialogs.c:743
+#: src/ui/w42-dialogs.c:555 src/ui/w42-dialogs.c:744
 msgid "_Right:"
 msgstr "右(_R):"
 
-#: src/ui/w42-dialogs.c:556
+#: src/ui/w42-dialogs.c:557
 msgid "Paper"
 msgstr "纸张"
 
-#: src/ui/w42-dialogs.c:557
+#: src/ui/w42-dialogs.c:558
 msgid "Paper _Size:"
 msgstr "纸张大小(_S):"
 
-#: src/ui/w42-dialogs.c:558
+#: src/ui/w42-dialogs.c:559
 msgid "Orie_ntation:"
 msgstr "方向(_N):"
 
-#: src/ui/w42-dialogs.c:581 src/ui/w42-dialogs.c:1140 src/ui/w42-dialogs.c:1303
+#: src/ui/w42-dialogs.c:582 src/ui/w42-dialogs.c:1141 src/ui/w42-dialogs.c:1304
 msgctxt "alignment"
 msgid "Left"
 msgstr "左对齐"
 
-#: src/ui/w42-dialogs.c:581 src/ui/w42-dialogs.c:1140
+#: src/ui/w42-dialogs.c:582 src/ui/w42-dialogs.c:1141
 msgctxt "alignment"
 msgid "Centered"
 msgstr "居中"
 
-#: src/ui/w42-dialogs.c:582 src/ui/w42-dialogs.c:1141 src/ui/w42-dialogs.c:1303
+#: src/ui/w42-dialogs.c:583 src/ui/w42-dialogs.c:1142 src/ui/w42-dialogs.c:1304
 msgctxt "alignment"
 msgid "Right"
 msgstr "右对齐"
 
-#: src/ui/w42-dialogs.c:582 src/ui/w42-dialogs.c:1141
+#: src/ui/w42-dialogs.c:583 src/ui/w42-dialogs.c:1142
 msgctxt "alignment"
 msgid "Justified"
 msgstr "两端对齐"
 
-#: src/ui/w42-dialogs.c:585
+#: src/ui/w42-dialogs.c:586
 msgid "Left-to-right"
 msgstr "从左向右"
 
-#: src/ui/w42-dialogs.c:585
+#: src/ui/w42-dialogs.c:586
 msgid "Right-to-left"
 msgstr "从右向左"
 
 #. Translators: a paragraph's special indent: none, the first line
 #. * indented, or the first line hanging out to the left.
-#: src/ui/w42-dialogs.c:590
+#: src/ui/w42-dialogs.c:591
 msgid "(none)"
 msgstr "(无)"
 
-#: src/ui/w42-dialogs.c:590
+#: src/ui/w42-dialogs.c:591
 msgid "First Line"
 msgstr "首行缩进"
 
-#: src/ui/w42-dialogs.c:590
+#: src/ui/w42-dialogs.c:591
 msgid "Hanging"
 msgstr "悬挂缩进"
 
-#: src/ui/w42-dialogs.c:594 src/ui/w42-dialogs.c:845
+#: src/ui/w42-dialogs.c:595 src/ui/w42-dialogs.c:846
 msgctxt "line spacing"
 msgid "Single"
 msgstr "单倍行距"
 
-#: src/ui/w42-dialogs.c:594 src/ui/w42-dialogs.c:845
+#: src/ui/w42-dialogs.c:595 src/ui/w42-dialogs.c:846
 msgctxt "line spacing"
 msgid "1.5 Lines"
 msgstr "1.5 倍行距"
 
-#: src/ui/w42-dialogs.c:595 src/ui/w42-dialogs.c:846
+#: src/ui/w42-dialogs.c:596 src/ui/w42-dialogs.c:847
 msgctxt "line spacing"
 msgid "Double"
 msgstr "2 倍行距"
 
-#: src/ui/w42-dialogs.c:595
+#: src/ui/w42-dialogs.c:596
 msgctxt "line spacing"
 msgid "Exactly"
 msgstr "固定值"
 
-#: src/ui/w42-dialogs.c:596
+#: src/ui/w42-dialogs.c:597
 msgctxt "line spacing"
 msgid "Multiple"
 msgstr "多倍行距"
 
-#: src/ui/w42-dialogs.c:734
+#: src/ui/w42-dialogs.c:735
 msgid "Paragraph"
 msgstr "段落"
 
-#: src/ui/w42-dialogs.c:737
+#: src/ui/w42-dialogs.c:738
 msgid "Indentation"
 msgstr "缩进"
 
-#: src/ui/w42-dialogs.c:738 src/ui/w42-dialogs.c:1586 src/ui/w42-dialogs.c:2315
+#: src/ui/w42-dialogs.c:739 src/ui/w42-dialogs.c:1587 src/ui/w42-dialogs.c:2316
 msgid "_Alignment:"
 msgstr "对齐方式(_A):"
 
-#: src/ui/w42-dialogs.c:740
+#: src/ui/w42-dialogs.c:741
 msgid "_Direction:"
 msgstr "方向(_D):"
 
-#: src/ui/w42-dialogs.c:745
+#: src/ui/w42-dialogs.c:746
 msgid "_Special:"
 msgstr "特殊格式(_S):"
 
 #. Translators: how far the special indent reaches.
-#: src/ui/w42-dialogs.c:747
+#: src/ui/w42-dialogs.c:748
 msgid "B_y:"
 msgstr "度量值(_Y):"
 
-#: src/ui/w42-dialogs.c:752
+#: src/ui/w42-dialogs.c:753
 msgid "Spacing"
 msgstr "间距"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:756
+#: src/ui/w42-dialogs.c:757
 msgid "Be_fore (pt):"
 msgstr "段前(磅)(_F):"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:758
+#: src/ui/w42-dialogs.c:759
 msgid "After (_pt):"
 msgstr "段后(磅)(_P):"
 
-#: src/ui/w42-dialogs.c:768
+#: src/ui/w42-dialogs.c:769
 msgid "Li_ne Spacing:"
 msgstr "行距(_N):"
 
 #. Translators: the line spacing's figure: points for Exactly, a
 #. * multiple of the line for Multiple.
-#: src/ui/w42-dialogs.c:777
+#: src/ui/w42-dialogs.c:778
 msgid "A_t:"
 msgstr "设置值(_T):"
 
-#: src/ui/w42-dialogs.c:787
+#: src/ui/w42-dialogs.c:788
 msgid "Text Flow"
 msgstr "换行和分页"
 
-#: src/ui/w42-dialogs.c:789
+#: src/ui/w42-dialogs.c:790
 msgid "_Widow/Orphan Control"
 msgstr "孤行控制(_W)"
 
-#: src/ui/w42-dialogs.c:790
+#: src/ui/w42-dialogs.c:791
 msgid "_Keep Lines Together"
 msgstr "段中不分页(_K)"
 
-#: src/ui/w42-dialogs.c:791
+#: src/ui/w42-dialogs.c:792
 msgid "Keep with Ne_xt"
 msgstr "与下段同页(_X)"
 
-#: src/ui/w42-dialogs.c:792
+#: src/ui/w42-dialogs.c:793
 msgid "Page _Break Before"
 msgstr "段前分页(_B)"
 
-#: src/ui/w42-dialogs.c:846
+#: src/ui/w42-dialogs.c:847
 msgctxt "line spacing"
 msgid "As defined"
 msgstr "保持原定义"
 
 #. Translators: %s is the name of a style, as it is in the document.
-#: src/ui/w42-dialogs.c:909
+#: src/ui/w42-dialogs.c:910
 #, c-format
 msgid "Character style, based on %s"
 msgstr "字符样式，基于 %s"
 
 #. Translators: %s is the name of a style, as it is in the document.
-#: src/ui/w42-dialogs.c:912
+#: src/ui/w42-dialogs.c:913
 #, c-format
 msgid "Paragraph style, based on %s"
 msgstr "段落样式，基于 %s"
 
-#: src/ui/w42-dialogs.c:914
+#: src/ui/w42-dialogs.c:915
 msgid "Character style"
 msgstr "字符样式"
 
-#: src/ui/w42-dialogs.c:914
+#: src/ui/w42-dialogs.c:915
 msgid "Paragraph style"
 msgstr "段落样式"
 
-#: src/ui/w42-dialogs.c:981
+#: src/ui/w42-dialogs.c:982
 msgid "New Style"
 msgstr "新建样式"
 
-#: src/ui/w42-dialogs.c:984
+#: src/ui/w42-dialogs.c:985
 msgid "New style"
 msgstr "新样式"
 
-#: src/ui/w42-dialogs.c:985 src/ui/w42-dialogs.c:2477 src/ui/w42-dialogs.c:5545
+#: src/ui/w42-dialogs.c:986 src/ui/w42-dialogs.c:2478 src/ui/w42-dialogs.c:5947
 msgid "_Name:"
 msgstr "名称(_N):"
 
-#: src/ui/w42-dialogs.c:993
+#: src/ui/w42-dialogs.c:994
 msgid "_Character style (applies to selected text only)"
 msgstr "字符样式(仅应用于所选文本)(_C)"
 
 #. Translators: %s is the name of a style, as it is in the document.
-#: src/ui/w42-dialogs.c:998
+#: src/ui/w42-dialogs.c:999
 #, c-format
 msgid "Based on %s."
 msgstr "基于 %s。"
 
-#: src/ui/w42-dialogs.c:1154 src/ui/w42-window.c:5020
+#: src/ui/w42-dialogs.c:1155 src/ui/w42-window.c:5037
 msgid "Style"
 msgstr "样式"
 
-#: src/ui/w42-dialogs.c:1160
+#: src/ui/w42-dialogs.c:1161
 msgid "Styles"
 msgstr "样式"
 
-#: src/ui/w42-dialogs.c:1161
+#: src/ui/w42-dialogs.c:1162
 msgid "_Style:"
 msgstr "样式(_S):"
 
-#: src/ui/w42-dialogs.c:1169
+#: src/ui/w42-dialogs.c:1170
 msgid "_New..."
 msgstr "新建(_N)..."
 
-#: src/ui/w42-dialogs.c:1186
+#: src/ui/w42-dialogs.c:1187
 msgid "Definition"
 msgstr "定义"
 
-#: src/ui/w42-dialogs.c:1188
+#: src/ui/w42-dialogs.c:1189
 msgid "_Font:"
 msgstr "字体(_F):"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:1197
+#: src/ui/w42-dialogs.c:1198
 msgid "Si_ze (pt):"
 msgstr "字号(磅)(_Z):"
 
-#: src/ui/w42-dialogs.c:1204
+#: src/ui/w42-dialogs.c:1205
 msgid "_Bold"
 msgstr "加粗(_B)"
 
-#: src/ui/w42-dialogs.c:1209
+#: src/ui/w42-dialogs.c:1210
 msgid "Ali_gnment:"
 msgstr "对齐方式(_G):"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:1211
+#: src/ui/w42-dialogs.c:1212
 msgid "Space B_efore (pt):"
 msgstr "段前间距(磅)(_E):"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:1213
+#: src/ui/w42-dialogs.c:1214
 msgid "Space A_fter (pt):"
 msgstr "段后间距(磅)(_F):"
 
-#: src/ui/w42-dialogs.c:1221
+#: src/ui/w42-dialogs.c:1222
 msgid "Outline le_vel:"
 msgstr "大纲级别(_V):"
 
-#: src/ui/w42-dialogs.c:1226
+#: src/ui/w42-dialogs.c:1227
 msgid ""
 "0 for body text; 1 to 9 for a heading of that level, which is what Heading "
 "Numbering counts."
 msgstr "0 表示正文文本；1 到 9 表示相应级别的标题，标题编号按此计数。"
 
 #. Translators: "cm" is centimetres.
-#: src/ui/w42-dialogs.c:1237
+#: src/ui/w42-dialogs.c:1238
 msgid "Fi_rst line (cm):"
 msgstr "首行缩进(厘米)(_R):"
 
 #. Translators: "in" is inches.
-#: src/ui/w42-dialogs.c:1239
+#: src/ui/w42-dialogs.c:1240
 msgid "Fi_rst line (in):"
 msgstr "首行缩进(英寸)(_R):"
 
-#: src/ui/w42-dialogs.c:1241
+#: src/ui/w42-dialogs.c:1242
 msgid "Line spa_cing:"
 msgstr "行距(_C):"
 
-#: src/ui/w42-dialogs.c:1243
+#: src/ui/w42-dialogs.c:1244
 msgid "_Page break before"
 msgstr "段前分页(_P)"
 
-#: src/ui/w42-dialogs.c:1244
+#: src/ui/w42-dialogs.c:1245
 msgid "Keep with ne_xt"
 msgstr "与下段同页(_X)"
 
-#: src/ui/w42-dialogs.c:1246
+#: src/ui/w42-dialogs.c:1247
 msgid "Every paragraph in this style starts a new page: chapter headings."
 msgstr "此样式的每个段落都从新的一页开始：适用于章标题。"
 
-#: src/ui/w42-dialogs.c:1256
+#: src/ui/w42-dialogs.c:1257
 msgid "_Apply"
 msgstr "应用(_A)"
 
-#: src/ui/w42-dialogs.c:1258
+#: src/ui/w42-dialogs.c:1259
 msgid "Save the definition and apply the style to the selected paragraphs."
 msgstr "保存定义，并将该样式应用于所选段落。"
 
 #. Translators: the tooltip of the button that centres the paragraph.
-#: src/ui/w42-dialogs.c:1303 src/ui/w42-window.c:5009
+#: src/ui/w42-dialogs.c:1304 src/ui/w42-window.c:5026
 msgctxt "alignment"
 msgid "Center"
 msgstr "居中"
 
-#: src/ui/w42-dialogs.c:1396
+#: src/ui/w42-dialogs.c:1397
 msgid "H_eader:"
 msgstr "页眉(_E):"
 
-#: src/ui/w42-dialogs.c:1397
+#: src/ui/w42-dialogs.c:1398
 msgid "F_ooter:"
 msgstr "页脚(_O):"
 
-#: src/ui/w42-dialogs.c:1445
+#: src/ui/w42-dialogs.c:1446
 msgid "Header and Footer"
 msgstr "页眉和页脚"
 
-#: src/ui/w42-dialogs.c:1448
+#: src/ui/w42-dialogs.c:1449
 msgid "Text"
 msgstr "文本"
 
-#: src/ui/w42-dialogs.c:1449
+#: src/ui/w42-dialogs.c:1450
 msgid "_Header:"
 msgstr "页眉(_H):"
 
-#: src/ui/w42-dialogs.c:1450
+#: src/ui/w42-dialogs.c:1451
 msgid "_Footer:"
 msgstr "页脚(_F):"
 
-#: src/ui/w42-dialogs.c:1452
+#: src/ui/w42-dialogs.c:1453
 msgid "First Page"
 msgstr "首页"
 
-#: src/ui/w42-dialogs.c:1453
+#: src/ui/w42-dialogs.c:1454
 msgid "_Different first page"
 msgstr "首页不同(_D)"
 
-#: src/ui/w42-dialogs.c:1457
+#: src/ui/w42-dialogs.c:1458
 msgid "Even Pages"
 msgstr "偶数页"
 
-#: src/ui/w42-dialogs.c:1458
+#: src/ui/w42-dialogs.c:1459
 msgid "Different odd and _even pages"
 msgstr "奇偶页不同(_E)"
 
 #. Translators: {PAGE}, {NUMPAGES} and {DATE} are typed into the header
 #. * as they are: keep them in English, braces and all.
-#: src/ui/w42-dialogs.c:1465
+#: src/ui/w42-dialogs.c:1466
 msgid ""
 "Fields: {PAGE} is the page number, {NUMPAGES} the number of pages, {DATE} "
 "today's date.  Headers and footers show in Page Layout view and in print."
@@ -2156,78 +2160,78 @@ msgstr ""
 "域：{PAGE} 为页码，{NUMPAGES} 为总页数，{DATE} 为今天的日期。页眉和页脚在页面"
 "视图中和打印时显示。"
 
-#: src/ui/w42-dialogs.c:1561
+#: src/ui/w42-dialogs.c:1562
 msgid "Top of Page (Header)"
 msgstr "页面顶端(页眉)"
 
-#: src/ui/w42-dialogs.c:1561
+#: src/ui/w42-dialogs.c:1562
 msgid "Bottom of Page (Footer)"
 msgstr "页面底端(页脚)"
 
-#: src/ui/w42-dialogs.c:1581
+#: src/ui/w42-dialogs.c:1582
 msgid "Page Numbers"
 msgstr "页码"
 
-#: src/ui/w42-dialogs.c:1584 src/ui/w42-dialogs.c:6421
+#: src/ui/w42-dialogs.c:1585 src/ui/w42-dialogs.c:6823
 msgid "Position"
 msgstr "位置"
 
-#: src/ui/w42-dialogs.c:1585 src/ui/w42-dialogs.c:6370
-#: src/ui/w42-dialogs.c:6422 src/ui/w42-dialogs.c:6469
+#: src/ui/w42-dialogs.c:1586 src/ui/w42-dialogs.c:6772
+#: src/ui/w42-dialogs.c:6824 src/ui/w42-dialogs.c:6871
 msgid "_Position:"
 msgstr "位置(_P):"
 
-#: src/ui/w42-dialogs.c:1588 src/ui/w42-window.c:5099
+#: src/ui/w42-dialogs.c:1589 src/ui/w42-window.c:5116
 msgid "Numbering"
 msgstr "编号"
 
-#: src/ui/w42-dialogs.c:1589
+#: src/ui/w42-dialogs.c:1590
 msgid "Begin on _page:"
 msgstr "编号起始页(_P):"
 
-#: src/ui/w42-dialogs.c:1590
+#: src/ui/w42-dialogs.c:1591
 msgid "_Start at:"
 msgstr "起始页码(_S):"
 
-#: src/ui/w42-dialogs.c:1591
+#: src/ui/w42-dialogs.c:1592
 msgid "The pages before it show no number."
 msgstr "此页之前的页面不显示页码。"
 
-#: src/ui/w42-dialogs.c:1613
+#: src/ui/w42-dialogs.c:1614
 msgid "_Left margin"
 msgstr "左边距(_L)"
 
-#: src/ui/w42-dialogs.c:1614
+#: src/ui/w42-dialogs.c:1615
 msgid "_Right margin"
 msgstr "右边距(_R)"
 
-#: src/ui/w42-dialogs.c:1615
+#: src/ui/w42-dialogs.c:1616
 msgid "_Top margin"
 msgstr "上边距(_T)"
 
-#: src/ui/w42-dialogs.c:1616
+#: src/ui/w42-dialogs.c:1617
 msgid "_Bottom margin"
 msgstr "下边距(_B)"
 
-#: src/ui/w42-dialogs.c:1617
+#: src/ui/w42-dialogs.c:1618
 msgid "_Font size"
 msgstr "字号(_F)"
 
-#: src/ui/w42-dialogs.c:1618
+#: src/ui/w42-dialogs.c:1619
 msgid "Line _spacing"
 msgstr "行距(_S)"
 
-#: src/ui/w42-dialogs.c:1645
+#: src/ui/w42-dialogs.c:1646
 msgid ""
 "Make It Fit needs something it may change: tick at least one of the items."
 msgstr "“调整页数”需要可以更改的内容：请至少选中一项。"
 
-#: src/ui/w42-dialogs.c:1655
+#: src/ui/w42-dialogs.c:1656
 msgid "The document fills that many pages already."
 msgstr "文档已经占满这么多页。"
 
 #. Translators: %d is a number of pages.
-#: src/ui/w42-dialogs.c:1658
+#: src/ui/w42-dialogs.c:1659
 #, c-format
 msgid ""
 "Not even at half its size does the document fit on %d page; tick more items, "
@@ -2238,118 +2242,118 @@ msgid_plural ""
 msgstr[0] ""
 "即使缩小到原来的一半，文档也无法排在 %d 页内；请选中更多项目，或增加页数。"
 
-#: src/ui/w42-dialogs.c:1663
+#: src/ui/w42-dialogs.c:1664
 msgid "Make It Fit changed nothing."
 msgstr "“调整页数”未做任何更改。"
 
-#: src/ui/w42-dialogs.c:1692
+#: src/ui/w42-dialogs.c:1693
 msgid "Make It Fit"
 msgstr "调整页数"
 
-#: src/ui/w42-dialogs.c:1695 src/ui/w42-dialogs.c:5632
+#: src/ui/w42-dialogs.c:1696 src/ui/w42-dialogs.c:6034
 #: src/ui/w42-latex-preview.c:781
 msgid "Pages"
 msgstr "页数"
 
 #. Translators: %d is a number of pages.
-#: src/ui/w42-dialogs.c:1697
+#: src/ui/w42-dialogs.c:1698
 #, c-format
 msgid "The document fills %d page now."
 msgid_plural "The document fills %d pages now."
 msgstr[0] "文档现在占 %d 页。"
 
-#: src/ui/w42-dialogs.c:1703
+#: src/ui/w42-dialogs.c:1704
 msgid "_Desired number of pages:"
 msgstr "所需页数(_D):"
 
-#: src/ui/w42-dialogs.c:1705
+#: src/ui/w42-dialogs.c:1706
 msgid "Items to Adjust"
 msgstr "要调整的项目"
 
-#: src/ui/w42-dialogs.c:1754
+#: src/ui/w42-dialogs.c:1755
 msgid "Insert Table"
 msgstr "插入表格"
 
-#: src/ui/w42-dialogs.c:1757
+#: src/ui/w42-dialogs.c:1758
 msgid "Table Size"
 msgstr "表格尺寸"
 
-#: src/ui/w42-dialogs.c:1759
+#: src/ui/w42-dialogs.c:1760
 msgid "Number of _Columns:"
 msgstr "列数(_C):"
 
-#: src/ui/w42-dialogs.c:1767
+#: src/ui/w42-dialogs.c:1768
 msgid "Number of _Rows:"
 msgstr "行数(_R):"
 
 #. Translators: what Edit > Go To goes to.
-#: src/ui/w42-dialogs.c:1807
+#: src/ui/w42-dialogs.c:1808
 msgctxt "go to"
 msgid "Page"
 msgstr "页"
 
-#: src/ui/w42-dialogs.c:1807
+#: src/ui/w42-dialogs.c:1808
 msgctxt "go to"
 msgid "Line"
 msgstr "行"
 
-#: src/ui/w42-dialogs.c:1807
+#: src/ui/w42-dialogs.c:1808
 msgctxt "go to"
 msgid "Bookmark"
 msgstr "书签"
 
-#: src/ui/w42-dialogs.c:1862
+#: src/ui/w42-dialogs.c:1863
 msgid "Go To"
 msgstr "定位"
 
-#: src/ui/w42-dialogs.c:1866
+#: src/ui/w42-dialogs.c:1867
 msgid "Go to What"
 msgstr "定位目标"
 
-#: src/ui/w42-dialogs.c:1868
+#: src/ui/w42-dialogs.c:1869
 msgid "Go to _What:"
 msgstr "定位目标(_W):"
 
-#: src/ui/w42-dialogs.c:1870
+#: src/ui/w42-dialogs.c:1871
 msgid "Enter _Number:"
 msgstr "输入页号或行号(_N):"
 
-#: src/ui/w42-dialogs.c:1948
+#: src/ui/w42-dialogs.c:1949
 msgid "Date and Time"
 msgstr "日期和时间"
 
-#: src/ui/w42-dialogs.c:1951
+#: src/ui/w42-dialogs.c:1952
 msgid "Available Formats"
 msgstr "可用格式"
 
-#: src/ui/w42-dialogs.c:1953
+#: src/ui/w42-dialogs.c:1954
 msgid "_Formats:"
 msgstr "格式(_F):"
 
-#: src/ui/w42-dialogs.c:2043
+#: src/ui/w42-dialogs.c:2044
 msgid "Symbol"
 msgstr "符号"
 
-#: src/ui/w42-dialogs.c:2076 src/ui/w42-dialogs.c:3190
-#: src/ui/w42-dialogs.c:3675 src/ui/w42-dialogs.c:4065
-#: src/ui/w42-dialogs.c:7256 src/ui/w42-find-dialog.c:362
+#: src/ui/w42-dialogs.c:2077 src/ui/w42-dialogs.c:3191
+#: src/ui/w42-dialogs.c:3676 src/ui/w42-dialogs.c:4066
+#: src/ui/w42-dialogs.c:7658 src/ui/w42-find-dialog.c:362
 #: src/ui/w42-spell-dialog.c:401 src/ui/w42-versions.c:800
 msgid "Close"
 msgstr "关闭"
 
-#: src/ui/w42-dialogs.c:2118
+#: src/ui/w42-dialogs.c:2119
 msgid "AutoCorrect"
 msgstr "自动更正"
 
-#: src/ui/w42-dialogs.c:2121
+#: src/ui/w42-dialogs.c:2122
 msgid "As You Type"
 msgstr "键入时"
 
-#: src/ui/w42-dialogs.c:2122
+#: src/ui/w42-dialogs.c:2123
 msgid "_Correct as you type"
 msgstr "键入时自动更正(_C)"
 
-#: src/ui/w42-dialogs.c:2127
+#: src/ui/w42-dialogs.c:2128
 msgid ""
 "Straight quotes become curly ones, two capitals at the start of a word "
 "become one, a sentence takes a capital, two hyphens become a dash, and the "
@@ -2358,144 +2362,144 @@ msgstr ""
 "直引号替换为弯引号，更正单词开头的两个连续大写字母，句首字母大写，两个连字符"
 "替换为破折号，并更正下列单词。"
 
-#: src/ui/w42-dialogs.c:2137 src/ui/w42-find-dialog.c:276
+#: src/ui/w42-dialogs.c:2138 src/ui/w42-find-dialog.c:276
 msgid "Replace"
 msgstr "替换"
 
-#: src/ui/w42-dialogs.c:2177
+#: src/ui/w42-dialogs.c:2178
 msgctxt "tab stop"
 msgid "Left"
 msgstr "左对齐"
 
-#: src/ui/w42-dialogs.c:2177
+#: src/ui/w42-dialogs.c:2178
 msgctxt "tab stop"
 msgid "Center"
 msgstr "居中"
 
-#: src/ui/w42-dialogs.c:2178
+#: src/ui/w42-dialogs.c:2179
 msgctxt "tab stop"
 msgid "Right"
 msgstr "右对齐"
 
-#: src/ui/w42-dialogs.c:2178
+#: src/ui/w42-dialogs.c:2179
 msgctxt "tab stop"
 msgid "Decimal"
 msgstr "小数点对齐"
 
 #. Translators: the first of the tab leaders, numbered 1 to 4 as Word
 #. * numbered them; the others are drawn with dots, hyphens and rules.
-#: src/ui/w42-dialogs.c:2184
+#: src/ui/w42-dialogs.c:2185
 msgid "1  None"
 msgstr "1  无"
 
-#: src/ui/w42-dialogs.c:2299
+#: src/ui/w42-dialogs.c:2300
 msgid "Tabs"
 msgstr "制表位"
 
-#: src/ui/w42-dialogs.c:2303
+#: src/ui/w42-dialogs.c:2304
 msgid "Tab Stops"
 msgstr "制表位"
 
-#: src/ui/w42-dialogs.c:2305
+#: src/ui/w42-dialogs.c:2306
 msgid "_Tab Stop Position:"
 msgstr "制表位位置(_T):"
 
-#: src/ui/w42-dialogs.c:2316
+#: src/ui/w42-dialogs.c:2317
 msgid "_Leader:"
 msgstr "前导符(_L):"
 
-#: src/ui/w42-dialogs.c:2330
+#: src/ui/w42-dialogs.c:2331
 msgid "_Set"
 msgstr "设置(_S)"
 
-#: src/ui/w42-dialogs.c:2331
+#: src/ui/w42-dialogs.c:2332
 msgid "Cl_ear"
 msgstr "清除(_E)"
 
-#: src/ui/w42-dialogs.c:2332
+#: src/ui/w42-dialogs.c:2333
 msgid "Clear A_ll"
 msgstr "全部清除(_L)"
 
-#: src/ui/w42-dialogs.c:2366
+#: src/ui/w42-dialogs.c:2367
 msgid "Inches"
 msgstr "英寸"
 
-#: src/ui/w42-dialogs.c:2366
+#: src/ui/w42-dialogs.c:2367
 msgid "Centimeters"
 msgstr "厘米"
 
-#: src/ui/w42-dialogs.c:2368
+#: src/ui/w42-dialogs.c:2369
 msgctxt "view"
 msgid "Normal"
 msgstr "普通视图"
 
-#: src/ui/w42-dialogs.c:2368
+#: src/ui/w42-dialogs.c:2369
 msgctxt "view"
 msgid "Online Layout"
 msgstr "联机版式视图"
 
-#: src/ui/w42-dialogs.c:2368
+#: src/ui/w42-dialogs.c:2369
 msgctxt "view"
 msgid "Page Layout"
 msgstr "页面视图"
 
-#: src/ui/w42-dialogs.c:2455 src/ui/w42-print.c:852
+#: src/ui/w42-dialogs.c:2456 src/ui/w42-print.c:852
 msgid "Options"
 msgstr "选项"
 
-#: src/ui/w42-dialogs.c:2458
+#: src/ui/w42-dialogs.c:2459
 msgid "General"
 msgstr "常规"
 
-#: src/ui/w42-dialogs.c:2459
+#: src/ui/w42-dialogs.c:2460
 msgid "_Measurement Units:"
 msgstr "度量单位(_M):"
 
-#: src/ui/w42-dialogs.c:2462
+#: src/ui/w42-dialogs.c:2463
 msgid "View"
 msgstr "视图"
 
-#: src/ui/w42-dialogs.c:2464
+#: src/ui/w42-dialogs.c:2465
 msgid "Default _View:"
 msgstr "默认视图(_V):"
 
-#: src/ui/w42-dialogs.c:2473
+#: src/ui/w42-dialogs.c:2474
 msgid "Default _Zoom:"
 msgstr "默认显示比例(_Z):"
 
-#: src/ui/w42-dialogs.c:2475
+#: src/ui/w42-dialogs.c:2476
 msgid "User Info"
 msgstr "用户信息"
 
-#: src/ui/w42-dialogs.c:2491
+#: src/ui/w42-dialogs.c:2492
 msgid "Annotations and revisions carry this name in the files you save."
 msgstr "在您保存的文件中，批注和修订将带有此姓名。"
 
-#: src/ui/w42-dialogs.c:2499 src/ui/w42-spell-dialog.c:319
-#: src/ui/w42-window.c:4549
+#: src/ui/w42-dialogs.c:2500 src/ui/w42-spell-dialog.c:319
+#: src/ui/w42-window.c:4566
 msgid "Spelling"
 msgstr "拼写"
 
-#: src/ui/w42-dialogs.c:2500
+#: src/ui/w42-dialogs.c:2501
 msgid "Correct as you t_ype"
 msgstr "键入时自动更正(_Y)"
 
-#: src/ui/w42-dialogs.c:2505
+#: src/ui/w42-dialogs.c:2506
 msgid "_Check spelling as you type"
 msgstr "键入时检查拼写(_C)"
 
 #. Translators: the group of save settings, not a button.
-#: src/ui/w42-dialogs.c:2514
+#: src/ui/w42-dialogs.c:2515
 msgctxt "options"
 msgid "Save"
 msgstr "保存"
 
-#: src/ui/w42-dialogs.c:2515
+#: src/ui/w42-dialogs.c:2516
 msgid "Always create _backup copy"
 msgstr "保留备份(_B)"
 
 #. Translators: "Backup of" is how the backup's file name begins.
-#: src/ui/w42-dialogs.c:2520
+#: src/ui/w42-dialogs.c:2521
 msgid ""
 "Before a file is saved over, the version it replaces is kept beside it as "
 "“Backup of” and its name."
@@ -2503,119 +2507,119 @@ msgstr ""
 "文件被覆盖保存之前，被替换的版本会以“备份属于”加原文件名的名称保存在同一位"
 "置。"
 
-#: src/ui/w42-dialogs.c:2524
+#: src/ui/w42-dialogs.c:2525
 msgid "Save _AutoRecover info every:"
 msgstr "自动保存时间间隔(_A):"
 
 #. Translators: follows "Save AutoRecover info every:" and a number.
-#: src/ui/w42-dialogs.c:2526
+#: src/ui/w42-dialogs.c:2527
 msgid "minutes"
 msgstr "分钟"
 
-#: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
-#: src/ui/w42-dialogs.c:3239 src/ui/w42-dialogs.c:4173
-#: src/ui/w42-dialogs.c:5255 src/ui/w42-window.c:4754
+#: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
+#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:4174
+#: src/ui/w42-dialogs.c:5657 src/ui/w42-window.c:4771
 msgctxt "colour"
 msgid "Black"
 msgstr "黑色"
 
-#: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-dialogs.c:3239
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4754
-#: src/ui/w42-window.c:4767
+#: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
+#: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3240
+#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5654 src/ui/w42-window.c:4771
+#: src/ui/w42-window.c:4784
 msgctxt "colour"
 msgid "Blue"
 msgstr "蓝色"
 
-#: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
-#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4754
+#: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
+#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:5653 src/ui/w42-window.c:4771
 msgctxt "colour"
 msgid "Cyan"
 msgstr "青色"
 
-#: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
-#: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3240
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4755
-#: src/ui/w42-window.c:4768
+#: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-dialogs.c:3241
+#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5653 src/ui/w42-window.c:4772
+#: src/ui/w42-window.c:4785
 msgctxt "colour"
 msgid "Green"
 msgstr "绿色"
 
-#: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
-#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4755
+#: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
+#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:5654 src/ui/w42-window.c:4772
 msgctxt "colour"
 msgid "Magenta"
 msgstr "洋红"
 
-#: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
-#: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3241
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4755
-#: src/ui/w42-window.c:4767
+#: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
+#: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3242
+#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5654 src/ui/w42-window.c:4772
+#: src/ui/w42-window.c:4784
 msgctxt "colour"
 msgid "Red"
 msgstr "红色"
 
-#: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
-#: src/ui/w42-dialogs.c:3228 src/ui/w42-dialogs.c:3241
-#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4756
-#: src/ui/w42-window.c:4766
+#: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
+#: src/ui/w42-dialogs.c:3229 src/ui/w42-dialogs.c:3242
+#: src/ui/w42-dialogs.c:4176 src/ui/w42-dialogs.c:5653 src/ui/w42-window.c:4773
+#: src/ui/w42-window.c:4783
 msgctxt "colour"
 msgid "Yellow"
 msgstr "黄色"
 
-#: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
-#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:4173 src/ui/w42-window.c:4756
+#: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
+#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:4174 src/ui/w42-window.c:4773
 msgctxt "colour"
 msgid "White"
 msgstr "白色"
 
-#: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3242
-#: src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4756 src/ui/w42-window.c:4768
+#: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
+#: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3243
+#: src/ui/w42-dialogs.c:5655 src/ui/w42-window.c:4773 src/ui/w42-window.c:4785
 msgctxt "colour"
 msgid "Dark Blue"
 msgstr "深蓝"
 
-#: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4757
+#: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
+#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5655 src/ui/w42-window.c:4774
 msgctxt "colour"
 msgid "Dark Cyan"
 msgstr "深青"
 
-#: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4757
+#: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
+#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5655 src/ui/w42-window.c:4774
 msgctxt "colour"
 msgid "Dark Green"
 msgstr "深绿"
 
-#: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
-#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4757
+#: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
+#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5656 src/ui/w42-window.c:4774
 msgctxt "colour"
 msgid "Dark Magenta"
 msgstr "深洋红"
 
-#: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
-#: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3243
-#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4758 src/ui/w42-window.c:4769
+#: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-dialogs.c:3244
+#: src/ui/w42-dialogs.c:5656 src/ui/w42-window.c:4775 src/ui/w42-window.c:4786
 msgctxt "colour"
 msgid "Dark Red"
 msgstr "深红"
 
-#: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-dialogs.c:3243
-#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4758 src/ui/w42-window.c:4769
+#: src/ui/w42-dialogs.c:2576 src/ui/w42-dialogs.c:2591
+#: src/ui/w42-dialogs.c:3233 src/ui/w42-dialogs.c:3244
+#: src/ui/w42-dialogs.c:5656 src/ui/w42-window.c:4775 src/ui/w42-window.c:4786
 msgctxt "colour"
 msgid "Dark Yellow"
 msgstr "深黄"
 
-#: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4758
+#: src/ui/w42-dialogs.c:2576 src/ui/w42-dialogs.c:2591
+#: src/ui/w42-dialogs.c:3245 src/ui/w42-dialogs.c:5652 src/ui/w42-window.c:4775
 msgctxt "colour"
 msgid "Dark Gray"
 msgstr "深灰"
 
-#: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4759
+#: src/ui/w42-dialogs.c:2576 src/ui/w42-dialogs.c:2591
+#: src/ui/w42-dialogs.c:3245 src/ui/w42-dialogs.c:5652 src/ui/w42-window.c:4776
 msgctxt "colour"
 msgid "Light Gray"
 msgstr "浅灰"
@@ -2623,602 +2627,602 @@ msgstr "浅灰"
 #. Translators: no colour.
 #. Translators: no highlight colour.
 #. Translators: no highlight colour, and the automatic text colour.
-#: src/ui/w42-dialogs.c:2584 src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4961
+#: src/ui/w42-dialogs.c:2585 src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4978
 msgctxt "colour"
 msgid "None"
 msgstr "无"
 
 #. Translators: line widths; "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:2606
+#: src/ui/w42-dialogs.c:2607
 msgid "¼ pt"
 msgstr "¼ 磅"
 
-#: src/ui/w42-dialogs.c:2606
+#: src/ui/w42-dialogs.c:2607
 msgid "½ pt"
 msgstr "½ 磅"
 
-#: src/ui/w42-dialogs.c:2606
+#: src/ui/w42-dialogs.c:2607
 msgid "¾ pt"
 msgstr "¾ 磅"
 
-#: src/ui/w42-dialogs.c:2606
+#: src/ui/w42-dialogs.c:2607
 msgid "1 pt"
 msgstr "1 磅"
 
-#: src/ui/w42-dialogs.c:2606
+#: src/ui/w42-dialogs.c:2607
 msgid "1½ pt"
 msgstr "1½ 磅"
 
-#: src/ui/w42-dialogs.c:2607
+#: src/ui/w42-dialogs.c:2608
 msgid "2¼ pt"
 msgstr "2¼ 磅"
 
-#: src/ui/w42-dialogs.c:2607
+#: src/ui/w42-dialogs.c:2608
 msgid "3 pt"
 msgstr "3 磅"
 
-#: src/ui/w42-dialogs.c:2607
+#: src/ui/w42-dialogs.c:2608
 msgid "4½ pt"
 msgstr "4½ 磅"
 
-#: src/ui/w42-dialogs.c:2607
+#: src/ui/w42-dialogs.c:2608
 msgid "6 pt"
 msgstr "6 磅"
 
-#: src/ui/w42-dialogs.c:2611
+#: src/ui/w42-dialogs.c:2612
 msgctxt "border style"
 msgid "Single"
 msgstr "单线"
 
-#: src/ui/w42-dialogs.c:2611
+#: src/ui/w42-dialogs.c:2612
 msgctxt "border style"
 msgid "Double"
 msgstr "双线"
 
-#: src/ui/w42-dialogs.c:2612
+#: src/ui/w42-dialogs.c:2613
 msgctxt "border style"
 msgid "Dashed"
 msgstr "虚线"
 
-#: src/ui/w42-dialogs.c:2612
+#: src/ui/w42-dialogs.c:2613
 msgctxt "border style"
 msgid "Dotted"
 msgstr "点线"
 
 #. Translators: what the borders are put on, inside a table.
-#: src/ui/w42-dialogs.c:2616
+#: src/ui/w42-dialogs.c:2617
 msgctxt "apply borders to"
 msgid "Paragraph"
 msgstr "段落"
 
-#: src/ui/w42-dialogs.c:2616
+#: src/ui/w42-dialogs.c:2617
 msgctxt "apply borders to"
 msgid "Cell"
 msgstr "单元格"
 
-#: src/ui/w42-dialogs.c:2617
+#: src/ui/w42-dialogs.c:2618
 msgctxt "apply borders to"
 msgid "Table"
 msgstr "表格"
 
-#: src/ui/w42-dialogs.c:2632
+#: src/ui/w42-dialogs.c:2633
 msgctxt "shading"
 msgid "None"
 msgstr "无"
 
-#: src/ui/w42-dialogs.c:2633
+#: src/ui/w42-dialogs.c:2634
 msgctxt "shading"
 msgid "Solid (100%)"
 msgstr "纯色(100%)"
 
-#: src/ui/w42-dialogs.c:2831 src/ui/w42-dialogs.c:4566
+#: src/ui/w42-dialogs.c:2832 src/ui/w42-dialogs.c:4968
 msgid "_Top"
 msgstr "上框线(_T)"
 
-#: src/ui/w42-dialogs.c:2831 src/ui/w42-dialogs.c:4566
+#: src/ui/w42-dialogs.c:2832 src/ui/w42-dialogs.c:4968
 msgid "Botto_m"
 msgstr "下框线(_M)"
 
-#: src/ui/w42-dialogs.c:2831
+#: src/ui/w42-dialogs.c:2832
 msgid "_Left"
 msgstr "左框线(_L)"
 
-#: src/ui/w42-dialogs.c:2831
+#: src/ui/w42-dialogs.c:2832
 msgid "_Right"
 msgstr "右框线(_R)"
 
-#: src/ui/w42-dialogs.c:2843
+#: src/ui/w42-dialogs.c:2844
 msgid "Borders and Shading"
 msgstr "边框和底纹"
 
-#: src/ui/w42-dialogs.c:2847
+#: src/ui/w42-dialogs.c:2848
 msgid "Borders"
 msgstr "边框"
 
 #. Translators: the preset of no borders.
-#: src/ui/w42-dialogs.c:2851
+#: src/ui/w42-dialogs.c:2852
 msgid "_None"
 msgstr "无(_N)"
 
 #. Translators: the preset of a border on all four sides.
-#: src/ui/w42-dialogs.c:2853
+#: src/ui/w42-dialogs.c:2854
 msgid "_Box"
 msgstr "方框(_B)"
 
-#: src/ui/w42-dialogs.c:2868
+#: src/ui/w42-dialogs.c:2869
 msgid "_Inside (between the cells)"
 msgstr "内部(单元格之间)(_I)"
 
-#: src/ui/w42-dialogs.c:2873
+#: src/ui/w42-dialogs.c:2874
 msgid "St_yle:"
 msgstr "线型(_Y):"
 
-#: src/ui/w42-dialogs.c:2875
+#: src/ui/w42-dialogs.c:2876
 msgid "Line _Width:"
 msgstr "线宽(_W):"
 
-#: src/ui/w42-dialogs.c:2876 src/ui/w42-dialogs.c:4301
+#: src/ui/w42-dialogs.c:2877 src/ui/w42-dialogs.c:4302
 msgid "Line _Color:"
 msgstr "线条颜色(_C):"
 
-#: src/ui/w42-dialogs.c:2882
+#: src/ui/w42-dialogs.c:2883
 msgid "_Apply to:"
 msgstr "应用于(_A):"
 
-#: src/ui/w42-dialogs.c:2888
+#: src/ui/w42-dialogs.c:2889
 msgid "Shading"
 msgstr "底纹"
 
-#: src/ui/w42-dialogs.c:2892 src/ui/w42-dialogs.c:4557
+#: src/ui/w42-dialogs.c:2893 src/ui/w42-dialogs.c:4959
 msgid "_Shading:"
 msgstr "底纹(_S):"
 
-#: src/ui/w42-dialogs.c:2893 src/ui/w42-dialogs.c:4562
+#: src/ui/w42-dialogs.c:2894 src/ui/w42-dialogs.c:4964
 msgid "Bac_kground:"
 msgstr "背景(_K):"
 
-#: src/ui/w42-dialogs.c:2900
+#: src/ui/w42-dialogs.c:2901
 msgid "Page Border"
 msgstr "页面边框"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:2904
+#: src/ui/w42-dialogs.c:2905
 msgid "_Distance from edge (pt):"
 msgstr "距页边(磅)(_D):"
 
-#: src/ui/w42-dialogs.c:2906
+#: src/ui/w42-dialogs.c:2907
 msgid "A border round _every page"
 msgstr "为每页加边框(_E)"
 
-#: src/ui/w42-dialogs.c:2909
+#: src/ui/w42-dialogs.c:2910
 msgid "Style:"
 msgstr "线型:"
 
-#: src/ui/w42-dialogs.c:2911
+#: src/ui/w42-dialogs.c:2912
 msgid "Line Width:"
 msgstr "线宽:"
 
-#: src/ui/w42-dialogs.c:2914
+#: src/ui/w42-dialogs.c:2915
 msgid "Line Color:"
 msgstr "线条颜色:"
 
-#: src/ui/w42-dialogs.c:2981
+#: src/ui/w42-dialogs.c:2982
 msgid "Hyperlink"
 msgstr "超链接"
 
-#: src/ui/w42-dialogs.c:2984
+#: src/ui/w42-dialogs.c:2985
 msgid "Link"
 msgstr "链接"
 
-#: src/ui/w42-dialogs.c:2986
+#: src/ui/w42-dialogs.c:2987
 msgid "_Address:"
 msgstr "地址(_A):"
 
-#: src/ui/w42-dialogs.c:2995
+#: src/ui/w42-dialogs.c:2996
 msgid "_Text to Display:"
 msgstr "要显示的文字(_T):"
 
-#: src/ui/w42-dialogs.c:3014
+#: src/ui/w42-dialogs.c:3015
 msgid "_Remove Link"
 msgstr "删除链接(_R)"
 
-#: src/ui/w42-dialogs.c:3077
+#: src/ui/w42-dialogs.c:3078
 msgid "Type a name for the bookmark."
 msgstr "请键入书签名。"
 
-#: src/ui/w42-dialogs.c:3082
+#: src/ui/w42-dialogs.c:3083
 msgid "Select the text to bookmark first."
 msgstr "请先选择要添加书签的文本。"
 
-#: src/ui/w42-dialogs.c:3099
+#: src/ui/w42-dialogs.c:3100
 msgid "No bookmark of that name."
 msgstr "没有该名称的书签。"
 
-#: src/ui/w42-dialogs.c:3143
+#: src/ui/w42-dialogs.c:3144
 msgid "Bookmark"
 msgstr "书签"
 
-#: src/ui/w42-dialogs.c:3147
+#: src/ui/w42-dialogs.c:3148
 msgid "Bookmarks"
 msgstr "书签"
 
-#: src/ui/w42-dialogs.c:3149
+#: src/ui/w42-dialogs.c:3150
 msgid "Bookmark _Name:"
 msgstr "书签名(_N):"
 
-#: src/ui/w42-dialogs.c:3170 src/ui/w42-dialogs.c:3673
-#: src/ui/w42-dialogs.c:5569 src/ui/w42-spell-dialog.c:399
+#: src/ui/w42-dialogs.c:3171 src/ui/w42-dialogs.c:3674
+#: src/ui/w42-dialogs.c:5971 src/ui/w42-spell-dialog.c:399
 msgid "_Add"
 msgstr "添加(_A)"
 
-#: src/ui/w42-dialogs.c:3171
+#: src/ui/w42-dialogs.c:3172
 msgid "_Go To"
 msgstr "定位(_G)"
 
-#: src/ui/w42-dialogs.c:3221
+#: src/ui/w42-dialogs.c:3222
 msgctxt "underline"
 msgid "(none)"
 msgstr "(无)"
 
-#: src/ui/w42-dialogs.c:3221
+#: src/ui/w42-dialogs.c:3222
 msgctxt "underline"
 msgid "Single"
 msgstr "单线"
 
-#: src/ui/w42-dialogs.c:3221
+#: src/ui/w42-dialogs.c:3222
 msgctxt "underline"
 msgid "Double"
 msgstr "双线"
 
-#: src/ui/w42-dialogs.c:3222
+#: src/ui/w42-dialogs.c:3223
 msgctxt "underline"
 msgid "Words Only"
 msgstr "字下加线"
 
-#: src/ui/w42-dialogs.c:3222
+#: src/ui/w42-dialogs.c:3223
 msgctxt "underline"
 msgid "Dotted"
 msgstr "点线"
 
-#: src/ui/w42-dialogs.c:3222
+#: src/ui/w42-dialogs.c:3223
 msgctxt "underline"
 msgid "Dashed"
 msgstr "虚线"
 
-#: src/ui/w42-dialogs.c:3223
+#: src/ui/w42-dialogs.c:3224
 msgctxt "underline"
 msgid "Thick"
 msgstr "粗线"
 
-#: src/ui/w42-dialogs.c:3223
+#: src/ui/w42-dialogs.c:3224
 msgctxt "underline"
 msgid "Wave"
 msgstr "波浪线"
 
-#: src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4766
+#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4783
 msgctxt "colour"
 msgid "Bright Green"
 msgstr "鲜绿"
 
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4766
+#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4783
 msgctxt "colour"
 msgid "Turquoise"
 msgstr "青绿"
 
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4767
+#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4784
 msgctxt "colour"
 msgid "Pink"
 msgstr "粉红"
 
-#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4768
+#: src/ui/w42-dialogs.c:3231 src/ui/w42-window.c:4785
 msgctxt "colour"
 msgid "Teal"
 msgstr "蓝绿"
 
-#: src/ui/w42-dialogs.c:3231 src/ui/w42-window.c:4769
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4786
 msgctxt "colour"
 msgid "Violet"
 msgstr "紫罗兰"
 
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4770
+#: src/ui/w42-dialogs.c:3233 src/ui/w42-window.c:4787
 msgctxt "colour"
 msgid "Gray 50%"
 msgstr "灰色-50%"
 
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4770
+#: src/ui/w42-dialogs.c:3233 src/ui/w42-window.c:4787
 msgctxt "colour"
 msgid "Gray 25%"
 msgstr "灰色-25%"
 
 #. Translators: the automatic text colour, which is black.
-#: src/ui/w42-dialogs.c:3239 src/ui/w42-window.c:4961
+#: src/ui/w42-dialogs.c:3240 src/ui/w42-window.c:4978
 msgctxt "colour"
 msgid "Auto"
 msgstr "自动"
 
-#: src/ui/w42-dialogs.c:3315
+#: src/ui/w42-dialogs.c:3316
 msgid "Font Effects"
 msgstr "字体效果"
 
-#: src/ui/w42-dialogs.c:3319
+#: src/ui/w42-dialogs.c:3320
 msgid "Effects"
 msgstr "效果"
 
-#: src/ui/w42-dialogs.c:3320
+#: src/ui/w42-dialogs.c:3321
 msgid "Stri_kethrough"
 msgstr "删除线(_K)"
 
-#: src/ui/w42-dialogs.c:3321
+#: src/ui/w42-dialogs.c:3322
 msgid "Su_perscript"
 msgstr "上标(_P)"
 
-#: src/ui/w42-dialogs.c:3322
+#: src/ui/w42-dialogs.c:3323
 msgid "Su_bscript"
 msgstr "下标(_B)"
 
-#: src/ui/w42-dialogs.c:3323
+#: src/ui/w42-dialogs.c:3324
 msgid "S_mall Caps"
 msgstr "小型大写字母(_M)"
 
-#: src/ui/w42-dialogs.c:3324
+#: src/ui/w42-dialogs.c:3325
 msgid "_All Caps"
 msgstr "全部大写字母(_A)"
 
-#: src/ui/w42-dialogs.c:3325
+#: src/ui/w42-dialogs.c:3326
 msgid "O_verline"
 msgstr "上划线(_V)"
 
-#: src/ui/w42-dialogs.c:3342
+#: src/ui/w42-dialogs.c:3343
 msgid "Dou_ble Strikethrough"
 msgstr "双删除线(_B)"
 
-#: src/ui/w42-dialogs.c:3343
+#: src/ui/w42-dialogs.c:3344
 msgid "Shado_w"
 msgstr "阴影(_W)"
 
-#: src/ui/w42-dialogs.c:3344
+#: src/ui/w42-dialogs.c:3345
 msgid "Out_line"
 msgstr "空心(_L)"
 
-#: src/ui/w42-dialogs.c:3345
+#: src/ui/w42-dialogs.c:3346
 msgid "Em_boss"
 msgstr "阳文(_B)"
 
-#: src/ui/w42-dialogs.c:3346
+#: src/ui/w42-dialogs.c:3347
 msgid "En_grave"
 msgstr "阴文(_G)"
 
-#: src/ui/w42-dialogs.c:3360 src/ui/w42-window.c:5072
+#: src/ui/w42-dialogs.c:3361 src/ui/w42-window.c:5089
 msgid "Underline"
 msgstr "下划线"
 
-#: src/ui/w42-dialogs.c:3361
+#: src/ui/w42-dialogs.c:3362
 msgid "_Underline:"
 msgstr "下划线线型(_U):"
 
-#: src/ui/w42-dialogs.c:3364 src/ui/w42-window.c:4935
+#: src/ui/w42-dialogs.c:3365 src/ui/w42-window.c:4952
 msgid "Highlight"
 msgstr "突出显示"
 
-#: src/ui/w42-dialogs.c:3368
+#: src/ui/w42-dialogs.c:3369
 msgid "_Highlight:"
 msgstr "突出显示(_H):"
 
-#: src/ui/w42-dialogs.c:3374 src/ui/w42-dialogs.c:5361
+#: src/ui/w42-dialogs.c:3375 src/ui/w42-dialogs.c:5763
 msgid "_Color:"
 msgstr "颜色(_C):"
 
-#: src/ui/w42-dialogs.c:3377
+#: src/ui/w42-dialogs.c:3378
 msgid "Character Spacing"
 msgstr "字符间距"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:3380
+#: src/ui/w42-dialogs.c:3381
 msgid "_Expanded by (pt):"
 msgstr "加宽(磅)(_E):"
 
-#: src/ui/w42-dialogs.c:3410
+#: src/ui/w42-dialogs.c:3411
 msgid "Whole document"
 msgstr "整篇文档"
 
-#: src/ui/w42-dialogs.c:3410
+#: src/ui/w42-dialogs.c:3411
 msgid "This section"
 msgstr "本节"
 
-#: src/ui/w42-dialogs.c:3410
+#: src/ui/w42-dialogs.c:3411
 msgid "This point forward"
 msgstr "插入点之后"
 
 #. Translators: how many columns of text.
-#: src/ui/w42-dialogs.c:3415
+#: src/ui/w42-dialogs.c:3416
 msgctxt "columns"
 msgid "One"
 msgstr "一栏"
 
-#: src/ui/w42-dialogs.c:3415
+#: src/ui/w42-dialogs.c:3416
 msgctxt "columns"
 msgid "Two"
 msgstr "两栏"
 
-#: src/ui/w42-dialogs.c:3415
+#: src/ui/w42-dialogs.c:3416
 msgctxt "columns"
 msgid "Three"
 msgstr "三栏"
 
-#: src/ui/w42-dialogs.c:3459
+#: src/ui/w42-dialogs.c:3460
 msgid "Presets"
 msgstr "预设"
 
-#: src/ui/w42-dialogs.c:3465
+#: src/ui/w42-dialogs.c:3466
 msgid "_Number of Columns:"
 msgstr "栏数(_N):"
 
 #. Translators: the space between the columns.
-#: src/ui/w42-dialogs.c:3468
+#: src/ui/w42-dialogs.c:3469
 msgid "_Spacing:"
 msgstr "间距(_S):"
 
-#: src/ui/w42-dialogs.c:3471
+#: src/ui/w42-dialogs.c:3472
 msgid "_Apply To:"
 msgstr "应用于(_A):"
 
 #. Translators: an annotation in the list: the annotated text in
 #. * quotation marks (the second %s is an ellipsis when it was cut
 #. * short), a dash, and the annotation.
-#: src/ui/w42-dialogs.c:3536
+#: src/ui/w42-dialogs.c:3537
 #, c-format
 msgid "“%s%s” — %s"
 msgstr "“%s%s” — %s"
 
-#: src/ui/w42-dialogs.c:3549
+#: src/ui/w42-dialogs.c:3550
 msgid "No annotations in the document."
 msgstr "文档中没有批注。"
 
-#: src/ui/w42-dialogs.c:3561
+#: src/ui/w42-dialogs.c:3562
 msgid "Select the text to annotate first."
 msgstr "请先选择要添加批注的文本。"
 
-#: src/ui/w42-dialogs.c:3563
+#: src/ui/w42-dialogs.c:3564
 msgid "Type the annotation first."
 msgstr "请先键入批注内容。"
 
-#: src/ui/w42-dialogs.c:3631
+#: src/ui/w42-dialogs.c:3632
 msgid "Annotations"
 msgstr "批注"
 
-#: src/ui/w42-dialogs.c:3635
+#: src/ui/w42-dialogs.c:3636
 msgid "Annotation"
 msgstr "批注"
 
-#: src/ui/w42-dialogs.c:3637 src/ui/w42-dialogs.c:4277
+#: src/ui/w42-dialogs.c:3638 src/ui/w42-dialogs.c:4278
 msgid "_Text:"
 msgstr "文字(_T):"
 
-#: src/ui/w42-dialogs.c:3654
+#: src/ui/w42-dialogs.c:3655
 msgid "In the Document"
 msgstr "文档中的批注"
 
-#: src/ui/w42-dialogs.c:3763
+#: src/ui/w42-dialogs.c:3764
 #, c-format
 msgid "%u record"
 msgid_plural "%u records"
 msgstr[0] "%u 条记录"
 
-#: src/ui/w42-dialogs.c:3764
+#: src/ui/w42-dialogs.c:3765
 #, c-format
 msgid "%u field"
 msgid_plural "%u fields"
 msgstr[0] "%u 个域"
 
 #. Translators: the data source's size: "12 records" and "3 fields".
-#: src/ui/w42-dialogs.c:3766
+#: src/ui/w42-dialogs.c:3767
 #, c-format
 msgid "%s, %s."
 msgstr "%s，%s。"
 
-#: src/ui/w42-dialogs.c:3821
+#: src/ui/w42-dialogs.c:3822
 msgid "Comma Separated Values (*.csv)"
 msgstr "逗号分隔值 (*.csv)"
 
-#: src/ui/w42-dialogs.c:3825
+#: src/ui/w42-dialogs.c:3826
 msgid "Open Data Source"
 msgstr "打开数据源"
 
-#: src/ui/w42-dialogs.c:3845 src/ui/w42-dialogs.c:3971
+#: src/ui/w42-dialogs.c:3846 src/ui/w42-dialogs.c:3972
 msgid "Open a data source first."
 msgstr "请先打开数据源。"
 
-#: src/ui/w42-dialogs.c:3871
+#: src/ui/w42-dialogs.c:3872
 msgid "A merge is written as Rich Text: give the file a name ending .rtf."
 msgstr "合并结果以 RTF 格式写入：请为文件指定以 .rtf 结尾的名称。"
 
 #. Translators: %s is a file name.
-#: src/ui/w42-dialogs.c:3886
+#: src/ui/w42-dialogs.c:3887
 #, c-format
 msgid ""
 "%s is there already: choose it by that name to replace it, or another name."
 msgstr "%s 已存在：如要替换，请再次选择该名称；否则请换一个名称。"
 
-#: src/ui/w42-dialogs.c:3950
+#: src/ui/w42-dialogs.c:3951
 msgid "Word42 could not open the merged document."
 msgstr "Word42 无法打开合并后的文档。"
 
-#: src/ui/w42-dialogs.c:3976
+#: src/ui/w42-dialogs.c:3977
 msgid "The data source has no records."
 msgstr "数据源中没有记录。"
 
-#: src/ui/w42-dialogs.c:3983 src/ui/w42-window.c:337
+#: src/ui/w42-dialogs.c:3984 src/ui/w42-window.c:337
 msgid "Rich Text Format (*.rtf)"
 msgstr "RTF 格式 (*.rtf)"
 
-#: src/ui/w42-dialogs.c:3986
+#: src/ui/w42-dialogs.c:3987
 msgid "Merge to New Document"
 msgstr "合并到新文档"
 
 #. Translators: the name the merged document is offered under; keep
 #. * the .rtf at the end.
-#: src/ui/w42-dialogs.c:3990
+#: src/ui/w42-dialogs.c:3991
 msgid "Merged.rtf"
 msgstr "合并文档.rtf"
 
-#: src/ui/w42-dialogs.c:4012
+#: src/ui/w42-dialogs.c:4013
 msgid "Mail Merge"
 msgstr "邮件合并"
 
-#: src/ui/w42-dialogs.c:4017
+#: src/ui/w42-dialogs.c:4018
 msgid "Data Source"
 msgstr "数据源"
 
-#: src/ui/w42-dialogs.c:4019
+#: src/ui/w42-dialogs.c:4020
 msgid "A CSV file whose first row names the fields."
 msgstr "第一行为域名的 CSV 文件。"
 
-#: src/ui/w42-dialogs.c:4023
+#: src/ui/w42-dialogs.c:4024
 msgid "_Get Data..."
 msgstr "获取数据(_G)..."
 
 #. Translators: no data source file has been chosen yet.
-#: src/ui/w42-dialogs.c:4026
+#: src/ui/w42-dialogs.c:4027
 msgctxt "data source"
 msgid "(none)"
 msgstr "(无)"
 
-#: src/ui/w42-dialogs.c:4033
+#: src/ui/w42-dialogs.c:4034
 msgid "Merge Fields"
 msgstr "合并域"
 
-#: src/ui/w42-dialogs.c:4046
+#: src/ui/w42-dialogs.c:4047
 msgid "_Insert Merge Field"
 msgstr "插入合并域(_I)"
 
-#: src/ui/w42-dialogs.c:4047
+#: src/ui/w42-dialogs.c:4048
 msgid "_Merge to New Document..."
 msgstr "合并到新文档(_M)..."
 
 #. Translators: how a merge field looks in the text; "Name" stands for
 #. * a field's name.
-#: src/ui/w42-dialogs.c:4056
+#: src/ui/w42-dialogs.c:4057
 msgid "Fields go into the text as «Name»."
 msgstr "域以 «名称» 的形式插入文本中。"
 
-#: src/ui/w42-dialogs.c:4116 src/ui/w42-dialogs.c:6265
+#: src/ui/w42-dialogs.c:4117 src/ui/w42-dialogs.c:6667
 msgid "Page number"
 msgstr "页码"
 
-#: src/ui/w42-dialogs.c:4116
+#: src/ui/w42-dialogs.c:4117
 msgid "Bookmark text"
 msgstr "书签文字"
 
-#: src/ui/w42-dialogs.c:4127
+#: src/ui/w42-dialogs.c:4128
 msgid "Cross-reference"
 msgstr "交叉引用"
 
-#: src/ui/w42-dialogs.c:4130
+#: src/ui/w42-dialogs.c:4131
 msgid "Reference"
 msgstr "引用"
 
 #. Translators: "Insert > Bookmark" is the menu command.
-#: src/ui/w42-dialogs.c:4135
+#: src/ui/w42-dialogs.c:4136
 msgid ""
 "There are no bookmarks to refer to.\n"
 "Insert > Bookmark marks a place first."
@@ -3226,142 +3230,174 @@ msgstr ""
 "没有可引用的书签。\n"
 "请先用“插入 > 书签”标记位置。"
 
-#: src/ui/w42-dialogs.c:4139 src/ui/w42-dialogs.c:4143
+#: src/ui/w42-dialogs.c:4140 src/ui/w42-dialogs.c:4144
 msgid "For which _bookmark:"
 msgstr "引用哪一个书签(_B):"
 
-#: src/ui/w42-dialogs.c:4145
+#: src/ui/w42-dialogs.c:4146
 msgid "_Insert reference to:"
 msgstr "引用内容(_I):"
 
-#: src/ui/w42-dialogs.c:4147
+#: src/ui/w42-dialogs.c:4148
 msgid "The reference is text; insert it again after the pages change."
 msgstr "引用以文本形式插入；页面发生变化后请重新插入。"
 
-#: src/ui/w42-dialogs.c:4169
+#: src/ui/w42-dialogs.c:4170
 msgctxt "shape"
 msgid "Line"
 msgstr "直线"
 
-#: src/ui/w42-dialogs.c:4169
+#: src/ui/w42-dialogs.c:4170
 msgctxt "shape"
 msgid "Arrow"
 msgstr "箭头"
 
-#: src/ui/w42-dialogs.c:4169
+#: src/ui/w42-dialogs.c:4170
 msgctxt "shape"
 msgid "Rectangle"
 msgstr "矩形"
 
-#: src/ui/w42-dialogs.c:4170
+#: src/ui/w42-dialogs.c:4171
 msgctxt "shape"
 msgid "Rounded Rectangle"
 msgstr "圆角矩形"
 
-#: src/ui/w42-dialogs.c:4170
+#: src/ui/w42-dialogs.c:4171
 msgctxt "shape"
 msgid "Ellipse"
 msgstr "椭圆"
 
-#: src/ui/w42-dialogs.c:4173
+#: src/ui/w42-dialogs.c:4174
 msgctxt "colour"
 msgid "Gray"
 msgstr "灰色"
 
-#: src/ui/w42-dialogs.c:4267
+#: src/ui/w42-dialogs.c:4268
 msgid "Format Drawing"
 msgstr "设置自选图形格式"
 
-#: src/ui/w42-dialogs.c:4267
+#: src/ui/w42-dialogs.c:4268
 msgid "Drawing"
 msgstr "自选图形"
 
-#: src/ui/w42-dialogs.c:4271
+#: src/ui/w42-dialogs.c:4272
 msgid "Shape"
 msgstr "形状"
 
-#: src/ui/w42-dialogs.c:4272
+#: src/ui/w42-dialogs.c:4273
 msgid "_Shape:"
 msgstr "形状(_S):"
 
-#: src/ui/w42-dialogs.c:4274 src/ui/w42-dialogs.c:6366
-#: src/ui/w42-dialogs.c:6471
+#: src/ui/w42-dialogs.c:4275 src/ui/w42-dialogs.c:6768
+#: src/ui/w42-dialogs.c:6873
 msgid "_Width:"
 msgstr "宽度(_W):"
 
-#: src/ui/w42-dialogs.c:4275 src/ui/w42-dialogs.c:6367
+#: src/ui/w42-dialogs.c:4276 src/ui/w42-dialogs.c:6769
 msgid "_Height:"
 msgstr "高度(_H):"
 
-#: src/ui/w42-dialogs.c:4280
+#: src/ui/w42-dialogs.c:4281
 msgid "set in the middle of the shape"
 msgstr "显示在形状中央"
 
-#: src/ui/w42-dialogs.c:4289
+#: src/ui/w42-dialogs.c:4290
 msgid "Line and Fill"
 msgstr "线条和填充"
 
 #. Translators: "pt" is points, the typographic unit.
-#: src/ui/w42-dialogs.c:4292
+#: src/ui/w42-dialogs.c:4293
 msgid "_Line Width (pt):"
 msgstr "线宽(磅)(_L):"
 
-#: src/ui/w42-dialogs.c:4303
+#: src/ui/w42-dialogs.c:4304
 msgid "_Filled"
 msgstr "填充(_F)"
 
-#: src/ui/w42-dialogs.c:4306
+#: src/ui/w42-dialogs.c:4307
 msgid "Fill Colo_r:"
 msgstr "填充颜色(_R):"
 
+#: src/ui/w42-dialogs.c:4436
+msgid "Type the equation first."
+msgstr "请先输入方程式。"
+
+#: src/ui/w42-dialogs.c:4576
+msgid "This is not an equation Word42 can set."
+msgstr "这不是 Word42 能排版的方程式。"
+
+#: src/ui/w42-dialogs.c:4638 src/ui/w42-dialogs.c:4642
+msgid "Equation"
+msgstr "方程式"
+
+#: src/ui/w42-dialogs.c:4643
+msgid "_Notation:"
+msgstr "记法(_N)："
+
+#: src/ui/w42-dialogs.c:4645
+msgid "_Type the equation:"
+msgstr "输入方程式(_T)："
+
+#: src/ui/w42-dialogs.c:4668
+msgid "For example:"
+msgstr "例如："
+
+#: src/ui/w42-dialogs.c:4680
+msgid "_Display: set as on a line of its own, with limits over and under"
+msgstr "独立显示(_D)：如同单独成行排版，上下限在上方和下方"
+
+#: src/ui/w42-dialogs.c:4685
+msgid "Preview"
+msgstr "预览"
+
 #. Translators: kinds of list; the numbered kinds are shown as they
 #. * number, and the bullets are drawn before their names.
-#: src/ui/w42-dialogs.c:4330
+#: src/ui/w42-dialogs.c:4732
 msgctxt "list"
 msgid "None"
 msgstr "无"
 
-#: src/ui/w42-dialogs.c:4330
+#: src/ui/w42-dialogs.c:4732
 msgctxt "list"
 msgid "• Bullet"
 msgstr "• 圆点"
 
-#: src/ui/w42-dialogs.c:4331
+#: src/ui/w42-dialogs.c:4733
 msgctxt "list"
 msgid "◦ Circle"
 msgstr "◦ 圆圈"
 
-#: src/ui/w42-dialogs.c:4332
+#: src/ui/w42-dialogs.c:4734
 msgctxt "list"
 msgid "▪ Square"
 msgstr "▪ 方块"
 
-#: src/ui/w42-dialogs.c:4332
+#: src/ui/w42-dialogs.c:4734
 msgctxt "list"
 msgid "– Dash"
 msgstr "– 短划线"
 
-#: src/ui/w42-dialogs.c:4384
+#: src/ui/w42-dialogs.c:4786
 msgid "Bullets and Numbering"
 msgstr "项目符号和编号"
 
-#: src/ui/w42-dialogs.c:4388
+#: src/ui/w42-dialogs.c:4790
 msgid "List"
 msgstr "列表"
 
-#: src/ui/w42-dialogs.c:4389
+#: src/ui/w42-dialogs.c:4791
 msgid "_Kind:"
 msgstr "类型(_K):"
 
-#: src/ui/w42-dialogs.c:4393
+#: src/ui/w42-dialogs.c:4795
 msgid "_Level:"
 msgstr "级别(_L):"
 
-#: src/ui/w42-dialogs.c:4402
+#: src/ui/w42-dialogs.c:4804
 msgid "_Restart numbering at:"
 msgstr "重新编号起始值(_R):"
 
-#: src/ui/w42-dialogs.c:4409
+#: src/ui/w42-dialogs.c:4811
 msgid ""
 "Numbering continues from the item before unless restarted.\n"
 "Tab and Shift+Tab at the start of an item change its level."
@@ -3369,82 +3405,82 @@ msgstr ""
 "除非重新开始编号，否则编号接续上一项。\n"
 "在项目开头按 Tab 或 Shift+Tab 可更改其级别。"
 
-#: src/ui/w42-dialogs.c:4443
+#: src/ui/w42-dialogs.c:4845
 msgctxt "vertical alignment"
 msgid "Top"
 msgstr "顶端对齐"
 
-#: src/ui/w42-dialogs.c:4443
+#: src/ui/w42-dialogs.c:4845
 msgctxt "vertical alignment"
 msgid "Center"
 msgstr "居中"
 
-#: src/ui/w42-dialogs.c:4444
+#: src/ui/w42-dialogs.c:4846
 msgctxt "vertical alignment"
 msgid "Bottom"
 msgstr "底端对齐"
 
-#: src/ui/w42-dialogs.c:4532
+#: src/ui/w42-dialogs.c:4934
 msgid "Table Properties"
 msgstr "表格属性"
 
 #. Translators: the group of settings for the whole table.
-#: src/ui/w42-dialogs.c:4537
+#: src/ui/w42-dialogs.c:4939
 msgctxt "table properties"
 msgid "Table"
 msgstr "表格"
 
-#: src/ui/w42-dialogs.c:4538
+#: src/ui/w42-dialogs.c:4940
 msgid "_Borders around every cell"
 msgstr "每个单元格都加边框(_B)"
 
-#: src/ui/w42-dialogs.c:4541
+#: src/ui/w42-dialogs.c:4943
 msgid "_Repeat the first row at the top of each page"
 msgstr "在各页顶端重复第一行(_R)"
 
-#: src/ui/w42-dialogs.c:4545
+#: src/ui/w42-dialogs.c:4947
 msgid "This Row"
 msgstr "本行"
 
-#: src/ui/w42-dialogs.c:4549
+#: src/ui/w42-dialogs.c:4951
 msgid "Height at _least:"
 msgstr "最小行高(_L):"
 
-#: src/ui/w42-dialogs.c:4553
+#: src/ui/w42-dialogs.c:4955
 msgid "This Cell"
 msgstr "本单元格"
 
-#: src/ui/w42-dialogs.c:4566
+#: src/ui/w42-dialogs.c:4968
 msgid "Le_ft"
 msgstr "左框线(_F)"
 
-#: src/ui/w42-dialogs.c:4566
+#: src/ui/w42-dialogs.c:4968
 msgid "Ri_ght"
 msgstr "右框线(_G)"
 
-#: src/ui/w42-dialogs.c:4568
+#: src/ui/w42-dialogs.c:4970
 msgid "Borders:"
 msgstr "边框:"
 
-#: src/ui/w42-dialogs.c:4591
+#: src/ui/w42-dialogs.c:4993
 msgid "Line st_yle:"
 msgstr "线型(_Y):"
 
-#: src/ui/w42-dialogs.c:4593
+#: src/ui/w42-dialogs.c:4995
 msgid "Line _width:"
 msgstr "线宽(_W):"
 
-#: src/ui/w42-dialogs.c:4595
+#: src/ui/w42-dialogs.c:4997
 msgid "Line _color:"
 msgstr "线条颜色(_C):"
 
-#: src/ui/w42-dialogs.c:4597
+#: src/ui/w42-dialogs.c:4999
 msgid "_Vertical alignment:"
 msgstr "垂直对齐方式(_V):"
 
 #. Translators: the formulas are typed as they are
 #. * here: keep =SUM(ABOVE) and the rest in English.
-#: src/ui/w42-dialogs.c:4650
+#: src/ui/w42-dialogs.c:5052
 msgid ""
 "The formula must be a function of the cells in one direction: =SUM(ABOVE), "
 "=AVERAGE(LEFT), =COUNT(BELOW), =MAX(RIGHT), =MIN(ABOVE) or =PRODUCT(LEFT)."
@@ -3452,21 +3488,21 @@ msgstr ""
 "公式必须是某一方向上单元格的函数：=SUM(ABOVE)、=AVERAGE(LEFT)、"
 "=COUNT(BELOW)、=MAX(RIGHT)、=MIN(ABOVE) 或 =PRODUCT(LEFT)。"
 
-#: src/ui/w42-dialogs.c:4673 src/ui/w42-dialogs.c:4691
+#: src/ui/w42-dialogs.c:5075 src/ui/w42-dialogs.c:5093
 msgid "Formula"
 msgstr "公式"
 
-#: src/ui/w42-dialogs.c:4692
+#: src/ui/w42-dialogs.c:5094
 msgid "_Formula:"
 msgstr "公式(_F):"
 
-#: src/ui/w42-dialogs.c:4699
+#: src/ui/w42-dialogs.c:5101
 msgid "_Paste function:"
 msgstr "粘贴函数(_P):"
 
 #. Translators: ABOVE, BELOW, LEFT and RIGHT are typed into formulas as
 #. * they are: keep them in English.
-#: src/ui/w42-dialogs.c:4704
+#: src/ui/w42-dialogs.c:5106
 msgid ""
 "ABOVE, BELOW, LEFT or RIGHT: the cells in that direction,\n"
 "up to the first that holds no number.  The result is a field."
@@ -3474,54 +3510,54 @@ msgstr ""
 "ABOVE、BELOW、LEFT 或 RIGHT：该方向上的单元格，\n"
 "直到第一个不含数字的单元格为止。结果是一个域。"
 
-#: src/ui/w42-dialogs.c:4760
+#: src/ui/w42-dialogs.c:5162
 #, c-format
 msgid "%d paragraph changed.  Undo takes the whole thing back in one step."
 msgid_plural ""
 "%d paragraphs changed.  Undo takes the whole thing back in one step."
 msgstr[0] "已更改 %d 个段落。使用“撤消”可一步全部复原。"
 
-#: src/ui/w42-dialogs.c:4765
+#: src/ui/w42-dialogs.c:5167
 msgid "Nothing needed changing."
 msgstr "没有需要更改的内容。"
 
-#: src/ui/w42-dialogs.c:4768 src/ui/w42-dialogs.c:4786
+#: src/ui/w42-dialogs.c:5170 src/ui/w42-dialogs.c:5188
 msgid "AutoFormat"
 msgstr "自动套用格式"
 
-#: src/ui/w42-dialogs.c:4789
+#: src/ui/w42-dialogs.c:5191
 msgid ""
 "Word42 will look over the whole document and put right what was typed as "
 "though on a typewriter."
 msgstr "Word42 将检查整篇文档，更正那些按打字机习惯键入的内容。"
 
-#: src/ui/w42-dialogs.c:4796 src/ui/w42-dialogs.c:6230
+#: src/ui/w42-dialogs.c:5198 src/ui/w42-dialogs.c:6632
 msgid "Apply"
 msgstr "应用"
 
-#: src/ui/w42-dialogs.c:4797
+#: src/ui/w42-dialogs.c:5199
 msgid "_Headings: short lines that stand alone"
 msgstr "标题：单独成行的短行(_H)"
 
-#: src/ui/w42-dialogs.c:4798
+#: src/ui/w42-dialogs.c:5200
 msgid "_Lists: lines that start with a dash or a number"
 msgstr "列表：以短划线或数字开头的行(_L)"
 
-#: src/ui/w42-dialogs.c:4799
+#: src/ui/w42-dialogs.c:5201
 msgid "_Quotes and dashes as a printer sets them"
 msgstr "按印刷排版习惯使用引号和破折号(_Q)"
 
-#: src/ui/w42-dialogs.c:4800
+#: src/ui/w42-dialogs.c:5202
 msgid "_Empty paragraphs: a run of them becomes one"
 msgstr "空段落：连续多个合并为一个(_E)"
 
-#: src/ui/w42-dialogs.c:4861
+#: src/ui/w42-dialogs.c:5263
 msgid "Select the words to put in the index first."
 msgstr "请先选择要编入索引的词语。"
 
 #. Translators: "Insert > Index Entry" and "Insert >
 #. * Index" are the menu commands.
-#: src/ui/w42-dialogs.c:4864
+#: src/ui/w42-dialogs.c:5266
 msgid ""
 "Insert ▸ Index Entry marks what is selected; Insert ▸ Index then gathers the "
 "marked words and the pages they are on."
@@ -3529,199 +3565,199 @@ msgstr ""
 "“插入 ▸ 标记索引项”用于标记所选内容；然后“插入 ▸ 索引”会汇集已标记的词语及其"
 "所在页码。"
 
-#: src/ui/w42-dialogs.c:4873
+#: src/ui/w42-dialogs.c:5275
 msgid "Index Entry"
 msgstr "索引项"
 
-#: src/ui/w42-dialogs.c:4876
+#: src/ui/w42-dialogs.c:5278
 msgid "Mark the selected words"
 msgstr "标记所选词语"
 
-#: src/ui/w42-dialogs.c:4877
+#: src/ui/w42-dialogs.c:5279
 msgid "_File it under:"
 msgstr "主索引项(_F):"
 
-#: src/ui/w42-dialogs.c:4887
+#: src/ui/w42-dialogs.c:5289
 msgid ""
 "The words stay as they are and read as they did; the index says which pages "
 "they are on."
 msgstr "这些词语保持原样，读起来与之前相同；索引会列出它们所在的页码。"
 
-#: src/ui/w42-dialogs.c:4939
+#: src/ui/w42-dialogs.c:5341
 msgid "A document of your own, kept in the templates folder."
 msgstr "您自己的文档，保存在模板文件夹中。"
 
-#: src/ui/w42-dialogs.c:4986
+#: src/ui/w42-dialogs.c:5388
 msgid "Word42 could not open that template."
 msgstr "Word42 无法打开该模板。"
 
-#: src/ui/w42-dialogs.c:5012
+#: src/ui/w42-dialogs.c:5414
 msgid "New from Template"
 msgstr "根据模板新建"
 
-#: src/ui/w42-dialogs.c:5015
+#: src/ui/w42-dialogs.c:5417
 msgid "Templates"
 msgstr "模板"
 
-#: src/ui/w42-dialogs.c:5074
+#: src/ui/w42-dialogs.c:5476
 msgid "Envelope"
 msgstr "信封"
 
-#: src/ui/w42-dialogs.c:5074
+#: src/ui/w42-dialogs.c:5476
 msgid "Labels"
 msgstr "标签"
 
-#: src/ui/w42-dialogs.c:5176
+#: src/ui/w42-dialogs.c:5578
 msgid "Envelopes and Labels"
 msgstr "信封和标签"
 
-#: src/ui/w42-dialogs.c:5179
+#: src/ui/w42-dialogs.c:5581
 msgid "What to make"
 msgstr "制作内容"
 
-#: src/ui/w42-dialogs.c:5180
+#: src/ui/w42-dialogs.c:5582
 msgid "_Make:"
 msgstr "制作(_M):"
 
-#: src/ui/w42-dialogs.c:5182
+#: src/ui/w42-dialogs.c:5584
 msgid "Addresses"
 msgstr "地址"
 
-#: src/ui/w42-dialogs.c:5183
+#: src/ui/w42-dialogs.c:5585
 msgid "_Delivery address:"
 msgstr "收信人地址(_D):"
 
-#: src/ui/w42-dialogs.c:5184
+#: src/ui/w42-dialogs.c:5586
 msgid "_Return address:"
 msgstr "寄信人地址(_R):"
 
-#: src/ui/w42-dialogs.c:5205
+#: src/ui/w42-dialogs.c:5607
 msgid "Sizes"
 msgstr "尺寸"
 
-#: src/ui/w42-dialogs.c:5209
+#: src/ui/w42-dialogs.c:5611
 msgid "_Envelope:"
 msgstr "信封(_E):"
 
-#: src/ui/w42-dialogs.c:5216
+#: src/ui/w42-dialogs.c:5618
 msgid "_Label sheet:"
 msgstr "标签纸(_L):"
 
-#: src/ui/w42-dialogs.c:5220
+#: src/ui/w42-dialogs.c:5622
 msgid "The same on _every label"
 msgstr "每张标签内容相同(_E)"
 
-#: src/ui/w42-dialogs.c:5224
+#: src/ui/w42-dialogs.c:5626
 msgid ""
 "The envelope or the sheet of labels is made as a document of its own, in a "
 "new window."
 msgstr "信封或标签纸将作为单独的文档在新窗口中创建。"
 
-#: src/ui/w42-dialogs.c:5250
+#: src/ui/w42-dialogs.c:5652
 msgctxt "colour"
 msgid "None (white paper)"
 msgstr "无(白纸)"
 
-#: src/ui/w42-dialogs.c:5351
+#: src/ui/w42-dialogs.c:5753
 msgid "Background"
 msgstr "背景"
 
-#: src/ui/w42-dialogs.c:5360
+#: src/ui/w42-dialogs.c:5762
 msgid "The colour behind the page"
 msgstr "页面背景颜色"
 
-#: src/ui/w42-dialogs.c:5371
+#: src/ui/w42-dialogs.c:5773
 msgid ""
 "The colour is shown on the screen and in Print Preview; printing leaves the "
 "paper as it is."
 msgstr "该颜色会显示在屏幕上和打印预览中；打印时纸张保持原样。"
 
 #. Translators: "Add" is the button.
-#: src/ui/w42-dialogs.c:5479
+#: src/ui/w42-dialogs.c:5881
 msgid "Select the text to keep, then Add."
 msgstr "请先选择要保存的文本，然后单击“添加”。"
 
-#: src/ui/w42-dialogs.c:5485
+#: src/ui/w42-dialogs.c:5887
 msgid "Give the entry a name."
 msgstr "请为词条指定名称。"
 
-#: src/ui/w42-dialogs.c:5540
+#: src/ui/w42-dialogs.c:5942
 msgid "AutoText"
 msgstr "自动图文集"
 
-#: src/ui/w42-dialogs.c:5543
+#: src/ui/w42-dialogs.c:5945
 msgid "Entries"
 msgstr "词条"
 
 #. Translators: "Add" is the button.
-#: src/ui/w42-dialogs.c:5603
+#: src/ui/w42-dialogs.c:6005
 msgid "Add keeps the selected text under that name."
 msgstr "“添加”会以该名称保存所选文本。"
 
-#: src/ui/w42-dialogs.c:5632
+#: src/ui/w42-dialogs.c:6034
 msgid "Words"
 msgstr "字数"
 
-#: src/ui/w42-dialogs.c:5632
+#: src/ui/w42-dialogs.c:6034
 msgid "Characters"
 msgstr "字符数(计空格)"
 
-#: src/ui/w42-dialogs.c:5632
+#: src/ui/w42-dialogs.c:6034
 msgid "Characters (no spaces)"
 msgstr "字符数(不计空格)"
 
-#: src/ui/w42-dialogs.c:5633
+#: src/ui/w42-dialogs.c:6035
 msgid "Paragraphs"
 msgstr "段落数"
 
-#: src/ui/w42-dialogs.c:5633
+#: src/ui/w42-dialogs.c:6035
 msgid "Lines"
 msgstr "行数"
 
-#: src/ui/w42-dialogs.c:5732
+#: src/ui/w42-dialogs.c:6134
 msgid "Word Count"
 msgstr "字数统计"
 
-#: src/ui/w42-dialogs.c:5735
+#: src/ui/w42-dialogs.c:6137
 msgid "Counts"
 msgstr "计数"
 
-#: src/ui/w42-dialogs.c:5735
+#: src/ui/w42-dialogs.c:6137
 msgid "Statistics"
 msgstr "统计信息"
 
 #. Translators: the heading of the column of counts for the whole
 #. * document.
-#: src/ui/w42-dialogs.c:5740
+#: src/ui/w42-dialogs.c:6142
 msgid "Document"
 msgstr "文档"
 
 #. Translators: the heading of the column of counts for the
 #. * selected text.
-#: src/ui/w42-dialogs.c:5743
+#: src/ui/w42-dialogs.c:6145
 msgid "Selection"
 msgstr "所选内容"
 
-#: src/ui/w42-dialogs.c:5769
+#: src/ui/w42-dialogs.c:6171
 msgid "Include _footnotes and endnotes"
 msgstr "包括脚注和尾注(_F)"
 
-#: src/ui/w42-dialogs.c:5830
+#: src/ui/w42-dialogs.c:6232
 msgid "Word Count Goal"
 msgstr "字数目标"
 
-#: src/ui/w42-dialogs.c:5833
+#: src/ui/w42-dialogs.c:6235
 msgid "Goal"
 msgstr "目标"
 
-#: src/ui/w42-dialogs.c:5834
+#: src/ui/w42-dialogs.c:6236
 msgid "_Words to reach:"
 msgstr "目标字数(_W):"
 
 #. Translators: the plural follows the first number, the words in the
 #. * document; the second is how many of them are new since it was
 #. * opened, and may be put so that it needs no plural of its own.
-#: src/ui/w42-dialogs.c:5848
+#: src/ui/w42-dialogs.c:6250
 #, c-format
 msgid ""
 "The document has %lu word; %ld of them were written since it was opened."
@@ -3729,117 +3765,117 @@ msgid_plural ""
 "The document has %lu words; %ld of them were written since it was opened."
 msgstr[0] "文档共有 %lu 字；其中 %ld 字是在文档打开后写入的。"
 
-#: src/ui/w42-dialogs.c:5853
+#: src/ui/w42-dialogs.c:6255
 #, c-format
 msgid "The document has %lu word."
 msgid_plural "The document has %lu words."
 msgstr[0] "文档共有 %lu 字。"
 
-#: src/ui/w42-dialogs.c:5863
+#: src/ui/w42-dialogs.c:6265
 msgid "The status bar counts toward the goal as you write. 0 means no goal."
 msgstr "写作时，状态栏会显示距离目标的进度。0 表示不设目标。"
 
-#: src/ui/w42-dialogs.c:5910
+#: src/ui/w42-dialogs.c:6312
 msgid "The text is checked with the document's own dictionary."
 msgstr "文本将使用文档自身的词典进行检查。"
 
-#: src/ui/w42-dialogs.c:5913
+#: src/ui/w42-dialogs.c:6315
 msgid "The text is not checked at all."
 msgstr "完全不检查该文本。"
 
-#: src/ui/w42-dialogs.c:5916
+#: src/ui/w42-dialogs.c:6318
 msgid "A dictionary for this is installed."
 msgstr "已安装该语言的词典。"
 
-#: src/ui/w42-dialogs.c:5919
+#: src/ui/w42-dialogs.c:6321
 msgid "No dictionary for this is installed: the words are not checked."
 msgstr "未安装该语言的词典：不会检查拼写。"
 
-#: src/ui/w42-dialogs.c:5978
+#: src/ui/w42-dialogs.c:6380
 msgid "Language"
 msgstr "语言"
 
-#: src/ui/w42-dialogs.c:5981
+#: src/ui/w42-dialogs.c:6383
 msgid "Mark the selected text as"
 msgstr "将所选文本标记为"
 
-#: src/ui/w42-dialogs.c:5986
+#: src/ui/w42-dialogs.c:6388
 msgid "(the document's own language)"
 msgstr "(文档自身的语言)"
 
 #. Translators: %s is the name of a language.
-#: src/ui/w42-dialogs.c:6028
+#: src/ui/w42-dialogs.c:6430
 #, c-format
 msgid "The document is in %s."
 msgstr "文档的语言为 %s。"
 
 #. Translators: %s is a dictionary's language code, such as en_US.
-#: src/ui/w42-dialogs.c:6031
+#: src/ui/w42-dialogs.c:6433
 #, c-format
 msgid "The document's own dictionary is %s."
 msgstr "文档自身的词典为 %s。"
 
-#: src/ui/w42-dialogs.c:6034
+#: src/ui/w42-dialogs.c:6436
 msgid "No dictionary was found on this machine."
 msgstr "在此计算机上未找到词典。"
 
-#: src/ui/w42-dialogs.c:6048
+#: src/ui/w42-dialogs.c:6450
 msgid "_Default"
 msgstr "默认(_D)"
 
-#: src/ui/w42-dialogs.c:6051
+#: src/ui/w42-dialogs.c:6453
 msgid "Make this the document's language, and the one new documents start in."
 msgstr "将此语言设为文档的语言，并作为新文档的默认语言。"
 
-#: src/ui/w42-dialogs.c:6197
+#: src/ui/w42-dialogs.c:6599
 msgid "Table AutoFormat"
 msgstr "表格自动套用格式"
 
-#: src/ui/w42-dialogs.c:6200
+#: src/ui/w42-dialogs.c:6602
 msgid "Formats"
 msgstr "格式"
 
-#: src/ui/w42-dialogs.c:6231
+#: src/ui/w42-dialogs.c:6633
 msgid "_Heading row"
 msgstr "标题行(_H)"
 
-#: src/ui/w42-dialogs.c:6232
+#: src/ui/w42-dialogs.c:6634
 msgid "First _column"
 msgstr "首列(_C)"
 
-#: src/ui/w42-dialogs.c:6240
+#: src/ui/w42-dialogs.c:6642
 msgid "The look goes on the table the caret is in."
 msgstr "该格式将应用于插入点所在的表格。"
 
-#: src/ui/w42-dialogs.c:6265
+#: src/ui/w42-dialogs.c:6667
 msgid "Number of pages"
 msgstr "总页数"
 
-#: src/ui/w42-dialogs.c:6265
+#: src/ui/w42-dialogs.c:6667
 msgid "Date"
 msgstr "日期"
 
-#: src/ui/w42-dialogs.c:6265
+#: src/ui/w42-dialogs.c:6667
 msgid "Time"
 msgstr "时间"
 
-#: src/ui/w42-dialogs.c:6265
+#: src/ui/w42-dialogs.c:6667
 msgid "File name"
 msgstr "文件名"
 
-#: src/ui/w42-dialogs.c:6266
+#: src/ui/w42-dialogs.c:6668
 msgid "Word count"
 msgstr "字数"
 
-#: src/ui/w42-dialogs.c:6296 src/ui/w42-dialogs.c:6299
+#: src/ui/w42-dialogs.c:6698 src/ui/w42-dialogs.c:6701
 msgid "Field"
 msgstr "域"
 
-#: src/ui/w42-dialogs.c:6300
+#: src/ui/w42-dialogs.c:6702
 msgid "_Insert:"
 msgstr "插入(_I):"
 
-#: src/ui/w42-dialogs.c:6301
+#: src/ui/w42-dialogs.c:6703
 msgid ""
 "A field shows its result, shaded grey. F9 updates every field;\n"
 "printing and exporting update them too."
@@ -3847,212 +3883,212 @@ msgstr ""
 "域显示其结果，并带有灰色底纹。按 F9 可更新所有域；\n"
 "打印和导出时也会更新域。"
 
-#: src/ui/w42-dialogs.c:6341
+#: src/ui/w42-dialogs.c:6743
 msgctxt "wrapping"
 msgid "In line with text"
 msgstr "嵌入型"
 
-#: src/ui/w42-dialogs.c:6341 src/ui/w42-dialogs.c:6455
+#: src/ui/w42-dialogs.c:6743 src/ui/w42-dialogs.c:6857
 msgctxt "wrapping"
 msgid "Left, text to the right"
 msgstr "左侧，文字在右"
 
-#: src/ui/w42-dialogs.c:6342 src/ui/w42-dialogs.c:6456
+#: src/ui/w42-dialogs.c:6744 src/ui/w42-dialogs.c:6858
 msgctxt "wrapping"
 msgid "Right, text to the left"
 msgstr "右侧，文字在左"
 
-#: src/ui/w42-dialogs.c:6342
+#: src/ui/w42-dialogs.c:6744
 msgctxt "wrapping"
 msgid "Top and bottom"
 msgstr "上下型"
 
-#: src/ui/w42-dialogs.c:6343
+#: src/ui/w42-dialogs.c:6745
 msgctxt "wrapping"
 msgid "In front of text"
 msgstr "浮于文字上方"
 
-#: src/ui/w42-dialogs.c:6343
+#: src/ui/w42-dialogs.c:6745
 msgctxt "wrapping"
 msgid "Behind text"
 msgstr "衬于文字下方"
 
-#: src/ui/w42-dialogs.c:6355
+#: src/ui/w42-dialogs.c:6757
 msgid "Select a picture first: click it once, so that its handles show."
 msgstr "请先选择图片：单击图片一次，使其显示控点。"
 
-#: src/ui/w42-dialogs.c:6362
+#: src/ui/w42-dialogs.c:6764
 msgid "Picture"
 msgstr "图片"
 
-#: src/ui/w42-dialogs.c:6365
+#: src/ui/w42-dialogs.c:6767
 msgid "Size"
 msgstr "大小"
 
-#: src/ui/w42-dialogs.c:6369
+#: src/ui/w42-dialogs.c:6771
 msgid "Text wrapping"
 msgstr "文字环绕"
 
-#: src/ui/w42-dialogs.c:6411
+#: src/ui/w42-dialogs.c:6813
 msgctxt "drop cap"
 msgid "None"
 msgstr "无"
 
-#: src/ui/w42-dialogs.c:6411
+#: src/ui/w42-dialogs.c:6813
 msgctxt "drop cap"
 msgid "Dropped"
 msgstr "下沉"
 
-#: src/ui/w42-dialogs.c:6418
+#: src/ui/w42-dialogs.c:6820
 msgid "Drop Cap"
 msgstr "首字下沉"
 
-#: src/ui/w42-dialogs.c:6424
+#: src/ui/w42-dialogs.c:6826
 msgid "_Lines to drop:"
 msgstr "下沉行数(_L):"
 
 #. Translators: no frame, the paragraph in the run of the text.
-#: src/ui/w42-dialogs.c:6455
+#: src/ui/w42-dialogs.c:6857
 msgctxt "wrapping"
 msgid "None"
 msgstr "无"
 
-#: src/ui/w42-dialogs.c:6465 src/ui/w42-dialogs.c:6468
+#: src/ui/w42-dialogs.c:6867 src/ui/w42-dialogs.c:6870
 msgid "Frame"
 msgstr "图文框"
 
-#: src/ui/w42-dialogs.c:6521
+#: src/ui/w42-dialogs.c:6923
 msgid "_Title:"
 msgstr "标题(_T):"
 
-#: src/ui/w42-dialogs.c:6521
+#: src/ui/w42-dialogs.c:6923
 msgid "_Subject:"
 msgstr "主题(_S):"
 
-#: src/ui/w42-dialogs.c:6521
+#: src/ui/w42-dialogs.c:6923
 msgid "_Author:"
 msgstr "作者(_A):"
 
-#: src/ui/w42-dialogs.c:6521
+#: src/ui/w42-dialogs.c:6923
 msgid "_Keywords:"
 msgstr "关键词(_K):"
 
-#: src/ui/w42-dialogs.c:6521
+#: src/ui/w42-dialogs.c:6923
 msgid "_Comments:"
 msgstr "备注(_C):"
 
-#: src/ui/w42-dialogs.c:6541
+#: src/ui/w42-dialogs.c:6943
 msgid "Summary Info"
 msgstr "摘要信息"
 
-#: src/ui/w42-dialogs.c:6544
+#: src/ui/w42-dialogs.c:6946
 msgid "This document"
 msgstr "本文档"
 
-#: src/ui/w42-dialogs.c:6635
+#: src/ui/w42-dialogs.c:7037
 msgid "12_5%"
 msgstr "12_5%"
 
-#: src/ui/w42-dialogs.c:6635
+#: src/ui/w42-dialogs.c:7037
 msgid "_Percent:"
 msgstr "百分比(_P):"
 
-#: src/ui/w42-dialogs.c:6643
+#: src/ui/w42-dialogs.c:7045
 msgid "Zoom"
 msgstr "显示比例"
 
-#: src/ui/w42-dialogs.c:6646
+#: src/ui/w42-dialogs.c:7048
 msgid "Zoom To"
 msgstr "缩放至"
 
-#: src/ui/w42-dialogs.c:6749
+#: src/ui/w42-dialogs.c:7151
 msgid "The macro could not be saved."
 msgstr "无法保存该宏。"
 
-#: src/ui/w42-dialogs.c:6764
+#: src/ui/w42-dialogs.c:7166
 msgid "Saved."
 msgstr "已保存。"
 
 #. Translators: "Sub", "Sub Main()" and "End Sub" are the macro
 #. * language's own words: keep them in English.
-#: src/ui/w42-dialogs.c:6811
+#: src/ui/w42-dialogs.c:7213
 msgid "There is no Sub to run: write one, Sub Main() ... End Sub."
 msgstr "没有可运行的 Sub：请编写一个，例如 Sub Main() ... End Sub。"
 
 #. Translators: %s is the name of the Sub, the macro, being run.
-#: src/ui/w42-dialogs.c:6819
+#: src/ui/w42-dialogs.c:7221
 #, c-format
 msgid "Running %s..."
 msgstr "正在运行 %s..."
 
-#: src/ui/w42-dialogs.c:6837
+#: src/ui/w42-dialogs.c:7239
 msgid "Done."
 msgstr "完成。"
 
-#: src/ui/w42-dialogs.c:6839
+#: src/ui/w42-dialogs.c:7241
 msgid "The macro stopped."
 msgstr "宏已停止。"
 
-#: src/ui/w42-dialogs.c:6892
+#: src/ui/w42-dialogs.c:7294
 msgid "Macro Editor"
 msgstr "宏编辑器"
 
 #. Translators: the editor's title; %s is the name of the macro.
-#: src/ui/w42-dialogs.c:6898
+#: src/ui/w42-dialogs.c:7300
 #, c-format
 msgid "Macro Editor - %s"
 msgstr "宏编辑器 - %s"
 
 #. Translators: "Sub" is the macro language's word for a macro.
-#: src/ui/w42-dialogs.c:6922
+#: src/ui/w42-dialogs.c:7324
 msgid "_Sub to run:"
 msgstr "要运行的 Sub(_S):"
 
-#: src/ui/w42-dialogs.c:6927
+#: src/ui/w42-dialogs.c:7329
 msgid "_Run (F5)"
 msgstr "运行 (F5)(_R)"
 
 #. Translators: %s is the name of the macro.
-#: src/ui/w42-dialogs.c:7134
+#: src/ui/w42-dialogs.c:7536
 #, c-format
 msgid "The macro %s stopped."
 msgstr "宏 %s 已停止。"
 
 #. Translators: %s is the name of the macro.
-#: src/ui/w42-dialogs.c:7142
+#: src/ui/w42-dialogs.c:7544
 #, c-format
 msgid "Macro %s ran."
 msgstr "宏 %s 已运行。"
 
 #. Translators: %s is the name of the macro.
-#: src/ui/w42-dialogs.c:7200
+#: src/ui/w42-dialogs.c:7602
 #, c-format
 msgid "Delete the macro %s?"
 msgstr "是否删除宏 %s？"
 
 #. Translators: "Sub" is the macro language's word for a macro.
-#: src/ui/w42-dialogs.c:7203
+#: src/ui/w42-dialogs.c:7605
 msgid "Every Sub in it goes with it."
 msgstr "其中的所有 Sub 也将一并删除。"
 
-#: src/ui/w42-dialogs.c:7227
+#: src/ui/w42-dialogs.c:7629
 msgid "Macro"
 msgstr "宏"
 
-#: src/ui/w42-dialogs.c:7234
+#: src/ui/w42-dialogs.c:7636
 msgid "_Macro name:"
 msgstr "宏名(_M):"
 
-#: src/ui/w42-dialogs.c:7252
+#: src/ui/w42-dialogs.c:7654
 msgid "_Run"
 msgstr "运行(_R)"
 
-#: src/ui/w42-dialogs.c:7253
+#: src/ui/w42-dialogs.c:7655
 msgid "_Create"
 msgstr "创建(_C)"
 
 #. Translators: "Create" is the button, "Help > Contents" the menu command.
-#: src/ui/w42-dialogs.c:7272
+#: src/ui/w42-dialogs.c:7674
 msgid ""
 "Macros are Word42 Basic files in the macros folder of your data directory.\n"
 "Type a new name and press Create to write one; Help > Contents describes the "
@@ -4062,91 +4098,91 @@ msgstr ""
 "键入新名称并单击“创建”即可编写宏；“帮助 > 目录”中介绍了该语言。"
 
 #. Translators: the title of the box that asks for a password.
-#: src/ui/w42-dialogs.c:7354
+#: src/ui/w42-dialogs.c:7756
 msgid "Password"
 msgstr "密码"
 
-#: src/ui/w42-dialogs.c:7426
+#: src/ui/w42-dialogs.c:7828
 msgid "As they are"
 msgstr "保持原样"
 
-#: src/ui/w42-dialogs.c:7426
+#: src/ui/w42-dialogs.c:7828
 msgid "Print (220 ppi)"
 msgstr "打印（220 ppi）"
 
-#: src/ui/w42-dialogs.c:7426
+#: src/ui/w42-dialogs.c:7828
 msgid "Screen (150 ppi)"
 msgstr "屏幕（150 ppi）"
 
-#: src/ui/w42-dialogs.c:7426
+#: src/ui/w42-dialogs.c:7828
 msgid "E-mail (96 ppi)"
 msgstr "电子邮件（96 ppi）"
 
 #. Translators: in place of a certificate's file name, when none has
 #. * been chosen.
-#: src/ui/w42-dialogs.c:7478
+#: src/ui/w42-dialogs.c:7880
 msgid "(none chosen)"
 msgstr "（未选择）"
 
-#: src/ui/w42-dialogs.c:7517
+#: src/ui/w42-dialogs.c:7919
 msgid "Certificates (*.p12, *.pfx)"
 msgstr "证书 (*.p12, *.pfx)"
 
-#: src/ui/w42-dialogs.c:7522
+#: src/ui/w42-dialogs.c:7924
 msgid "All Files (*.*)"
 msgstr "所有文件 (*.*)"
 
-#: src/ui/w42-dialogs.c:7527
+#: src/ui/w42-dialogs.c:7929
 msgid "Choose a Certificate"
 msgstr "选择证书"
 
-#: src/ui/w42-dialogs.c:7571
+#: src/ui/w42-dialogs.c:7973
 msgid "Choose the certificate to sign the PDF with."
 msgstr "请选择用于签署 PDF 的证书。"
 
-#: src/ui/w42-dialogs.c:7578
+#: src/ui/w42-dialogs.c:7980
 msgid "Word42 cannot sign with that certificate."
 msgstr "Word42 无法使用该证书签署。"
 
-#: src/ui/w42-dialogs.c:7639
+#: src/ui/w42-dialogs.c:8041
 msgid "PDF Options"
 msgstr "PDF 选项"
 
-#: src/ui/w42-dialogs.c:7643
+#: src/ui/w42-dialogs.c:8045
 msgid "Security"
 msgstr "安全性"
 
-#: src/ui/w42-dialogs.c:7644
+#: src/ui/w42-dialogs.c:8046
 msgid "Password to op_en:"
 msgstr "打开文件时的密码(_E):"
 
-#: src/ui/w42-dialogs.c:7646
+#: src/ui/w42-dialogs.c:8048
 msgid ""
 "Without it the PDF cannot be opened at all: its text, its pictures and the "
 "document inside it are encrypted with AES-256."
 msgstr ""
 "没有此密码就完全无法打开 PDF：其文字、图片以及其中的文档均使用 AES-256 加密。"
 
-#: src/ui/w42-dialogs.c:7648
+#: src/ui/w42-dialogs.c:8050
 msgid "Password to _modify:"
 msgstr "修改文件时的密码(_M):"
 
-#: src/ui/w42-dialogs.c:7650
+#: src/ui/w42-dialogs.c:8052
 msgid ""
 "Without it a PDF reader allows printing and copying, and no changes; Word42 "
 "opens it read only."
 msgstr ""
 "没有此密码，PDF 阅读器允许打印和复制，但不允许修改；Word42 以只读方式打开它。"
 
-#: src/ui/w42-dialogs.c:7653
+#: src/ui/w42-dialogs.c:8055
 msgid "File Size"
 msgstr "文件大小"
 
-#: src/ui/w42-dialogs.c:7654
+#: src/ui/w42-dialogs.c:8056
 msgid "_Compress the file"
 msgstr "压缩文件(_C)"
 
-#: src/ui/w42-dialogs.c:7657
+#: src/ui/w42-dialogs.c:8059
 msgid ""
 "Packs the PDF into compressed object streams, as PDF 1.5 and every reader "
 "since allow. Off, the file is written as PDF 1.4 readers read it."
@@ -4154,11 +4190,11 @@ msgstr ""
 "将 PDF 打包为压缩的对象流，PDF 1.5 及此后的所有阅读器都支持。关闭时，文件按 "
 "PDF 1.4 阅读器能读取的方式写入。"
 
-#: src/ui/w42-dialogs.c:7663
+#: src/ui/w42-dialogs.c:8065
 msgid "_Pictures:"
 msgstr "图片(_P):"
 
-#: src/ui/w42-dialogs.c:7665
+#: src/ui/w42-dialogs.c:8067
 msgid ""
 "Pictures shown larger than this resolution are scaled down in the PDF, and "
 "photographs saved again as JPEG. The document keeps them as they are."
@@ -4166,45 +4202,45 @@ msgstr ""
 "显示分辨率高于此值的图片会在 PDF 中缩小，照片会重新存为 JPEG。文档中的图片保"
 "持原样。"
 
-#: src/ui/w42-dialogs.c:7668
+#: src/ui/w42-dialogs.c:8070
 msgid "Digital Signature"
 msgstr "数字签名"
 
-#: src/ui/w42-dialogs.c:7669
+#: src/ui/w42-dialogs.c:8071
 msgid "_Sign the PDF"
 msgstr "签署 PDF(_S)"
 
-#: src/ui/w42-dialogs.c:7672
+#: src/ui/w42-dialogs.c:8074
 msgid ""
 "Signs the PDF with a certificate, so that a reader can show who signed it "
 "and that nothing has changed since."
 msgstr "用证书签署 PDF，使阅读器能显示签署人，并表明此后内容未被更改。"
 
-#: src/ui/w42-dialogs.c:7679
+#: src/ui/w42-dialogs.c:8081
 msgid "Certificate:"
 msgstr "证书:"
 
-#: src/ui/w42-dialogs.c:7685
+#: src/ui/w42-dialogs.c:8087
 msgid "_Browse..."
 msgstr "浏览(_B)..."
 
-#: src/ui/w42-dialogs.c:7691
+#: src/ui/w42-dialogs.c:8093
 msgid "Certificate pass_word:"
 msgstr "证书密码(_W):"
 
-#: src/ui/w42-dialogs.c:7693
+#: src/ui/w42-dialogs.c:8095
 msgid "_Reason:"
 msgstr "原因(_R):"
 
-#: src/ui/w42-dialogs.c:7694
+#: src/ui/w42-dialogs.c:8096
 msgid "_Location:"
 msgstr "地点(_L):"
 
-#: src/ui/w42-dialogs.c:7695
+#: src/ui/w42-dialogs.c:8097
 msgid "Con_tact:"
 msgstr "联系方式(_T):"
 
-#: src/ui/w42-dialogs.c:7720
+#: src/ui/w42-dialogs.c:8122
 msgid ""
 "These apply when this document is saved as a PDF, and to File ▸ Export as "
 "PDF. Word42 keeps the document itself inside a PDF it saves, so that it "
@@ -4256,7 +4292,7 @@ msgid "The search item was not found."
 msgstr "未找到搜索项。"
 
 #: src/ui/w42-find-dialog.c:276 src/ui/w42-find-dialog.c:307
-#: src/ui/w42-window.c:4561
+#: src/ui/w42-window.c:4578
 msgid "Find"
 msgstr "查找"
 
@@ -4446,8 +4482,8 @@ msgstr "源代码"
 msgid "The LaTeX source they were set from"
 msgstr "排版这些页面所用的 LaTeX 源代码"
 
-#: src/ui/w42-latex-preview.c:791 src/ui/w42-view.c:1273
-#: src/ui/w42-window.c:1411 src/ui/w42-window.c:4544
+#: src/ui/w42-latex-preview.c:791 src/ui/w42-view.c:1274
+#: src/ui/w42-window.c:1411 src/ui/w42-window.c:4561
 msgid "Open"
 msgstr "打开"
 
@@ -4679,7 +4715,7 @@ msgstr "整页"
 msgid "Two Pages"
 msgstr "双页"
 
-#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4548
+#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4565
 msgid "Print Preview"
 msgstr "打印预览"
 
@@ -4787,7 +4823,7 @@ msgstr "奇数页"
 msgid "Even pages"
 msgstr "偶数页"
 
-#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4547
+#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4564
 msgid "Print"
 msgstr "打印"
 
@@ -5205,37 +5241,37 @@ msgstr "比较(_M)"
 msgid "_Restore..."
 msgstr "还原(_R)..."
 
-#: src/ui/w42-view.c:1274
+#: src/ui/w42-view.c:1275
 msgid "Open this link?"
 msgstr "是否打开此链接？"
 
 #. Translators: the AutoComplete tip over the caret; %s is the
 #. * start of the AutoText entry or date offered, cut short.
-#: src/ui/w42-view.c:4372
+#: src/ui/w42-view.c:4489
 #, c-format
 msgid "%s…  (Press ENTER to Insert)"
 msgstr "%s…  (按 Enter 插入)"
 
 #. Translators: the AutoComplete tip over the caret; %s is the
 #. * AutoText entry or date offered.
-#: src/ui/w42-view.c:4377
+#: src/ui/w42-view.c:4494
 #, c-format
 msgid "%s  (Press ENTER to Insert)"
 msgstr "%s  (按 Enter 插入)"
 
-#: src/ui/w42-view.c:6083
+#: src/ui/w42-view.c:6210
 msgid "_Copy"
 msgstr "复制(_C)"
 
-#: src/ui/w42-view.c:6084
+#: src/ui/w42-view.c:6211
 msgid "_Paste"
 msgstr "粘贴(_P)"
 
-#: src/ui/w42-view.c:6090
+#: src/ui/w42-view.c:6217
 msgid "_Bullets and Numbering..."
 msgstr "项目符号和编号(_B)..."
 
-#: src/ui/w42-view.c:6095
+#: src/ui/w42-view.c:6222
 msgid "Table P_roperties..."
 msgstr "表格属性(_R)..."
 
@@ -5346,7 +5382,7 @@ msgid "Word42 could not recover everything."
 msgstr "Word42 无法恢复全部内容。"
 
 #: src/ui/w42-window.c:965 src/ui/w42-window.c:1222 src/ui/w42-window.c:1240
-#: src/ui/w42-window.c:1339 src/ui/w42-window.c:5629
+#: src/ui/w42-window.c:1339 src/ui/w42-window.c:5646
 msgid "Word42 could not open that file."
 msgstr "Word42 无法打开该文件。"
 
@@ -5467,7 +5503,7 @@ msgid "The file that is there now will be lost."
 msgstr "现有文件将会丢失。"
 
 #: src/ui/w42-window.c:1587 src/ui/w42-window.c:1593 src/ui/w42-window.c:1615
-#: src/ui/w42-window.c:1745 src/ui/w42-window.c:1771 src/ui/w42-window.c:5535
+#: src/ui/w42-window.c:1745 src/ui/w42-window.c:1771 src/ui/w42-window.c:5552
 msgid "Word42 could not save that file."
 msgstr "Word42 无法保存该文件。"
 
@@ -5517,7 +5553,7 @@ msgstr "是否保存对“%s”的更改？"
 msgid "If you close without saving, the changes you have made will be lost."
 msgstr "如果不保存就关闭，您所做的更改将会丢失。"
 
-#: src/ui/w42-window.c:2641 src/ui/w42-window.c:5048
+#: src/ui/w42-window.c:2641 src/ui/w42-window.c:5065
 msgid "Font"
 msgstr "字体"
 
@@ -5533,7 +5569,7 @@ msgstr "Word42 无法打开该图片。"
 msgid "Pictures"
 msgstr "图片"
 
-#: src/ui/w42-window.c:2743 src/ui/w42-window.c:4558
+#: src/ui/w42-window.c:2743 src/ui/w42-window.c:4575
 msgid "Insert Picture"
 msgstr "插入图片"
 
@@ -5658,7 +5694,7 @@ msgstr ""
 "制表符拆分并转换为表格。"
 
 #: src/ui/w42-window.c:3466 src/ui/w42-window.c:3486 src/ui/w42-window.c:3508
-#: src/ui/w42-window.c:3934 src/ui/w42-window.c:3950 src/ui/w42-window.c:4174
+#: src/ui/w42-window.c:3940 src/ui/w42-window.c:3956 src/ui/w42-window.c:4191
 msgid "The caret is in a note: put it in the body of the document first."
 msgstr "插入点位于注释中：请先将其移到文档正文中。"
 
@@ -5724,7 +5760,7 @@ msgstr[0] "已删除 %d 个连字符。"
 msgid "There are no soft hyphens to remove."
 msgstr "没有可删除的可选连字符。"
 
-#: src/ui/w42-window.c:3771
+#: src/ui/w42-window.c:3777
 msgid ""
 "Type the name of an AutoText entry, then press Ctrl+F3.  Edit > AutoText "
 "makes one from the selection."
@@ -5732,13 +5768,13 @@ msgstr ""
 "请键入自动图文集词条的名称，然后按 Ctrl+F3。“编辑 > 自动图文集”可根据所选内容"
 "创建词条。"
 
-#: src/ui/w42-window.c:3812
+#: src/ui/w42-window.c:3818
 #, c-format
 msgid "%d field updated."
 msgid_plural "%d fields updated."
 msgstr[0] "已更新 %d 个域。"
 
-#: src/ui/w42-window.c:3815
+#: src/ui/w42-window.c:3821
 msgid "There are no fields in this document."
 msgstr "此文档中没有域。"
 
@@ -5746,20 +5782,20 @@ msgstr "此文档中没有域。"
 #. * the figure's number.  Keep a word before the number, and keep %d as
 #. * it is: the captions already there are counted by what comes before
 #. * it.
-#: src/ui/w42-window.c:3885 src/ui/w42-window.c:3901
+#: src/ui/w42-window.c:3891 src/ui/w42-window.c:3907
 #, c-format
 msgid "Figure %d: "
 msgstr "图 %d: "
 
-#: src/ui/w42-window.c:3964
+#: src/ui/w42-window.c:3970
 msgid "Put the caret at a note's mark, or in the note itself."
 msgstr "请将插入点置于注释引用标记处或注释中。"
 
-#: src/ui/w42-window.c:4046
+#: src/ui/w42-window.c:4063
 msgid "No thesaurus was found."
 msgstr "未找到同义词库。"
 
-#: src/ui/w42-window.c:4047
+#: src/ui/w42-window.c:4064
 msgid ""
 "The thesaurus needs a MyThes file for the language of the text -- "
 "th_en_US_v2.dat and its .idx for English, th_nb_NO_v2 for Norwegian, the "
@@ -5769,34 +5805,34 @@ msgstr ""
 "使用的文件)，例如英语的 th_en_US_v2.dat 及其 .idx 文件，挪威语的 "
 "th_nb_NO_v2。"
 
-#: src/ui/w42-window.c:4054
+#: src/ui/w42-window.c:4071
 msgid "Put the caret in a word to look it up in the thesaurus."
 msgstr "请将插入点置于要在同义词库中查找的单词中。"
 
-#: src/ui/w42-window.c:4066
+#: src/ui/w42-window.c:4083
 msgid "No spelling dictionary was found."
 msgstr "未找到拼写词典。"
 
-#: src/ui/w42-window.c:4067
+#: src/ui/w42-window.c:4084
 msgid "Install a Hunspell dictionary for your language and start Word42 again."
 msgstr "请安装适用于您的语言的 Hunspell 词典，然后重新启动 Word42。"
 
-#: src/ui/w42-window.c:4120
+#: src/ui/w42-window.c:4137
 msgid "Revisions accepted."
 msgstr "已接受修订。"
 
-#: src/ui/w42-window.c:4122 src/ui/w42-window.c:4134
+#: src/ui/w42-window.c:4139 src/ui/w42-window.c:4151
 msgid "There are no revision marks in this document."
 msgstr "此文档中没有修订标记。"
 
-#: src/ui/w42-window.c:4132
+#: src/ui/w42-window.c:4149
 msgid "Revisions rejected."
 msgstr "已拒绝修订。"
 
 #. Translators: the Windows version in the About box, as "Windows
 #. * 10.0 build 19045 (Windows 10)": the major and minor version, the
 #. * build number, then the release's name in brackets or nothing.
-#: src/ui/w42-window.c:4245
+#: src/ui/w42-window.c:4262
 #, c-format
 msgid "Windows %lu.%lu build %lu%s"
 msgstr "Windows %lu.%lu 内部版本 %lu%s"
@@ -5807,7 +5843,7 @@ msgstr "Windows %lu.%lu 内部版本 %lu%s"
 #. * the one built against; GLib's; Pango's, Cairo's and GdkPixbuf's;
 #. * the operating system; then the spelling, hyphenation and PDF
 #. * import libraries, or "none".
-#: src/ui/w42-window.c:4276
+#: src/ui/w42-window.c:4293
 #, c-format
 msgid ""
 "Word42 %s\n"
@@ -5823,26 +5859,26 @@ msgstr ""
 "拼写：%s  ·  断字：%s  ·  PDF 导入：%s"
 
 #. Translators: no library for this, in the About box.
-#: src/ui/w42-window.c:4291 src/ui/w42-window.c:4297 src/ui/w42-window.c:4303
+#: src/ui/w42-window.c:4308 src/ui/w42-window.c:4314 src/ui/w42-window.c:4320
 msgctxt "library"
 msgid "none"
 msgstr "无"
 
-#: src/ui/w42-window.c:4335
+#: src/ui/w42-window.c:4352
 msgid "About Word42"
 msgstr "关于 Word42"
 
 #. Translators: %s is Word42's version number.
-#: src/ui/w42-window.c:4358
+#: src/ui/w42-window.c:4375
 #, c-format
 msgid "Version %s"
 msgstr "版本 %s"
 
-#: src/ui/w42-window.c:4369
+#: src/ui/w42-window.c:4386
 msgid "Written in C on GTK 4, Pango and Cairo."
 msgstr "使用 C 语言基于 GTK 4、Pango 和 Cairo 编写。"
 
-#: src/ui/w42-window.c:4402
+#: src/ui/w42-window.c:4419
 msgid ""
 "Copyright (C) 2026 Andreas Røsdal.\n"
 "\n"
@@ -5868,76 +5904,76 @@ msgstr ""
 "\n"
 "宏运行于 Tony Wang 开发的 MY-BASIC 之上，依据 MIT 许可证使用。"
 
-#: src/ui/w42-window.c:4543
+#: src/ui/w42-window.c:4560
 msgid "New"
 msgstr "新建"
 
-#: src/ui/w42-window.c:4545
+#: src/ui/w42-window.c:4562
 msgid "Save"
 msgstr "保存"
 
-#: src/ui/w42-window.c:4551
+#: src/ui/w42-window.c:4568
 msgid "Cut"
 msgstr "剪切"
 
-#: src/ui/w42-window.c:4552
+#: src/ui/w42-window.c:4569
 msgid "Copy"
 msgstr "复制"
 
-#: src/ui/w42-window.c:4553
+#: src/ui/w42-window.c:4570
 msgid "Paste"
 msgstr "粘贴"
 
-#: src/ui/w42-window.c:4555
+#: src/ui/w42-window.c:4572
 msgid "Undo"
 msgstr "撤消"
 
-#: src/ui/w42-window.c:4556
+#: src/ui/w42-window.c:4573
 msgid "Redo"
 msgstr "恢复"
 
-#: src/ui/w42-window.c:4559
+#: src/ui/w42-window.c:4576
 msgid "Show as Slide Show"
 msgstr "以幻灯片放映显示"
 
-#: src/ui/w42-window.c:4580
+#: src/ui/w42-window.c:4597
 msgid "Zoom Control"
 msgstr "显示比例"
 
-#: src/ui/w42-window.c:4935
+#: src/ui/w42-window.c:4952
 msgid "Font Color"
 msgstr "字体颜色"
 
-#: src/ui/w42-window.c:5007
+#: src/ui/w42-window.c:5024
 msgid "Align Left"
 msgstr "左对齐"
 
-#: src/ui/w42-window.c:5010
+#: src/ui/w42-window.c:5027
 msgid "Align Right"
 msgstr "右对齐"
 
-#: src/ui/w42-window.c:5010
+#: src/ui/w42-window.c:5027
 msgid "Justify"
 msgstr "两端对齐"
 
-#: src/ui/w42-window.c:5063
+#: src/ui/w42-window.c:5080
 msgid "Font Size"
 msgstr "字号"
 
-#: src/ui/w42-window.c:5070
+#: src/ui/w42-window.c:5087
 msgid "Bold"
 msgstr "加粗"
 
-#: src/ui/w42-window.c:5071
+#: src/ui/w42-window.c:5088
 msgid "Italic"
 msgstr "倾斜"
 
-#: src/ui/w42-window.c:5100
+#: src/ui/w42-window.c:5117
 msgid "Bullets"
 msgstr "项目符号"
 
 #. Translators: the status bar's page number.
-#: src/ui/w42-window.c:5131 src/ui/w42-window.c:5967
+#: src/ui/w42-window.c:5148 src/ui/w42-window.c:5984
 #, c-format
 msgid "Page %d"
 msgstr "%d 页"
@@ -5945,20 +5981,20 @@ msgstr "%d 页"
 #. Translators: the status bar's reading of how far down the page
 #. * the caret is, "At" short for "at so far from the top": %.1f is
 #. * the distance, %s the unit, already translated (" or cm).
-#: src/ui/w42-window.c:5133 src/ui/w42-window.c:5993
+#: src/ui/w42-window.c:5150 src/ui/w42-window.c:6010
 #, c-format
 msgid "At %.1f%s"
 msgstr "位置 %.1f%s"
 
 #. Translators: the status bar's line number, "Ln" short for Line.
-#: src/ui/w42-window.c:5135 src/ui/w42-window.c:5975
+#: src/ui/w42-window.c:5152 src/ui/w42-window.c:5992
 #, c-format
 msgid "Ln %d"
 msgstr "%d 行"
 
 #. Translators: the status bar's column number, "Col" short for
 #. * Column: how many characters in from the start of the line.
-#: src/ui/w42-window.c:5137 src/ui/w42-window.c:5979
+#: src/ui/w42-window.c:5154 src/ui/w42-window.c:5996
 #, c-format
 msgid "Col %d"
 msgstr "%d 列"
@@ -5966,7 +6002,7 @@ msgstr "%d 列"
 #. Translators: the status bar's word count toward the goal set in
 #. * Tools > Word Count Goal: "12,000 of 80,000 words".  The first %s
 #. * is the words written, the second the goal.
-#: src/ui/w42-window.c:5240
+#: src/ui/w42-window.c:5257
 #, c-format
 msgid "%s of %s word"
 msgid_plural "%s of %s words"
@@ -5974,7 +6010,7 @@ msgstr[0] "%s / %s 字"
 
 #. Translators: the status bar's word count; %s is the number, with
 #. * thousands separators.
-#: src/ui/w42-window.c:5248
+#: src/ui/w42-window.c:5265
 #, c-format
 msgid "%s word"
 msgid_plural "%s words"
@@ -5982,7 +6018,7 @@ msgstr[0] "%s 字"
 
 #. Translators: in the word count's tooltip; %d%% is how far
 #. * toward the goal the document is, as "40%".
-#: src/ui/w42-window.c:5259
+#: src/ui/w42-window.c:5276
 #, c-format
 msgid "%d%% of the goal."
 msgstr "已完成目标的 %d%%。"
@@ -5990,25 +6026,25 @@ msgstr "已完成目标的 %d%%。"
 #. Translators: in the word count's tooltip; %ld is the words
 #. * written since the document was opened, which can be less than
 #. * nothing when more was deleted.
-#: src/ui/w42-window.c:5270
+#: src/ui/w42-window.c:5287
 #, c-format
 msgid "Written since the document was opened: %ld word."
 msgid_plural "Written since the document was opened: %ld words."
 msgstr[0] "文档打开后已写入：%ld 字。"
 
-#: src/ui/w42-window.c:5276
+#: src/ui/w42-window.c:5293
 msgid "Tools ▸ Word Count Goal sets the goal."
 msgstr "“工具 ▸ 字数目标”可设置目标。"
 
-#: src/ui/w42-window.c:5541
+#: src/ui/w42-window.c:5558
 msgid "The rest are saved."
 msgstr "其余文档已保存。"
 
-#: src/ui/w42-window.c:5541
+#: src/ui/w42-window.c:5558
 msgid "Nothing was saved."
 msgstr "没有保存任何文档。"
 
-#: src/ui/w42-window.c:5542
+#: src/ui/w42-window.c:5559
 msgid ""
 "A document that has never been saved, or that came from a format Word42 does "
 "not write back, needs a name: use File > Save As for it."
@@ -6016,29 +6052,29 @@ msgstr ""
 "从未保存过的文档，或来自 Word42 无法写回的格式的文档，需要指定名称：请对其使"
 "用“文件 > 另存为”。"
 
-#: src/ui/w42-window.c:5581 src/ui/w42-window.c:5623
+#: src/ui/w42-window.c:5598 src/ui/w42-window.c:5640
 msgid "Word42 could not read that file."
 msgstr "Word42 无法读取该文件。"
 
-#: src/ui/w42-window.c:5617
+#: src/ui/w42-window.c:5634
 msgid "The two documents are the same."
 msgstr "两个文档完全相同。"
 
-#: src/ui/w42-window.c:5619
+#: src/ui/w42-window.c:5636
 #, c-format
 msgid "%d change marked."
 msgid_plural "%d changes marked."
 msgstr[0] "已标记 %d 处更改。"
 
-#: src/ui/w42-window.c:5643
+#: src/ui/w42-window.c:5660
 msgid "Compare Documents: the original"
 msgstr "比较文档：原始文档"
 
-#: src/ui/w42-window.c:5659
+#: src/ui/w42-window.c:5676
 msgid "Insert File"
 msgstr "插入文件"
 
-#: src/ui/w42-window.c:6002
+#: src/ui/w42-window.c:6019
 msgid "Modified"
 msgstr "已修改"
 
@@ -6260,6 +6296,55 @@ msgstr "南非荷兰语"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(文档默认值)"
+
+#: src/util/w42-math.c:393
+msgid "There is no MathML here."
+msgstr "这里没有 MathML。"
+
+#: src/util/w42-mathtex.c:288 src/util/w42-mathtex.c:1115
+#: src/util/w42-mathtex.c:1181
+msgid "A { has no } to close it."
+msgstr "{ 没有与之配对的 }。"
+
+#: src/util/w42-mathtex.c:318
+msgid "A [ has no ] to close it."
+msgstr "[ 没有与之配对的 ]。"
+
+#: src/util/w42-mathtex.c:353
+msgid "The braces do not balance."
+msgstr "花括号不配对。"
+
+#: src/util/w42-mathtex.c:445
+msgid "\\begin and \\end name different environments."
+msgstr "\\begin 与 \\end 的环境名称不同。"
+
+#: src/util/w42-mathtex.c:448
+msgid "An environment has no \\end."
+msgstr "有一个环境缺少 \\end。"
+
+#: src/util/w42-mathtex.c:505
+msgid "\\begin names no environment."
+msgstr "\\begin 没有给出环境名称。"
+
+#: src/util/w42-mathtex.c:822
+msgid "\\left has no \\right."
+msgstr "\\left 缺少对应的 \\right。"
+
+#: src/util/w42-mathtex.c:1104 src/util/w42-mathtex.c:1137
+msgid "Something is missing after a command, a ^ or a _."
+msgstr "命令、^ 或 _ 之后缺少内容。"
+
+#: src/util/w42-mathtex.c:1263
+msgid "A } has no { before it."
+msgstr "} 之前没有对应的 {。"
+
+#: src/util/w42-mathtex.c:1265
+msgid "\\right has no \\left."
+msgstr "\\right 缺少对应的 \\left。"
+
+#: src/util/w42-mathtex.c:1267
+msgid "\\end has no \\begin."
+msgstr "\\end 缺少对应的 \\begin。"
 
 #, c-format
 #~ msgid "Word42 %s - %s%s"

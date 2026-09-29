@@ -35,6 +35,8 @@ void w42_annotations_dialog_show   (GtkWindow *parent, W42View *view);
 void w42_mail_merge_dialog_show    (GtkWindow *parent, W42View *view);
 void w42_cross_reference_dialog_show (GtkWindow *parent, W42View *view);
 void w42_drawing_dialog_show       (GtkWindow *parent, W42View *view);
+/* Insert > Equation, and the selected equation opened to be changed. */
+void w42_equation_dialog_show      (GtkWindow *parent, W42View *view);
 void w42_list_dialog_show          (GtkWindow *parent, W42View *view);
 void w42_table_properties_dialog_show (GtkWindow *parent, W42View *view);
 /* Table > Formula: =SUM(ABOVE) and its kin, worked out into the cell. */

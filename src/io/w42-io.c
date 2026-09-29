@@ -18,6 +18,7 @@
 #include "w42-rtf.h"
 #include "w42-wpd.h"
 #include "w42-latex.h"
+#include "w42-mathtex.h"
 
 #include <string.h>
 #include <glib/gi18n.h>
@@ -331,6 +332,22 @@ w42_io_save (W42PieceTable *pt, const W42PageSetup *page,
   return w42_io_save_with (pt, page, file, NULL, error);
 }
 
+/* An equation in a text file: as it reads, x = (−b ± √(b^2 − 4ac))/(2a). */
+static char *
+equation_text (W42ObjectIdx idx, gpointer data)
+{
+  const W42Object *object = w42_object_table_get (w42_pt_object_table (data), idx);
+  W42MathNode *root;
+  char *text;
+
+  if (object == NULL || object->mathml == NULL ||
+      (root = w42_math_parse (object->mathml, -1, NULL)) == NULL)
+    return NULL;
+  text = w42_mathml_to_text (root);
+  w42_math_node_free (root);
+  return text;
+}
+
 gboolean
 w42_io_save_with (W42PieceTable *pt, const W42PageSetup *page,
                   GFile *file, const W42PdfOptions *pdf, GError **error)
@@ -380,7 +397,7 @@ w42_io_save_with (W42PieceTable *pt, const W42PageSetup *page,
     }
 
   first = w42_pt_first_caret_pos (pt);
-  text = w42_pt_get_text (pt, first, w42_pt_length (pt) - first);
+  text = w42_pt_get_text_with (pt, first, w42_pt_length (pt) - first, equation_text, pt);
 
   /* A line break inside a paragraph is U+2028 to the model and a new
    * line to a text file; left as it is, other editors show a box.  In

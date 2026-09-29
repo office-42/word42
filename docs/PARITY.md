@@ -93,7 +93,7 @@ yardstick.
 | Mail merge (CSV) | full | full | yes |
 | Envelopes and labels | full (a document of their own) | full | no |
 | Templates and wizards | built-in ones, and a folder of your own | full, with wizards | New from Template |
-| Equations | in LaTeX's notation, set by LaTeX in the preview and the PDF | Equation Editor 3.0 | yes (MathML) |
+| Equations | Insert ▸ Equation, in LaTeX's notation or MathML, set on the page as typed; LibreOffice Math formulas, Word's Office Math, MathML in HTML and EPUB, AbiWord's, both ways | Equation Editor 3.0 | yes (MathML) |
 | Macros | Word42 Basic: a VBA dialect on the MY-BASIC engine, with Selection, ActiveDocument, Application, Documents, MsgBox and InputBox | VBA | no (plugins) |
 
 ## Files
@@ -152,7 +152,7 @@ AutoCorrect, AutoText with its tips, the Document Map, mail merge,
 macros in a VBA dialect, Online Layout view, Compare Documents, the
 table of figures, and Word 97's own .doc read and written.  It lacks positioned text
 boxes and the Drawing toolbar's editable objects, Outline view, grammar,
-an Equation Editor of its own, and vertical text; it exceeds Word 97 in
+and vertical text; it exceeds Word 97 in
 Unicode, right-to-left text, PDF and every file format made since.
 
 Against **AbiWord**, Word42 covers the everyday word-processing set —
@@ -161,7 +161,7 @@ columns, sections, fields, comments, revisions, mail merge, hyphenation,
 wrapped pictures, a rich clipboard, and its own file formats as well as
 Word's and OpenDocument, paragraph and character styles of the
 document's own, text frames and drop caps — and lacks free-floating text
-boxes, equations, accessibility and translations.
+boxes, accessibility and translations.
 
 The order of work that closes the most ground now: positioned text
 boxes, editing the header and footer on the page itself rather than in

@@ -62,7 +62,7 @@ short table.
 | Text frames, drop caps | yes | yes | frames | yes |
 | Floating text boxes | no | yes | yes | yes |
 | Drawing | five shapes, kept as vectors | full drawing tools | basic | full Draw tools |
-| Equations | no | yes | MathML | Math |
+| Equations | yes: typed as LaTeX or MathML, set as typed; MathML, Math formulas and Office Math in files | yes | MathML | Math |
 | Columns and sections | yes | yes | yes | yes |
 | Per-section page size and orientation | no | yes | yes | yes |
 | Find and replace | text, case, whole word, regular expressions | with formats and wildcards | with regular expressions | with regular expressions |
@@ -93,5 +93,5 @@ AbiWord lacks (an index, hyphenation, mail merge from CSV, envelopes,
 a split window, AutoFormat).  What it lacks against all three is the
 same short list: text boxes placed on the page, headers and footers
 richer than one line, per-section page orientation,
-equations, grammar, translations and a screen reader's view of the
+grammar, translations and a screen reader's view of the
 page.  [Word42.md](../Word42.md) is the order they will be taken in.

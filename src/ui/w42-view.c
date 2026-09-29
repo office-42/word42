@@ -2385,6 +2385,110 @@ w42_view_set_shape (W42View *self, W42ShapeKind kind, double line_pt, guint32 li
   view_edited (self);
 }
 
+/* The size, in points, of the text an equation at `pos` goes in. */
+static double
+view_text_size_at (W42View *self, gsize pos)
+{
+  W42PieceTable *pt = view_pt (self);
+  const W42Fmt *fmt = w42_ap_table_get (w42_pt_ap_table (pt), w42_pt_ap_at (pt, pos));
+
+  return fmt->ch.size > 0 ? fmt->ch.size / 2.0 : 10.0;
+}
+
+gboolean
+w42_view_insert_equation (W42View *self, const char *mathml)
+{
+  W42PieceTable *pt;
+  W42ObjectIdx idx;
+  W42ApIdx ap;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  pt = view_pt (self);
+  if (pt == NULL || mathml == NULL)
+    return FALSE;
+  idx = w42_object_table_add_math (w42_pt_object_table (pt), mathml,
+                                   view_text_size_at (self, sel_start (self)));
+  if (idx == W42_OBJECT_NONE)
+    return FALSE;
+  ap = w42_pt_ap_at (pt, sel_start (self));
+
+  w42_pt_begin_group (pt);
+  view_delete_selection (self);
+  /* An equation set on a line of its own, put in a paragraph with
+   * nothing else in it, is centred there, as Word centres one. */
+  {
+    W42MathNode *root = w42_math_parse (mathml, -1, NULL);
+
+    if (root != NULL && w42_math_is_display (root))
+      {
+        GPtrArray *blocks = w42_pt_snapshot_blocks (pt);
+        const W42Block *here = NULL;
+
+        for (guint b = 0; b < blocks->len; b++)
+          {
+            const W42Block *block = g_ptr_array_index (blocks, b);
+
+            if (block->start_pos < self->caret)
+              here = block;
+          }
+        if (here != NULL && here->text->len == 0)
+          {
+            W42ParaFmt centre = w42_ap_table_get (w42_pt_ap_table (pt), here->ap)->pa;
+
+            centre.align = W42_ALIGN_CENTER;
+            w42_pt_apply_para_fmt (pt, here->start_pos, 0, W42_PARA_ALIGN, &centre);
+          }
+        g_ptr_array_free (blocks, TRUE);
+      }
+    w42_math_node_free (root);
+  }
+  w42_pt_insert_object (pt, self->caret, idx, ap);
+  self->caret += 1;
+  self->anchor = self->caret;
+  w42_pt_end_group (pt);
+
+  self->pending_mask = 0;
+  view_edited (self);
+  return TRUE;
+}
+
+gboolean
+w42_view_set_equation (W42View *self, const char *mathml)
+{
+  W42PieceTable *pt;
+  const W42Object *object;
+  W42ObjectTable *objects;
+  W42ObjectIdx fresh;
+  gsize pos;
+  W42ApIdx ap;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+  pt = view_pt (self);
+  object = w42_view_get_object (self);
+  if (pt == NULL || object == NULL || object->mathml == NULL)
+    return FALSE;
+  pos = sel_start (self);
+  objects = w42_pt_object_table (pt);
+
+  /* A fresh object, so that undo brings the old one back, measured
+   * again at the size of the text round it. */
+  fresh = w42_object_table_add_math (objects, mathml, view_text_size_at (self, pos + 1));
+  if (fresh == W42_OBJECT_NONE)
+    return FALSE;
+  w42_object_table_set_wrap (objects, fresh, object->wrap);
+  w42_object_table_set_position (objects, fresh, object->positioned, object->pos_x, object->pos_y);
+
+  ap = w42_pt_ap_at (pt, pos + 1);
+  w42_pt_begin_group (pt);
+  w42_pt_delete (pt, pos, 1);
+  w42_pt_insert_object (pt, pos, fresh, ap);
+  w42_pt_end_group (pt);
+  self->anchor = pos;
+  self->caret = pos + 1;
+  view_edited (self);
+  return TRUE;
+}
+
 static void view_insert_paragraph (W42View *self);
 
 void
@@ -5150,6 +5254,16 @@ on_click_pressed (GtkGestureClick *gesture,
     {
       self->dragging = FALSE;
       view_caret_moved (self, FALSE);
+      return;
+    }
+
+  /* A double-click on a picture opens it to be changed, as Word's did:
+   * an equation in the equation box, a drawing in the Drawing box. */
+  if (n_press == 2 && view_click_selects_picture (self, page, px, py, pos))
+    {
+      self->dragging = FALSE;
+      view_caret_moved (self, FALSE);
+      gtk_widget_activate_action (GTK_WIDGET (self), "win.format-picture", NULL);
       return;
     }
 

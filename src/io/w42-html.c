@@ -264,6 +264,18 @@ write_run (GString *out, W42PieceTable *pt, const W42Block *block,
         css_num (css, "font-size", ch->size / 2.0, "pt");
       if (ch->color != 0)
         g_string_append_printf (css, "color:#%06x;", ch->color & 0xFFFFFF);
+      /* An equation is MathML, which every browser sets. */
+      if (object->mathml != NULL)
+        {
+          span = css->len > 0;
+          if (span)
+            g_string_append_printf (out, "<span style=\"%s\">", css->str);
+          g_string_append (out, object->mathml);
+          if (span)
+            g_string_append (out, "</span>");
+          g_string_free (css, TRUE);
+          return;
+        }
       png = w42_image_for_container (object->data, NULL, &mime);
       if (png != NULL)
         {

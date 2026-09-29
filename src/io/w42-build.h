@@ -58,6 +58,9 @@ void w42_builder_text   (W42Builder *b, const char *utf8);
 void w42_builder_object (W42Builder *b, GBytes *data, const char *format,
                          int pixel_w, int pixel_h, int width, int height);
 void w42_builder_end_paragraph (W42Builder *b);
+/* An equation, `mathml`, set at the size of the text it goes in; FALSE,
+ * and nothing put in, for what is not MathML. */
+gboolean w42_builder_math (W42Builder *b, const char *mathml);
 /* Sets how the text wraps round the picture w42_builder_object or
  * w42_builder_shape just put in; nothing, if that call put nothing in. */
 void w42_builder_object_wrap (W42Builder *b, W42Wrap wrap);

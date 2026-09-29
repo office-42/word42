@@ -14,6 +14,7 @@
 #include "w42-build.h"
 #include "w42-image.h"
 #include "w42-lang.h"
+#include "w42-mathtex.h"
 
 /* ---------------------------------------------------------------------- */
 /* props="a:b; c:d" -- AbiWord's CSS-like attribute                        */
@@ -1146,6 +1147,23 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
             }
         }
     }
+  else if (g_str_equal (name, "math"))
+    {
+      /* An equation, AbiWord's way: its MathML in the data item the
+       * element names. */
+      const char *dataid = attr (an, av, "dataid");
+      GBytes *bytes = dataid != NULL ? g_hash_table_lookup (a->images, dataid) : NULL;
+
+      abw_flush (a);
+      if (bytes != NULL && !a->in_hf &&
+          w42_math_is_mathml (g_bytes_get_data (bytes, NULL), g_bytes_get_size (bytes)))
+        {
+          char *mathml = g_strndup (g_bytes_get_data (bytes, NULL), g_bytes_get_size (bytes));
+
+          w42_builder_math (&a->b, mathml);
+          g_free (mathml);
+        }
+    }
   else if (g_str_equal (name, "field"))
     {
       const char *type = attr (an, av, "type");
@@ -1633,6 +1651,14 @@ scan_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
           else
             g_free (bytes);
         }
+      else if (s->in_data && s->name != NULL)
+        {
+          /* Text as it is: an equation's MathML, or its LaTeX. */
+          char *text = g_strstrip (g_strdup (s->data->str));
+
+          g_hash_table_insert (s->images, g_strdup (s->name),
+                               g_bytes_new_take (text, strlen (text)));
+        }
       s->in_data = FALSE;
       g_string_truncate (s->data, 0);
     }
@@ -1784,7 +1810,7 @@ w42_abw_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
     scan.cols = a.table_cols;
     scan.open = g_array_new (FALSE, FALSE, sizeof (int));
     scan.data = g_string_new (NULL);
-    ctx = g_markup_parse_context_new (&scanner, 0, &scan, NULL);
+    ctx = g_markup_parse_context_new (&scanner, G_MARKUP_TREAT_CDATA_AS_TEXT, &scan, NULL);
     if (g_markup_parse_context_parse (ctx, contents, length, NULL))
       g_markup_parse_context_end_parse (ctx, NULL);
     g_markup_parse_context_free (ctx);
@@ -1879,6 +1905,23 @@ xml_escape (GString *out, const char *text, gsize len)
         }
       i += n;
     }
+}
+
+/* Text in a CDATA section, split where it holds the section's end. */
+static void
+append_cdata (GString *out, const char *text)
+{
+  const char *p = text, *hit;
+
+  g_string_append (out, "<![CDATA[");
+  while ((hit = strstr (p, "]]>")) != NULL)
+    {
+      g_string_append_len (out, p, hit - p + 2);
+      g_string_append (out, "]]><![CDATA[");
+      p = hit + 2;
+    }
+  g_string_append (out, p);
+  g_string_append (out, "]]>");
 }
 
 /* Text in a paragraph: the same, with a line break as AbiWord's <br/>. */
@@ -2121,6 +2164,7 @@ typedef struct {
   GString       *out;
   GString       *data;          /* the <data> section */
   int            n_images;
+  int            n_maths;
   W42StyleSheet *styles;
   const char    *author;
   int            colw;          /* the column's width, which frames sit in */
@@ -2352,6 +2396,40 @@ write_block_runs (AbwWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *b
           open_link = ch->link;
         }
 
+      if (run->object != W42_OBJECT_NONE &&
+          w42_object_table_get (w42_pt_object_table (pt), run->object) != NULL &&
+          w42_object_table_get (w42_pt_object_table (pt), run->object)->mathml != NULL)
+        {
+          /* An equation as AbiWord keeps one: a <math> whose MathML, and
+           * LaTeX when it has it, are data items. */
+          const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
+          W42MathNode *root = w42_math_parse (object->mathml, -1, NULL);
+          char *tex = root != NULL ? w42_mathml_to_tex (root) : NULL;
+          GString *iprops = g_string_new (NULL);
+          char wbuf[G_ASCII_DTOSTR_BUF_SIZE], hbuf[G_ASCII_DTOSTR_BUF_SIZE];
+
+          w->n_maths++;
+          char_props (iprops, ch, NULL);
+          g_string_append_printf (w->out, "<c props=\"%s\"><math dataid=\"Math%d\"", iprops->str, w->n_maths);
+          if (tex != NULL)
+            g_string_append_printf (w->out, " latexid=\"MathLatex%d\"", w->n_maths);
+          g_string_append_printf (w->out, " props=\"width:%sin; height:%sin\"/></c>",
+                                  g_ascii_formatd (wbuf, sizeof wbuf, "%.4f", object->width / 1440.0),
+                                  g_ascii_formatd (hbuf, sizeof hbuf, "%.4f", object->height / 1440.0));
+          g_string_append_printf (w->data, "<d name=\"Math%d\" mime-type=\"\" base64=\"no\">\n", w->n_maths);
+          append_cdata (w->data, object->mathml);
+          g_string_append (w->data, "\n</d>\n");
+          if (tex != NULL)
+            {
+              g_string_append_printf (w->data, "<d name=\"MathLatex%d\" mime-type=\"\" base64=\"no\">\n", w->n_maths);
+              append_cdata (w->data, tex);
+              g_string_append (w->data, "\n</d>\n");
+            }
+          g_free (tex);
+          w42_math_node_free (root);
+          g_string_free (iprops, TRUE);
+          continue;
+        }
       if (run->object != W42_OBJECT_NONE)
         {
           const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);

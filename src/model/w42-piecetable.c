@@ -4220,6 +4220,13 @@ w42_pt_is_block_mark (W42PieceTable *pt, gsize pos)
 char *
 w42_pt_get_text (W42PieceTable *pt, gsize pos, gsize n)
 {
+  return w42_pt_get_text_with (pt, pos, n, NULL, NULL);
+}
+
+char *
+w42_pt_get_text_with (W42PieceTable *pt, gsize pos, gsize n,
+                      W42ObjectTextFunc object_text, gpointer data)
+{
   GString *out;
   gsize p, end;
   gboolean after_cell = FALSE;
@@ -4255,6 +4262,14 @@ w42_pt_get_text (W42PieceTable *pt, gsize pos, gsize n)
               int len = g_unichar_to_utf8 (buf[i], utf8);
               g_string_append_len (out, utf8, len);
             }
+        }
+      else if (piece->type == W42_PIECE_OBJECT)
+        {
+          char *said = object_text != NULL ? object_text ((W42ObjectIdx) piece->offset, data) : NULL;
+
+          if (said != NULL)
+            g_string_append (out, said);
+          g_free (said);
         }
       else if ((W42StruxType) piece->strux == W42_STRUX_BLOCK)
         {
@@ -5165,6 +5180,8 @@ copy_range (W42PieceTable *dst, gsize at, W42PieceTable *src, gsize from, gsize 
                                           object->text);
               w42_object_table_set_original (dst->objects, idx, object->original,
                                              object->original_format);
+              if (object->mathml != NULL)
+                w42_object_table_set_math (dst->objects, idx, object->mathml, object->descent);
               w42_pt_insert_object (dst, at + put, idx, ap);
               put += 1;
             }

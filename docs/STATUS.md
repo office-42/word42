@@ -404,6 +404,15 @@ Early, but real. Word42 today is a working word processor:
   and case, and goes on the selected text the way Bold does. Word,
   OpenDocument and AbiWord files carry them, and styles those files define
   are read in.
+- **Equations** — Insert ▸ Equation takes an equation in LaTeX's
+  notation or as MathML, sets it in a preview as it is typed, and puts it
+  in the line on the baseline, drawn as type at any size: fractions,
+  scripts and limits, radicals, sums and integrals, accents, delimiters
+  that grow with what they hold, matrices and cases. Double-click to
+  change one. OpenDocument keeps them as LibreOffice Math formulas,
+  .docx as Word's Office Math, HTML and EPUB as MathML and AbiWord as its
+  own, all both ways; LaTeX gets the LaTeX, and the formats without
+  mathematics a picture or the text of it.
 - **Code in colour** — the HTML Source, JavaScript Source and XML Source
   styles set code in Courier New and colour it as it is typed, the way a
   programmer's editor does: tags, attributes, values, keywords, strings,

@@ -102,6 +102,26 @@ w42_builder_object (W42Builder *b, GBytes *data, const char *format,
   b->last_object = idx;
 }
 
+gboolean
+w42_builder_math (W42Builder *b, const char *mathml)
+{
+  W42ObjectIdx idx;
+
+  b->last_object = W42_OBJECT_NONE;
+  if (mathml == NULL)
+    return FALSE;
+  idx = w42_object_table_add_math (w42_pt_object_table (b->pt), mathml,
+                                   b->ch.size > 0 ? b->ch.size / 2.0 : 10.0);
+  if (idx == W42_OBJECT_NONE)
+    return FALSE;
+  cell_break (b);
+  w42_pt_insert_object (b->pt, b->pos, idx, builder_ap (b));
+  b->pos += 1;
+  b->in_para = TRUE;
+  b->last_object = idx;
+  return TRUE;
+}
+
 /* A paragraph's properties are known only once it ends, and they belong to
  * the BLOCK strux in front of its text.  w42_pt_apply_para_fmt widens
  * backwards to find that strux, so it has to start from the last thing

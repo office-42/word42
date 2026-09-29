@@ -18,6 +18,17 @@
   `\1` to `\9` what the pattern's groups matched, so `(\w+), (\w+)`
   replaced with `\2 \1` turns "Twain, Mark" into "Mark Twain". A pattern
   that is not one says what is wrong with it.
+- **Equations.** Insert ▸ Equation puts an equation in the text, typed
+  in LaTeX's notation -- `\frac{a}{b}`, `x^2`, `\sqrt{2}`,
+  `\sum_{i=1}^n`, `\begin{pmatrix}` -- or as MathML, with a preview
+  that sets it as it is typed. It sits on the baseline at the size of the
+  text round it and is drawn as type, so it is sharp at any zoom, on
+  paper and in PDF; Display sets it as on a line of its own, and a
+  double-click opens it again. OpenDocument keeps it as a LibreOffice
+  Math formula, .docx as Word's own Office Math, HTML and EPUB as MathML
+  and AbiWord as its equation, and each is read back from those files,
+  Word's and LibreOffice's included; LaTeX gets the LaTeX, and RTF,
+  .doc, text and WordPerfect a picture or the text of it.
 - **Code in colour.** Three new styles, HTML Source, JavaScript Source
   and XML Source, set code in Courier New and colour it as you type, as a
   programmer's editor does: tags, attributes and values, keywords,

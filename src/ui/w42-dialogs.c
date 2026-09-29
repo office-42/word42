@@ -21,6 +21,7 @@
 #include "w42-settings.h"
 #include "w42-merge.h"
 #include "w42-shape.h"
+#include "w42-mathtex.h"
 #include "w42-window.h"
 #include "w42-macro.h"
 #include "w42-vba.h"
@@ -4308,6 +4309,407 @@ w42_drawing_dialog_show (GtkWindow *parent, W42View *view)
 
   button_row (content, box->window, G_CALLBACK (on_drawing_ok), box);
   gtk_window_present (GTK_WINDOW (box->window));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insert > Equation                                                       */
+/* ---------------------------------------------------------------------- */
+
+/* Word 97 had Equation Editor, a program of its own with a palette for
+ * every symbol.  This is a box to type the equation into as LaTeX writes
+ * it -- or as MathML, for one that came in from the web -- with the
+ * equation set as it is typed below, the way it will stand in the text. */
+
+enum { NOTATION_LATEX, NOTATION_MATHML };
+
+typedef struct {
+  GtkWidget  *window;
+  W42View    *view;
+  GtkWidget  *text;         /* GtkTextView */
+  GtkWidget  *notation;     /* GtkDropDown */
+  GtkWidget  *display;      /* GtkCheckButton */
+  GtkWidget  *preview;      /* GtkDrawingArea */
+  GtkWidget  *status;       /* GtkLabel: what is wrong with it */
+  GtkWidget  *hint;         /* GtkLabel: LaTeX to type */
+  guint       shown;        /* the notation the text is in */
+  gboolean    editing;      /* the selection is an equation being changed */
+  W42MathBox *box;          /* what the preview shows, or NULL */
+} EquationBox;
+
+static void
+equation_box_free (gpointer data, GObject *where)
+{
+  EquationBox *box = data;
+
+  (void) where;
+  g_clear_pointer (&box->box, w42_math_box_free);
+  g_free (box);
+}
+
+static char *
+equation_text (EquationBox *box)
+{
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text));
+  GtkTextIter start, end;
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  return gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+}
+
+static void
+equation_set_text (EquationBox *box, const char *text)
+{
+  gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text)), text, -1);
+}
+
+/* An equation written as MathML says nothing more of the LaTeX it was
+ * once typed as, which editing the MathML would leave behind. */
+static void
+drop_tex (W42MathNode *n)
+{
+  for (guint i = n->children->len; i > 0; i--)
+    {
+      W42MathNode *k = g_ptr_array_index (n->children, i - 1);
+      const char *enc = w42_math_node_attr (k, "encoding");
+
+      if (g_str_equal (k->name, "annotation") && enc != NULL &&
+          (g_str_equal (enc, W42_TEX_ENCODING) || g_ascii_strcasecmp (enc, "TeX") == 0 ||
+           g_ascii_strcasecmp (enc, "LaTeX") == 0))
+        g_ptr_array_remove_index (n->children, i - 1);
+      else
+        drop_tex (k);
+    }
+}
+
+/* MathML laid out a level to a line, for reading and editing by hand. */
+static void
+mathml_indent (GString *out, const W42MathNode *n, int depth)
+{
+  gboolean leaf = n->children->len == 0;
+
+  g_string_append_printf (out, "%*s<%s", depth * 2, "", n->name);
+  if (depth == 0)
+    g_string_append (out, " xmlns=\"" W42_MATHML_NS "\"");
+  for (guint i = 0; n->attrs != NULL && n->attrs[i] != NULL && n->attrs[i + 1] != NULL; i += 2)
+    {
+      char *value = g_markup_escape_text (n->attrs[i + 1], -1);
+
+      g_string_append_printf (out, " %s=\"%s\"", n->attrs[i], value);
+      g_free (value);
+    }
+  if (leaf && (n->text == NULL || *n->text == '\0'))
+    {
+      g_string_append (out, "/>\n");
+      return;
+    }
+  g_string_append_c (out, '>');
+  if (n->text != NULL)
+    {
+      char *text = g_markup_escape_text (n->text, -1);
+
+      g_string_append (out, text);
+      g_free (text);
+    }
+  if (!leaf)
+    {
+      g_string_append_c (out, '\n');
+      for (guint i = 0; i < n->children->len; i++)
+        mathml_indent (out, g_ptr_array_index (n->children, i), depth + 1);
+      g_string_append_printf (out, "%*s", depth * 2, "");
+    }
+  g_string_append_printf (out, "</%s>\n", n->name);
+}
+
+/* The equation in the box as MathML, set on a line of its own or in the
+ * line as the check box says; NULL, with `error` saying why, when it is
+ * not an equation. */
+static char *
+equation_mathml (EquationBox *box, GError **error)
+{
+  char *text = equation_text (box);
+  gboolean display = gtk_check_button_get_active (GTK_CHECK_BUTTON (box->display));
+  char *mathml = NULL;
+
+  if (*g_strstrip (text) == '\0')
+    {
+      g_set_error_literal (error, G_MARKUP_ERROR, G_MARKUP_ERROR_EMPTY,
+                           _("Type the equation first."));
+      g_free (text);
+      return NULL;
+    }
+  if (box->shown == NOTATION_LATEX)
+    mathml = w42_tex_to_mathml (text, display, error);
+  else
+    {
+      W42MathNode *root = w42_math_parse (text, -1, error);
+
+      if (root != NULL)
+        {
+          drop_tex (root);
+          if (display)
+            w42_math_node_set_attr (root, "display", "block");
+          else if (w42_math_node_attr (root, "display") != NULL)
+            w42_math_node_set_attr (root, "display", "inline");
+          mathml = w42_math_node_to_string (root);
+          w42_math_node_free (root);
+        }
+    }
+  g_free (text);
+  return mathml;
+}
+
+static void
+equation_update (EquationBox *box)
+{
+  GError *error = NULL;
+  char *mathml = equation_mathml (box, &error);
+
+  g_clear_pointer (&box->box, w42_math_box_free);
+  if (mathml != NULL)
+    {
+      W42MathNode *root = w42_math_parse (mathml, -1, NULL);
+
+      if (root != NULL)
+        {
+          box->box = w42_math_box_new (root, 18.0);
+          w42_math_node_free (root);
+        }
+      gtk_label_set_text (GTK_LABEL (box->status), "");
+    }
+  else
+    gtk_label_set_text (GTK_LABEL (box->status), error != NULL ? error->message : "");
+  g_clear_error (&error);
+  g_free (mathml);
+  gtk_widget_queue_draw (box->preview);
+}
+
+static void
+on_equation_changed (GtkTextBuffer *buffer, gpointer data)
+{
+  (void) buffer;
+  equation_update (data);
+}
+
+static void
+on_equation_display (GtkCheckButton *check, gpointer data)
+{
+  (void) check;
+  equation_update (data);
+}
+
+/* The notation changed: the text is written out again in the other one,
+ * when it is an equation; left as it is when it is not. */
+static void
+on_equation_notation (GObject *dropdown, GParamSpec *pspec, gpointer data)
+{
+  EquationBox *box = data;
+  guint want = gtk_drop_down_get_selected (GTK_DROP_DOWN (dropdown));
+  char *mathml;
+
+  (void) pspec;
+  if (want == box->shown)
+    return;
+  mathml = equation_mathml (box, NULL);
+  box->shown = want;
+  if (mathml != NULL)
+    {
+      W42MathNode *root = w42_math_parse (mathml, -1, NULL);
+
+      if (root != NULL)
+        {
+          if (want == NOTATION_LATEX)
+            {
+              char *tex = w42_mathml_to_tex (root);
+
+              equation_set_text (box, tex);
+              g_free (tex);
+            }
+          else
+            {
+              GString *pretty = g_string_new (NULL);
+
+              drop_tex (root);
+              mathml_indent (pretty, root, 0);
+              equation_set_text (box, pretty->str);
+              g_string_free (pretty, TRUE);
+            }
+          w42_math_node_free (root);
+        }
+      g_free (mathml);
+    }
+  gtk_widget_set_visible (box->hint, want == NOTATION_LATEX);
+  w42_settings_set_int ("equation-notation", (int) want);
+  equation_update (box);
+}
+
+static void
+draw_equation_preview (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  EquationBox *box = data;
+  double w, a, d, scale;
+
+  (void) area;
+  cairo_set_source_rgb (cr, 1, 1, 1);
+  cairo_paint (cr);
+  if (box->box == NULL)
+    return;
+  w42_math_box_extents (box->box, &w, &a, &d);
+  /* Shown whole, as large as the box has room for, up to twice its size. */
+  scale = MIN (2.0, MIN ((width - 16) / MAX (w, 1.0), (height - 12) / MAX (a + d, 1.0)));
+  cairo_translate (cr, (width - w * scale) / 2.0, (height - (a + d) * scale) / 2.0 + a * scale);
+  cairo_scale (cr, scale, scale);
+  cairo_set_source_rgb (cr, 0, 0, 0);
+  w42_math_box_draw (box->box, cr, 0, 0);
+}
+
+static void
+on_equation_ok (GtkButton *button, gpointer data)
+{
+  EquationBox *box = data;
+  GError *error = NULL;
+  char *mathml = equation_mathml (box, &error);
+  gboolean done;
+
+  (void) button;
+  if (mathml == NULL)
+    {
+      w42_message_show (GTK_WINDOW (box->window), _("This is not an equation Word42 can set."),
+                        error != NULL ? error->message : NULL);
+      g_clear_error (&error);
+      return;
+    }
+  done = box->editing ? w42_view_set_equation (box->view, mathml)
+                      : w42_view_insert_equation (box->view, mathml);
+  g_free (mathml);
+  if (done)
+    gtk_window_destroy (GTK_WINDOW (box->window));
+}
+
+void
+w42_equation_dialog_show (GtkWindow *parent, W42View *view)
+{
+  static const char *const NOTATIONS[] = { "LaTeX", "MathML", NULL };
+  EquationBox *box;
+  GtkWidget *content, *grid, *label, *scroll, *frame;
+  const W42Object *object;
+  char *start = NULL;
+  gboolean display = FALSE;
+
+  g_return_if_fail (W42_IS_VIEW (view));
+  if (w42_view_get_document (view) == NULL)
+    return;
+
+  box = g_new0 (EquationBox, 1);
+  box->view = view;
+  box->shown = w42_settings_get_int ("equation-notation", NOTATION_LATEX) == NOTATION_MATHML
+                 ? NOTATION_MATHML : NOTATION_LATEX;
+  object = w42_view_get_object (view);
+
+  /* An equation selected is opened as it was typed, in LaTeX, when it
+   * keeps that; one from a file that did not is shown as its MathML,
+   * which loses nothing. */
+  if (object != NULL && object->mathml != NULL)
+    {
+      W42MathNode *root = w42_math_parse (object->mathml, -1, NULL);
+
+      box->editing = TRUE;
+      if (root != NULL)
+        {
+          const char *tex = w42_math_annotation (root, W42_TEX_ENCODING);
+
+          display = w42_math_is_display (root);
+          if (tex != NULL)
+            {
+              box->shown = NOTATION_LATEX;
+              start = g_strdup (tex);
+            }
+          else
+            {
+              GString *pretty = g_string_new (NULL);
+
+              box->shown = NOTATION_MATHML;
+              mathml_indent (pretty, root, 0);
+              start = g_string_free (pretty, FALSE);
+            }
+          w42_math_node_free (root);
+        }
+    }
+
+  box->window = dialog_shell (parent, _("Equation"), &content, view);
+  gtk_window_set_resizable (GTK_WINDOW (box->window), TRUE);
+  g_object_weak_ref (G_OBJECT (box->window), equation_box_free, box);
+
+  grid = group (content, _("Equation"));
+  box->notation = choice_row_data (grid, 0, 0, _("_Notation:"), NOTATIONS, box->shown);
+
+  label = gtk_label_new_with_mnemonic (_("_Type the equation:"));
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 1, 2, 1);
+  box->text = gtk_text_view_new ();
+  gtk_text_view_set_monospace (GTK_TEXT_VIEW (box->text), TRUE);
+  gtk_text_view_set_wrap_mode (GTK_TEXT_VIEW (box->text), GTK_WRAP_WORD_CHAR);
+  gtk_text_view_set_left_margin (GTK_TEXT_VIEW (box->text), 4);
+  gtk_text_view_set_top_margin (GTK_TEXT_VIEW (box->text), 3);
+  gtk_label_set_mnemonic_widget (GTK_LABEL (label), box->text);
+  scroll = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroll), box->text);
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_widget_set_size_request (scroll, 460, 90);
+  gtk_widget_set_hexpand (scroll, TRUE);
+  gtk_widget_set_vexpand (scroll, TRUE);
+  gtk_grid_attach (GTK_GRID (grid), scroll, 0, 2, 2, 1);
+
+  label = box->hint = gtk_label_new (NULL);
+  {
+    /* Translators: the examples after this are LaTeX, which is not
+     * translated. */
+    char *hint = g_strdup_printf ("%s  x^2   \\frac{a}{b}   \\sqrt{x}   \\sum_{i=1}^{n}   "
+                                  "\\int_0^1 f(x)\\,dx   \\alpha   \\le   \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
+                                  _("For example:"));
+
+    gtk_label_set_text (GTK_LABEL (label), hint);
+    g_free (hint);
+  }
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 70);
+  gtk_widget_add_css_class (label, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 3, 2, 1);
+  gtk_widget_set_visible (box->hint, box->shown == NOTATION_LATEX);
+
+  box->display = gtk_check_button_new_with_mnemonic (_("_Display: set as on a line of its own, "
+                                                         "with limits over and under"));
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (box->display), display);
+  gtk_grid_attach (GTK_GRID (grid), box->display, 0, 4, 2, 1);
+
+  grid = group (content, _("Preview"));
+  box->preview = gtk_drawing_area_new ();
+  gtk_widget_set_size_request (box->preview, 460, 110);
+  gtk_widget_set_hexpand (box->preview, TRUE);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (box->preview), draw_equation_preview, box, NULL);
+  frame = gtk_frame_new (NULL);
+  gtk_frame_set_child (GTK_FRAME (frame), box->preview);
+  gtk_grid_attach (GTK_GRID (grid), frame, 0, 0, 1, 1);
+  box->status = gtk_label_new ("");
+  gtk_label_set_xalign (GTK_LABEL (box->status), 0.0);
+  gtk_label_set_wrap (GTK_LABEL (box->status), TRUE);
+  gtk_widget_add_css_class (box->status, "w42-dialog-status");
+  gtk_grid_attach (GTK_GRID (grid), box->status, 0, 1, 1, 1);
+
+  if (start != NULL)
+    equation_set_text (box, start);
+  g_free (start);
+  g_signal_connect (gtk_text_view_get_buffer (GTK_TEXT_VIEW (box->text)), "changed",
+                    G_CALLBACK (on_equation_changed), box);
+  g_signal_connect (box->notation, "notify::selected", G_CALLBACK (on_equation_notation), box);
+  g_signal_connect (box->display, "toggled", G_CALLBACK (on_equation_display), box);
+
+  button_row (content, box->window, G_CALLBACK (on_equation_ok), box);
+  equation_update (box);
+  if (!box->editing)
+    gtk_label_set_text (GTK_LABEL (box->status), "");
+  gtk_window_present (GTK_WINDOW (box->window));
+  gtk_widget_grab_focus (box->text);
 }
 
 /* ---------------------------------------------------------------------- */

@@ -269,7 +269,9 @@ follows it is not a digit, so "it costs $5 to $10" stays money. Type
 `\$` for a dollar sign that is never a formula. Inside a formula, what
 AutoCorrect and Insert ▸ Symbol put in for you goes to LaTeX as LaTeX
 spells it: ’ as `'`, a dash as `-`, × as `\times`, ≤ as `\le`, α as
-`\alpha`. On Word42's own page a formula shows as you typed it.
+`\alpha`. On Word42's own page a formula typed this way shows as you
+typed it; one put in with **Insert ▸ Equation** (below, under *Pictures,
+drawings and frames*) is set on the page too.
 
 ### Summary Info
 
@@ -822,6 +824,52 @@ page is painted, so it stays sharp on paper and in a PDF, and it goes
 through Word's formats and OpenDocument as a shape, with its text; HTML
 and AbiWord get a picture of it. Select a drawing and Format ▸ Picture
 opens the same box again to change it.
+
+### Insert ▸ Equation
+
+Puts an equation in the text at the caret. Type it as LaTeX writes
+mathematics — `x^2`, `\frac{a}{b}`, `\sqrt{x}`, `\sum_{i=1}^{n}`,
+`\int_0^1 f(x)\,dx`, `\alpha`, `\le`,
+`\begin{pmatrix} a & b \\ c & d \end{pmatrix}` — and the box sets it
+below as you type, and says what is wrong when a brace or an `\end` is
+missing. **Notation** switches to MathML, the W3C's markup for
+mathematics, for an equation pasted in from the web or written by hand;
+what is in the box is written out again in the other notation as it
+switches.
+
+An equation sits in the line like a character, on the baseline, at the
+size of the text round it, and is drawn as type: sharp at any zoom, on
+paper and in a PDF. **Display** sets it as on a line of its own, with
+sums and integrals larger and their limits over and under; a displayed
+equation put into an empty paragraph is centred there, as Word centres
+one. Double-click an equation — or select it and choose Format ▸ Picture
+— to change it: it opens as it was typed.
+
+The LaTeX it knows is amsmath's everyday set: Greek letters, operators,
+relations and arrows (`\pm`, `\times`, `\ne`, `\approx`, `\in`, `\to`,
+`\Rightarrow`), `\frac`, `\binom`, `\sqrt[n]{…}`, scripts, `\sum`,
+`\prod`, `\int` and `\lim` with their limits, accents (`\hat`, `\bar`,
+`\vec`, `\tilde`, `\dot`, `\overline`, `\underbrace`), `\left` and
+`\right`, `\big`, `\text`, the alphabets (`\mathbb`, `\mathcal`,
+`\mathfrak`, `\mathbf`, `\mathrm`), the matrix environments, `cases`,
+`aligned` and `array`, the spaces (`\,` `\;` `\quad`) and `\color`. A
+command it does not know is shown as typed, in red.
+
+An equation is kept as MathML, with what it was typed as inside it, and
+goes into each format the way that format keeps one:
+
+| File | The equation is |
+|---|---|
+| `.odt` | a formula object, which LibreOffice Math opens and edits |
+| `.docx` | Office Math, which Word opens and edits |
+| HTML, EPUB | MathML, which browsers and e-book readers set |
+| `.abw` | AbiWord's own equation |
+| `.tex` | its LaTeX, in `\(…\)` or `\[…\]` |
+| RTF, `.doc`, a presentation | a picture of it; RTF keeps its MathML for Word42 too |
+| text, WordPerfect | its text: x = (−b ± √(b^2 − 4ac))/(2a) |
+
+Equations in those files come in as equations: LibreOffice's formulas,
+Word's, and the MathML of a web page or an e-book.
 
 ### Format ▸ Frame
 

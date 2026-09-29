@@ -636,6 +636,12 @@ void     w42_pt_clear_undo  (W42PieceTable *pt);
 
 /* UTF-8 for [pos, pos+n).  Struxes other than the first become '\n'. */
 char *w42_pt_get_text (W42PieceTable *pt, gsize pos, gsize n);
+/* The same, with what `object_text` says an object reads as -- an
+ * equation's text, say -- where one stands; nothing where it returns
+ * NULL.  It returns a string for the caller to free. */
+typedef char *(*W42ObjectTextFunc) (W42ObjectIdx object, gpointer data);
+char *w42_pt_get_text_with (W42PieceTable *pt, gsize pos, gsize n,
+                            W42ObjectTextFunc object_text, gpointer data);
 
 /* Consecutive single-character insertions collapse into one undo step, the
  * way typing a word does in Word.  Anything that should end that run -- a

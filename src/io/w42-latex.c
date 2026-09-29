@@ -13,6 +13,7 @@
  */
 
 #include "w42-latex.h"
+#include "w42-mathtex.h"
 
 #include <string.h>
 #include <glib/gi18n.h>
@@ -443,6 +444,35 @@ put_picture (Writer *w, W42ObjectIdx idx)
   g_bytes_unref (bytes);
 }
 
+/* ---- equations ---------------------------------------------------------- */
+
+static gboolean picture_only (Writer *w, const W42Block *b);
+
+/* An equation as LaTeX sets one, from what it was typed as or made from
+ * its MathML: in the line, or displayed when it is set on a line of its
+ * own and stands alone in its paragraph.  FALSE for a picture. */
+static gboolean
+put_equation (Writer *w, const W42Block *block, W42ObjectIdx idx)
+{
+  const W42Object *obj = w42_object_table_get (w42_pt_object_table (w->pt), idx);
+  W42MathNode *root;
+  char *tex;
+  gboolean display;
+
+  if (obj == NULL || obj->mathml == NULL ||
+      (root = w42_math_parse (obj->mathml, -1, NULL)) == NULL)
+    return FALSE;
+  tex = w42_mathml_to_tex (root);
+  display = w42_math_is_display (root);
+  if (display && picture_only (w, block))
+    g_string_append_printf (w->out, "\\[ %s \\]", tex);
+  else
+    g_string_append_printf (w->out, "\\(%s%s\\)", display ? "\\displaystyle " : "", tex);
+  g_free (tex);
+  w42_math_node_free (root);
+  return TRUE;
+}
+
 /* ---- runs ------------------------------------------------------------- */
 
 static void write_note (Writer *w, int id, gboolean endnote);
@@ -564,7 +594,10 @@ write_runs (Writer *w, const W42Block *block, const W42CharFmt *para, gsize from
               continue;
             }
           if (run->object != W42_OBJECT_NONE)
-            put_picture (w, run->object);
+            {
+              if (!put_equation (w, block, run->object))
+                put_picture (w, run->object);
+            }
           else if (g_str_equal (ch->field, "PAGE"))
             {
               if (field != ch->field)

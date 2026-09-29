@@ -322,6 +322,10 @@
           <attribute name="action">win.insert-symbol</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">E_quation...</attribute>
+          <attribute name="action">win.insert-equation</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">F_ootnote</attribute>
           <attribute name="action">win.insert-footnote</attribute>
         </item>

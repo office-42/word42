@@ -18,6 +18,7 @@
 
 #include <lexbor/dom/dom.h>
 #include <lexbor/html/html.h>
+#include <lexbor/html/serialize.h>
 
 #include "w42-html.h"
 #include "w42-image.h"
@@ -2182,6 +2183,8 @@ note_id_for (const char *href)
 /* A picture from a data: URI, or from a file kept beside the page: a
  * word processor writing HTML puts its pictures next to the document
  * rather than inside it. */
+static void put_object (Html *h, W42ObjectIdx idx, W42Wrap wrap);
+
 static void
 picture (Html *h, const char *src, const char *width, const char *height,
          W42Wrap wrap)
@@ -2254,7 +2257,13 @@ picture (Html *h, const char *src, const char *width, const char *height,
 
   idx = w42_object_table_add (w42_pt_object_table (h->pt), data, format, pw, ph, w, hh);
   g_bytes_unref (data);
+  put_object (h, idx, wrap);
+}
 
+/* An object in the text where the reading has got to. */
+static void
+put_object (Html *h, W42ObjectIdx idx, W42Wrap wrap)
+{
   /* A space before the picture is before it, not after. */
   emit_space (h);
   flush_text (h);
@@ -2519,6 +2528,13 @@ read_code_class (Html *h, lxb_dom_element_t *el)
       h->pa.style = g_intern_string (w42_syntax_lang_style (lang));
       h->pa_dirty = TRUE;
     }
+}
+
+static lxb_status_t
+serialize_to_gstring (const lxb_char_t *data, size_t len, void *ctx)
+{
+  g_string_append_len (ctx, (const char *) data, (gssize) len);
+  return LXB_STATUS_OK;
 }
 
 static WalkEnter
@@ -2928,6 +2944,26 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
             h->meta[NAMES[i].slot] = g_strdup (content);
       g_free (what);
       g_free (content);
+      return WALK_SKIP;
+    }
+
+  /* An equation: its MathML, as the page has it, made an equation of
+   * the document at the size of the text round it. */
+  if (g_str_equal (name, "math"))
+    {
+      GString *xml = g_string_new (NULL);
+      W42ObjectIdx idx;
+
+      lxb_html_serialize_tree_cb (lxb_dom_interface_node (el), serialize_to_gstring, xml);
+      idx = w42_object_table_add_math (w42_pt_object_table (h->pt), xml->str,
+                                       MAX (h->ch[h->depth].size, 2) / 2.0);
+      g_string_free (xml, TRUE);
+      if (idx != W42_OBJECT_NONE)
+        {
+          if (h->table >= 0)
+            open_cell (h);
+          put_object (h, idx, W42_WRAP_INLINE);
+        }
       return WALK_SKIP;
     }
 

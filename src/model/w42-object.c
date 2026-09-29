@@ -20,6 +20,8 @@ object_free (gpointer data)
   g_clear_pointer (&object->data, g_bytes_unref);
   g_clear_pointer (&object->original, g_bytes_unref);
   g_clear_pointer (&object->surface, cairo_surface_destroy);
+  g_clear_pointer (&object->math, w42_math_box_free);
+  g_free (object->mathml);
   g_free (object);
 }
 
@@ -222,5 +224,81 @@ w42_object_table_clone (W42ObjectTable *table, W42ObjectIdx idx, int width, int 
   copy->text = object->text;
   copy->original = object->original != NULL ? g_bytes_ref (object->original) : NULL;
   copy->original_format = object->original_format;
+  copy->mathml = g_strdup (object->mathml);
+  /* The depth goes with the height, as the equation is drawn scaled. */
+  copy->descent = object->height > 0
+                    ? (int) ((double) object->descent * copy->height / object->height + 0.5) : 0;
   return fresh;
+}
+
+/* The size equations are set at before they are scaled to their box:
+ * everything in one is in proportion to it, so one size does for all. */
+#define MATH_SET_SIZE 10.0
+
+W42ObjectIdx
+w42_object_table_add_math (W42ObjectTable *table, const char *mathml, double size)
+{
+  char *canonical;
+  int width, height, descent, pw = 0, ph = 0;
+  GBytes *png;
+  W42ObjectIdx idx;
+  W42Object *object;
+
+  g_return_val_if_fail (table != NULL, W42_OBJECT_NONE);
+  canonical = mathml != NULL ? w42_math_canonical (mathml, -1) : NULL;
+  if (canonical == NULL)
+    return W42_OBJECT_NONE;
+  if (size <= 0.0)
+    size = 10.0;
+  if (!w42_math_measure (canonical, size, &width, &height, &descent) ||
+      (png = w42_math_render_png (canonical, size, 192, &pw, &ph)) == NULL)
+    {
+      g_free (canonical);
+      return W42_OBJECT_NONE;
+    }
+  idx = w42_object_table_add (table, png, "png", pw, ph, width, height);
+  g_bytes_unref (png);
+  object = g_ptr_array_index (table->objects, idx);
+  object->mathml = canonical;
+  object->descent = CLAMP (descent, 0, object->height);
+  return idx;
+}
+
+void
+w42_object_table_set_math (W42ObjectTable *table, W42ObjectIdx idx, const char *mathml,
+                           int descent)
+{
+  W42Object *object;
+
+  g_return_if_fail (table != NULL);
+  if (idx >= table->objects->len)
+    return;
+  object = g_ptr_array_index (table->objects, idx);
+  g_clear_pointer (&object->math, w42_math_box_free);
+  g_free (object->mathml);
+  object->mathml = g_strdup (mathml);
+  object->descent = CLAMP (descent, 0, object->height);
+}
+
+const W42MathBox *
+w42_object_math (W42ObjectTable *table, W42ObjectIdx idx)
+{
+  W42Object *object;
+
+  g_return_val_if_fail (table != NULL, NULL);
+  if (idx >= table->objects->len)
+    return NULL;
+  object = g_ptr_array_index (table->objects, idx);
+  if (object->mathml == NULL)
+    return NULL;
+  if (object->math == NULL)
+    {
+      W42MathNode *root = w42_math_parse (object->mathml, -1, NULL);
+
+      if (root == NULL)
+        return NULL;
+      object->math = w42_math_box_new (root, MATH_SET_SIZE);
+      w42_math_node_free (root);
+    }
+  return object->math;
 }

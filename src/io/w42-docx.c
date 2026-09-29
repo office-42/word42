@@ -14,6 +14,7 @@
 #include "w42-image.h"
 #include "w42-lang.h"
 #include "w42-zip.h"
+#include "w42-omml.h"
 
 #define EMU_PER_TWIP 635
 
@@ -1819,6 +1820,9 @@ typedef struct {
   gsize       fld_start;
   gboolean    in_instr;
   int         skip_depth;         /* inside mc:Fallback: read nothing */
+  GString    *omml;               /* an equation's m:oMath, being gathered */
+  int         omml_depth;
+  gboolean    omml_para;          /* inside an m:oMathPara: set on its own line */
   gboolean    tbl_borders;     /* w:tblBorders, or a grid table style, said so */
 
   gboolean    in_ppr, in_rpr, in_sectpr_body;
@@ -2576,6 +2580,27 @@ docx_finish_drawing (Docx *d)
   d->vml_shape = FALSE;
 }
 
+/* The equation gathered goes in where the text has got to, as MathML, at
+ * the size its runs say or the text round it has. */
+static void
+docx_put_math (Docx *d)
+{
+  int size = 0;
+  char *mathml = w42_omml_to_mathml (d->omml->str, d->omml->len, d->omml_para, &size);
+
+  g_string_free (d->omml, TRUE);
+  d->omml = NULL;
+  d->omml_depth = 0;
+  if (mathml == NULL)
+    return;
+  docx_flush_text (d);
+  d->b.ch = d->run_ch;
+  if (size > 0)
+    d->b.ch.size = size;
+  w42_builder_math (&d->b, mathml);
+  g_free (mathml);
+}
+
 static void
 docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
             const char **av, gpointer data, GError **error)
@@ -2590,7 +2615,35 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       d->skip_depth++;              /* a Fallback inside a Fallback counts too */
       return;
     }
-  else if (g_str_equal (tag, "Fallback"))
+  /* An equation: its Office Math gathered as it stands, and made MathML
+   * when it ends. */
+  if (d->omml != NULL || g_str_equal (tag, "oMath"))
+    {
+      if (d->omml == NULL)
+        d->omml = g_string_new (NULL);
+      g_string_append_printf (d->omml, "<%s", name);
+      for (int i = 0; an[i] != NULL; i++)
+        {
+          char *value = g_markup_escape_text (av[i], -1);
+
+          g_string_append_printf (d->omml, " %s=\"%s\"", an[i], value);
+          g_free (value);
+        }
+      g_string_append_c (d->omml, '>');
+      d->omml_depth++;
+      return;
+    }
+  if (g_str_equal (tag, "oMathPara"))
+    {
+      d->omml_para = TRUE;
+      return;
+    }
+  if (g_str_equal (tag, "oMathParaPr"))
+    {
+      d->skip_depth = 1;
+      return;
+    }
+  if (g_str_equal (tag, "Fallback"))
     d->skip_depth = 1;
   else if (g_str_equal (tag, "sdtPr") || g_str_equal (tag, "sdtEndPr"))
     d->skip_depth = 1;            /* a content control's settings: not text */
@@ -3832,6 +3885,18 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
       d->skip_depth--;
       return;
     }
+  if (d->omml != NULL)
+    {
+      g_string_append_printf (d->omml, "</%s>", name);
+      if (--d->omml_depth == 0)
+        docx_put_math (d);
+      return;
+    }
+  if (g_str_equal (tag, "oMathPara"))
+    {
+      d->omml_para = FALSE;
+      return;
+    }
   if (d->shape_txbx)
     {
       if (g_str_equal (tag, "t"))
@@ -4064,6 +4129,14 @@ docx_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data,
   Docx *d = data;
 
   (void) ctx; (void) error;
+  if (d->omml != NULL)
+    {
+      char *escaped = g_markup_escape_text (text, (gssize) len);
+
+      g_string_append (d->omml, escaped);
+      g_free (escaped);
+      return;
+    }
   if (d->in_instr)
     g_string_append_len (d->fld_instr, text, len);
   else if (d->shape_txbx)
@@ -4168,6 +4241,8 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   g_string_free (d.text, TRUE);
   g_string_free (d.shape_text, TRUE);
   g_string_free (d.fld_instr, TRUE);
+  if (d.omml != NULL)
+    g_string_free (d.omml, TRUE);
   /* A file that ends inside a table leaves the ones round it set aside. */
   while (d.outer_tables->len > 0)
     docx_pop_table (&d);
@@ -4273,6 +4348,8 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   g_string_free (d.text, TRUE);
   g_string_free (d.shape_text, TRUE);
   g_string_free (d.fld_instr, TRUE);
+  if (d.omml != NULL)
+    g_string_free (d.omml, TRUE);
   /* A file that ends inside a table leaves the ones round it set aside. */
   while (d.outer_tables->len > 0)
     docx_pop_table (&d);
@@ -4918,7 +4995,23 @@ write_runs (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
         }
 
       if (run->object != W42_OBJECT_NONE)
-        write_drawing (out, parts, pt, run, ch, base);
+        {
+          const W42Object *object = w42_object_table_get (w42_pt_object_table (pt), run->object);
+          gboolean written = FALSE;
+
+          /* An equation as Word keeps one, which it can edit: set on its
+           * own line when it is displayed and alone in its paragraph. */
+          if (object != NULL && object->mathml != NULL)
+            {
+              W42MathNode *root = w42_math_parse (object->mathml, -1, NULL);
+              gboolean para = root != NULL && w42_math_is_display (root) && block->runs->len == 1;
+
+              written = w42_omml_from_mathml (out, object->mathml, para);
+              w42_math_node_free (root);
+            }
+          if (!written)
+            write_drawing (out, parts, pt, run, ch, base);
+        }
       else if (run->footnote > 0)
         g_string_append_printf (out,
           "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:%sReference w:id=\"%d\"/></w:r>",

@@ -3,8 +3,8 @@
  * Copyright (C) 2026 Andreas Røsdal
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * An object is a picture (for now) that sits in the text flow and occupies
- * one document position, the way a character does.  AbiWord's piece table
+ * An object is a picture, a drawing or an equation that sits in the text
+ * flow and occupies one document position, the way a character does.  AbiWord's piece table
  * has an ObjectPiece for the same purpose.  The table holds the bytes as
  * loaded, so a JPEG saved is the same JPEG, not a recompression of it.
  */
@@ -15,6 +15,7 @@
 #include <glib.h>
 
 #include "w42-shape.h"
+#include "w42-math.h"
 
 G_BEGIN_DECLS
 
@@ -68,6 +69,12 @@ typedef struct {
    * file gets its picture back when it is saved. */
   GBytes          *original;
   const char      *original_format;   /* interned extension: "emf", "wmf" */
+  /* An equation: its MathML (w42-math.h), and how far its box goes below
+   * the baseline it sits on, in twips at its size.  The data is a PNG of
+   * it, for the formats that can only say "picture". */
+  char            *mathml;
+  int              descent;
+  W42MathBox      *math;      /* set as type on first draw; a cache */
 } W42Object;
 
 typedef struct _W42ObjectTable W42ObjectTable;
@@ -99,6 +106,18 @@ void              w42_object_table_set_shape (W42ObjectTable *table, W42ObjectId
  * written back as it came, under its own extension. */
 void              w42_object_table_set_original (W42ObjectTable *table, W42ObjectIdx idx,
                                                  GBytes *bytes, const char *format);
+/* An equation: `mathml` set at `size` points -- the size of the text it
+ * goes in -- its box measured and a PNG of it drawn.  W42_OBJECT_NONE for
+ * what is not MathML. */
+W42ObjectIdx      w42_object_table_add_math (W42ObjectTable *table, const char *mathml,
+                                             double size);
+/* Makes the object the equation `mathml` is, `descent` twips of it below
+ * the baseline: for a copy, or a file that says the size itself. */
+void              w42_object_table_set_math (W42ObjectTable *table, W42ObjectIdx idx,
+                                             const char *mathml, int descent);
+/* The equation set as type, setting it the first time; NULL for an object
+ * that is not one.  Owned by the table. */
+const W42MathBox *w42_object_math (W42ObjectTable *table, W42ObjectIdx idx);
 /* A copy of the object at another size: everything else carried over. */
 W42ObjectIdx      w42_object_table_clone (W42ObjectTable *table, W42ObjectIdx idx,
                                           int width, int height);

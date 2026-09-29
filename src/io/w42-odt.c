@@ -302,6 +302,10 @@ typedef struct {
   int            frame_w, frame_h;
   char          *frame_href;
   W42Wrap        frame_wrap;
+  char          *frame_object;     /* a draw:object's part: a formula's */
+  char          *frame_math;       /* or the MathML it holds itself */
+  GString       *math_xml;         /* that MathML, being gathered */
+  int            math_depth;
   int            tb_depth;         /* inside a draw:text-box */
   int            tb_side, tb_width;
   W42ParaFmt     tb_saved_pa;      /* the anchoring paragraph, to go on with */
@@ -2143,6 +2147,13 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       g_free (o->frame_href);
       o->frame_href = NULL;
       g_clear_pointer (&o->frame_first_href, g_free);
+      g_clear_pointer (&o->frame_object, g_free);
+      g_clear_pointer (&o->frame_math, g_free);
+    }
+  else if (g_str_equal (tag, "object") && o->frame_pending)
+    {
+      g_free (o->frame_object);
+      o->frame_object = g_strdup (attr (an, av, "xlink:href"));
     }
   else if (g_str_equal (tag, "text-box") && o->frame_pending && o->tb_depth == 0)
     {
@@ -2519,6 +2530,41 @@ body_end (Odt *o, const char *tag)
     }
   else if (g_str_equal (tag, "frame"))
     {
+      if (o->frame_pending && (o->frame_object != NULL || o->frame_math != NULL))
+        {
+          /* A formula, LibreOffice Math's: its MathML is its content.xml,
+           * or in the frame itself in a flat file.  One that is not
+           * MathML -- a chart -- is its picture, as before. */
+          char *mathml = g_steal_pointer (&o->frame_math);
+
+          if (mathml == NULL)
+            {
+              const char *part = o->frame_object;
+              char *name;
+              GBytes *bytes;
+
+              while (part[0] == '.' && part[1] == '/')
+                part += 2;
+              name = g_strdup_printf ("%s/content.xml", part);
+              bytes = w42_zip_read (o->zip, name);
+              if (bytes != NULL)
+                mathml = g_strndup (g_bytes_get_data (bytes, NULL), g_bytes_get_size (bytes));
+              g_clear_pointer (&bytes, g_bytes_unref);
+              g_free (name);
+            }
+          if (mathml != NULL && w42_math_is_mathml (mathml, strlen (mathml)))
+            {
+              odt_flush (o);
+              o->b.ch = current_ch (o);
+              if (w42_builder_math (&o->b, mathml))
+                {
+                  o->after_space = FALSE;
+                  g_clear_pointer (&o->frame_href, g_free);
+                }
+            }
+          g_free (mathml);
+          g_clear_pointer (&o->frame_object, g_free);
+        }
       if (o->frame_pending && o->frame_href != NULL)
         {
           odt_flush (o);
@@ -2591,6 +2637,24 @@ odt_start (GMarkupParseContext *ctx, const char *name, const char **an,
       o->skip_depth++;
       return;
     }
+  /* MathML in a frame, as a flat file keeps a formula: gathered as it
+   * stands, for the equation to be read from. */
+  if (o->math_xml != NULL || (o->in_body && o->frame_pending && g_str_equal (tag, "math")))
+    {
+      if (o->math_xml == NULL)
+        o->math_xml = g_string_new (NULL);
+      g_string_append_printf (o->math_xml, "<%s", tag);
+      for (int i = 0; an[i] != NULL; i++)
+        if (!g_str_has_prefix (an[i], "xmlns"))
+          {
+            g_string_append_printf (o->math_xml, " %s=\"", local (an[i]));
+            xml_escape (o->math_xml, av[i], strlen (av[i]));
+            g_string_append_c (o->math_xml, '"');
+          }
+      g_string_append_c (o->math_xml, '>');
+      o->math_depth++;
+      return;
+    }
   if (g_str_equal (tag, "body"))
     o->in_body = TRUE;
   if (o->in_body &&
@@ -2622,6 +2686,16 @@ odt_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **err
       o->skip_depth--;
       return;
     }
+  if (o->math_xml != NULL)
+    {
+      g_string_append_printf (o->math_xml, "</%s>", tag);
+      if (--o->math_depth == 0)
+        {
+          g_free (o->frame_math);
+          o->frame_math = g_string_free (g_steal_pointer (&o->math_xml), FALSE);
+        }
+      return;
+    }
   if (o->in_body)
     body_end (o, tag);
   else
@@ -2636,6 +2710,11 @@ odt_text (GMarkupParseContext *ctx, const char *text, gsize len, gpointer data, 
   (void) ctx; (void) error;
   if (o->skip_depth > 0)
     return;
+  if (o->math_xml != NULL)
+    {
+      xml_escape (o->math_xml, text, len);
+      return;
+    }
   if (o->in_annotation)
     {
       g_string_append_len (o->annotation, text, len);
@@ -2926,6 +3005,10 @@ odt_load_zip (W42PieceTable *pt, W42PageSetup *page, W42Zip *zip, GError **error
   g_hash_table_destroy (o.annotation_start);
   g_string_free (o.field_text, TRUE);
   g_free (o.frame_href);
+  g_free (o.frame_object);
+  g_free (o.frame_math);
+  if (o.math_xml != NULL)
+    g_string_free (o.math_xml, TRUE);
   g_free (o.cur_graphic);
   g_hash_table_destroy (o.graphic_wraps);
   g_hash_table_destroy (o.graphics);
@@ -3007,6 +3090,7 @@ typedef struct {
   GPtrArray *pa_keys;          /* W42ParaFmt copies: P1.. */
   GPtrArray *ch_keys;          /* W42CharFmt copies: T1.. */
   GPtrArray *pictures;         /* GBytes*, Pictures/imageN.<ext> */
+  GPtrArray *formulas;         /* char*, the MathML of Object N/content.xml */
   GString   *shape_styles;     /* the graphic styles the shapes referred to */
   guint      n_shapes;
   GPtrArray *picture_exts;     /* const char*, static: "png", "jpeg", ... */
@@ -3693,6 +3777,45 @@ write_runs (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
                   fallback = w->pictures->len;
                 }
             }
+          else if (object != NULL && object->mathml != NULL)
+            {
+              /* An equation as LibreOffice Math keeps a formula: an
+               * object of its own whose content is the MathML, with the
+               * picture of it beside for a reader without Math, and the
+               * frame's top as far over the baseline as the equation
+               * goes. */
+              W42CharFmt bare = *ch, base_ch = *para_ch;
+              gboolean own;
+
+              g_ptr_array_add (w->formulas, object->mathml);
+              g_ptr_array_add (w->pictures, g_bytes_ref (object->data));
+              g_ptr_array_add (w->picture_exts, (gpointer) "png");
+              g_ptr_array_add (w->picture_mimes, (gpointer) "image/png");
+              bare.link = bare.bookmark = bare.comment = bare.field = NULL;
+              bare.revision = 0;
+              base_ch.link = base_ch.bookmark = base_ch.comment = base_ch.field = NULL;
+              base_ch.revision = 0;
+              own = memcmp (&bare, &base_ch, sizeof bare) != 0;
+              if (own)
+                g_string_append_printf (w->body, "<text:span text:style-name=\"T%d\">",
+                                        text_style_index (w, &bare));
+              g_string_append_printf (w->body, "<draw:frame draw:name=\"Object %u\" draw:style-name=\"frMath\" "
+                                      "text:anchor-type=\"as-char\" svg:y=\"", w->formulas->len);
+              twips_out (w->body, -(object->height - object->descent));
+              g_string_append (w->body, "\" svg:width=\"");
+              twips_out (w->body, object->width);
+              g_string_append (w->body, "\" svg:height=\"");
+              twips_out (w->body, object->height);
+              g_string_append_printf (w->body, "\"><draw:object xlink:href=\"./Object %u\" xlink:type=\"simple\" "
+                                      "xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
+                                      "<draw:image xlink:href=\"Pictures/image%u.png\" xlink:type=\"simple\" "
+                                      "xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>",
+                                      w->formulas->len, w->pictures->len);
+              if (own)
+                g_string_append (w->body, "</text:span>");
+              after_space = FALSE;
+              continue;
+            }
           else if (object != NULL && object->shape == W42_SHAPE_PICTURE)
             png = w42_image_for_container (object->data, &ext, &mime);
 
@@ -4349,6 +4472,7 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
   w.pa_keys = g_ptr_array_new_with_free_func (g_free);
   w.ch_keys = g_ptr_array_new_with_free_func (g_free);
   w.pictures = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
+  w.formulas = g_ptr_array_new ();
   w.shape_styles = g_string_new (NULL);
   w.cell_styles = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   w.picture_exts = g_ptr_array_new ();
@@ -4539,6 +4663,13 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
     "<style:style style:name=\"frBehind\" style:family=\"graphic\"><style:graphic-properties "
     "style:wrap=\"run-through\" style:run-through=\"background\" style:horizontal-pos=\"from-left\" style:horizontal-rel=\"paragraph\" "
     "style:vertical-pos=\"from-top\" style:vertical-rel=\"paragraph\"/></style:style>");
+  /* An equation, in the line: placed from the baseline, as Math's are. */
+  if (w.formulas->len > 0)
+    g_string_append (content,
+      "<style:style style:name=\"frMath\" style:family=\"graphic\"><style:graphic-properties "
+      "style:vertical-pos=\"from-top\" style:vertical-rel=\"baseline\" style:horizontal-pos=\"center\" "
+      "style:horizontal-rel=\"paragraph-content\" fo:margin-left=\"0in\" fo:margin-right=\"0in\" "
+      "fo:margin-top=\"0in\" fo:margin-bottom=\"0in\"/></style:style>");
   g_string_append (content, w.shape_styles->str);
   g_string_append (content, "</office:automatic-styles><office:body><office:text>");
   g_string_append (content, w.body->str);
@@ -4750,6 +4881,12 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
     g_string_append_printf (manifest, "<manifest:file-entry manifest:full-path=\"Pictures/image%u.%s\" manifest:media-type=\"%s\"/>",
                             i + 1, (const char *) g_ptr_array_index (w.picture_exts, i),
                             (const char *) g_ptr_array_index (w.picture_mimes, i));
+  for (guint i = 0; i < w.formulas->len; i++)
+    g_string_append_printf (manifest,
+                            "<manifest:file-entry manifest:full-path=\"Object %u/content.xml\" manifest:media-type=\"text/xml\"/>"
+                            "<manifest:file-entry manifest:full-path=\"Object %u/\" manifest:version=\"1.2\" "
+                            "manifest:media-type=\"application/vnd.oasis.opendocument.formula\"/>",
+                            i + 1, i + 1);
   g_string_append (manifest, "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>");
   g_string_append (manifest, "</manifest:manifest>");
 
@@ -4811,6 +4948,16 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
       w42_zip_writer_add (zip, name, g_bytes_get_data (png, NULL), g_bytes_get_size (png));
       g_free (name);
     }
+  for (guint i = 0; i < w.formulas->len; i++)
+    {
+      char *name = g_strdup_printf ("Object %u/content.xml", i + 1);
+      char *xml = g_strconcat ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+                               (const char *) g_ptr_array_index (w.formulas, i), NULL);
+
+      w42_zip_writer_add (zip, name, xml, strlen (xml));
+      g_free (xml);
+      g_free (name);
+    }
   w42_zip_writer_add (zip, "META-INF/manifest.xml", manifest->str, manifest->len);
   if (file != NULL)
     ok = w42_zip_writer_save (zip, file, error);
@@ -4829,6 +4976,7 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
   g_ptr_array_free (w.pa_keys, TRUE);
   g_ptr_array_free (w.ch_keys, TRUE);
   g_ptr_array_free (w.pictures, TRUE);
+  g_ptr_array_free (w.formulas, TRUE);
   g_string_free (w.shape_styles, TRUE);
   g_hash_table_destroy (w.cell_styles);
   g_ptr_array_free (w.picture_exts, TRUE);
