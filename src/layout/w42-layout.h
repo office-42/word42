@@ -110,6 +110,9 @@ typedef struct {
   double x, y, w, h;
   int    table;
   int    col;
+  guint8 level;       /* how deep the table is in others: 0 in the text,
+                       * 1 in a cell; a cell's fill is painted over the
+                       * fill of the cell it is in */
   gboolean borders;   /* the table is ruled */
   guint8 sides;       /* W42_BORDER_* bits: which of its sides are drawn */
   guint8 has_fill;    /* the cell has a background colour of its own */
@@ -160,6 +163,11 @@ void  w42_layout_shaping_counts (W42Layout *self, guint *reused, guint *shaped);
  * span columns are left out.  `out` receives one int per column.  FALSE
  * when the last pass laid out no such table. */
 gboolean w42_layout_table_content_widths (W42Layout *self, int table, GArray *out);
+
+/* The width, in px, that `table` was set across on the last pass: the
+ * text column for a table in the text, the inside of its cell for a
+ * table in a cell.  0 when the last pass laid out no such table. */
+double   w42_layout_table_room (W42Layout *self, int table);
 
 /* ---- Mapping between document positions and the page ------------------ */
 

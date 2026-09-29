@@ -838,6 +838,224 @@ write_block_runs (GString *out, RtfRuns *rw, const W42Block *block,
     }
 }
 
+/* The cell block `k` is in at nesting level `level`, when it is in a cell
+ * of `table`'s row `row`; FALSE past the row's end. */
+static gboolean
+row_cell (GPtrArray *blocks, guint k, int level, int table, int row, W42BlockCell *out)
+{
+  return k < blocks->len && w42_block_cell (g_ptr_array_index (blocks, k), level, out) &&
+         out->table == table && out->row == row;
+}
+
+/* The width a table at nesting level `level` has to fill, in twips: the
+ * text column's, or the inside of the cell it is in. */
+static int
+rtf_table_room (W42PieceTable *pt, const W42Block *block, int level, int text_w)
+{
+  int room = text_w;
+
+  for (int l = 0; l < level; l++)
+    {
+      W42BlockCell c;
+      const W42TableProps *props;
+      int n_cols, width = 0;
+
+      if (!w42_block_cell (block, l, &c))
+        break;
+      props = w42_pt_table_props (pt, c.table);
+      n_cols = props != NULL ? MAX (props->n_cols, 1) : 1;
+      for (int k = c.col; k < c.col + MAX (c.span, 1) && k < n_cols; k++)
+        {
+          int w = props != NULL && k < (int) props->widths->len
+                  ? g_array_index (props->widths, int, k) : 0;
+
+          width += w > 0 ? MIN (w, 31680) : room / n_cols;
+        }
+      room = MAX (width - 160, 360);   /* less the \\trgaph80 either side */
+    }
+  return room;
+}
+
+/* A row's definition: \\trowd, the row's own properties, and a \\cellx for
+ * every column with the look of the cell over it.  The row is the one
+ * block `b` begins, of the table at nesting level `level`. */
+static void
+write_row_def (GString *out, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+               guint b, int level, int text_w, RtfTables *tables)
+{
+  const W42Block *block = g_ptr_array_index (blocks, b);
+  W42BlockCell cell = { -1, 0, 0, 1, 0 };
+  const W42TableProps *props;
+  int n_cols, edge = 0, room;
+  int *owner;
+
+  w42_block_cell (block, level, &cell);
+  props = w42_pt_table_props (pt, cell.table);
+  n_cols = props != NULL ? props->n_cols : 1;
+  room = rtf_table_room (pt, block, level, text_w);
+  owner = g_new (int, n_cols);
+
+  /* Merged cells: \\clmgf on the first column, \\clmrg on the ones
+   * it covers, each still with its \\cellx. */
+  for (int c = 0; c < n_cols; c++)
+    owner[c] = -1;
+  for (guint k = b; k < blocks->len; k++)
+    {
+      W42BlockCell rc;
+      int col0, span;
+
+      if (!row_cell (blocks, k, level, cell.table, cell.row, &rc))
+        break;
+      col0 = CLAMP (rc.col, 0, n_cols - 1);
+      span = CLAMP (rc.span, 1, n_cols - col0);
+      for (int c = col0; c < col0 + span; c++)
+        owner[c] = col0;
+      if (span > 1)
+        owner[col0] = -2 - col0;   /* marks the first of a merge */
+    }
+
+  g_string_append (out, "\\trowd\\trgaph80");
+  {
+    int least = w42_pt_table_get_row_height (pt, cell.table, cell.row);
+
+    if (least > 0)
+      g_string_append_printf (out, "\\trrh%d", least);
+    if (props != NULL && cell.row < props->header_rows)
+      g_string_append (out, "\\trhdr");
+    /* The table's own lines, for readers that look at the row
+     * rather than the cells. */
+    if (props != NULL && props->borders)
+      {
+        static const char *words[W42_N_EDGES] = { "\\trbrdrt", "\\trbrdrb", "\\trbrdrl",
+                                                  "\\trbrdrr", "\\trbrdrh", "\\trbrdrv" };
+
+        for (int e = 0; e < W42_N_EDGES; e++)
+          {
+            g_string_append (out, words[e]);
+            write_border_line (out, tables, &props->edge[e]);
+          }
+      }
+  }
+  for (int c = 0; c < n_cols; c++)
+    {
+      int w = (props != NULL && c < (int) props->widths->len)
+                ? g_array_index (props->widths, int, c) : 0;
+      /* No column is wider than Word's widest page, which also
+       * keeps the running edge inside an int over 1023 of them. */
+      edge += (w > 0) ? MIN (w, 31680) : room / n_cols;
+      {
+        /* The owning cell's own sides, or the table's setting. */
+        int sides = (props != NULL && !props->borders) ? 0 : W42_BORDER_BOX;
+        const W42Fmt *fill = NULL;
+        static const char letters[4] = { 't', 'b', 'l', 'r' };
+        int oc = owner[c] <= -2 ? -2 - owner[c] : owner[c] >= 0 ? owner[c] : c;
+        W42BorderEdge edges[4];
+        gboolean first_row = cell.row == 0, last_row = TRUE;
+
+        for (guint k = b; k < blocks->len; k++)
+          {
+            W42BlockCell rc;
+
+            if (!w42_block_cell (g_ptr_array_index (blocks, k), level, &rc) ||
+                rc.table != cell.table)
+              break;
+            if (rc.row > cell.row)
+              {
+                last_row = FALSE;
+                break;
+              }
+          }
+        for (int k = 0; k < 4; k++)
+          {
+            gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                             (k == W42_EDGE_LEFT && oc == 0) || (k == W42_EDGE_RIGHT && c + 1 >= n_cols);
+
+            edges[k] = props != NULL ? props->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)]
+                                     : (W42BorderEdge) { 0, 0, 0 };
+          }
+        for (guint k = b; k < blocks->len; k++)
+          {
+            W42BlockCell rc;
+            const W42ParaFmt *cpa;
+
+            if (!row_cell (blocks, k, level, cell.table, cell.row, &rc))
+              break;
+            if (rc.col != oc)
+              continue;
+            cpa = &w42_ap_table_get (aps, rc.cell_ap)->pa;
+            if (cpa->border & W42_BORDER_CELL_SET)
+              {
+                sides = cpa->border & W42_BORDER_BOX;
+                for (int k2 = 0; k2 < 4; k2++)
+                  if (cpa->edge[k2].width != 0 || cpa->edge[k2].style != 0 || cpa->edge[k2].color != 0)
+                    edges[k2] = cpa->edge[k2];
+              }
+            fill = w42_ap_table_get (aps, rc.cell_ap);
+            break;
+          }
+        for (int k = 0; k < 4; k++)
+          {
+            g_string_append_printf (out, "\\clbrdr%c", letters[k]);
+            if (sides & (1 << k))
+              write_border_line (out, tables, &edges[k]);
+            else
+              g_string_append (out, "\\brdrnone");
+          }
+        if (fill != NULL && fill->pa.has_shading_color)
+          g_string_append_printf (out, "\\clcbpat%u",
+                                  table_intern_colour (tables,
+                                    fill->pa.shading_color) + 1);
+        else if (fill != NULL && fill->pa.shading > 0)
+          g_string_append_printf (out, "\\clshdng%d", fill->pa.shading * 100);
+        if (fill != NULL && fill->pa.cell_valign == W42_CELL_VALIGN_CENTER)
+          g_string_append (out, "\\clvertalc");
+        else if (fill != NULL && fill->pa.cell_valign == W42_CELL_VALIGN_BOTTOM)
+          g_string_append (out, "\\clvertalb");
+      }
+      if (owner[c] <= -2)
+        g_string_append (out, "\\clmgf");
+      else if (owner[c] >= 0 && owner[c] != c)
+        g_string_append (out, "\\clmrg");
+      {
+        /* And the merge downwards, if there is one: \\clvmgf on
+         * the cell it starts in, \\clvmrg on the ones it covers. */
+        const W42ParaFmt *cpa = NULL;
+
+        for (guint k = b; k < blocks->len; k++)
+          {
+            W42BlockCell rc;
+
+            if (!row_cell (blocks, k, level, cell.table, cell.row, &rc))
+              break;
+            if (rc.col != c)
+              continue;
+            cpa = &w42_ap_table_get (aps, rc.cell_ap)->pa;
+            break;
+          }
+        if (cpa != NULL && cpa->cell_vspan == W42_CELL_COVERED)
+          g_string_append (out, "\\clvmrg");
+        else if (cpa != NULL && cpa->cell_vspan > 1)
+          g_string_append (out, "\\clvmgf");
+      }
+      g_string_append_printf (out, "\\cellx%d", edge);
+    }
+  g_string_append_c (out, '\n');
+  g_free (owner);
+}
+
+/* Whether `a` is in the same row of the table at nesting level `level`
+ * as `block` is -- and with `cell`, in the same cell of it. */
+static gboolean
+rtf_same_place (const W42Block *a, const W42Block *block, int level, gboolean cell)
+{
+  W42BlockCell ca, cb;
+
+  if (a == NULL || a->note >= 0 ||
+      !w42_block_cell (a, level, &ca) || !w42_block_cell (block, level, &cb))
+    return FALSE;
+  return ca.table == cb.table && ca.row == cb.row && (!cell || ca.col == cb.col);
+}
+
 gboolean
 w42_rtf_save (W42PieceTable      *pt,
               const W42PageSetup *page,
@@ -1047,6 +1265,8 @@ w42_rtf_save (W42PieceTable      *pt,
   int level_n[9] = { 0 };
   W42ListKind level_kind[9] = { W42_LIST_NONE };
   RtfRuns rw = { pt, aps, blocks, styles, &tables, 0 };
+  int text_w = page != NULL ? page->width - page->margin_left - page->margin_right : 9360;
+  guint row_first[W42_TABLE_MAX_DEPTH] = { 0 };
 
   for (guint b = 0; b < blocks->len; b++)
     {
@@ -1059,172 +1279,27 @@ w42_rtf_save (W42PieceTable      *pt,
         continue;         /* written inside {\\footnote} at its reference */
       const W42Block *prev = (b > 0) ? g_ptr_array_index (blocks, b - 1) : NULL;
       const W42Block *next = (b + 1 < blocks->len) ? g_ptr_array_index (blocks, b + 1) : NULL;
-      gboolean in_table = block->table >= 0;
-      gboolean row_start = in_table && (prev == NULL || prev->table != block->table ||
-                                        prev->row != block->row);
-      gboolean cell_end = in_table && (next == NULL || next->table != block->table ||
-                                       next->row != block->row || next->col != block->col);
-      gboolean row_end = in_table && (next == NULL || next->table != block->table ||
-                                      next->row != block->row);
+      int level = block->depth - 1;           /* the innermost table's */
+      gboolean in_table = block->depth > 0;
+      gboolean row_start = in_table && !rtf_same_place (prev, block, 0, FALSE);
+      gboolean cell_end = in_table && !rtf_same_place (next, block, level, TRUE);
+      gboolean row_end = in_table && !rtf_same_place (next, block, level, FALSE);
+
+      /* Where each row the paragraph is in began: a table in a cell
+       * gives its row's definition when the row ends. */
+      for (int l = 0; l < block->depth && l < W42_TABLE_MAX_DEPTH; l++)
+        if (!rtf_same_place (prev, block, l, FALSE))
+          row_first[l] = b;
 
       /* A row opens with its definition: the right edge of every cell in
        * twips from the left margin, which is how RTF says how wide the
        * columns are. */
+      /* A row of the table in the text opens with its definition: the
+       * right edge of every cell in twips from the left margin, which is
+       * how RTF says how wide the columns are.  A table in a cell gives
+       * its rows' definitions at their ends, as Word writes them. */
       if (row_start)
-        {
-          const W42TableProps *props = w42_pt_table_props (pt, block->table);
-          int n_cols = props != NULL ? props->n_cols : 1;
-          int text_w = page != NULL ? page->width - page->margin_left - page->margin_right : 9360;
-          int edge = 0;
-
-          int *owner = g_new (int, n_cols);
-
-          /* Merged cells: \clmgf on the first column, \clmrg on the ones
-           * it covers, each still with its \cellx. */
-          for (int c = 0; c < n_cols; c++)
-            owner[c] = -1;
-          for (guint k = b; k < blocks->len; k++)
-            {
-              const W42Block *rb = g_ptr_array_index (blocks, k);
-              int col0, span;
-
-              if (rb->table != block->table || rb->row != block->row)
-                break;
-              col0 = CLAMP (rb->col, 0, n_cols - 1);
-              span = CLAMP (rb->span, 1, n_cols - col0);
-              for (int c = col0; c < col0 + span; c++)
-                owner[c] = col0;
-              if (span > 1)
-                owner[col0] = -2 - col0;   /* marks the first of a merge */
-            }
-
-          g_string_append (out, "\\trowd\\trgaph80");
-          {
-            int least = w42_pt_table_get_row_height (pt, block->table, block->row);
-
-            if (least > 0)
-              g_string_append_printf (out, "\\trrh%d", least);
-            if (props != NULL && block->row < props->header_rows)
-              g_string_append (out, "\\trhdr");
-            /* The table's own lines, for readers that look at the row
-             * rather than the cells. */
-            if (props != NULL && props->borders)
-              {
-                static const char *words[W42_N_EDGES] = { "\\trbrdrt", "\\trbrdrb", "\\trbrdrl",
-                                                          "\\trbrdrr", "\\trbrdrh", "\\trbrdrv" };
-
-                for (int e = 0; e < W42_N_EDGES; e++)
-                  {
-                    g_string_append (out, words[e]);
-                    write_border_line (out, &tables, &props->edge[e]);
-                  }
-              }
-          }
-          for (int c = 0; c < n_cols; c++)
-            {
-              int w = (props != NULL && c < (int) props->widths->len)
-                        ? g_array_index (props->widths, int, c) : 0;
-              /* No column is wider than Word's widest page, which also
-               * keeps the running edge inside an int over 1023 of them. */
-              edge += (w > 0) ? MIN (w, 31680) : text_w / n_cols;
-              {
-                /* The owning cell's own sides, or the table's setting. */
-                int sides = (props != NULL && !props->borders) ? 0 : W42_BORDER_BOX;
-                const W42Fmt *fill = NULL;
-                static const char letters[4] = { 't', 'b', 'l', 'r' };
-                int oc = owner[c] <= -2 ? -2 - owner[c] : owner[c] >= 0 ? owner[c] : c;
-                W42BorderEdge edges[4];
-                gboolean first_row = block->row == 0, last_row = TRUE;
-
-                for (guint k = b; k < blocks->len; k++)
-                  {
-                    const W42Block *rb = g_ptr_array_index (blocks, k);
-
-                    if (rb->table != block->table)
-                      break;
-                    if (rb->row > block->row)
-                      {
-                        last_row = FALSE;
-                        break;
-                      }
-                  }
-                for (int k = 0; k < 4; k++)
-                  {
-                    gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
-                                     (k == W42_EDGE_LEFT && oc == 0) || (k == W42_EDGE_RIGHT && c + 1 >= n_cols);
-
-                    edges[k] = props != NULL ? props->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)]
-                                             : (W42BorderEdge) { 0, 0, 0 };
-                  }
-                for (guint k = b; k < blocks->len; k++)
-                  {
-                    const W42Block *rb = g_ptr_array_index (blocks, k);
-                    const W42ParaFmt *cpa;
-
-                    if (rb->table != block->table || rb->row != block->row)
-                      break;
-                    if (rb->col != oc)
-                      continue;
-                    cpa = &w42_ap_table_get (aps, rb->cell_ap)->pa;
-                    if (cpa->border & W42_BORDER_CELL_SET)
-                      {
-                        sides = cpa->border & W42_BORDER_BOX;
-                        for (int k2 = 0; k2 < 4; k2++)
-                          if (cpa->edge[k2].width != 0 || cpa->edge[k2].style != 0 || cpa->edge[k2].color != 0)
-                            edges[k2] = cpa->edge[k2];
-                      }
-                    fill = w42_ap_table_get (aps, rb->cell_ap);
-                    break;
-                  }
-                for (int k = 0; k < 4; k++)
-                  {
-                    g_string_append_printf (out, "\\clbrdr%c", letters[k]);
-                    if (sides & (1 << k))
-                      write_border_line (out, &tables, &edges[k]);
-                    else
-                      g_string_append (out, "\\brdrnone");
-                  }
-                if (fill != NULL && fill->pa.has_shading_color)
-                  g_string_append_printf (out, "\\clcbpat%u",
-                                          table_intern_colour (&tables,
-                                            fill->pa.shading_color) + 1);
-                else if (fill != NULL && fill->pa.shading > 0)
-                  g_string_append_printf (out, "\\clshdng%d", fill->pa.shading * 100);
-                if (fill != NULL && fill->pa.cell_valign == W42_CELL_VALIGN_CENTER)
-                  g_string_append (out, "\\clvertalc");
-                else if (fill != NULL && fill->pa.cell_valign == W42_CELL_VALIGN_BOTTOM)
-                  g_string_append (out, "\\clvertalb");
-              }
-              if (owner[c] <= -2)
-                g_string_append (out, "\\clmgf");
-              else if (owner[c] >= 0 && owner[c] != c)
-                g_string_append (out, "\\clmrg");
-              {
-                /* And the merge downwards, if there is one: \\clvmgf on
-                 * the cell it starts in, \\clvmrg on the ones it covers. */
-                const W42ParaFmt *cpa = NULL;
-
-                for (guint k = b; k < blocks->len; k++)
-                  {
-                    const W42Block *rb = g_ptr_array_index (blocks, k);
-
-                    if (rb->table != block->table || rb->row != block->row)
-                      break;
-                    if (rb->col != c)
-                      continue;
-                    cpa = &w42_ap_table_get (aps, rb->cell_ap)->pa;
-                    break;
-                  }
-                if (cpa != NULL && cpa->cell_vspan == W42_CELL_COVERED)
-                  g_string_append (out, "\\clvmrg");
-                else if (cpa != NULL && cpa->cell_vspan > 1)
-                  g_string_append (out, "\\clvmgf");
-              }
-              g_string_append_printf (out, "\\cellx%d", edge);
-            }
-          g_string_append_c (out, '\n');
-          g_free (owner);
-        }
+        write_row_def (out, pt, aps, blocks, b, 0, text_w, &tables);
 
       /* A section break: Word's \sect ends the section, \sectd starts
        * the next with its own columns. */
@@ -1235,6 +1310,8 @@ w42_rtf_save (W42PieceTable      *pt,
       write_para_props (out, &para->pa, styles, &tables);
       if (in_table)
         g_string_append (out, "\\intbl");
+      if (block->depth > 1)
+        g_string_append_printf (out, "\\itap%d", block->depth);
 
       /* Lists as a \pn group that says what kind of list the paragraph is
        * in, which every reader of RTF understands, and a \pntext group holding the marker
@@ -1309,7 +1386,14 @@ w42_rtf_save (W42PieceTable      *pt,
 
       write_block_runs (out, &rw, block, over_ch);
 
-      if (cell_end)
+      if (cell_end && level > 0)
+        {
+          /* A cell of a table in a cell. */
+          g_string_append (out, "\\nestcell\n");
+          for (int extra = 1; extra < block->span; extra++)
+            g_string_append_printf (out, "\\pard\\intbl\\itap%d\\nestcell\n", block->depth);
+        }
+      else if (cell_end)
         {
           g_string_append (out, "\\cell\n");
           /* The columns a merged cell covers still need their empty
@@ -1320,7 +1404,16 @@ w42_rtf_save (W42PieceTable      *pt,
       else
         g_string_append (out, "\\par\n");
 
-      if (row_end)
+      if (row_end && level > 0)
+        {
+          /* The row of a table in a cell ends with its definition, and a
+           * paragraph mark for readers that have no tables in cells. */
+          g_string_append (out, "{\\*\\nesttableprops");
+          write_row_def (out, pt, aps, blocks, row_first[MIN (level, W42_TABLE_MAX_DEPTH - 1)],
+                         level, text_w, &tables);
+          g_string_append (out, "\\nestrow}{\\nonesttables\\par}\n");
+        }
+      else if (row_end)
         g_string_append (out, "\\row\n");
     }
 
@@ -1355,6 +1448,8 @@ typedef struct {
   gboolean   pnnum;     /* the \pn group named a number format, so its
                          * \pntxtb is a prefix like "(" and not a bullet */
   gboolean   intbl;     /* the paragraph is a table cell's */
+  int        itap;      /* \itap: how many tables it is in, when it is
+                         * in a table in a cell; 0 when not said */
   gboolean   align_said; /* the paragraph named its alignment since \pard */
   guint8     tab_kind;  /* \\tqr and friends, for the \\tx that follows */
   guint8     tab_leader; /* \\tldot and friends, likewise */
@@ -1397,11 +1492,48 @@ rtf_border_style (const char *word)
   return -1;
 }
 
+/* A row's definition, as \trowd starts it and the \cellx words build it:
+ * set aside while the definition of a row of a table in a cell is read,
+ * which Word writes in a \nesttableprops group at the end of that row,
+ * in the middle of a row of the table round it. */
+typedef struct {
+  GArray        *cellx, *clflags, *clvflags, *clsides, *clfills, *clfilled;
+  GArray        *cledges, *clshdng, *clvalign;
+  int            clpending, clvpending, clsides_pending;
+  gboolean       clsides_named;
+  W42BorderEdge  cledge_pending[4];
+  RtfRowBorders  trbrdr;
+  gboolean       row_border, cell_border;
+  int            row_side, clshdng_pending, clvalign_pending;
+  int            trleft, trrh;
+  gboolean       trhdr;
+  guint32        clfill_pending;
+  gboolean       clfilled_pending;
+  gboolean       no_borders;
+} RtfRowDef;
+
+/* A table in a cell of the table being read, or in a cell of one in it.
+ * Its rows' definitions come after their cells, so its cells are made as
+ * the text reaches them and given their places and looks as each row
+ * ends. */
+typedef struct {
+  int       table;
+  int       row, col;
+  int       n_cols;         /* the most cells a row has had */
+  gboolean  in_cell;
+  gboolean  before_block;   /* it went in ahead of an empty paragraph,
+                             * which is the one that follows it */
+  gsize     last_cell_pos;
+  GArray   *row_cells;      /* gsize: the CELL marks of its row so far */
+  GArray   *grid;           /* int: its column edges, from its first row */
+} RtfNested;
+
 /* W42_BORDER_TOP -> W42_EDGE_TOP, and so on. */
 typedef struct _RtfReader RtfReader;
 static gboolean rtf_border_line (const char *word, int param, gboolean has_param,
                                  RtfReader *r, W42BorderEdge *edge);
 static int      rtf_grid_column (RtfReader *r, int edge);
+static int      grid_column (GArray *grid, int edge);
 
 static int
 rtf_edge_index (int side_bit)
@@ -1513,6 +1645,10 @@ struct _RtfReader {
   GArray        *clvflags;       /* int, per \cellx */
   gsize          last_cell_pos;  /* the CELL mark most recently made */
   int            last_cell_span;
+  RtfNested      nested[W42_TABLE_MAX_DEPTH - 1];  /* the tables in its cells */
+  int            n_nested;
+  RtfRowDef      outer_row;      /* the row definition set aside */
+  guint          nestprops_depth; /* the group depth of \nesttableprops, or 0 */
 
   /* Collecting a header or footer, and the fields inside it. */
   guint          hf_depth;
@@ -1641,7 +1777,7 @@ flush_text (RtfReader *r)
  * table must be closed.  Both happen here, so that the paragraph marks come
  * out in the right order without the reader having to look ahead. */
 static void
-table_sync (RtfReader *r)
+table_sync_top (RtfReader *r)
 {
   if (r->state.intbl && !r->in_cell)
     {
@@ -1799,6 +1935,238 @@ table_sync (RtfReader *r)
       r->in_cell = FALSE;
       r->table_before_block = FALSE;
     }
+}
+
+/* The row definition read so far goes aside, and a fresh one is read in
+ * its place; restoring it puts it back. */
+static void
+rtf_row_def_save (RtfReader *r, RtfRowDef *d)
+{
+  d->cellx = r->cellx; d->clflags = r->clflags; d->clvflags = r->clvflags;
+  d->clsides = r->clsides; d->clfills = r->clfills; d->clfilled = r->clfilled;
+  d->cledges = r->cledges; d->clshdng = r->clshdng; d->clvalign = r->clvalign;
+  d->clpending = r->clpending; d->clvpending = r->clvpending;
+  d->clsides_pending = r->clsides_pending; d->clsides_named = r->clsides_named;
+  memcpy (d->cledge_pending, r->cledge_pending, sizeof d->cledge_pending);
+  d->trbrdr = r->trbrdr; d->row_border = r->row_border; d->cell_border = r->cell_border;
+  d->row_side = r->row_side; d->clshdng_pending = r->clshdng_pending;
+  d->clvalign_pending = r->clvalign_pending; d->trleft = r->trleft; d->trrh = r->trrh;
+  d->trhdr = r->trhdr; d->clfill_pending = r->clfill_pending;
+  d->clfilled_pending = r->clfilled_pending; d->no_borders = r->no_borders;
+
+  r->cellx = g_array_new (FALSE, FALSE, sizeof (int));
+  r->clflags = g_array_new (FALSE, FALSE, sizeof (int));
+  r->clvflags = g_array_new (FALSE, FALSE, sizeof (int));
+  r->clsides = g_array_new (FALSE, FALSE, sizeof (int));
+  r->clfills = g_array_new (FALSE, FALSE, sizeof (guint32));
+  r->clfilled = g_array_new (FALSE, FALSE, sizeof (int));
+  r->cledges = g_array_new (FALSE, TRUE, sizeof (W42BorderEdge));
+  r->clshdng = g_array_new (FALSE, FALSE, sizeof (int));
+  r->clvalign = g_array_new (FALSE, FALSE, sizeof (int));
+}
+
+static void
+rtf_row_def_restore (RtfReader *r, const RtfRowDef *d)
+{
+  g_array_free (r->cellx, TRUE); g_array_free (r->clflags, TRUE);
+  g_array_free (r->clvflags, TRUE); g_array_free (r->clsides, TRUE);
+  g_array_free (r->clfills, TRUE); g_array_free (r->clfilled, TRUE);
+  g_array_free (r->cledges, TRUE); g_array_free (r->clshdng, TRUE);
+  g_array_free (r->clvalign, TRUE);
+
+  r->cellx = d->cellx; r->clflags = d->clflags; r->clvflags = d->clvflags;
+  r->clsides = d->clsides; r->clfills = d->clfills; r->clfilled = d->clfilled;
+  r->cledges = d->cledges; r->clshdng = d->clshdng; r->clvalign = d->clvalign;
+  r->clpending = d->clpending; r->clvpending = d->clvpending;
+  r->clsides_pending = d->clsides_pending; r->clsides_named = d->clsides_named;
+  memcpy (r->cledge_pending, d->cledge_pending, sizeof r->cledge_pending);
+  r->trbrdr = d->trbrdr; r->row_border = d->row_border; r->cell_border = d->cell_border;
+  r->row_side = d->row_side; r->clshdng_pending = d->clshdng_pending;
+  r->clvalign_pending = d->clvalign_pending; r->trleft = d->trleft; r->trrh = d->trrh;
+  r->trhdr = d->trhdr; r->clfill_pending = d->clfill_pending;
+  r->clfilled_pending = d->clfilled_pending; r->no_borders = d->no_borders;
+}
+
+/* A table begins in the cell the text is in: after the paragraph the
+ * cell is at, or, when that is an empty one a \\par has just opened, in
+ * front of it, the paragraph then following the table -- as a table in
+ * the text goes in ahead of the empty paragraph before it. */
+static void
+rtf_nested_begin (RtfReader *r)
+{
+  RtfNested *n = &r->nested[r->n_nested];
+  gsize cell_mark = r->n_nested == 0 ? r->last_cell_pos
+                                     : r->nested[r->n_nested - 1].last_cell_pos;
+
+  flush_text (r);
+  n->before_block = r->pos >= 1 && r->pos != cell_mark + 2 &&
+                    w42_pt_is_block_mark (r->pt, r->pos - 1);
+  if (n->before_block)
+    r->pos -= 1;
+  n->table = w42_pt_insert_table_start (r->pt, r->pos, 1, NULL);
+  /* Every cell says which of its sides are ruled, as in the text's. */
+  w42_pt_table_set_borders (r->pt, n->table, FALSE);
+  r->pos += 1;
+  n->row = 0;
+  n->col = 0;
+  n->n_cols = 1;
+  n->in_cell = FALSE;
+  n->last_cell_pos = (gsize) -1;
+  if (n->row_cells == NULL)
+    n->row_cells = g_array_new (FALSE, FALSE, sizeof (gsize));
+  if (n->grid == NULL)
+    n->grid = g_array_new (FALSE, FALSE, sizeof (int));
+  g_array_set_size (n->row_cells, 0);
+  g_array_set_size (n->grid, 0);
+  r->n_nested++;
+}
+
+/* The innermost table in a cell gets its next cell. */
+static void
+rtf_nested_cell_open (RtfReader *r)
+{
+  RtfNested *n = &r->nested[r->n_nested - 1];
+
+  flush_text (r);
+  n->in_cell = TRUE;
+  /* More cells than a row can have, or rows than the marks can hold:
+   * dropped, as the text's own table drops them. */
+  if (n->col > 1022 || n->row >= W42_TABLE_MAX_ROWS - 1)
+    return;
+  w42_pt_insert_cell (r->pt, r->pos, n->table, n->row, n->col, reader_ap (r));
+  n->last_cell_pos = r->pos;
+  g_array_append_val (n->row_cells, r->pos);
+  n->n_cols = MAX (n->n_cols, n->col + 1);
+  r->pos += 2;
+}
+
+/* The innermost table in a cell ends: the text goes on in the cell round
+ * it, in the paragraph that follows it. */
+static void
+rtf_nested_end (RtfReader *r)
+{
+  RtfNested *n = &r->nested[r->n_nested - 1];
+
+  flush_text (r);
+  /* A table whose rows never said how wide they are still has as many
+   * columns as its widest row. */
+  if (n->grid->len == 0 && n->n_cols > 1)
+    {
+      int *widths = g_new0 (int, n->n_cols);
+
+      w42_pt_table_set_widths (r->pt, n->table, widths, n->n_cols);
+      g_free (widths);
+    }
+  w42_pt_resolve_vmerges (r->pt, n->table);
+  if (n->before_block)
+    w42_pt_insert_table_end_only (r->pt, r->pos);
+  else
+    w42_pt_insert_table_end (r->pt, r->pos, reader_ap (r));
+  r->pos += 2;
+  r->n_nested--;
+}
+
+/* \\nestrow: the innermost table's row has ended, and the definition just
+ * read says what its cells are.  Its first row's cells say what the
+ * columns are, and every row's cells are laid over them. */
+static void
+rtf_nested_row_end (RtfReader *r)
+{
+  RtfNested *n;
+  int n_cols;
+
+  if (r->n_nested == 0)
+    return;
+  n = &r->nested[r->n_nested - 1];
+  flush_text (r);
+
+  if (n->grid->len == 0 && r->cellx->len > 0)
+    {
+      int count = (int) r->cellx->len;
+      int *widths = g_new0 (int, count);
+      int prev = r->trleft;
+
+      g_array_append_val (n->grid, prev);
+      for (int c = 0; c < count; c++)
+        {
+          int edge = g_array_index (r->cellx, int, c);
+
+          widths[c] = CLAMP (edge - prev, 0, 31680);
+          prev = edge;
+          g_array_append_val (n->grid, edge);
+        }
+      w42_pt_table_set_widths (r->pt, n->table, widths, count);
+      g_free (widths);
+    }
+  n_cols = MAX ((int) n->grid->len - 1, 1);
+
+  for (guint k = 0; k < n->row_cells->len; k++)
+    {
+      gsize at = g_array_index (n->row_cells, gsize, k);
+      int c = (int) k;
+      int left = (c == 0 || c > (int) r->cellx->len) ? r->trleft
+               : g_array_index (r->cellx, int, c - 1);
+      int right = c < (int) r->cellx->len ? g_array_index (r->cellx, int, c) : left + 1440;
+      int c0 = n->grid->len > 0 ? grid_column (n->grid, left) : c;
+      int c1 = n->grid->len > 0 ? grid_column (n->grid, right) : c + 1;
+      int col = CLAMP (c0, 0, n_cols - 1);
+      int sides = c < (int) r->clsides->len ? g_array_index (r->clsides, int, c) : W42_BORDER_BOX;
+
+      w42_pt_set_cell_place (r->pt, at, n->row, col, CLAMP (c1 - c0, 1, n_cols - col));
+      w42_pt_cell_set_borders_at (r->pt, at, sides | W42_BORDER_CELL_SET);
+      if (4 * (guint) c + 4 <= r->cledges->len)
+        w42_pt_cell_set_edges_at (r->pt, at, &g_array_index (r->cledges, W42BorderEdge, 4 * c));
+      if (c < (int) r->clshdng->len && g_array_index (r->clshdng, int, c) > 0)
+        w42_pt_cell_set_shading_at (r->pt, at, g_array_index (r->clshdng, int, c));
+      if (c < (int) r->clvalign->len &&
+          g_array_index (r->clvalign, int, c) != W42_CELL_VALIGN_TOP)
+        w42_pt_cell_set_valign_at (r->pt, at, g_array_index (r->clvalign, int, c));
+      if (c < (int) r->clfilled->len && g_array_index (r->clfilled, int, c))
+        w42_pt_cell_set_fill_at (r->pt, at, TRUE, g_array_index (r->clfills, guint32, c));
+      if (c < (int) r->clvflags->len)
+        {
+          int flag = g_array_index (r->clvflags, int, c);
+
+          if (flag == 1)
+            w42_pt_set_cell_vspan (r->pt, at, 2);
+          else if (flag == 2)
+            w42_pt_set_cell_vspan (r->pt, at, W42_CELL_COVERED);
+        }
+    }
+  if (r->trrh > 0)
+    w42_pt_table_set_row_height (r->pt, n->table, n->row, r->trrh);
+  if (r->trhdr)
+    w42_pt_table_set_header_rows (r->pt, n->table, n->row + 1);
+
+  n->row++;
+  n->col = 0;
+  n->in_cell = FALSE;
+  g_array_set_size (n->row_cells, 0);
+}
+
+/* The tables the paragraph is in, as \\intbl and \\itap say, made so: the
+ * ones in cells it has come out of end, the table in the text and its
+ * cell open, and the ones in cells it has gone into begin. */
+static void
+table_sync (RtfReader *r)
+{
+  int want = r->state.intbl ? CLAMP (MAX (r->state.itap, 1), 1, W42_TABLE_MAX_DEPTH) : 0;
+
+  while (r->n_nested > 0 && r->n_nested + 1 > want)
+    rtf_nested_end (r);
+
+  table_sync_top (r);
+
+  if (want < 2 || r->table < 0 || !r->in_cell || r->last_cell_pos == (gsize) -1)
+    return;
+  while (r->n_nested + 1 < want)
+    {
+      if (r->n_nested > 0 && !r->nested[r->n_nested - 1].in_cell)
+        rtf_nested_cell_open (r);
+      rtf_nested_begin (r);
+    }
+  if (r->n_nested > 0 && !r->nested[r->n_nested - 1].in_cell)
+    rtf_nested_cell_open (r);
 }
 
 static void
@@ -1964,14 +2332,20 @@ end_paragraph (RtfReader *r)
 /* The grid column an edge falls on: the nearest, since rows do not
  * always agree to the twip. */
 static int
-rtf_grid_column (RtfReader *r, int edge)
+grid_column (GArray *grid, int edge)
 {
   int best = 0;
 
-  for (guint c = 0; c < r->grid->len; c++)
-    if (ABS (g_array_index (r->grid, int, c) - edge) < ABS (g_array_index (r->grid, int, best) - edge))
+  for (guint c = 0; c < grid->len; c++)
+    if (ABS (g_array_index (grid, int, c) - edge) < ABS (g_array_index (grid, int, best) - edge))
       best = (int) c;
   return best;
+}
+
+static int
+rtf_grid_column (RtfReader *r, int edge)
+{
+  return grid_column (r->grid, edge);
 }
 
 /* A colour from the file's colour table, or black. */
@@ -2756,11 +3130,66 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
       st->intbl = TRUE;
       return;
     }
+  if (g_str_equal (word, "itap") && has_param)
+    {
+      /* How deep in tables the paragraph is: 2 and more is a table in a
+       * cell, whose cells end in \nestcell and rows in \nestrow. */
+      st->itap = MAX (param, 0);
+      if (param > 0)
+        st->intbl = TRUE;
+      return;
+    }
+  if (g_str_equal (word, "nestcell"))
+    {
+      RtfNested *n;
+
+      st->intbl = TRUE;
+      st->itap = MAX (st->itap, 2);
+      /* A table deeper than tables go: its cells are paragraphs of the
+       * deepest cell there is. */
+      if (st->itap > W42_TABLE_MAX_DEPTH)
+        {
+          end_paragraph (r);
+          return;
+        }
+      table_sync (r);
+      if (r->n_nested == 0)
+        return;
+      n = &r->nested[r->n_nested - 1];
+      flush_text (r);
+      w42_pt_apply_para_fmt (r->pt, r->pos > 0 ? r->pos - 1 : 0, 0,
+                             PARA_MASK, &r->state.pa);
+      n->in_cell = FALSE;
+      n->col++;
+      st->pa.list = W42_LIST_NONE;
+      st->pa.list_start = 0;
+      return;
+    }
+  if (g_str_equal (word, "nestrow"))
+    {
+      if (st->itap <= W42_TABLE_MAX_DEPTH)
+        rtf_nested_row_end (r);
+      return;
+    }
+  if (g_str_equal (word, "nesttableprops"))
+    {
+      /* The definition of a row of a table in a cell, in the middle of
+       * the row of the table round it, whose definition is set aside
+       * until the group ends. */
+      if (r->nestprops_depth == 0)
+        {
+          rtf_row_def_save (r, &r->outer_row);
+          r->nestprops_depth = r->stack->len;
+        }
+      return;
+    }
   if (g_str_equal (word, "cell"))
     {
       /* The cell's text has gone in; the next \intbl paragraph opens the
-       * next cell.  An empty cell still needs its mark. */
+       * next cell.  An empty cell still needs its mark, and the tables
+       * in it end with it. */
       st->intbl = TRUE;
+      st->itap = MIN (st->itap, 1);
       table_sync (r);
       flush_text (r);
       w42_pt_apply_para_fmt (r->pt, r->pos > 0 ? r->pos - 1 : 0, 0,
@@ -2777,6 +3206,8 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     }
   if (g_str_equal (word, "row"))
     {
+      while (r->n_nested > 0)
+        rtf_nested_end (r);
       r->table_row++;
       r->table_col = 0;
       r->in_cell = FALSE;
@@ -2784,9 +3215,10 @@ apply_control (RtfReader *r, const char *word, gboolean has_param, int param)
     }
   if (g_str_equal (word, "pard"))
     {
-      /* \pard resets the paragraph, \intbl included; the table closes when
-       * text arrives without it. */
+      /* \pard resets the paragraph, \intbl and \itap included; the table
+       * closes when text arrives without it. */
       st->intbl = FALSE;
+      st->itap = 0;
     }
 
   /* Fields.  The instruction group is read so that a header can keep its
@@ -3908,7 +4340,7 @@ rtf_known_destination (const char *word)
     "footer", "footerl", "footerr", "footerf",
     "wfnumhead", "pn", "bkmkstart", "bkmkend",
     "atrfstart", "atrfend", "atnref", "annotation",
-    "ud", "wordpgnfrom", "wordpgnstart",
+    "ud", "wordpgnfrom", "wordpgnstart", "nesttableprops",
   };
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
@@ -3928,6 +4360,7 @@ is_ignorable_destination (const char *word)
     "picprop", "wpeqn", "wgrffmtfilter", "background",
     "themedata", "colorschememapping", "latentstyles", "datastore",
     "generator", "xmlnstbl", "rsidtbl", "mmathPr",
+    "nonesttables",           /* what a reader without tables in cells shows */
   };
 
   for (guint i = 0; i < G_N_ELEMENTS (names); i++)
@@ -4304,6 +4737,13 @@ w42_rtf_load (W42PieceTable *pt,
             {
               r.state = g_array_index (r.stack, RtfState, r.stack->len - 1);
               g_array_set_size (r.stack, r.stack->len - 1);
+            }
+          /* A table in a cell's row definition has been read: the row
+           * round it has its own back. */
+          if (r.nestprops_depth != 0 && r.stack->len < r.nestprops_depth)
+            {
+              rtf_row_def_restore (&r, &r.outer_row);
+              r.nestprops_depth = 0;
             }
 
           /* The table destinations end with the group that opened them. */
@@ -4709,6 +5149,15 @@ w42_rtf_load (W42PieceTable *pt,
   g_string_free (r.atn_ref, TRUE);
   g_hash_table_destroy (r.atrf);
   g_hash_table_destroy (r.atrf_end);
+  if (r.nestprops_depth != 0)
+    rtf_row_def_restore (&r, &r.outer_row);
+  for (int i = 0; i < W42_TABLE_MAX_DEPTH - 1; i++)
+    {
+      if (r.nested[i].row_cells != NULL)
+        g_array_free (r.nested[i].row_cells, TRUE);
+      if (r.nested[i].grid != NULL)
+        g_array_free (r.nested[i].grid, TRUE);
+    }
   g_array_free (r.cellx, TRUE);
   g_array_free (r.clflags, TRUE);
   g_array_free (r.clvflags, TRUE);

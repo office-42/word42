@@ -480,6 +480,210 @@ write_block_body (GString *out, W42PieceTable *pt, W42ApTable *aps,
     }
 }
 
+/* A table open while the body is written, at one level of the tables
+ * round the text: the table, and the row and the cell open in it. */
+typedef struct {
+  int       table;
+  int       row;            /* the row open, or -1 */
+  int       col;            /* the cell open, when one is */
+  gboolean  cell;
+  gboolean  covered;        /* the open cell is one a merge swallowed, and
+                             * neither it nor what it holds is written */
+} HtmlOpenTable;
+
+/* The start of a cell: its element, with its sides, background, spans
+ * and where its text sits. */
+static void
+html_cell_start (GString *out, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+                 guint b, int level, const W42BlockCell *cell)
+{
+  const W42ParaFmt *cpa = &w42_ap_table_get (aps, cell->cell_ap)->pa;
+  const W42TableProps *tp = w42_pt_table_props (pt, cell->table);
+  GString *css = g_string_new (NULL);
+  static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
+  int sides = (cpa->border & W42_BORDER_CELL_SET) ? (cpa->border & W42_BORDER_BOX)
+            : (tp == NULL || tp->borders) ? W42_BORDER_BOX : 0;
+  gboolean first_row = cell->row == 0, last_row = TRUE;
+  int n_cols = tp != NULL ? tp->n_cols : 1;
+
+  for (guint k = b + 1; k < blocks->len; k++)
+    {
+      W42BlockCell rc;
+
+      if (!w42_block_cell (g_ptr_array_index (blocks, k), level, &rc) || rc.table != cell->table)
+        break;
+      if (rc.row > cell->row)
+        {
+          last_row = FALSE;
+          break;
+        }
+    }
+  /* Each side's line: the cell's own, else the table's --
+   * its outer line round the outside, its inside rule
+   * between the cells. */
+  for (int k = 0; k < 4; k++)
+    {
+      gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                       (k == W42_EDGE_LEFT && cell->col == 0) ||
+                       (k == W42_EDGE_RIGHT && cell->col + cell->span >= n_cols);
+      const W42BorderEdge *e = &cpa->edge[k];
+      W42BorderEdge edge;
+      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+      if ((cpa->border & W42_BORDER_CELL_SET) && (e->width != 0 || e->style != 0 || e->color != 0))
+        edge = *e;
+      else if (tp != NULL)
+        edge = tp->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
+      else
+        edge = (W42BorderEdge) { 0, 0, 0 };
+      if (!(sides & (1 << k)) || edge.style == W42_BORDER_NONE)
+        g_string_append_printf (css, "%s:none;", names[k]);
+      else
+        g_string_append_printf (css, "%s:%spt %s #%06x;", names[k],
+                                g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edge) / 20.0),
+                                w42_border_style_css (edge.style), edge.color & 0xFFFFFF);
+    }
+  if (cpa->has_shading_color)
+    g_string_append_printf (css, "background:#%06x;", cpa->shading_color & 0xFFFFFF);
+  else if (cpa->shading > 0)
+    {
+      int grey = 255 - (int) MIN (cpa->shading, 100) * 255 / 100;
+
+      g_string_append_printf (css, "background:rgb(%d,%d,%d);", grey, grey, grey);
+    }
+  if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
+    g_string_append (css, "vertical-align:middle;");
+  else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+    g_string_append (css, "vertical-align:bottom;");
+  g_string_append (out, "<td");
+  if (cell->span > 1)
+    g_string_append_printf (out, " colspan=\"%d\"", cell->span);
+  if (cpa->cell_vspan > 1 && cpa->cell_vspan != W42_CELL_COVERED)
+    {
+      /* No further than the table goes, whatever the mark
+       * says: a browser would make rows for the rest. */
+      int rows = w42_pt_table_rows (pt, cell->table) - cell->row;
+      int vspan = MIN ((int) cpa->cell_vspan, MAX (rows, 1));
+
+      if (vspan > 1)
+        g_string_append_printf (out, " rowspan=\"%d\"", vspan);
+    }
+  if (css->len > 0)
+    g_string_append_printf (out, " style=\"%s\"", css->str);
+  g_string_append (out, ">");
+  g_string_free (css, TRUE);
+}
+
+/* Begins what block `b` is in and is not open yet: from the outermost
+ * table in, each level's table, its row and its cell.  FALSE when the
+ * block is in a cell a merge swallowed, and is not to be written. */
+static gboolean
+html_tables_open (GString *out, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+                  guint b, HtmlOpenTable *open, int *open_depth)
+{
+  const W42Block *block = g_ptr_array_index (blocks, b);
+
+  for (int level = 0; level < block->depth; level++)
+    {
+      HtmlOpenTable *ot = &open[level];
+      W42BlockCell cell;
+
+      if (!w42_block_cell (block, level, &cell))
+        break;
+      if (level >= *open_depth)
+        {
+          const W42TableProps *tp = w42_pt_table_props (pt, cell.table);
+
+          g_string_append_printf (out, "<table%s>\n",
+                                  (tp == NULL || tp->borders) ? " class=\"ruled\"" : "");
+          if (tp != NULL && tp->widths != NULL)
+            {
+              g_string_append (out, "<colgroup>");
+              for (int c = 0; c < tp->n_cols && c < (int) tp->widths->len; c++)
+                {
+                  int cw = g_array_index (tp->widths, int, c);
+
+                  if (cw > 0)
+                    {
+                      char buf[G_ASCII_DTOSTR_BUF_SIZE];
+
+                      g_string_append_printf (out, "<col style=\"width:%sin\">",
+                                              g_ascii_formatd (buf, sizeof buf, "%.5f", cw / 1440.0));
+                    }
+                  else
+                    g_string_append (out, "<col>");
+                }
+              g_string_append (out, "</colgroup>\n");
+            }
+          ot->table = cell.table;
+          ot->row = -1;
+          ot->cell = FALSE;
+          ot->covered = FALSE;
+          *open_depth = level + 1;
+        }
+      if (ot->row != cell.row)
+        {
+          g_string_append (out, "<tr>");
+          ot->row = cell.row;
+        }
+      if (!ot->cell)
+        {
+          ot->covered = w42_ap_table_get (aps, cell.cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
+          if (!ot->covered)
+            html_cell_start (out, pt, aps, blocks, b, level, &cell);
+          ot->cell = TRUE;
+          ot->col = cell.col;
+        }
+      if (ot->covered)
+        return FALSE;
+    }
+  return TRUE;
+}
+
+/* Ends what the paragraph after the one just written is not in: the
+ * cells, rows and tables open, from the innermost out.  `next` may be
+ * NULL. */
+static void
+html_tables_close (GString *out, const W42Block *next, HtmlOpenTable *open, int *open_depth)
+{
+  int next_depth = next != NULL && next->note < 0 ? next->depth : 0;
+  int keep = 0;
+
+  /* The levels the next paragraph is in the same cell at. */
+  while (keep < *open_depth && keep < next_depth)
+    {
+      W42BlockCell c;
+
+      w42_block_cell (next, keep, &c);
+      if (c.table != open[keep].table || c.row != open[keep].row || c.col != open[keep].col)
+        break;
+      keep++;
+    }
+
+  for (int level = *open_depth - 1; level >= keep; level--)
+    {
+      HtmlOpenTable *ot = &open[level];
+      W42BlockCell c;
+
+      if (ot->cell && !ot->covered)
+        g_string_append (out, "</td>");
+      ot->cell = FALSE;
+      ot->covered = FALSE;
+      if (level < next_depth && w42_block_cell (next, level, &c) && c.table == ot->table)
+        {
+          /* Another cell of this table: its row may go on. */
+          if (c.row != ot->row)
+            {
+              g_string_append (out, "</tr>\n");
+              ot->row = -1;
+            }
+          break;
+        }
+      g_string_append (out, "</tr>\n</table>\n");
+      *open_depth = level;
+    }
+}
+
 gboolean
 w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError **error)
 {
@@ -488,11 +692,11 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
   W42ApTable *aps;
   W42StyleSheet *styles;
   W42Fmt base;
-  const W42ParaFmt *prev_pa = NULL;
   int list_stack[9];
   gboolean li_open[9] = { FALSE };  /* the list at that depth has an item open */
   int list_depth = 0;
-  int table_open = -1, row_open = -1;
+  HtmlOpenTable open[W42_TABLE_MAX_DEPTH];
+  int open_depth = 0;               /* the tables open, round one another */
   GHashTable *bookmarks = g_hash_table_new (g_direct_hash, g_direct_equal);
   gboolean ok;
   char *title;
@@ -699,156 +903,24 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
           }
       }
 
-      /* Tables: open and close rows and the table around the cells. */
-      if (block->table >= 0 && block->table != table_open)
-        {
-          const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-
-          g_string_append_printf (out, "<table%s>\n",
-                                  (tp == NULL || tp->borders) ? " class=\"ruled\"" : "");
-          if (tp != NULL && tp->widths != NULL)
-            {
-              g_string_append (out, "<colgroup>");
-              for (int c = 0; c < tp->n_cols && c < (int) tp->widths->len; c++)
-                {
-                  int cw = g_array_index (tp->widths, int, c);
-
-                  if (cw > 0)
-                    {
-                      char buf[G_ASCII_DTOSTR_BUF_SIZE];
-
-                      g_string_append_printf (out, "<col style=\"width:%sin\">",
-                                              g_ascii_formatd (buf, sizeof buf, "%.5f", cw / 1440.0));
-                    }
-                  else
-                    g_string_append (out, "<col>");
-                }
-              g_string_append (out, "</colgroup>\n");
-            }
-          table_open = block->table;
-          row_open = -1;
-        }
-      if (block->table >= 0 && block->row != row_open)
-        {
-          if (row_open >= 0)
-            g_string_append (out, "</tr>\n");
-          g_string_append (out, "<tr>");
-          row_open = block->row;
-        }
-
+      /* Tables: the cells the paragraph is in, a table in a cell a level
+       * deeper, begun as far as they are not open already, and ended as
+       * far as the next paragraph is not in them.  A cell a merge from
+       * above swallowed is not written, and nor is anything in it: the
+       * merging cell's rowspan stands for it. */
       if (block->table >= 0)
         {
-          gboolean cell_start = prev_pa == NULL || b == 0 ||
-            ((const W42Block *) g_ptr_array_index (blocks, b - 1))->table != block->table ||
-            ((const W42Block *) g_ptr_array_index (blocks, b - 1))->row != block->row ||
-            ((const W42Block *) g_ptr_array_index (blocks, b - 1))->col != block->col;
-          gboolean cell_end = next == NULL || next->table != block->table ||
-            next->row != block->row || next->col != block->col;
-          gboolean cell_covered = w42_ap_table_get (aps, block->cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
-
-          if (cell_start && cell_covered)
+          if (html_tables_open (out, pt, aps, blocks, b, open, &open_depth))
             {
-              /* A cell a merge from above swallowed: the merging cell's
-               * rowspan stands for it, so it is not written. */
-            }
-          else if (cell_start)
-            {
-              const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
-              const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-              GString *css = g_string_new (NULL);
-              static const char *names[4] = { "border-top", "border-bottom", "border-left", "border-right" };
-              int sides = (cpa->border & W42_BORDER_CELL_SET) ? (cpa->border & W42_BORDER_BOX)
-                        : (tp == NULL || tp->borders) ? W42_BORDER_BOX : 0;
-              gboolean first_row = block->row == 0, last_row = TRUE;
-              int n_cols = tp != NULL ? tp->n_cols : 1;
-
-              for (guint k = b + 1; k < blocks->len; k++)
-                {
-                  const W42Block *rb = g_ptr_array_index (blocks, k);
-
-                  if (rb->table != block->table)
-                    break;
-                  if (rb->row > block->row)
-                    {
-                      last_row = FALSE;
-                      break;
-                    }
-                }
-              /* Each side's line: the cell's own, else the table's --
-               * its outer line round the outside, its inside rule
-               * between the cells. */
-              for (int k = 0; k < 4; k++)
-                {
-                  gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
-                                   (k == W42_EDGE_LEFT && block->col == 0) ||
-                                   (k == W42_EDGE_RIGHT && block->col + block->span >= n_cols);
-                  const W42BorderEdge *e = &cpa->edge[k];
-                  W42BorderEdge edge;
-                  char buf[G_ASCII_DTOSTR_BUF_SIZE];
-
-                  if ((cpa->border & W42_BORDER_CELL_SET) && (e->width != 0 || e->style != 0 || e->color != 0))
-                    edge = *e;
-                  else if (tp != NULL)
-                    edge = tp->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
-                  else
-                    edge = (W42BorderEdge) { 0, 0, 0 };
-                  if (!(sides & (1 << k)) || edge.style == W42_BORDER_NONE)
-                    g_string_append_printf (css, "%s:none;", names[k]);
-                  else
-                    g_string_append_printf (css, "%s:%spt %s #%06x;", names[k],
-                                            g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edge) / 20.0),
-                                            w42_border_style_css (edge.style), edge.color & 0xFFFFFF);
-                }
-              if (cpa->has_shading_color)
-                g_string_append_printf (css, "background:#%06x;", cpa->shading_color & 0xFFFFFF);
-              else if (cpa->shading > 0)
-                {
-                  int grey = 255 - (int) MIN (cpa->shading, 100) * 255 / 100;
-
-                  g_string_append_printf (css, "background:rgb(%d,%d,%d);", grey, grey, grey);
-                }
-              if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
-                g_string_append (css, "vertical-align:middle;");
-              else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
-                g_string_append (css, "vertical-align:bottom;");
-              g_string_append (out, "<td");
-              if (block->span > 1)
-                g_string_append_printf (out, " colspan=\"%d\"", block->span);
-              if (cpa->cell_vspan > 1 && cpa->cell_vspan != W42_CELL_COVERED)
-                {
-                  /* No further than the table goes, whatever the mark
-                   * says: a browser would make rows for the rest. */
-                  int rows = w42_pt_table_rows (pt, block->table) - block->row;
-                  int vspan = MIN ((int) cpa->cell_vspan, MAX (rows, 1));
-
-                  if (vspan > 1)
-                    g_string_append_printf (out, " rowspan=\"%d\"", vspan);
-                }
-              if (css->len > 0)
-                g_string_append_printf (out, " style=\"%s\"", css->str);
+              g_string_append (out, "<p");
+              if (pa->rtl)
+                g_string_append (out, " dir=\"rtl\"");
+              write_para_style (out, pa, NULL, NULL);
               g_string_append (out, ">");
-              g_string_free (css, TRUE);
+              write_block_body (out, pt, aps, block, &base.ch, NULL, bookmarks);
+              g_string_append (out, "</p>");
             }
-          if (cell_covered)
-            {
-              prev_pa = pa;
-              if (cell_end && (next == NULL || next->table != block->table))
-                {
-                  g_string_append (out, "</tr>\n</table>\n");
-                  table_open = -1;
-                  row_open = -1;
-                }
-              continue;
-            }
-          g_string_append (out, "<p");
-          if (pa->rtl)
-            g_string_append (out, " dir=\"rtl\"");
-          write_para_style (out, pa, NULL, NULL);
-          g_string_append (out, ">");
-          write_block_body (out, pt, aps, block, &base.ch, NULL, bookmarks);
-          g_string_append (out, "</p>");
-          if (cell_end)
-            g_string_append (out, "</td>");
+          html_tables_close (out, next, open, &open_depth);
         }
       else if (pa->list != W42_LIST_NONE)
         {
@@ -896,15 +968,6 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
                             hstyle != NULL ? &hstyle->ch : NULL, bookmarks);
           g_string_append_printf (out, "</%s>\n", tag);
         }
-
-      /* The table closes after its last cell. */
-      if (block->table >= 0 && (next == NULL || next->table != block->table))
-        {
-          g_string_append (out, "</tr>\n</table>\n");
-          table_open = -1;
-          row_open = -1;
-        }
-      prev_pa = pa;
     }
   while (list_depth > 0)
     {

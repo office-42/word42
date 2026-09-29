@@ -673,7 +673,10 @@ view.
 ## 9. Tables
 
 **Table ▸ Insert ▸ Table** puts a grid of any size after the paragraph
-you are in. The Table menu gathers its commands as Word's later versions did: Insert,
+you are in. In a cell of a table, it puts the table in that cell, after
+the cell's paragraph the caret is in, as wide as the cell; a table can
+go in a cell of that one in turn, sixteen tables deep. The commands of
+the Table menu act on the innermost table the caret is in. The Table menu gathers its commands as Word's later versions did: Insert,
 Delete and Select as submenus, then the cell commands, AutoFormat and
 AutoFit, and the rest.
 

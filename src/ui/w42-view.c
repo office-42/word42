@@ -2395,9 +2395,9 @@ w42_view_insert_table (W42View *self, int rows, int cols)
   if (pt == NULL || rows < 1 || cols < 1)
     return;
 
-  /* No tables inside tables, nor in the text of a note. */
-  if (w42_pt_cell_at (pt, self->caret, NULL, NULL, NULL) ||
-      w42_view_caret_in_note (self))
+  /* A table in a cell is a table in that cell; but none in the text of a
+   * note, nor deeper than tables go. */
+  if (!w42_view_can_insert_table (self))
     return;
 
   /* After the caret's paragraph -- which, for a caret at the end of one,
@@ -2418,6 +2418,18 @@ w42_view_insert_table (W42View *self, int rows, int cols)
   cell = w42_pt_cell_start (pt, table, 0, 0);
   self->caret = self->anchor = (cell != (gsize) -1) ? cell : at;
   view_edited (self);
+}
+
+gboolean
+w42_view_can_insert_table (W42View *self)
+{
+  W42PieceTable *pt;
+
+  g_return_val_if_fail (W42_IS_VIEW (self), FALSE);
+
+  pt = view_pt (self);
+  return pt != NULL && !w42_view_caret_in_note (self) &&
+         w42_pt_table_depth (pt, self->caret) < W42_TABLE_MAX_DEPTH;
 }
 
 gboolean
@@ -2535,6 +2547,22 @@ view_text_twips (W42View *self)
     text_twips = (text_twips - (w42_page_columns (page) - 1) * w42_page_column_gap (page))
                  / w42_page_columns (page);
   return MAX (text_twips, 1440);
+}
+
+/* The width a table has to fill, in twips: the text column's for a table
+ * in the text, and for one in a cell the inside of the cell, as the last
+ * layout found it. */
+static int
+view_table_room_twips (W42View *self, W42PieceTable *pt, int table)
+{
+  if (w42_pt_table_parent (pt, table) >= 0)
+    {
+      double px = w42_layout_table_room (self->layout, table);
+
+      if (px > 0.0)
+        return MAX ((int) lround (w42_px_to_twips (px)), 360);
+    }
+  return view_text_twips (self);
 }
 
 void
@@ -2664,7 +2692,7 @@ w42_view_table_distribute_columns (W42View *self)
     for (int c = 0; c < props->n_cols; c++)
       total += c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
     if (total <= 0)
-      total = view_text_twips (self);
+      total = view_table_room_twips (self, pt, table);
     widths = g_new0 (int, props->n_cols);
     for (int c = 0; c < props->n_cols; c++)
       widths[c] = total / props->n_cols;
@@ -2721,7 +2749,7 @@ w42_view_table_autofit_window (W42View *self)
   props = w42_pt_table_props (pt, table);
   if (props == NULL || props->n_cols <= 0)
     return;
-  want = view_text_twips (self);
+  want = view_table_room_twips (self, pt, table);
   for (int c = 0; c < props->n_cols; c++)
     total += c < (int) props->widths->len ? g_array_index (props->widths, int, c) : 0;
   widths = g_new0 (int, props->n_cols);
@@ -2767,7 +2795,7 @@ w42_view_table_autofit_contents (W42View *self)
    * line the columns give way in proportion, which is what Word did. */
   for (int c = 0; c < props->n_cols; c++)
     total += g_array_index (wants, int, c);
-  room = view_text_twips (self);
+  room = view_table_room_twips (self, pt, table);
   widths = g_new0 (int, props->n_cols);
   for (int c = 0; c < props->n_cols; c++)
     {
@@ -4847,24 +4875,35 @@ view_column_edge_at (W42View *self, double wx, double wy,
   view_widget_to_page (self, wx, wy, &p, &px, &py);
   rects = w42_layout_cell_rects (self->layout);
 
-  for (guint i = 0; i < rects->len; i++)
-    {
-      const W42CellRect *r = &g_array_index (rects, W42CellRect, i);
-      double edge = r->x + r->w;
+  /* The nearest edge; where a table in a cell ends a few px inside the
+   * cell's own edge both are in reach, and the table in the cell is
+   * taken on a tie, as the one that is harder to get at. */
+  {
+    const W42CellRect *best = NULL;
+    double best_d = 0.0;
 
-      if (r->page != p || py < r->y || py > r->y + r->h)
-        continue;
-      if (fabs (px - edge) * self->zoom > EDGE_GRAB)
-        continue;
+    for (guint i = 0; i < rects->len; i++)
+      {
+        const W42CellRect *r = &g_array_index (rects, W42CellRect, i);
+        double d = fabs (px - (r->x + r->w)) * self->zoom;
 
-      *table = r->table;
-      *col = r->col;
-      *page = p;
-      *edge_x = edge;
-      return TRUE;
-    }
-
-  return FALSE;
+        if (r->page != p || py < r->y || py > r->y + r->h || d > EDGE_GRAB)
+          continue;
+        if (best == NULL || d < best_d - 0.5 ||
+            (d <= best_d + 0.5 && r->level > best->level))
+          {
+            best = r;
+            best_d = d;
+          }
+      }
+    if (best == NULL)
+      return FALSE;
+    *table = best->table;
+    *col = best->col;
+    *page = p;
+    *edge_x = best->x + best->w;
+    return TRUE;
+  }
 }
 
 static void
@@ -4896,8 +4935,10 @@ view_finish_column_drag (W42View *self)
 
   /* Widths of 0 mean an equal share of the column; make them real before
    * moving one edge, since the columns either side of it must know what
-   * they are to give and take. */
-  text_w = page->width - page->margin_left - page->margin_right;
+   * they are to give and take.  A table in a cell shares out the cell. */
+  text_w = w42_pt_table_parent (pt, table) >= 0
+           ? view_table_room_twips (self, pt, table)
+           : page->width - page->margin_left - page->margin_right;
   widths = g_new0 (int, props->n_cols);
   for (int c = 0; c < props->n_cols; c++)
     {

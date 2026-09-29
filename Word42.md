@@ -34,7 +34,6 @@ See docs/PARITY.md for the full comparison with Word 97 and AbiWord.
 
 - Per-section page size and orientation; gutter and mirror margins.
 - Headers and footers of more than one line, edited on the page.
-- Nested tables.
 
 ## To do — files
 

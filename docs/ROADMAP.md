@@ -22,7 +22,7 @@ Preview, AutoComplete for dates, and Word 97's own menu names.
 
 **Headers and footers edited in place**, with pictures and several
 paragraphs, different on the first page and on odd and even pages.
-Then: nested tables; an incremental snapshot and pagination to go with
+Then: an incremental snapshot and pagination to go with
 the incremental shaping.
 Shaping is incremental now: a keystroke in a 173-page document shapes
 the one paragraph it changed and reuses the rest, and the passes over

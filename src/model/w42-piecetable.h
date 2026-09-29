@@ -71,6 +71,12 @@ typedef struct {
 
 typedef struct _W42PieceTable W42PieceTable;
 
+/* How deep tables may go inside the cells of other tables.  A reader
+ * lets a file's tables go no deeper, and keeps the text of any deeper
+ * one in the cell it was found in; Insert Table in a cell that deep does
+ * nothing.  Word itself goes deeper, but no document means to. */
+#define W42_TABLE_MAX_DEPTH 16
+
 /* The rows a table can have: a cell mark keeps its row in what its
  * payload has left above the column, which is more on a 64-bit machine.
  * A reader stops a table there rather than number a row round to 0. */
@@ -150,23 +156,44 @@ typedef struct {
   gboolean     endnote;      /* the note goes at the end, numbered i, ii */
 } W42Run;
 
+/* A cell a paragraph is in: its table, where in the table it is, and
+ * its CELL mark's formatting. */
+typedef struct {
+  int      table;
+  int      row;
+  int      col;
+  int      span;
+  W42ApIdx cell_ap;
+} W42BlockCell;
+
 /* One paragraph, flattened for layout. */
 typedef struct {
   gsize    start_pos;    /* position of the BLOCK strux itself */
   W42ApIdx ap;           /* the strux's AP: the paragraph formatting */
   GString *text;         /* UTF-8, no trailing newline */
   GArray  *runs;         /* W42Run */
-  int      table;        /* the table this paragraph is a cell of, or -1 */
+  int      table;        /* the table this paragraph is a cell of, or -1;
+                          * the innermost, when tables are nested */
   int      row;
   int      col;
   int      span;         /* columns the cell covers; 1 unless merged */
   W42ApIdx cell_ap;      /* the CELL mark's AP: its own borders, if any */
+  int      depth;        /* the tables the paragraph is inside: 0 outside
+                          * any, 1 in a cell, 2 in a table in a cell */
+  W42BlockCell *outer;   /* the cells of the tables round its own, the
+                          * outermost first: depth - 1 of them, NULL
+                          * unless the table it is in is nested */
   int      note;         /* the footnote this paragraph belongs to, or -1 */
   int      note_number;  /* that footnote's number, by order of reference */
   gboolean note_end;     /* it is an endnote's paragraph */
 } W42Block;
 
 void w42_block_free (W42Block *block);
+
+/* The cell the paragraph is in at nesting level `level`: 0 is the
+ * outermost table's, block->depth - 1 the paragraph's own.  FALSE, and
+ * `out` untouched, when it is not that deep. */
+gboolean w42_block_cell (const W42Block *block, int level, W42BlockCell *out);
 
 /* ---- Lifecycle -------------------------------------------------------- */
 
@@ -415,7 +442,9 @@ gsize w42_pt_notes_start    (W42PieceTable *pt);
 /* ---- Tables ----------------------------------------------------------- */
 
 /* Puts a rows-by-cols table of empty cells at `pos`, which should be the
- * end of a paragraph; a new paragraph follows the table.  One undo step. */
+ * end of a paragraph; a new paragraph follows the table.  The paragraph
+ * may be in a cell, and the table is then a table in that cell.  One undo
+ * step. */
 void w42_pt_insert_table (W42PieceTable *pt, gsize pos, int rows, int cols,
                           W42ApIdx ap);
 
@@ -467,10 +496,21 @@ int  w42_pt_cell_span (W42PieceTable *pt, int table, int row, int col);
 /* For importers: sets the span of the CELL mark at `cell_pos` in place,
  * outside the undo history. */
 void w42_pt_set_cell_span (W42PieceTable *pt, gsize cell_pos, int span);
+/* And its row and column too, for a reader that learns where a cell is
+ * only after making it. */
+void w42_pt_set_cell_place (W42PieceTable *pt, gsize cell_pos, int row, int col, int span);
 
-/* The cell `pos` sits in, or FALSE outside any table. */
+/* The cell `pos` sits in, or FALSE outside any table.  In a table in a
+ * cell, the innermost: the one the caret is typing into. */
 gboolean w42_pt_cell_at (W42PieceTable *pt, gsize pos,
                          int *table, int *row, int *col);
+
+/* How many tables `pos` is inside: 0 outside any, 1 in a cell of a table
+ * in the text, 2 in a table in one of its cells, and so on. */
+int w42_pt_table_depth (W42PieceTable *pt, gsize pos);
+
+/* The table whose cell table `table` is in, or -1 for one in the text. */
+int w42_pt_table_parent (W42PieceTable *pt, int table);
 
 /* The first caret position inside a cell, or (gsize) -1 if there is no such
  * cell.  Tab moves the caret with this. */

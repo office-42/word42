@@ -69,7 +69,7 @@ yardstick.
 | A row taller than a page | broken between its lines, header rows repeated | breaks | breaks |
 | Table properties: borders (table outside and inside, per cell side, each with its own line style, weight and colour), cell shading and fill, vertical alignment, row height, header rows repeated | full | full | full |
 | Table menu: Insert/Delete/Select submenus, AutoFit (to contents, to window, distribute), Heading Rows Repeat, Formula (SUM, AVERAGE, COUNT, MAX, MIN, PRODUCT) | full | full | partial |
-| Nested tables | no | no | yes |
+| Nested tables (a table in a cell, sixteen deep) | full | no | yes |
 | Footnotes and endnotes | full | full | full |
 | Headers and footers with page fields | one line, with a different first page and different even pages | full, per section | full, per section |
 | Page numbers | full | full | full |

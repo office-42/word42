@@ -76,10 +76,13 @@ typedef struct {
   int            col_widths[1023];  /* what its <colgroup> said, in twips */
   int            n_col_widths;
   gboolean       in_cell;
+  gsize          cell_pos;          /* the open cell's mark, or -1 */
   gboolean       table_before_block;
-  int            table_nest;        /* tables open inside the one being
-                                     * read, or in a note: their cells are
-                                     * read as paragraphs */
+  GArray        *outer_tables;      /* HtmlTable: the tables round the one
+                                     * being read, when it is in a cell */
+  int            table_nest;        /* tables open inside one that could
+                                     * not be made, or in a note: their
+                                     * cells are read as paragraphs */
 
   char          *base;              /* the page's own directory, for its pictures */
   GHashTable    *notes;             /* note id -> Note, found before the body */
@@ -105,6 +108,21 @@ typedef struct {
 } Html;
 
 static void open_cell (Html *h);
+
+/* A table being read, set aside while a table in one of its cells is. */
+typedef struct {
+  int       table;
+  int       table_row, table_col, table_cols;
+  int       covered[1024];
+  int       cell_span;
+  int       col_widths[1023];
+  int       n_col_widths;
+  gboolean  in_cell;
+  gsize     cell_pos;
+  gboolean  table_before_block;
+  W42Align  cell_align;
+  guint     cell_rtl : 1;
+} HtmlTable;
 
 static W42ApIdx
 html_ap (Html *h)
@@ -372,10 +390,12 @@ open_cell_spanning (Html *h, int colspan, int rowspan)
   if (h->table_col >= h->table_cols || h->table_row > 4095)
     {
       h->in_cell = TRUE;
+      h->cell_pos = (gsize) -1;
       h->cell_span = 1;
       return;
     }
   colspan = CLAMP (colspan, 1, h->table_cols - h->table_col);
+  h->cell_pos = h->pos;
   w42_pt_insert_cell (h->pt, h->pos, h->table, h->table_row, h->table_col,
                       html_ap (h));
   if (colspan > 1)
@@ -445,14 +465,73 @@ end_row (Html *h)
   h->table_col = 0;
 }
 
+/* A table in the open cell: the cell's state waits for its end, and the
+ * table goes in after the cell's paragraphs so far -- a paragraph that
+ * ended there makes no other, the table's mark ends it. */
+static void
+open_inner_table (Html *h, int cols)
+{
+  HtmlTable saved;
+
+  end_paragraph (h);
+  flush_text (h);
+
+  saved.table = h->table;
+  saved.table_row = h->table_row;
+  saved.table_col = h->table_col;
+  saved.table_cols = h->table_cols;
+  memcpy (saved.covered, h->covered, sizeof saved.covered);
+  saved.cell_span = h->cell_span;
+  memcpy (saved.col_widths, h->col_widths, sizeof saved.col_widths);
+  saved.n_col_widths = h->n_col_widths;
+  saved.in_cell = h->in_cell;
+  saved.cell_pos = h->cell_pos;
+  saved.table_before_block = h->table_before_block;
+  saved.cell_align = h->cell_align;
+  saved.cell_rtl = h->cell_rtl;
+  g_array_append_val (h->outer_tables, saved);
+
+  h->cell_break_pending = FALSE;
+  h->table_before_block = FALSE;
+  h->table = w42_pt_insert_table_start (h->pt, h->pos, CLAMP (cols, 1, 1023), NULL);
+  h->pos += 1;
+  h->table_row = 0;
+  h->table_col = 0;
+  h->table_cols = CLAMP (cols, 1, 1023);
+  h->in_cell = FALSE;
+  h->cell_pos = (gsize) -1;
+  h->cell_span = 1;
+  h->cell_align = W42_ALIGN_LEFT;
+  h->cell_rtl = 0;
+  memset (h->covered, 0, sizeof h->covered);
+  h->n_col_widths = 0;
+  {
+    W42Fmt def;
+
+    w42_fmt_init_default (&def);
+    h->pa = def.pa;
+  }
+}
+
 static void
 open_table (Html *h, int cols)
 {
   /* Each table costs the model a pass over what came before it, so a page
    * of tens of thousands costs their square; past any document's worth,
    * the rest are read as their text. */
-  if (h->table >= 0 || h->tables_opened >= 2048)
+  if (h->tables_opened >= 2048)
     return;
+  /* A table in a cell is one of the cell's; none goes deeper than tables
+   * go, nor in a cell that was dropped. */
+  if (h->table >= 0)
+    {
+      if (!h->in_cell || h->cell_pos == (gsize) -1 ||
+          h->outer_tables->len + 1 >= W42_TABLE_MAX_DEPTH)
+        return;
+      h->tables_opened++;
+      open_inner_table (h, cols);
+      return;
+    }
   h->tables_opened++;
 
   end_paragraph (h);
@@ -513,6 +592,38 @@ close_table (Html *h)
   h->table = -1;
   h->in_para = FALSE;
   h->at_para_start = TRUE;
+
+  /* A table in a cell: back to the cell, in the paragraph after it. */
+  if (h->outer_tables->len > 0)
+    {
+      const HtmlTable *saved = &g_array_index (h->outer_tables, HtmlTable,
+                                               h->outer_tables->len - 1);
+
+      h->table = saved->table;
+      h->table_row = saved->table_row;
+      h->table_col = saved->table_col;
+      h->table_cols = saved->table_cols;
+      memcpy (h->covered, saved->covered, sizeof h->covered);
+      h->cell_span = saved->cell_span;
+      memcpy (h->col_widths, saved->col_widths, sizeof h->col_widths);
+      h->n_col_widths = saved->n_col_widths;
+      h->in_cell = saved->in_cell;
+      h->cell_pos = saved->cell_pos;
+      h->table_before_block = saved->table_before_block;
+      h->cell_align = saved->cell_align;
+      h->cell_rtl = saved->cell_rtl;
+      g_array_set_size (h->outer_tables, h->outer_tables->len - 1);
+      h->cell_break_pending = FALSE;
+      h->pa_dirty = FALSE;
+      {
+        W42Fmt def;
+
+        w42_fmt_init_default (&def);
+        h->pa = def.pa;
+        h->pa.align = h->cell_align;
+        h->pa.rtl = h->cell_rtl;
+      }
+    }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -2579,15 +2690,15 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
       int before = h->table;
       gboolean ruled;
 
-      if (before < 0 && !h->in_note)
+      if (!h->in_note && h->table_nest == 0)
         open_table (h, count_columns (lxb_dom_interface_node (el)));
-      if (before >= 0 || h->table < 0)
+      if (h->table == before)
         {
-          /* A table in a table's cell, in a note, or past as many as a
-           * document has: the model has no table to make of it there, so
-           * each of its cells is read as a paragraph of what holds it,
-           * rather than its rows and cells being taken for the outer
-           * table's and closing it. */
+          /* A table in a note, deeper in cells than tables go, or past
+           * as many as a document has: the model has no table to make of
+           * it there, so each of its cells is read as a paragraph of what
+           * holds it, rather than its rows and cells being taken for the
+           * outer table's and closing it. */
           h->table_nest++;
           *flags |= FLAG_INNER;
           end_paragraph (h);
@@ -3626,6 +3737,7 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
   w42_pt_load_text (pt, "");
 
   memset (&h, 0, sizeof h);
+  h.outer_tables = g_array_new (FALSE, FALSE, sizeof (HtmlTable));
   h.pt = pt;
   h.page = page;
   {
@@ -3705,7 +3817,9 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
       walk_body (&h, lxb_dom_interface_node (body));
     }
 
-  close_table (&h);
+  do
+    close_table (&h);
+  while (h.table >= 0);
   flush_text (&h);
   if (h.pa_dirty)
     w42_pt_apply_para_fmt (pt, h.pos > 0 ? h.pos - 1 : 0, 0,
@@ -3751,6 +3865,7 @@ w42_html_import (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **er
     g_hash_table_destroy (h.notes);
   if (h.note_parts != NULL)
     g_hash_table_destroy (h.note_parts);
+  g_array_free (h.outer_tables, TRUE);
   if (h.rules != NULL)
     g_ptr_array_free (h.rules, TRUE);
   if (h.rules_by_tag != NULL)

@@ -81,9 +81,13 @@ void w42_view_insert_paragraph (W42View *self);
 /* Selects the word the caret is in, as a double click does. */
 void w42_view_select_word (W42View *self);
 
-/* Tables.  Insert puts one after the caret's paragraph; the caret lands in
- * the first cell.  Rows are added after or deleted at the caret's row. */
+/* Tables.  Insert puts one after the caret's paragraph -- in a cell, a
+ * table in that cell -- and the caret lands in its first cell.  Rows are
+ * added after or deleted at the caret's row. */
 void     w42_view_insert_table     (W42View *self, int rows, int cols);
+/* Whether Insert Table can put one where the caret is: not in a note,
+ * and not in a cell as deep as tables go. */
+gboolean w42_view_can_insert_table (W42View *self);
 gboolean w42_view_in_table         (W42View *self);
 void     w42_view_table_insert_row (W42View *self);
 /* The Table menu's submenus: rows above, columns to the left, the whole table

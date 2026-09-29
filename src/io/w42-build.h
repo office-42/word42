@@ -14,6 +14,15 @@
 
 G_BEGIN_DECLS
 
+/* A table being built, as it stood when a table began in one of its
+ * cells. */
+typedef struct {
+  int            table;
+  int            row, col, n_cols;
+  gsize          cell_pos;
+  gboolean       table_before_block;
+} W42BuilderTable;
+
 typedef struct {
   W42PieceTable *pt;
   gsize          pos;           /* where the next text goes */
@@ -21,12 +30,16 @@ typedef struct {
   W42ParaFmt     pa;            /* the paragraph's, applied when it ends */
   gboolean       in_para;       /* the current paragraph has content */
 
-  int            table;         /* the table being built, or -1 */
+  int            table;         /* the table being built, or -1; the
+                                 * innermost, when tables nest */
   int            row, col, n_cols;
   gboolean       in_cell;
   gboolean       cell_break_pending;
   gboolean       table_before_block;
   gsize          cell_pos;      /* the CELL mark of the open cell */
+  int            depth;         /* tables open: 0, 1, or more when a
+                                 * table is in a cell of another */
+  W42BuilderTable outer[W42_TABLE_MAX_DEPTH];   /* the depth - 1 round it */
 
   gsize          note_return;   /* where the body goes on after a note, or -1 */
   W42ObjectIdx   last_object;   /* what the last object or shape call put in,
@@ -62,12 +75,19 @@ void w42_builder_begin_note (W42Builder *b, gboolean endnote);
 void w42_builder_end_note   (W42Builder *b);
 
 /* Tables: cells one after another, rows ended explicitly; widths in
- * twips, or NULL for equal shares of the column. */
-void w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths);
+ * twips, or NULL for equal shares of the column.  A table begun in a
+ * cell is a table in that cell, until its end goes back to the cell;
+ * begin_table returns FALSE, and makes nothing, when a table cannot go
+ * where the text is -- between the cells of a table, or deeper than
+ * W42_TABLE_MAX_DEPTH -- and what the file has in it is then read as
+ * the paragraphs of the cell it is in. */
+gboolean w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths);
 void w42_builder_begin_cell  (W42Builder *b, int span);
 void w42_builder_end_cell    (W42Builder *b);
 void w42_builder_end_row     (W42Builder *b);
 void w42_builder_end_table   (W42Builder *b);
 gboolean w42_builder_in_table (W42Builder *b);
+/* How many tables are open: 0 outside any. */
+int      w42_builder_table_depth (W42Builder *b);
 
 G_END_DECLS

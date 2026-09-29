@@ -1957,21 +1957,32 @@ comment_packet (Writer *w, const char *text)
   return add_packet (w, 0x1B, 0x08, d);
 }
 
+/* The cell of the table in the text that block `i` is in: WordPerfect
+ * has no tables in cells, and the paragraphs of one are written as the
+ * paragraphs of the cell it is in. */
+static W42BlockCell
+outer_cell (GPtrArray *blocks, guint i)
+{
+  W42BlockCell c = { -1, 0, 0, 1, 0 };
+
+  w42_block_cell (g_ptr_array_index (blocks, i), 0, &c);
+  return c;
+}
+
 /* A table's rows: the definition first -- where it sits and each
  * column's width -- then each row and cell with its span, its fill and
  * the row's height, the cells' paragraphs in them, and the end. */
 static guint
 write_table (Writer *w, GByteArray *o, GPtrArray *blocks, guint first)
 {
-  const W42Block *head = g_ptr_array_index (blocks, first);
-  int table = head->table;
+  int table = outer_cell (blocks, first).table;
   const W42TableProps *props = w42_pt_table_props (w->pt, table);
   int n_cols = props != NULL ? MAX (props->n_cols, 1) : 1;
   int text_w = (w->page != NULL ? w->page->width - w->page->margin_left - w->page->margin_right : 9360);
   guint i = first, end = first;
   int rows = w42_pt_table_rows (w->pt, table);
 
-  while (end < blocks->len && ((const W42Block *) g_ptr_array_index (blocks, end))->table == table)
+  while (end < blocks->len && outer_cell (blocks, end).table == table)
     end++;
 
   {
@@ -1998,30 +2009,31 @@ write_table (Writer *w, GByteArray *o, GPtrArray *blocks, guint first)
   while (i < end)
     {
       const W42Block *block = g_ptr_array_index (blocks, i);
-      const W42Block *prev = i > first ? g_ptr_array_index (blocks, i - 1) : NULL;
-      gboolean cell_start = prev == NULL || prev->row != block->row || prev->col != block->col;
+      W42BlockCell here = outer_cell (blocks, i);
+      W42BlockCell prev = i > first ? outer_cell (blocks, i - 1) : (W42BlockCell) { -1, -1, -1, 1, 0 };
+      gboolean cell_start = i == first || prev.row != here.row || prev.col != here.col;
 
       if (cell_start)
         {
           /* A row's first cell starts the row; either way the cell says
            * its span, whether it is covered by the one above, and its
            * fill. */
-          const W42ParaFmt *cell = &w42_ap_table_get (w->aps, block->cell_ap)->pa;
-          gboolean row_start = prev == NULL || prev->row != block->row;
+          const W42ParaFmt *cell = &w42_ap_table_get (w->aps, here.cell_ap)->pa;
+          gboolean row_start = i == first || prev.row != here.row;
           GByteArray *d = g_byte_array_new ();
-          int height = w42_pt_table_get_row_height (w->pt, table, block->row);
+          int height = w42_pt_table_get_row_height (w->pt, table, here.row);
 
           put16 (d, 0);
           if (row_start)
             {
-              guint flags = (props != NULL && block->row < props->header_rows ? 0x04 : 0) |
+              guint flags = (props != NULL && here.row < props->header_rows ? 0x04 : 0) |
                             (height > 0 ? 0x12 : 0);
               guint wpu = TWIPS_TO_WPU (height);
 
               put8 (d, 0x80); put8 (d, flags); put16 (d, wpu); put8 (d, 0x80);
             }
           put8 (d, 0x85);
-          put8 (d, cell->cell_vspan == W42_CELL_COVERED ? 0x81 : MAX (block->span, 1));
+          put8 (d, cell->cell_vspan == W42_CELL_COVERED ? 0x81 : MAX (here.span, 1));
           put8 (d, cell->cell_vspan > 1 && cell->cell_vspan != W42_CELL_COVERED ? cell->cell_vspan : 1);
           put8 (d, 0x85);
           if (cell->has_shading_color)

@@ -403,6 +403,39 @@ nearest line by height is the right one, and that the next line in the array
 is the line below — so both are geometric now: the nearest line by height and
 then by horizontal distance, and the nearest line in the direction of travel.
 
+### Tables in cells
+
+A table can stand in a cell: its `TABLE` mark comes after one of the
+cell's paragraphs, and its `ENDTABLE` and the `BLOCK` after it are back
+in the cell, so a cell still opens with a paragraph and still ends with
+one. Nothing about the marks says how deep they are; a walk from the head
+knows by counting, as brackets are matched. That is the one thing every
+walk over a table had to learn — a `CELL` mark belongs to the innermost
+table open, not to the last `TABLE` seen, and a table ends at the
+`ENDTABLE` that closes it, not at the first one after it — and a small
+`TableWalk` in the piece table keeps the tables open, and the cell of
+each, for all of them.
+
+The block snapshot says where each paragraph is: `table`, `row` and `col`
+are still its own cell's, which is what the commands want, and `depth`
+with `outer` give the cells of the tables round it, outermost first.
+`w42_block_cell` asks for the cell at any level. Writers keep a stack of
+the tables they have open, and at each paragraph close what the next
+paragraph is not in and open what it is; readers set aside the table
+they were building when a table begins in one of its cells, and take it
+up again at that table's end.
+
+Layout is recursive. A cell is laid out a paragraph at a time, and the
+paragraphs a level deeper are a table, laid out whole across the cell;
+the row it is in is as tall as the table makes it, and when the row is
+placed or broken over pages the table's lines and cell rectangles move
+with the row's, a rectangle cut where the row is cut. Each rectangle
+knows its level, and fills are painted outermost first.
+
+Tables go sixteen deep (`W42_TABLE_MAX_DEPTH`): past that a reader keeps
+the text of the deeper tables as paragraphs of the deepest cell, and
+Insert Table does nothing.
+
 ## Pictures
 
 A picture is an `OBJECT` piece — the third piece type after text and struxes,

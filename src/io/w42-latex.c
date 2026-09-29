@@ -748,24 +748,38 @@ row_rule (Writer *w, int table, int next_row, int n_cols)
   g_free (covered);
 }
 
+/* The cell block `i` is in at nesting level `level`, or one of table -1. */
+static W42BlockCell
+level_cell (Writer *w, guint i, int level)
+{
+  W42BlockCell c = { -1, 0, 0, 1, 0 };
+
+  w42_block_cell (g_ptr_array_index (w->blocks, i), level, &c);
+  return c;
+}
+
 /* A table as a longtable, which breaks across pages: a column each at its
  * width, ruled when the table is, its header rows repeated, its merged
- * cells as \multicolumn and \multirow, its shaded ones coloured. */
+ * cells as \multicolumn and \multirow, its shaded ones coloured.  A
+ * table in a cell -- at nesting level `level`, more than 0 -- is a
+ * tabular in the cell, `room` inches wide, since a longtable goes in no
+ * table. */
 static guint
-write_table (Writer *w, guint first)
+write_table (Writer *w, guint first, int level, double room)
 {
-  const W42Block *head = g_ptr_array_index (w->blocks, first);
-  int table = head->table;
+  int table = level_cell (w, first, level).table;
   const W42TableProps *props = w42_pt_table_props (w->pt, table);
   int n_cols = props != NULL ? MAX (props->n_cols, 1) : 1;
   gboolean ruled = props == NULL || props->borders;
   int text_w = w->page != NULL ? w->page->width - w->page->margin_left - w->page->margin_right : 9360;
-  int header_rows = props != NULL ? props->header_rows : 0;
+  int header_rows = props != NULL && level == 0 ? props->header_rows : 0;
   GString *o = w->out;
   guint i = first;
   int row = -1;
   double *widths = g_new (double, n_cols);
 
+  if (level > 0)
+    text_w = (int) (room * 1440.0);
   for (int c = 0; c < n_cols; c++)
     {
       int cw = props != NULL && props->widths != NULL && (guint) c < props->widths->len
@@ -774,8 +788,13 @@ write_table (Writer *w, guint first)
       widths[c] = (cw > 0 ? cw : text_w / n_cols) / 1440.0;
     }
 
-  close_lists (w, 0);
-  g_string_append (o, "\n\\begin{longtable}{");
+  if (level == 0)
+    {
+      close_lists (w, 0);
+      g_string_append (o, "\n\\begin{longtable}{");
+    }
+  else
+    g_string_append (o, "\\begin{tabular}[t]{");
   if (ruled)
     g_string_append_c (o, '|');
   for (int c = 0; c < n_cols; c++)
@@ -792,8 +811,9 @@ write_table (Writer *w, guint first)
   while (i < w->blocks->len)
     {
       const W42Block *b = g_ptr_array_index (w->blocks, i);
+      W42BlockCell bc = level_cell (w, i, level);
       const W42ParaFmt *cell;
-      int col = b->col, span = MAX (b->span, 1), vspan;
+      int col = bc.col, span = MAX (bc.span, 1), vspan;
       char width[G_ASCII_DTOSTR_BUF_SIZE];
       double spanned = 0;
 
@@ -802,24 +822,24 @@ write_table (Writer *w, guint first)
           i++;
           continue;
         }
-      if (b->table != table)
+      if (bc.table != table)
         break;
-      if (b->row != row)
+      if (bc.row != row)
         {
           if (row >= 0)
             {
               g_string_append (o, " \\\\\n");
               if (ruled)
-                row_rule (w, table, b->row, n_cols);
+                row_rule (w, table, bc.row, n_cols);
               if (row + 1 == header_rows)
                 g_string_append (o, "\\endhead\n");
             }
-          row = b->row;
+          row = bc.row;
         }
       else
         g_string_append (o, " & ");
 
-      cell = &w42_ap_table_get (w->aps, b->cell_ap)->pa;
+      cell = &w42_ap_table_get (w->aps, bc.cell_ap)->pa;
       vspan = cell->cell_vspan == W42_CELL_COVERED ? 0 : cell->cell_vspan > 1 ? cell->cell_vspan : 1;
       for (int k = col; k < col + span && k < n_cols; k++)
         spanned += widths[k];
@@ -842,14 +862,25 @@ write_table (Writer *w, guint first)
         while (i < w->blocks->len)
           {
             const W42Block *p = g_ptr_array_index (w->blocks, i);
+            W42BlockCell pc;
 
             if (p->note >= 0)
               {
                 i++;
                 continue;
               }
-            if (p->table != table || p->row != b->row || p->col != b->col)
+            pc = level_cell (w, i, level);
+            if (pc.table != table || pc.row != bc.row || pc.col != bc.col)
               break;
+            if (vspan != 0 && p->depth > level + 1)
+              {
+                /* A table in the cell, the cell's width less its padding. */
+                if (!first_para)
+                  g_string_append (o, "\\newline ");
+                i = write_table (w, i, level + 1, MAX (spanned - 0.1, 0.3));
+                first_para = FALSE;
+                continue;
+              }
             if (vspan != 0)
               {
                 if (!first_para)
@@ -871,7 +902,7 @@ write_table (Writer *w, guint first)
       if (ruled)
         g_string_append (o, "\\hline\n");
     }
-  g_string_append (o, "\\end{longtable}\n\n");
+  g_string_append (o, level == 0 ? "\\end{longtable}\n\n" : "\\end{tabular}");
   g_free (widths);
   return i;
 }
@@ -1045,7 +1076,7 @@ write_body (Writer *w, guint from)
         }
       if (b->table >= 0)
         {
-          i = write_table (w, i);
+          i = write_table (w, i, 0, 0.0);
           w->last_plain = FALSE;
           continue;
         }

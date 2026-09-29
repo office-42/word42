@@ -267,6 +267,11 @@ typedef struct {
   W42ListKind    last_kind;          /* of this kind at this level */
   int            last_level;
   int            in_table;
+  int            table_level;     /* in_table for the table being built:
+                                   * a table in a cell is one more, and a
+                                   * table read as its paragraphs none */
+  gboolean       in_cell_elem;    /* inside that table's cell element */
+  GArray        *outer_tables;    /* OdtOuterTable: the tables round it */
   GArray        *table_widths;
   gboolean       table_started;
   gboolean       cell_pending;
@@ -1424,6 +1429,75 @@ odt_flush (Odt *o)
   g_string_truncate (o->text, 0);
 }
 
+/* A table being read, set aside while a table in one of its cells is. */
+typedef struct {
+  int       level;
+  GArray   *widths;
+  gboolean  started;
+  int       row;
+  gboolean  in_header_rows;
+  gboolean  in_cell_elem;
+  int       skip_covered;
+  int       cell_repeat;
+} OdtOuterTable;
+
+/* Whether the element being read belongs to the table being built, and
+ * not to one in its cells read as their paragraphs. */
+static inline gboolean
+odt_reading_table (const Odt *o)
+{
+  return o->in_table > 0 && o->in_table == o->table_level;
+}
+
+static void
+odt_push_table (Odt *o)
+{
+  OdtOuterTable saved;
+
+  saved.level = o->table_level;
+  saved.widths = o->table_widths;
+  saved.started = o->table_started;
+  saved.row = o->table_row;
+  saved.in_header_rows = o->in_header_rows;
+  saved.in_cell_elem = o->in_cell_elem;
+  saved.skip_covered = o->skip_covered;
+  saved.cell_repeat = o->cell_repeat;
+  g_array_append_val (o->outer_tables, saved);
+
+  o->table_widths = g_array_new (FALSE, FALSE, sizeof (int));
+  o->table_started = FALSE;
+  o->table_row = 0;
+  o->in_header_rows = FALSE;
+  o->in_cell_elem = FALSE;
+  o->skip_covered = 0;
+  o->cell_repeat = 1;
+}
+
+/* Back to the table round the one just read, or to none. */
+static void
+odt_pop_table (Odt *o)
+{
+  const OdtOuterTable *saved;
+
+  if (o->outer_tables->len == 0)
+    {
+      o->table_level = 0;
+      o->in_cell_elem = FALSE;
+      return;
+    }
+  saved = &g_array_index (o->outer_tables, OdtOuterTable, o->outer_tables->len - 1);
+  g_array_free (o->table_widths, TRUE);
+  o->table_level = saved->level;
+  o->table_widths = saved->widths;
+  o->table_started = saved->started;
+  o->table_row = saved->row;
+  o->in_header_rows = saved->in_header_rows;
+  o->in_cell_elem = saved->in_cell_elem;
+  o->skip_covered = saved->skip_covered;
+  o->cell_repeat = saved->cell_repeat;
+  g_array_set_size (o->outer_tables, o->outer_tables->len - 1);
+}
+
 /* The cell whose element has been seen but whose first paragraph has not:
  * it is begun here, so that its properties have a mark to sit on. */
 static void
@@ -1910,6 +1984,28 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
   else if (g_str_equal (tag, "table"))
     {
       odt_flush (o);
+      /* A table in a cell of the table being built is a table in that
+       * cell: the cell is begun, if nothing has begun it, and the table
+       * goes after its paragraphs so far.  Deeper than tables go, it is
+       * read as paragraphs of the cell. */
+      if (odt_reading_table (o) && o->in_cell_elem &&
+          w42_builder_table_depth (&o->b) < W42_TABLE_MAX_DEPTH &&
+          o->table_cells < ODT_MAX_CELLS)
+        {
+          open_pending_cell (o);
+          if (o->para_open)
+            {
+              w42_builder_end_paragraph (&o->b);
+              o->para_open = FALSE;
+            }
+          if (o->b.in_cell)
+            {
+              odt_push_table (o);
+              o->in_table++;
+              o->table_level = o->in_table;
+              return;
+            }
+        }
       if (o->para_open)
         {
           w42_builder_end_paragraph (&o->b);
@@ -1927,11 +2023,13 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           o->table_started = FALSE;
           o->table_row = 0;
           o->in_header_rows = FALSE;
+          o->in_cell_elem = FALSE;
+          o->table_level = 1;
         }
     }
-  else if (g_str_equal (tag, "table-header-rows") && o->in_table == 1)
+  else if (g_str_equal (tag, "table-header-rows") && odt_reading_table (o))
     o->in_header_rows = TRUE;
-  else if (g_str_equal (tag, "table-column") && o->in_table == 1)
+  else if (g_str_equal (tag, "table-column") && odt_reading_table (o))
     {
       const char *sn = attr (an, av, "table:style-name");
       const char *rep = attr (an, av, "table:number-columns-repeated");
@@ -1941,7 +2039,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       for (int i = 0; i < n; i++)
         g_array_append_val (o->table_widths, w);
     }
-  else if (g_str_equal (tag, "table-row") && o->in_table == 1)
+  else if (g_str_equal (tag, "table-row") && odt_reading_table (o))
     {
       const char *sn = attr (an, av, "table:style-name");
       int h = sn != NULL ? GPOINTER_TO_INT (g_hash_table_lookup (o->row_heights, sn)) : 0;
@@ -1955,7 +2053,14 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
         {
           int n = (int) o->table_widths->len;
 
-          w42_builder_begin_table (&o->b, n > 0 ? n : 1, n > 0 ? (const int *) o->table_widths->data : NULL);
+          if (!w42_builder_begin_table (&o->b, n > 0 ? n : 1,
+                                        n > 0 ? (const int *) o->table_widths->data : NULL))
+            {
+              /* No table can go here after all: its rows are read as
+               * the paragraphs of the cell round it. */
+              odt_pop_table (o);
+              return;
+            }
           /* ODF has no rules of its own on a table: every rule belongs to
            * a cell style, so the table is left unruled and the cells say
            * what they want. */
@@ -1971,7 +2076,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
       o->skip_covered = 0;
     }
   else if ((g_str_equal (tag, "table-cell") || g_str_equal (tag, "covered-table-cell")) &&
-           o->in_table == 1)
+           odt_reading_table (o))
     {
       const char *span = attr (an, av, "table:number-columns-spanned");
       const char *rows = attr (an, av, "table:number-rows-spanned");
@@ -1982,6 +2087,7 @@ body_start (Odt *o, const char *tag, const char **an, const char **av)
           return;
         }
       o->cell_pending = TRUE;
+      o->in_cell_elem = TRUE;
       o->cell_span = span != NULL ? CLAMP (atoi (span), 1, 63) : 1;
       {
         const char *rep = attr (an, av, "table:number-columns-repeated");
@@ -2371,12 +2477,13 @@ body_end (Odt *o, const char *tag)
         g_ptr_array_remove_index (o->list_style_stack, o->list_style_stack->len - 1);
     }
   else if ((g_str_equal (tag, "table-cell") || g_str_equal (tag, "covered-table-cell")) &&
-           o->in_table == 1)
+           odt_reading_table (o))
     {
       odt_flush (o);
       open_pending_cell (o);
       w42_builder_end_cell (&o->b);
       o->para_open = FALSE;
+      o->in_cell_elem = FALSE;
       /* One element standing for several cells alike: the rest are
        * empty ones with the same style. */
       for (int i = 1; i < o->cell_repeat; i++)
@@ -2387,19 +2494,25 @@ body_end (Odt *o, const char *tag)
         }
       o->cell_repeat = 1;
     }
-  else if (g_str_equal (tag, "table-row") && o->in_table == 1)
+  else if (g_str_equal (tag, "table-row") && odt_reading_table (o))
     w42_builder_end_row (&o->b);
-  else if (g_str_equal (tag, "table-header-rows"))
+  else if (g_str_equal (tag, "table-header-rows") && odt_reading_table (o))
     o->in_header_rows = FALSE;
   else if (g_str_equal (tag, "table"))
     {
-      if (o->in_table == 1)
+      if (odt_reading_table (o))
         {
           int t = o->b.table;
 
-          w42_builder_end_table (&o->b);
-          if (t >= 0)
-            w42_pt_resolve_vmerges (o->pt, t);   /* merges tidied, strays freed */
+          /* A table with no rows began nothing, and ending one would end
+           * the table round it. */
+          if (o->table_started)
+            {
+              w42_builder_end_table (&o->b);
+              if (t >= 0)
+                w42_pt_resolve_vmerges (o->pt, t);   /* merges tidied, strays freed */
+            }
+          odt_pop_table (o);
         }
       if (o->in_table > 0)
         o->in_table--;
@@ -2748,6 +2861,7 @@ odt_load_zip (W42PieceTable *pt, W42PageSetup *page, W42Zip *zip, GError **error
   o.bookmark_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   o.list_style_stack = g_ptr_array_new_with_free_func (g_free);
   o.table_widths = g_array_new (FALSE, FALSE, sizeof (int));
+  o.outer_tables = g_array_new (FALSE, FALSE, sizeof (OdtOuterTable));
   o.annotation = g_string_new (NULL);
   o.annotation_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   o.field_text = g_string_new (NULL);
@@ -2802,6 +2916,10 @@ odt_load_zip (W42PieceTable *pt, W42PageSetup *page, W42Zip *zip, GError **error
   g_array_free (o.span_stack, TRUE);
   g_hash_table_destroy (o.bookmark_start);
   g_ptr_array_free (o.list_style_stack, TRUE);
+  /* A file that ends inside a table leaves the ones round it set aside. */
+  while (o.outer_tables->len > 0)
+    odt_pop_table (&o);
+  g_array_free (o.outer_tables, TRUE);
   g_array_free (o.table_widths, TRUE);
   g_string_free (o.annotation, TRUE);
   g_free (o.annotation_name);
@@ -3851,14 +3969,14 @@ lists_close (OdtWriter *w, OdtLists *ls)
  * inside one; before a text box, but not between the paragraphs of one;
  * anywhere else in the body. */
 static gboolean
-section_opens_here (W42ApTable *aps, GPtrArray *blocks, guint b, int table_open)
+section_opens_here (W42ApTable *aps, GPtrArray *blocks, guint b, gboolean in_table)
 {
   const W42Block *block = g_ptr_array_index (blocks, b);
   const W42Block *prev = b > 0 ? g_ptr_array_index (blocks, b - 1) : NULL;
   guint8 side = w42_ap_table_get (aps, block->ap)->pa.frame_side;
 
   if (block->table >= 0)
-    return block->table != table_open;
+    return !in_table;
   return side == W42_FRAME_NONE || prev == NULL || prev->table >= 0 || prev->note >= 0 ||
          w42_ap_table_get (aps, prev->ap)->pa.frame_side != side;
 }
@@ -3874,6 +3992,325 @@ write_page_text_style (GString *s, int idx, const W42PageText *text)
                              : text != NULL && text->align == W42_ALIGN_RIGHT ? "end" : "start");
 }
 
+/* A table open while the body is written, at one level of the tables
+ * round the text: the table, the row and the cell open in it. */
+typedef struct {
+  int       table;
+  int       t;              /* its number among the tables written */
+  int       row;            /* the row open, or -1 */
+  int       col;            /* the cell open, when one is */
+  int       span;           /* and the columns it covers */
+  gboolean  cell;
+  gboolean  covered;        /* the open cell is one a merge swallowed */
+  int      *widths;         /* its columns' widths in twips, all real */
+  int       n_cols;
+  OdtLists  lists;          /* the open cell's */
+} OdtOpenTable;
+
+/* How far down the rows of `table`, at nesting level `level`, the blocks
+ * from `b` go: whether `row` is its last. */
+static gboolean
+odt_last_row (GPtrArray *blocks, guint b, int level, int table, int row)
+{
+  for (guint k = b + 1; k < blocks->len; k++)
+    {
+      W42BlockCell c;
+
+      if (!w42_block_cell (g_ptr_array_index (blocks, k), level, &c) || c.table != table)
+        break;
+      if (c.row > row)
+        return FALSE;
+    }
+  return TRUE;
+}
+
+/* The start of a cell: its element, with a style of its own when it
+ * looks like anything but the table's plain cell. */
+static void
+odt_cell_start (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+                guint b, int level, const W42BlockCell *cell, const OdtOpenTable *ot)
+{
+  const W42ParaFmt *cpa = &w42_ap_table_get (aps, cell->cell_ap)->pa;
+  const W42TableProps *props = w42_pt_table_props (pt, cell->table);
+  gboolean plain_table = props == NULL ||
+                         memcmp (props->edge, &(W42BorderEdge[W42_N_EDGES]) { { 0, 0, 0 } },
+                                 sizeof props->edge) == 0;
+  int vspan;
+
+  /* A cell a merge has swallowed keeps whatever is in it — it is
+   * simply not shown — so it is written whole, under the name
+   * OpenDocument gives such a cell. */
+  if (ot->covered)
+    {
+      g_string_append (w->body, "<table:covered-table-cell office:value-type=\"string\">");
+      return;
+    }
+
+  if ((cpa->border & W42_BORDER_CELL_SET) || cpa->has_shading_color ||
+      cpa->shading > 0 || cpa->cell_valign != W42_CELL_VALIGN_TOP || !plain_table)
+    {
+      /* A style of the cell's own: its sides and their
+       * lines -- the table's, where the cell has none of its
+       * own -- its background, and where its text sits.
+       * One style per distinct look. */
+      static const char *names[4] = { "fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right" };
+      int sides = (cpa->border & W42_BORDER_CELL_SET)
+                    ? (cpa->border & W42_BORDER_BOX)
+                    : (props == NULL || props->borders) ? W42_BORDER_BOX : 0;
+      W42BorderEdge edges[4];
+      GString *look = g_string_new (NULL);
+      char *name;
+      gboolean first_row = cell->row == 0;
+      gboolean last_row = odt_last_row (blocks, b, level, cell->table, cell->row);
+      int n_cols = props != NULL ? props->n_cols : 1;
+
+      for (int k = 0; k < 4; k++)
+        {
+          gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                           (k == W42_EDGE_LEFT && cell->col == 0) ||
+                           (k == W42_EDGE_RIGHT && cell->col + cell->span >= n_cols);
+          const W42BorderEdge *e = &cpa->edge[k];
+
+          if ((cpa->border & W42_BORDER_CELL_SET) && (e->width != 0 || e->style != 0 || e->color != 0))
+            edges[k] = *e;
+          else if (props != NULL)
+            edges[k] = props->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
+          else
+            edges[k] = (W42BorderEdge) { 0, 0, 0 };
+          if (edges[k].style == W42_BORDER_NONE)
+            sides &= ~(1 << k);
+        }
+      for (int k = 0; k < 4; k++)
+        if (sides & (1 << k))
+          {
+            char buf[G_ASCII_DTOSTR_BUF_SIZE];
+            int width = W42_EDGE_WIDTH (&edges[k]);
+
+            /* A double line is three widths across, as
+             * OpenDocument measures it. */
+            if (edges[k].style == W42_BORDER_DOUBLE)
+              width *= 3;
+            g_string_append_printf (look, " %s=\"%spt %s #%06x\"", names[k],
+                                    g_ascii_formatd (buf, sizeof buf, "%.2f", width / 20.0),
+                                    w42_border_style_css (edges[k].style),
+                                    edges[k].color & 0xFFFFFF);
+            if (edges[k].style == W42_BORDER_DOUBLE)
+              g_string_append_printf (look, " %s-%s=\"%spt %spt %spt\"",
+                                      "style:border-line-width", names[k] + 10,
+                                      g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0),
+                                      g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0),
+                                      g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0));
+          }
+        else
+          g_string_append_printf (look, " %s=\"none\"", names[k]);
+      if (cpa->has_shading_color)
+        g_string_append_printf (look, " fo:background-color=\"#%06x\"",
+                                cpa->shading_color & 0xFFFFFF);
+      else if (cpa->shading > 0)
+        {
+          int grey = 255 - (int) cpa->shading * 255 / 100;
+
+          g_string_append_printf (look, " fo:background-color=\"#%02x%02x%02x\"", grey, grey, grey);
+        }
+      if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
+        g_string_append (look, " style:vertical-align=\"middle\"");
+      else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+        g_string_append (look, " style:vertical-align=\"bottom\"");
+
+      name = g_hash_table_lookup (w->cell_styles, look->str);
+      if (name == NULL)
+        {
+          name = g_strdup_printf ("Table%d.Cell%u", ot->t,
+                                  g_hash_table_size (w->cell_styles) + 1);
+          g_hash_table_insert (w->cell_styles, g_strdup (look->str), name);
+          g_string_append_printf (w->auto_styles, "<style:style style:name=\"%s\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\"%s/></style:style>",
+                                  name, look->str);
+        }
+      g_string_append_printf (w->body, "<table:table-cell table:style-name=\"%s\" office:value-type=\"string\"", name);
+      g_string_free (look, TRUE);
+    }
+  else
+    g_string_append_printf (w->body, "<table:table-cell table:style-name=\"Table%d.Cell\" office:value-type=\"string\"", ot->t);
+  if (cell->span > 1)
+    g_string_append_printf (w->body, " table:number-columns-spanned=\"%d\"", cell->span);
+  vspan = cpa->cell_vspan;
+  if (vspan > 1 && vspan != W42_CELL_COVERED)
+    g_string_append_printf (w->body, " table:number-rows-spanned=\"%d\"", vspan);
+  g_string_append (w->body, ">");
+}
+
+/* The padding either side of a cell's text, 0.03in, which a table in the
+ * cell does not have to fill. */
+#define ODT_CELL_PADDING 43
+
+/* Begins what block `b` is in and is not open yet: from the outermost
+ * table in, each level's table, its row and its cell.  `room` is the text
+ * column's width in twips, which a table in the text is set across; a
+ * table in a cell is set across the cell. */
+static void
+odt_tables_open (OdtWriter *w, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+                 guint b, OdtOpenTable *open, int *open_depth, int room,
+                 const W42ParaFmt *pa)
+{
+  const W42Block *block = g_ptr_array_index (blocks, b);
+
+  for (int level = 0; level < block->depth; level++)
+    {
+      OdtOpenTable *ot = &open[level];
+      W42BlockCell cell;
+
+      if (!w42_block_cell (block, level, &cell))
+        break;
+
+      if (level >= *open_depth)
+        {
+          const W42TableProps *tp = w42_pt_table_props (pt, cell.table);
+          int n_cols = tp != NULL ? tp->n_cols : 1;
+          int t = ++w->n_tables;
+          int total = 0;
+
+          if (level > 0)
+            {
+              /* The cell it is in, less its padding. */
+              const OdtOpenTable *up = &open[level - 1];
+              W42BlockCell outer;
+              int width = 0;
+
+              w42_block_cell (block, level - 1, &outer);
+              for (int c = outer.col; c < outer.col + MAX (outer.span, 1) && c < up->n_cols; c++)
+                width += up->widths[c];
+              room = MAX (width - 2 * ODT_CELL_PADDING, 360);
+              /* A table's element may not stand in the cell's lists. */
+              lists_close (w, &open[level - 1].lists);
+            }
+          ot->table = cell.table;
+          ot->t = t;
+          ot->row = -1;
+          ot->cell = FALSE;
+          ot->covered = FALSE;
+          ot->n_cols = n_cols;
+          ot->widths = g_new0 (int, n_cols);
+          memset (&ot->lists, 0, sizeof ot->lists);
+          for (int c = 0; c < n_cols; c++)
+            {
+              int width = tp != NULL && c < (int) tp->widths->len ? g_array_index (tp->widths, int, c) : 0;
+
+              ot->widths[c] = width > 0 ? width : room / n_cols;
+              total += ot->widths[c];
+            }
+
+          g_string_append_printf (w->auto_styles, "<style:style style:name=\"Table%d\" style:family=\"table\"><style:table-properties style:width=\"", t);
+          twips_out (w->auto_styles, level > 0 ? total : room);
+          g_string_append_printf (w->auto_styles, "\" table:align=\"left\"%s/></style:style>",
+                                  level == 0 && pa->section_break ? " fo:break-before=\"page\"" : "");
+          for (int c = 0; c < n_cols; c++)
+            {
+              g_string_append_printf (w->auto_styles, "<style:style style:name=\"Table%d.C%d\" style:family=\"table-column\"><style:table-column-properties style:column-width=\"", t, c);
+              twips_out (w->auto_styles, ot->widths[c]);
+              g_string_append (w->auto_styles, "\"/></style:style>");
+            }
+          g_string_append_printf (w->auto_styles, "<style:style style:name=\"Table%d.Cell\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\" fo:border=\"%s\"/></style:style>",
+                                  t, tp != NULL && !tp->borders ? "none" : "0.5pt solid #000000");
+          g_string_append_printf (w->body, "<table:table table:name=\"Table%d\" table:style-name=\"Table%d\">", t, t);
+          for (int c = 0; c < n_cols; c++)
+            g_string_append_printf (w->body, "<table:table-column table:style-name=\"Table%d.C%d\"/>", t, c);
+          *open_depth = level + 1;
+        }
+
+      if (ot->row != cell.row)
+        {
+          const W42TableProps *tp = w42_pt_table_props (pt, cell.table);
+          int least = w42_pt_table_get_row_height (pt, cell.table, cell.row);
+          int n_header = tp != NULL ? tp->header_rows : 0;
+
+          if (cell.row == 0 && n_header > 0)
+            g_string_append (w->body, "<table:table-header-rows>");
+          if (least > 0)
+            {
+              g_string_append_printf (w->auto_styles, "<style:style style:name=\"Table%d.R%d\" style:family=\"table-row\"><style:table-row-properties style:min-row-height=\"",
+                                      ot->t, cell.row);
+              twips_out (w->auto_styles, least);
+              g_string_append (w->auto_styles, "\"/></style:style>");
+              g_string_append_printf (w->body, "<table:table-row table:style-name=\"Table%d.R%d\">", ot->t, cell.row);
+            }
+          else
+            g_string_append (w->body, "<table:table-row>");
+          ot->row = cell.row;
+        }
+
+      if (!ot->cell)
+        {
+          ot->covered = w42_ap_table_get (aps, cell.cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
+          odt_cell_start (w, pt, aps, blocks, b, level, &cell, ot);
+          ot->cell = TRUE;
+          ot->col = cell.col;
+          ot->span = MAX (cell.span, 1);
+        }
+    }
+}
+
+/* Ends what the paragraph after the one just written is not in: the cells,
+ * rows and tables open, from the innermost out.  `next` may be NULL. */
+static void
+odt_tables_close (OdtWriter *w, W42PieceTable *pt, const W42Block *next,
+                  OdtOpenTable *open, int *open_depth)
+{
+  int next_depth = next != NULL && next->note < 0 ? next->depth : 0;
+  int keep = 0;
+
+  /* The levels the next paragraph is in the same cell at. */
+  while (keep < *open_depth && keep < next_depth)
+    {
+      W42BlockCell c;
+
+      w42_block_cell (next, keep, &c);
+      if (c.table != open[keep].table || c.row != open[keep].row || c.col != open[keep].col)
+        break;
+      keep++;
+    }
+
+  for (int level = *open_depth - 1; level >= keep; level--)
+    {
+      OdtOpenTable *ot = &open[level];
+      const W42TableProps *tp = w42_pt_table_props (pt, ot->table);
+      int n_header = tp != NULL ? tp->header_rows : 0;
+      W42BlockCell c = { -1, 0, 0, 1, 0 };
+      gboolean same_table = level < next_depth && w42_block_cell (next, level, &c) &&
+                            c.table == ot->table;
+
+      if (ot->cell)
+        {
+          lists_close (w, &ot->lists);
+          g_string_append (w->body, ot->covered ? "</table:covered-table-cell>"
+                                                : "</table:table-cell>");
+          for (int k = 1; k < ot->span; k++)
+            g_string_append (w->body, "<table:covered-table-cell/>");
+          ot->cell = FALSE;
+        }
+
+      if (same_table)
+        {
+          /* Another cell of this table: its row may go on. */
+          if (c.row != ot->row)
+            {
+              g_string_append (w->body, "</table:table-row>");
+              if (ot->row + 1 == n_header)
+                g_string_append (w->body, "</table:table-header-rows>");
+              ot->row = -1;
+            }
+          break;
+        }
+
+      g_string_append (w->body, "</table:table-row>");
+      if (n_header > 0 && ot->row + 1 <= n_header)
+        g_string_append (w->body, "</table:table-header-rows>");
+      g_string_append (w->body, "</table:table>");
+      g_free (ot->widths);
+      ot->widths = NULL;
+      *open_depth = level;
+    }
+}
+
 /* Into `file`, or when that is NULL into `*bytes`. */
 static gboolean
 odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
@@ -3885,10 +4322,10 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
   OdtWriter w;
   W42PageSetup pg;
   const W42PageText *header, *footer;
-  OdtLists body_lists = { 0 }, cell_lists = { 0 }, box_lists = { 0 };
+  OdtLists body_lists = { 0 }, box_lists = { 0 };
   OdtMarks marks = { NULL, NULL, 0 };
-  int table_open = -1, row_open = -1;
-  gboolean cell_covered = FALSE;      /* the open cell is one a merge swallowed */
+  OdtOpenTable open[W42_TABLE_MAX_DEPTH];
+  int open_depth = 0;                 /* the tables open, round one another */
   gboolean section_open = FALSE;      /* a text:section is open */
   W42ZipWriter *zip;
   GString *content, *stylesxml, *manifest;
@@ -3941,7 +4378,7 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
        * starts, said below with the page style.  It can open only between
        * what a section may hold -- not inside a table, nor between the
        * paragraphs of one text box -- and the lists close before it. */
-      if (pa->section_break && section_opens_here (aps, blocks, b, table_open))
+      if (pa->section_break && section_opens_here (aps, blocks, b, open_depth > 0))
         {
           int n = ++w.n_sections;
           int cols = MAX (pa->columns, 1);
@@ -3972,211 +4409,16 @@ odt_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file,
        * list left open over a text box's frame was no XML at all. */
       lists_to (&w, &body_lists, pa, block->table < 0 && pa->frame_side == W42_FRAME_NONE);
 
-      /* Tables. */
-      if (block->table >= 0 && block->table != table_open)
-        {
-          const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-          int n_cols = tp != NULL ? tp->n_cols : 1;
-          int t = ++w.n_tables;
-
-          g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d\" style:family=\"table\"><style:table-properties style:width=\"", t);
-          twips_out (w.auto_styles, pg.width - pg.margin_left - pg.margin_right);
-          g_string_append_printf (w.auto_styles, "\" table:align=\"left\"%s/></style:style>",
-                                  pa->section_break ? " fo:break-before=\"page\"" : "");
-          for (int c = 0; c < n_cols; c++)
-            {
-              int width = tp != NULL && c < (int) tp->widths->len ? g_array_index (tp->widths, int, c) : 0;
-
-              if (width <= 0)
-                width = (pg.width - pg.margin_left - pg.margin_right) / n_cols;
-              g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d.C%d\" style:family=\"table-column\"><style:table-column-properties style:column-width=\"", t, c);
-              twips_out (w.auto_styles, width);
-              g_string_append (w.auto_styles, "\"/></style:style>");
-            }
-          g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d.Cell\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\" fo:border=\"%s\"/></style:style>",
-                                  t, tp != NULL && !tp->borders ? "none" : "0.5pt solid #000000");
-          g_string_append_printf (w.body, "<table:table table:name=\"Table%d\" table:style-name=\"Table%d\">", t, t);
-          for (int c = 0; c < n_cols; c++)
-            g_string_append_printf (w.body, "<table:table-column table:style-name=\"Table%d.C%d\"/>", t, c);
-          table_open = block->table;
-          row_open = -1;
-        }
+      /* Tables: the cells the paragraph is in, a table in a cell a level
+       * deeper, begun as far as they are not open already, and ended as
+       * far as the next paragraph is not in them. */
       if (block->table >= 0)
         {
-          const W42Block *prev = b > 0 ? g_ptr_array_index (blocks, b - 1) : NULL;
-          gboolean cell_start = prev == NULL || prev->table != block->table ||
-                                prev->row != block->row || prev->col != block->col;
-          gboolean cell_end = next == NULL || next->table != block->table ||
-                              next->row != block->row || next->col != block->col;
-
-          if (block->row != row_open)
-            {
-              const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-              int least = w42_pt_table_get_row_height (pt, block->table, block->row);
-              int n_header = tp != NULL ? tp->header_rows : 0;
-
-              if (row_open >= 0)
-                g_string_append (w.body, "</table:table-row>");
-              if (row_open >= 0 && row_open + 1 == n_header)
-                g_string_append (w.body, "</table:table-header-rows>");
-              if (block->row == 0 && n_header > 0)
-                g_string_append (w.body, "<table:table-header-rows>");
-              if (least > 0)
-                {
-                  g_string_append_printf (w.auto_styles, "<style:style style:name=\"Table%d.R%d\" style:family=\"table-row\"><style:table-row-properties style:min-row-height=\"",
-                                          w.n_tables, block->row);
-                  twips_out (w.auto_styles, least);
-                  g_string_append (w.auto_styles, "\"/></style:style>");
-                  g_string_append_printf (w.body, "<table:table-row table:style-name=\"Table%d.R%d\">", w.n_tables, block->row);
-                }
-              else
-                g_string_append (w.body, "<table:table-row>");
-              row_open = block->row;
-            }
-          if (cell_start)
-            cell_covered = w42_ap_table_get (aps, block->cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
-          /* A cell a merge has swallowed keeps whatever is in it — it is
-           * simply not shown — so it is written whole, under the name
-           * OpenDocument gives such a cell. */
-          if (cell_start && cell_covered)
-            g_string_append (w.body, "<table:covered-table-cell office:value-type=\"string\">");
-          if (cell_start && !cell_covered)
-            {
-              {
-                const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
-                const W42TableProps *props = w42_pt_table_props (pt, block->table);
-                gboolean plain_table = props == NULL ||
-                                       memcmp (props->edge, &(W42BorderEdge[W42_N_EDGES]) { { 0, 0, 0 } },
-                                               sizeof props->edge) == 0;
-
-                if ((cpa->border & W42_BORDER_CELL_SET) || cpa->has_shading_color ||
-                    cpa->shading > 0 || cpa->cell_valign != W42_CELL_VALIGN_TOP || !plain_table)
-                  {
-                    /* A style of the cell's own: its sides and their
-                     * lines -- the table's, where the cell has none of its
-                     * own -- its background, and where its text sits.
-                     * One style per distinct look. */
-                    static const char *names[4] = { "fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right" };
-                    int sides = (cpa->border & W42_BORDER_CELL_SET)
-                                  ? (cpa->border & W42_BORDER_BOX)
-                                  : (props == NULL || props->borders) ? W42_BORDER_BOX : 0;
-                    W42BorderEdge edges[4];
-                    GString *look = g_string_new (NULL);
-                    char *name;
-                    gboolean first_row = block->row == 0, last_row = TRUE;
-                    int n_cols = props != NULL ? props->n_cols : 1;
-
-                    for (guint k = b + 1; k < blocks->len; k++)
-                      {
-                        const W42Block *rb = g_ptr_array_index (blocks, k);
-
-                        if (rb->table != block->table)
-                          break;
-                        if (rb->row > block->row)
-                          {
-                            last_row = FALSE;
-                            break;
-                          }
-                      }
-                    for (int k = 0; k < 4; k++)
-                      {
-                        gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
-                                         (k == W42_EDGE_LEFT && block->col == 0) ||
-                                         (k == W42_EDGE_RIGHT && block->col + block->span >= n_cols);
-                        const W42BorderEdge *e = &cpa->edge[k];
-
-                        if ((cpa->border & W42_BORDER_CELL_SET) && (e->width != 0 || e->style != 0 || e->color != 0))
-                          edges[k] = *e;
-                        else if (props != NULL)
-                          edges[k] = props->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)];
-                        else
-                          edges[k] = (W42BorderEdge) { 0, 0, 0 };
-                        if (edges[k].style == W42_BORDER_NONE)
-                          sides &= ~(1 << k);
-                      }
-                    for (int k = 0; k < 4; k++)
-                      if (sides & (1 << k))
-                        {
-                          char buf[G_ASCII_DTOSTR_BUF_SIZE];
-                          int width = W42_EDGE_WIDTH (&edges[k]);
-
-                          /* A double line is three widths across, as
-                           * OpenDocument measures it. */
-                          if (edges[k].style == W42_BORDER_DOUBLE)
-                            width *= 3;
-                          g_string_append_printf (look, " %s=\"%spt %s #%06x\"", names[k],
-                                                  g_ascii_formatd (buf, sizeof buf, "%.2f", width / 20.0),
-                                                  w42_border_style_css (edges[k].style),
-                                                  edges[k].color & 0xFFFFFF);
-                          if (edges[k].style == W42_BORDER_DOUBLE)
-                            g_string_append_printf (look, " %s-%s=\"%spt %spt %spt\"",
-                                                    "style:border-line-width", names[k] + 10,
-                                                    g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0),
-                                                    g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0),
-                                                    g_ascii_formatd (buf, sizeof buf, "%.2f", W42_EDGE_WIDTH (&edges[k]) / 20.0));
-                        }
-                      else
-                        g_string_append_printf (look, " %s=\"none\"", names[k]);
-                    if (cpa->has_shading_color)
-                      g_string_append_printf (look, " fo:background-color=\"#%06x\"",
-                                              cpa->shading_color & 0xFFFFFF);
-                    else if (cpa->shading > 0)
-                      {
-                        int grey = 255 - (int) cpa->shading * 255 / 100;
-
-                        g_string_append_printf (look, " fo:background-color=\"#%02x%02x%02x\"", grey, grey, grey);
-                      }
-                    if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
-                      g_string_append (look, " style:vertical-align=\"middle\"");
-                    else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
-                      g_string_append (look, " style:vertical-align=\"bottom\"");
-
-                    name = g_hash_table_lookup (w.cell_styles, look->str);
-                    if (name == NULL)
-                      {
-                        name = g_strdup_printf ("Table%d.Cell%u", w.n_tables,
-                                                g_hash_table_size (w.cell_styles) + 1);
-                        g_hash_table_insert (w.cell_styles, g_strdup (look->str), name);
-                        g_string_append_printf (w.auto_styles, "<style:style style:name=\"%s\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.03in\"%s/></style:style>",
-                                                name, look->str);
-                      }
-                    g_string_append_printf (w.body, "<table:table-cell table:style-name=\"%s\" office:value-type=\"string\"", name);
-                    g_string_free (look, TRUE);
-                  }
-                else
-                  g_string_append_printf (w.body, "<table:table-cell table:style-name=\"Table%d.Cell\" office:value-type=\"string\"", w.n_tables);
-              }
-              if (block->span > 1)
-                g_string_append_printf (w.body, " table:number-columns-spanned=\"%d\"", block->span);
-              {
-                int vspan = w42_ap_table_get (aps, block->cell_ap)->pa.cell_vspan;
-
-                if (vspan > 1 && vspan != W42_CELL_COVERED)
-                  g_string_append_printf (w.body, " table:number-rows-spanned=\"%d\"", vspan);
-              }
-              g_string_append (w.body, ">");
-            }
-          lists_to (&w, &cell_lists, pa, TRUE);
+          odt_tables_open (&w, pt, aps, blocks, b, open, &open_depth,
+                           pg.width - pg.margin_left - pg.margin_right, pa);
+          lists_to (&w, &open[open_depth - 1].lists, pa, TRUE);
           write_paragraph (&w, pt, aps, blocks, block, &marks, next);
-          if (cell_end)
-            {
-              lists_close (&w, &cell_lists);
-              g_string_append (w.body, cell_covered ? "</table:covered-table-cell>"
-                                                    : "</table:table-cell>");
-              for (int k = 1; k < block->span; k++)
-                g_string_append (w.body, "<table:covered-table-cell/>");
-            }
-          if (next == NULL || next->table != block->table)
-            {
-              const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-
-              g_string_append (w.body, "</table:table-row>");
-              if (tp != NULL && tp->header_rows > 0 && block->row + 1 <= tp->header_rows)
-                g_string_append (w.body, "</table:table-header-rows>");
-              g_string_append (w.body, "</table:table>");
-              table_open = -1;
-              row_open = -1;
-            }
+          odt_tables_close (&w, pt, next, open, &open_depth);
           continue;
         }
 

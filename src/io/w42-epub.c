@@ -1160,8 +1160,19 @@ plan_chapters (Epub *e)
         content = TRUE;
       info->chapter = chapter;
       if (info->kind == K_CELL)
-        info->written = w42_ap_table_get (e->aps, block->cell_ap)->pa.cell_vspan
-                          != W42_CELL_COVERED;
+        {
+          /* Not in a cell a merge from above swallowed, at any depth of
+           * the tables it is in. */
+          info->written = TRUE;
+          for (int l = 0; l < block->depth; l++)
+            {
+              W42BlockCell c;
+
+              if (w42_block_cell (block, l, &c) &&
+                  w42_ap_table_get (e->aps, c.cell_ap)->pa.cell_vspan == W42_CELL_COVERED)
+                info->written = FALSE;
+            }
+        }
       else
         info->written = info->kind != K_BLANK;
       g_free (prefix);
@@ -1343,10 +1354,22 @@ plan_bookmarks (Epub *e)
 
 /* ---- The second pass -------------------------------------------------- */
 
+/* A table open while a chapter is written, at one level of the tables
+ * round the text, and the row and cell open in it. */
+typedef struct {
+  int       table;
+  int       row;            /* the row open, or -1 */
+  int       col;            /* the cell open, when one is */
+  gboolean  cell;
+  gboolean  covered;        /* a cell a merge swallowed: not written, nor
+                             * what it holds */
+  gboolean  head;           /* the open cell is a heading row's <th> */
+} EpubOpenTable;
+
 typedef struct {
   ListState lists;
-  int       table_open;
-  int       row_open;
+  EpubOpenTable open[W42_TABLE_MAX_DEPTH];
+  int       open_depth;     /* the tables open, round one another */
   gboolean  wrote;          /* the file has something in it */
   gboolean  pending_blank;  /* blank paragraphs since the last thing written */
   gboolean  pending_break;  /* one of them started a page */
@@ -1433,110 +1456,160 @@ lists_open (GString *out, ListState *ls, const W42ParaFmt *pa)
     }
 }
 
+/* A table begins: its element, and its columns' shares of it. */
+static void
+epub_table_start (Epub *e, GString *out, int table)
+{
+  const W42TableProps *tp = w42_pt_table_props (e->pt, table);
+
+  g_string_append_printf (out, "<table%s>\n",
+                          tp == NULL || tp->borders ? " class=\"ruled\"" : "");
+  if (tp != NULL && tp->widths != NULL && tp->n_cols > 0 &&
+      (int) tp->widths->len >= tp->n_cols)
+    {
+      /* The columns' shares of the table, which is as wide as the
+       * screen allows; widths of their own would not fit a phone. */
+      double total = 0;
+      gboolean all = TRUE;
+
+      for (int c = 0; c < tp->n_cols; c++)
+        {
+          int cw = g_array_index (tp->widths, int, c);
+
+          all &= cw > 0;
+          total += MAX (cw, 0);
+        }
+      if (all && total > 0)
+        {
+          g_string_append (out, "<colgroup>");
+          for (int c = 0; c < tp->n_cols; c++)
+            {
+              g_string_append (out, "<col style=\"width:");
+              css_number (out, g_array_index (tp->widths, int, c) * 100.0 / total);
+              g_string_append (out, "%\"/>");
+            }
+          g_string_append (out, "</colgroup>\n");
+        }
+    }
+}
+
+/* A paragraph in a table's cell: the tables, rows and cells round it
+ * begun as far as they are not open already -- a table in a cell a level
+ * deeper -- the paragraph, and what the next paragraph is not in ended. */
 static void
 write_cell (Epub *e, GString *out, guint b, BodyState *s)
 {
   const W42Block *block = g_ptr_array_index (e->blocks, b);
-  const W42Block *prev = b > 0 ? g_ptr_array_index (e->blocks, b - 1) : NULL;
   const W42Block *next = b + 1 < e->blocks->len ? g_ptr_array_index (e->blocks, b + 1) : NULL;
   const W42ParaFmt *pa = &w42_ap_table_get (e->aps, block->ap)->pa;
-  const W42ParaFmt *cpa = &w42_ap_table_get (e->aps, block->cell_ap)->pa;
-  const W42TableProps *props = w42_pt_table_props (e->pt, block->table);
-  /* The rows that repeat at the top of every page are the table's
-   * header, which a reader reading aloud announces as one. */
-  const char *cell = props != NULL && block->row < props->header_rows ? "th" : "td";
-  gboolean cell_start, cell_end;
+  gboolean shown = TRUE;
+  int next_depth, keep = 0;
 
   if (next != NULL && next->note >= 0)
     next = NULL;
-  if (block->table != s->table_open)
+
+  for (int level = 0; level < block->depth && shown; level++)
     {
-      const W42TableProps *tp = props;
+      EpubOpenTable *ot = &s->open[level];
+      W42BlockCell cell;
 
-      g_string_append_printf (out, "<table%s>\n",
-                              tp == NULL || tp->borders ? " class=\"ruled\"" : "");
-      if (tp != NULL && tp->widths != NULL && tp->n_cols > 0 &&
-          (int) tp->widths->len >= tp->n_cols)
+      if (!w42_block_cell (block, level, &cell))
+        break;
+      if (level >= s->open_depth)
         {
-          /* The columns' shares of the table, which is as wide as the
-           * screen allows; widths of their own would not fit a phone. */
-          double total = 0;
-          gboolean all = TRUE;
+          epub_table_start (e, out, cell.table);
+          ot->table = cell.table;
+          ot->row = -1;
+          ot->cell = FALSE;
+          ot->covered = FALSE;
+          s->open_depth = level + 1;
+        }
+      if (ot->row != cell.row)
+        {
+          g_string_append (out, "<tr>");
+          ot->row = cell.row;
+        }
+      if (!ot->cell)
+        {
+          const W42ParaFmt *cpa = &w42_ap_table_get (e->aps, cell.cell_ap)->pa;
+          const W42TableProps *props = w42_pt_table_props (e->pt, cell.table);
 
-          for (int c = 0; c < tp->n_cols; c++)
+          /* The rows that repeat at the top of every page are the
+           * table's header, which a reader reading aloud announces as
+           * one. */
+          ot->head = props != NULL && cell.row < props->header_rows;
+          ot->covered = cpa->cell_vspan == W42_CELL_COVERED;
+          ot->cell = TRUE;
+          ot->col = cell.col;
+          /* A cell a merge from above swallowed is the merging cell's
+           * rowspan, and not written. */
+          if (!ot->covered)
             {
-              int cw = g_array_index (tp->widths, int, c);
-
-              all &= cw > 0;
-              total += MAX (cw, 0);
-            }
-          if (all && total > 0)
-            {
-              g_string_append (out, "<colgroup>");
-              for (int c = 0; c < tp->n_cols; c++)
+              g_string_append_printf (out, "<%s", ot->head ? "th" : "td");
+              if (cell.span > 1)
+                g_string_append_printf (out, " colspan=\"%d\"", cell.span);
+              if (cpa->cell_vspan > 1)
                 {
-                  g_string_append (out, "<col style=\"width:");
-                  css_number (out, g_array_index (tp->widths, int, c) * 100.0 / total);
-                  g_string_append (out, "%\"/>");
+                  /* No further than the table goes, whatever the mark says. */
+                  int rows = w42_pt_table_rows (e->pt, cell.table) - cell.row;
+                  int vspan = MIN ((int) cpa->cell_vspan, MAX (rows, 1));
+
+                  if (vspan > 1)
+                    g_string_append_printf (out, " rowspan=\"%d\"", vspan);
                 }
-              g_string_append (out, "</colgroup>\n");
+              g_string_append_c (out, '>');
             }
         }
-      s->table_open = block->table;
-      s->row_open = -1;
-    }
-  if (block->row != s->row_open)
-    {
-      if (s->row_open >= 0)
-        g_string_append (out, "</tr>\n");
-      g_string_append (out, "<tr>");
-      s->row_open = block->row;
+      shown = !ot->covered;
     }
 
-  cell_start = prev == NULL || prev->table != block->table ||
-               prev->row != block->row || prev->col != block->col;
-  cell_end = next == NULL || next->table != block->table ||
-             next->row != block->row || next->col != block->col;
-
-  /* A cell a merge from above swallowed is the merging cell's rowspan,
-   * and not written. */
-  if (e->info[b].written)
+  if (shown && e->info[b].written)
     {
       static const ParaLook CELL = { W42_ALIGN_LEFT, 0, 0, 0, 0, 0 };
       GString *css = g_string_new (NULL);
 
-      if (cell_start)
-        {
-          g_string_append_printf (out, "<%s", cell);
-          if (block->span > 1)
-            g_string_append_printf (out, " colspan=\"%d\"", block->span);
-          if (cpa->cell_vspan > 1)
-            {
-              /* No further than the table goes, whatever the mark says. */
-              int rows = w42_pt_table_rows (e->pt, block->table) - block->row;
-              int vspan = MIN ((int) cpa->cell_vspan, MAX (rows, 1));
-
-              if (vspan > 1)
-                g_string_append_printf (out, " rowspan=\"%d\"", vspan);
-            }
-          g_string_append_c (out, '>');
-        }
       para_style (css, pa, &CELL, look_em (&e->look[CLS_P]), TRUE);
       open_element (out, "p", NULL, pa->rtl, css);
       if (block->runs->len == 0)
         g_string_append (out, "&#160;");
       write_runs (e, out, b, &e->look[CLS_P].ch, e->info[b].chapter);
       g_string_append (out, "</p>");
-      if (cell_end)
-        g_string_append_printf (out, "</%s>", cell);
       g_string_free (css, TRUE);
     }
 
-  if (next == NULL || next->table != block->table)
+  /* The levels the next paragraph is in the same cell at stay open. */
+  next_depth = next != NULL ? next->depth : 0;
+  while (keep < s->open_depth && keep < next_depth)
     {
+      W42BlockCell c;
+
+      w42_block_cell (next, keep, &c);
+      if (c.table != s->open[keep].table || c.row != s->open[keep].row ||
+          c.col != s->open[keep].col)
+        break;
+      keep++;
+    }
+  for (int level = s->open_depth - 1; level >= keep; level--)
+    {
+      EpubOpenTable *ot = &s->open[level];
+      W42BlockCell c;
+
+      if (ot->cell && !ot->covered)
+        g_string_append_printf (out, "</%s>", ot->head ? "th" : "td");
+      ot->cell = FALSE;
+      ot->covered = FALSE;
+      if (level < next_depth && w42_block_cell (next, level, &c) && c.table == ot->table)
+        {
+          /* Another cell of this table: its row may go on. */
+          if (c.row != ot->row)
+            {
+              g_string_append (out, "</tr>\n");
+              ot->row = -1;
+            }
+          break;
+        }
       g_string_append (out, "</tr>\n</table>\n");
-      s->table_open = -1;
-      s->row_open = -1;
+      s->open_depth = level;
     }
 }
 
@@ -1567,7 +1640,6 @@ write_body (Epub *e)
           cur = info->chapter;
           chapter = g_ptr_array_index (e->chapters, cur);
           memset (&s, 0, sizeof s);
-          s.table_open = s.row_open = -1;
         }
       out = chapter->body;
 
@@ -1591,7 +1663,7 @@ write_body (Epub *e)
        * either end of a file, they say nothing the margins do not. */
       if (s.pending_blank && s.wrote && !s.after_mark && !new_page &&
           (info->kind == K_PARA || (info->kind == K_LIST && s.lists.depth == 0) ||
-           (info->kind == K_CELL && block->table != s.table_open)))
+           (info->kind == K_CELL && s.open_depth == 0)))
         g_string_append (out, "<p class=\"empty\">&#160;</p>\n");
       s.pending_blank = FALSE;
       s.pending_break = FALSE;

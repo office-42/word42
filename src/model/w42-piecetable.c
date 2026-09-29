@@ -118,6 +118,9 @@ struct _W42PieceTable {
 
 static gsize pt_block_start (W42PieceTable *pt, gsize pos);
 static gsize pt_block_end (W42PieceTable *pt, gsize block);
+static W42PieceTable *pt_extract (W42PieceTable *pt, gsize start, gsize n, gboolean tables);
+static gsize pt_insert_fragment (W42PieceTable *pt, gsize pos, W42PieceTable *frag,
+                                 gboolean tables);
 
 static void
 table_props_free (gpointer data)
@@ -153,6 +156,87 @@ piece_is_strux (const W42Piece *p, W42StruxType which)
 #define CELL_SPAN(o)    (MAX ((int) ((o) & 0x3ff), 1))
 #define CELL_PAYLOAD(r, c, s) \
   (((gsize) (r) << 20) | ((gsize) (c) << 10) | (gsize) MAX ((s), 1))
+
+/* Where a walk through the pieces stands among the tables: the ones open
+ * round it, the innermost last, and the cell of each it is in.  Tables
+ * nest -- a TABLE mark in a cell opens a table inside it, and its
+ * ENDTABLE goes back to the cell -- so a CELL mark belongs to the
+ * innermost table open, not to the last TABLE mark seen. */
+typedef struct {
+  int depth;          /* may pass W42_TABLE_MAX_DEPTH in a document built
+                       * wrong; the tables past it are then not told apart */
+  struct {
+    int table, row, col;
+  } open[W42_TABLE_MAX_DEPTH];
+} TableWalk;
+
+static inline void
+table_walk_step (TableWalk *w, const W42Piece *q)
+{
+  if (q->type != W42_PIECE_STRUX)
+    return;
+  switch ((W42StruxType) q->strux)
+    {
+    case W42_STRUX_TABLE:
+      if (w->depth < W42_TABLE_MAX_DEPTH)
+        {
+          w->open[w->depth].table = (int) q->offset;
+          w->open[w->depth].row = 0;
+          w->open[w->depth].col = 0;
+        }
+      w->depth++;
+      break;
+    case W42_STRUX_CELL:
+      if (w->depth > 0 && w->depth <= W42_TABLE_MAX_DEPTH)
+        {
+          w->open[w->depth - 1].row = CELL_ROW (q->offset);
+          w->open[w->depth - 1].col = CELL_COL (q->offset);
+        }
+      break;
+    case W42_STRUX_ENDTABLE:
+      if (w->depth > 0)
+        w->depth--;
+      break;
+    case W42_STRUX_NOTES:
+      w->depth = 0;
+      break;
+    default:
+      break;
+    }
+}
+
+/* The innermost table open, or -1. */
+static inline int
+table_walk_table (const TableWalk *w)
+{
+  return w->depth > 0 && w->depth <= W42_TABLE_MAX_DEPTH
+         ? w->open[w->depth - 1].table : -1;
+}
+
+/* The piece after `q` in a walk over one table's own marks, from the
+ * piece after its TABLE mark: a table in one of its cells is stepped
+ * over whole, and the walk ends -- NULL -- at the table's ENDTABLE. */
+static W42Piece *
+table_own_next (W42Piece *q)
+{
+  if (piece_is_strux (q, W42_STRUX_ENDTABLE))
+    return NULL;
+  if (piece_is_strux (q, W42_STRUX_TABLE))
+    {
+      int depth = 1;
+
+      /* To the ENDTABLE that closes it, and past. */
+      for (q = q->next; q != NULL; q = q->next)
+        if (piece_is_strux (q, W42_STRUX_TABLE))
+          depth++;
+        else if (piece_is_strux (q, W42_STRUX_ENDTABLE) && --depth == 0)
+          break;
+      if (q == NULL)
+        return NULL;
+    }
+  q = q->next;
+  return q != NULL && piece_is_strux (q, W42_STRUX_ENDTABLE) ? NULL : q;
+}
 
 /* ---------------------------------------------------------------------- */
 /* Record helpers                                                          */
@@ -1381,8 +1465,35 @@ w42_block_free (W42Block *block)
     g_string_free (block->text, TRUE);
   if (block->runs != NULL)
     g_array_free (block->runs, TRUE);
+  g_free (block->outer);
 
   g_free (block);
+}
+
+gboolean
+w42_block_cell (const W42Block *block, int level, W42BlockCell *out)
+{
+  g_return_val_if_fail (block != NULL, FALSE);
+
+  if (level < 0 || level >= block->depth)
+    return FALSE;
+  if (level < block->depth - 1)
+    {
+      if (block->outer == NULL)
+        return FALSE;
+      if (out != NULL)
+        *out = block->outer[level];
+      return TRUE;
+    }
+  if (out != NULL)
+    {
+      out->table = block->table;
+      out->row = block->row;
+      out->col = block->col;
+      out->span = block->span;
+      out->cell_ap = block->cell_ap;
+    }
+  return TRUE;
 }
 
 static W42Block *
@@ -1420,6 +1531,7 @@ block_new_reusing (GPtrArray *pool, guint *taken, gsize start_pos, W42ApIdx ap)
 
     g_string_set_size (text, 0);
     g_array_set_size (runs, 0);
+    g_free (block->outer);
     memset (block, 0, sizeof *block);
     block->text = text;
     block->runs = runs;
@@ -1565,8 +1677,10 @@ w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool)
   blocks = g_ptr_array_new_with_free_func ((GDestroyNotify) w42_block_free);
   /* `numbers` is freed where the blocks are returned. */
 
-  int table = -1, row = 0, col = 0, span = 1;
-  W42ApIdx cell_ap = w42_ap_table_default (pt->aps);
+  /* The cells of the tables open, the innermost last: a table in a cell
+   * is one more, and its end goes back to the cell it was in. */
+  W42BlockCell open[W42_TABLE_MAX_DEPTH];
+  int depth = 0, nested = 0;    /* nested counts past the deepest */
   int note = -1;
   GArray *numbers = g_array_new (FALSE, TRUE, sizeof (int));   /* by id */
   GArray *ends = g_array_new (FALSE, TRUE, sizeof (gboolean)); /* by id */
@@ -1622,7 +1736,7 @@ w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool)
           switch ((W42StruxType) p->strux)
             {
             case W42_STRUX_NOTES:
-              table = -1;
+              depth = nested = 0;
               current = NULL;
               break;
             case W42_STRUX_NOTE:
@@ -1630,26 +1744,47 @@ w42_pt_snapshot_blocks_reusing (W42PieceTable *pt, GPtrArray *pool)
               current = NULL;
               break;
             case W42_STRUX_TABLE:
-              table = (int) p->offset;
-              row = col = 0;
-              span = 1;
+              /* A document built wrong may nest deeper than any reader
+               * lets it: the tables past the deepest are taken for it. */
+              nested++;
+              depth = MIN (nested, W42_TABLE_MAX_DEPTH);
+              open[depth - 1].table = (int) p->offset;
+              open[depth - 1].row = open[depth - 1].col = 0;
+              open[depth - 1].span = 1;
+              open[depth - 1].cell_ap = w42_ap_table_default (pt->aps);
               break;
             case W42_STRUX_CELL:
-              row = CELL_ROW (p->offset);
-              col = CELL_COL (p->offset);
-              span = CELL_SPAN (p->offset);
-              cell_ap = p->ap;
+              if (depth > 0)
+                {
+                  open[depth - 1].row = CELL_ROW (p->offset);
+                  open[depth - 1].col = CELL_COL (p->offset);
+                  open[depth - 1].span = CELL_SPAN (p->offset);
+                  open[depth - 1].cell_ap = p->ap;
+                }
               break;
             case W42_STRUX_ENDTABLE:
-              table = -1;
+              if (nested > 0)
+                nested--;
+              depth = MIN (nested, W42_TABLE_MAX_DEPTH);
               break;
             case W42_STRUX_BLOCK:
               current = block_new_reusing (pool, &taken, pos, p->ap);
-              current->table = table;
-              current->row = row;
-              current->span = span;
-              current->cell_ap = cell_ap;
-              current->col = col;
+              current->depth = depth;
+              if (depth > 0)
+                {
+                  current->table = open[depth - 1].table;
+                  current->row = open[depth - 1].row;
+                  current->col = open[depth - 1].col;
+                  current->span = open[depth - 1].span;
+                  current->cell_ap = open[depth - 1].cell_ap;
+                  if (depth > 1)
+                    current->outer = g_memdup2 (open, sizeof open[0] * (gsize) (depth - 1));
+                }
+              else
+                {
+                  current->span = 1;
+                  current->cell_ap = w42_ap_table_default (pt->aps);
+                }
               current->note = note;
               current->note_number =
                 (note >= 0 && (guint) note < numbers->len)
@@ -2002,30 +2137,53 @@ pt_position_protected (W42PieceTable *pt, gsize pos, gsize range_start, gsize ra
     return FALSE;
 
   /* Find the table this mark belongs to and see whether the range takes
-   * all of it. */
+   * all of it.  Tables nest, so the table is the one open at the mark --
+   * the innermost -- and it ends at the ENDTABLE that closes it, not at
+   * the first one after the mark: a table in one of its cells ends
+   * first. */
   {
+    gsize starts[W42_TABLE_MAX_DEPTH];
     gsize start = 0, end = 0, p = 0;
+    int depth = 0, target = 0;
     gboolean found = FALSE;
 
     for (W42Piece *q = pt->head; q != NULL; q = q->next)
       {
+        gboolean mark = q == piece || (q == prev && piece_is_strux (piece, W42_STRUX_BLOCK));
+
         if (piece_is_strux (q, W42_STRUX_TABLE))
-          start = p;
-        if (q == piece || (q == prev && piece_is_strux (piece, W42_STRUX_BLOCK)))
-          found = TRUE;
-        if (piece_is_strux (q, W42_STRUX_ENDTABLE) && found)
           {
-            end = p + 1;              /* through the ENDTABLE mark */
-            /* and the paragraph mark after it */
-            if (q->next != NULL && piece_is_strux (q->next, W42_STRUX_BLOCK))
-              end += 1;
-            break;
+            if (depth < W42_TABLE_MAX_DEPTH)
+              starts[depth] = p;
+            depth++;
           }
+        if (mark)
+          {
+            found = TRUE;
+            target = depth;           /* an ENDTABLE's own table is still open */
+            if (target > 0)
+              start = starts[MIN (target, W42_TABLE_MAX_DEPTH) - 1];
+          }
+        if (piece_is_strux (q, W42_STRUX_ENDTABLE))
+          {
+            if (found && depth == target)
+              {
+                end = p + 1;              /* through the ENDTABLE mark */
+                /* and the paragraph mark after it */
+                if (q->next != NULL && piece_is_strux (q->next, W42_STRUX_BLOCK))
+                  end += 1;
+                break;
+              }
+            if (depth > 0)
+              depth--;
+          }
+        else if (piece_is_strux (q, W42_STRUX_NOTES))
+          depth = 0;
         p += q->length;
       }
 
-    if (!found)
-      return FALSE;
+    if (!found || target == 0)
+      return found;               /* a table's mark in no table: keep it */
 
     return !(range_start <= start && range_end >= end);
   }
@@ -2856,12 +3014,12 @@ w42_pt_merge_cells_down (W42PieceTable *pt, int table, int row, int col, int row
 
       if (!w42_pt_cell_range (pt, table, r, col, &s, &e) || e <= s)
         continue;
-      frag = w42_pt_extract (pt, s, e - s);
+      frag = pt_extract (pt, s, e - s, TRUE);
       w42_pt_delete (pt, s, e - s);
       if (w42_pt_cell_range (pt, table, row, col, &os, &oe))
         {
           w42_pt_insert_block (pt, oe, w42_pt_block_ap_at (pt, oe - 1));
-          w42_pt_insert_fragment (pt, oe + 1, frag);
+          pt_insert_fragment (pt, oe + 1, frag, TRUE);
         }
       w42_pt_free (frag);
     }
@@ -2943,7 +3101,7 @@ w42_pt_resolve_vmerges (W42PieceTable *pt, int table)
   if (first == NULL)
     return;
 
-  for (W42Piece *q = first->next; q != NULL && !piece_is_strux (q, W42_STRUX_ENDTABLE); q = q->next)
+  for (W42Piece *q = first->next; q != NULL; q = table_own_next (q))
     if (piece_is_strux (q, W42_STRUX_CELL))
       {
         const W42Fmt *fmt = w42_ap_table_get (pt->aps, q->ap);
@@ -2958,7 +3116,7 @@ w42_pt_resolve_vmerges (W42PieceTable *pt, int table)
 
   /* The first mark for each row and column, as a lookup would find it. */
   grid = g_new0 (W42Piece *, (gsize) rows * cols);
-  for (W42Piece *q = first->next; q != NULL && !piece_is_strux (q, W42_STRUX_ENDTABLE); q = q->next)
+  for (W42Piece *q = first->next; q != NULL; q = table_own_next (q))
     if (piece_is_strux (q, W42_STRUX_CELL))
       {
         int row = CELL_ROW (q->offset), col = CELL_COL (q->offset);
@@ -3021,18 +3179,15 @@ w42_pt_resolve_vmerges (W42PieceTable *pt, int table)
 int
 w42_pt_cell_span (W42PieceTable *pt, int table, int row, int col)
 {
-  int cur_table = -1;
+  TableWalk walk = { 0 };
 
   g_return_val_if_fail (pt != NULL, 0);
 
   for (W42Piece *q = pt->head; q != NULL; q = q->next)
     {
-      if (piece_is_strux (q, W42_STRUX_TABLE))
-        cur_table = (int) q->offset;
-      else if (piece_is_strux (q, W42_STRUX_ENDTABLE))
-        cur_table = -1;
-      else if (piece_is_strux (q, W42_STRUX_CELL) && cur_table == table &&
-               CELL_ROW (q->offset) == row && CELL_COL (q->offset) == col)
+      table_walk_step (&walk, q);
+      if (piece_is_strux (q, W42_STRUX_CELL) && table_walk_table (&walk) == table &&
+          CELL_ROW (q->offset) == row && CELL_COL (q->offset) == col)
         return CELL_SPAN (q->offset);
     }
 
@@ -3074,6 +3229,22 @@ w42_pt_set_cell_span (W42PieceTable *pt, gsize cell_pos, int span)
 
   piece->offset = CELL_PAYLOAD (CELL_ROW (piece->offset),
                                 CELL_COL (piece->offset), span);
+}
+
+void
+w42_pt_set_cell_place (W42PieceTable *pt, gsize cell_pos, int row, int col, int span)
+{
+  gsize offset = 0;
+  W42Piece *piece;
+
+  g_return_if_fail (pt != NULL);
+
+  piece = pt_find (pt, cell_pos, &offset);
+  if (piece == NULL || !piece_is_strux (piece, W42_STRUX_CELL))
+    return;
+
+  piece->offset = CELL_PAYLOAD (CLAMP (row, 0, CELL_ROW_MAX), CLAMP (col, 0, 1022),
+                                CLAMP (span, 1, 1023));
 }
 
 void
@@ -3411,54 +3582,79 @@ w42_pt_table_set_widths (W42PieceTable *pt, int table, const int *widths, int n)
   g_array_free (array, TRUE);
 }
 
+/* Walks to `pos` and says which tables are open there. */
+static void
+pt_table_walk_to (W42PieceTable *pt, gsize pos, TableWalk *walk)
+{
+  gsize p = 0;
+
+  memset (walk, 0, sizeof *walk);
+  for (W42Piece *q = pt->head; q != NULL && p < pos; q = q->next)
+    {
+      table_walk_step (walk, q);
+      p += q->length;
+    }
+}
+
 gboolean
 w42_pt_cell_at (W42PieceTable *pt, gsize pos, int *table, int *row, int *col)
 {
-  gsize p = 0;
-  int cur_table = -1, cur_row = 0, cur_col = 0;
+  TableWalk walk;
+  int cur_table;
 
   g_return_val_if_fail (pt != NULL, FALSE);
 
-  for (W42Piece *q = pt->head; q != NULL && p < pos; q = q->next)
-    {
-      if (piece_is_strux (q, W42_STRUX_TABLE))
-        cur_table = (int) q->offset;
-      else if (piece_is_strux (q, W42_STRUX_CELL))
-        {
-          cur_row = CELL_ROW (q->offset);
-          cur_col = CELL_COL (q->offset);
-        }
-      else if (piece_is_strux (q, W42_STRUX_ENDTABLE))
-        cur_table = -1;
-
-      p += q->length;
-    }
-
+  pt_table_walk_to (pt, pos, &walk);
+  cur_table = table_walk_table (&walk);
   if (cur_table < 0)
     return FALSE;
 
   if (table) *table = cur_table;
-  if (row)   *row = cur_row;
-  if (col)   *col = cur_col;
+  if (row)   *row = walk.open[walk.depth - 1].row;
+  if (col)   *col = walk.open[walk.depth - 1].col;
   return TRUE;
+}
+
+int
+w42_pt_table_depth (W42PieceTable *pt, gsize pos)
+{
+  TableWalk walk;
+
+  g_return_val_if_fail (pt != NULL, 0);
+
+  pt_table_walk_to (pt, pos, &walk);
+  return walk.depth;
+}
+
+int
+w42_pt_table_parent (W42PieceTable *pt, int table)
+{
+  TableWalk walk = { 0 };
+
+  g_return_val_if_fail (pt != NULL, -1);
+
+  for (W42Piece *q = pt->head; q != NULL; q = q->next)
+    {
+      if (piece_is_strux (q, W42_STRUX_TABLE) && (int) q->offset == table)
+        return table_walk_table (&walk);
+      table_walk_step (&walk, q);
+    }
+  return -1;
 }
 
 gsize
 w42_pt_cell_start (W42PieceTable *pt, int table, int row, int col)
 {
   gsize p = 0;
-  int cur_table = -1;
+  TableWalk walk = { 0 };
 
   g_return_val_if_fail (pt != NULL, (gsize) -1);
 
   for (W42Piece *q = pt->head; q != NULL; q = q->next)
     {
-      if (piece_is_strux (q, W42_STRUX_TABLE))
-        cur_table = (int) q->offset;
-      else if (piece_is_strux (q, W42_STRUX_ENDTABLE))
-        cur_table = -1;
-      else if (piece_is_strux (q, W42_STRUX_CELL) && cur_table == table &&
-               CELL_ROW (q->offset) == row && CELL_COL (q->offset) == col)
+      table_walk_step (&walk, q);
+      if (piece_is_strux (q, W42_STRUX_CELL) && table_walk_table (&walk) == table &&
+          CELL_ROW (q->offset) == row && CELL_COL (q->offset) == col)
         return p + 2;          /* past the CELL mark and the BLOCK mark */
 
       p += q->length;
@@ -3471,17 +3667,14 @@ int
 w42_pt_table_rows (W42PieceTable *pt, int table)
 {
   int rows = 0;
-  int cur_table = -1;
+  TableWalk walk = { 0 };
 
   g_return_val_if_fail (pt != NULL, 0);
 
   for (W42Piece *q = pt->head; q != NULL; q = q->next)
     {
-      if (piece_is_strux (q, W42_STRUX_TABLE))
-        cur_table = (int) q->offset;
-      else if (piece_is_strux (q, W42_STRUX_ENDTABLE))
-        cur_table = -1;
-      else if (piece_is_strux (q, W42_STRUX_CELL) && cur_table == table)
+      table_walk_step (&walk, q);
+      if (piece_is_strux (q, W42_STRUX_CELL) && table_walk_table (&walk) == table)
         rows = MAX (rows, CELL_ROW (q->offset) + 1);
     }
 
@@ -3489,25 +3682,31 @@ w42_pt_table_rows (W42PieceTable *pt, int table)
 }
 
 /* The document positions of a table's TABLE mark and of the position after
- * its ENDTABLE mark, and where each row starts. */
+ * its ENDTABLE mark, and where each row starts.  The rows are the table's
+ * own: a table in one of its cells has rows of its own, which are not. */
 static gboolean
 pt_table_span (W42PieceTable *pt, int table, gsize *start, gsize *end,
                GArray *row_starts)
 {
   gsize p = 0;
-  gboolean inside = FALSE;
+  int level = 0;              /* the table's depth, once inside it */
+  TableWalk walk = { 0 };
 
   for (W42Piece *q = pt->head; q != NULL; q = q->next)
     {
-      if (piece_is_strux (q, W42_STRUX_TABLE) && (int) q->offset == table)
+      table_walk_step (&walk, q);
+      if (level == 0)
         {
-          inside = TRUE;
-          *start = p;
+          if (piece_is_strux (q, W42_STRUX_TABLE) && (int) q->offset == table)
+            {
+              level = walk.depth;
+              *start = p;
+            }
         }
-      else if (inside && piece_is_strux (q, W42_STRUX_CELL) &&
+      else if (piece_is_strux (q, W42_STRUX_CELL) && walk.depth == level &&
                CELL_COL (q->offset) == 0 && row_starts != NULL)
         g_array_append_val (row_starts, p);
-      else if (inside && piece_is_strux (q, W42_STRUX_ENDTABLE))
+      else if (piece_is_strux (q, W42_STRUX_ENDTABLE) && walk.depth < level)
         {
           *end = p + 1;
           return TRUE;
@@ -3523,15 +3722,13 @@ pt_table_span (W42PieceTable *pt, int table, gsize *start, gsize *end,
 static void
 pt_table_renumber (W42PieceTable *pt, int table)
 {
-  int cur_table = -1, row = -1, col = 0;
+  int row = -1, col = 0;
+  TableWalk walk = { 0 };
 
   for (W42Piece *q = pt->head; q != NULL; q = q->next)
     {
-      if (piece_is_strux (q, W42_STRUX_TABLE))
-        cur_table = (int) q->offset;
-      else if (piece_is_strux (q, W42_STRUX_ENDTABLE))
-        cur_table = -1;
-      else if (piece_is_strux (q, W42_STRUX_CELL) && cur_table == table)
+      table_walk_step (&walk, q);
+      if (piece_is_strux (q, W42_STRUX_CELL) && table_walk_table (&walk) == table)
         {
           int span = CELL_SPAN (q->offset);
 
@@ -4560,17 +4757,27 @@ w42_pt_table_split_cell (W42PieceTable *pt, int table, int row, int col)
   if (start == (gsize) -1 || span <= 1)
     return;
 
-  /* The cell ends where the next cell, or the table, begins. */
-  for (W42Piece *q = pt->head; q != NULL; q = q->next)
-    {
-      if (p >= start && (piece_is_strux (q, W42_STRUX_CELL) ||
-                         piece_is_strux (q, W42_STRUX_ENDTABLE)))
-        {
-          end = p;
-          break;
-        }
-      p += q->length;
-    }
+  /* The cell ends where the next cell of its table, or the table's end,
+   * begins: a table in the cell has cells and an end of its own. */
+  {
+    TableWalk walk = { 0 };
+    int level = -1;
+
+    for (W42Piece *q = pt->head; q != NULL; q = q->next)
+      {
+        if (p == start - 2)
+          level = walk.depth;             /* the cell's own mark is next */
+        table_walk_step (&walk, q);
+        if (p >= start && level > 0 &&
+            ((piece_is_strux (q, W42_STRUX_CELL) && walk.depth == level) ||
+             (piece_is_strux (q, W42_STRUX_ENDTABLE) && walk.depth < level)))
+          {
+            end = p;
+            break;
+          }
+        p += q->length;
+      }
+  }
   if (end == 0)
     return;
 
@@ -4609,10 +4816,13 @@ row_cell_covering (W42PieceTable *pt, int table, gsize row_start, gsize row_end,
                    int col, int *first_col, int *span)
 {
   gsize p = 0;
+  TableWalk walk = { 0 };
 
   for (W42Piece *q = pt->head; q != NULL; q = q->next)
     {
-      if (p >= row_start && p < row_end && piece_is_strux (q, W42_STRUX_CELL))
+      table_walk_step (&walk, q);
+      if (p >= row_start && p < row_end && piece_is_strux (q, W42_STRUX_CELL) &&
+          table_walk_table (&walk) == table)
         {
           int c = CELL_COL (q->offset), sp = MAX (CELL_SPAN (q->offset), 1);
 
@@ -4624,7 +4834,6 @@ row_cell_covering (W42PieceTable *pt, int table, gsize row_start, gsize row_end,
             }
         }
       p += q->length;
-      (void) table;
     }
   return (gsize) -1;
 }
@@ -4855,25 +5064,57 @@ w42_pt_table_delete_column (W42PieceTable *pt, int table, int col)
 
 /* ---- Fragments ---------------------------------------------------------- */
 
+/* Where the table whose TABLE mark is the piece `q`, at `pos`, ends: the
+ * position after its ENDTABLE mark, or (gsize) -1. */
+static gsize
+table_mark_end (W42Piece *q, gsize pos)
+{
+  int depth = 0;
+
+  for (; q != NULL; q = q->next)
+    {
+      if (piece_is_strux (q, W42_STRUX_TABLE))
+        depth++;
+      else if (piece_is_strux (q, W42_STRUX_ENDTABLE) && --depth == 0)
+        return pos + 1;
+      pos += q->length;
+    }
+  return (gsize) -1;
+}
+
+/* A strux copied as it is, recorded. */
+static void
+copy_strux (W42PieceTable *dst, gsize at, W42StruxType strux, gsize payload, W42ApIdx ap)
+{
+  pt_insert_strux_at (dst, at, strux, payload, ap);
+  dst->coalescing = FALSE;
+  pt_push (dst, cr_new (CR_INSERT, at, 1));
+}
+
 /* Copies what is at [from, from + n) of `src` into `dst` at `at`, one
  * position at a time: text with its formatting re-interned in `dst`,
- * paragraph marks as paragraph marks, pictures as pictures.  Returns how
- * many positions went in. */
+ * paragraph marks as paragraph marks, pictures as pictures, and with
+ * `tables` the tables the range holds whole as tables.  Returns how many
+ * positions went in. */
 static gsize
-copy_range (W42PieceTable *dst, gsize at, W42PieceTable *src, gsize from, gsize n)
+copy_range (W42PieceTable *dst, gsize at, W42PieceTable *src, gsize from, gsize n,
+                 gboolean tables)
 {
   gsize put = 0;
   GString *run = g_string_new (NULL);
   W42ApIdx run_ap = 0;
   gboolean have_run = FALSE;
+  int copied = 0;           /* tables being copied whole, still open */
+  gboolean after_mark = FALSE, mark = FALSE;
 
-  for (gsize pos = from; pos < from + n && pos < src->length; pos++)
+  for (gsize pos = from; pos < from + n && pos < src->length; pos++, after_mark = mark)
     {
       gsize offset = 0;
       W42Piece *p = pt_find (src, pos, &offset);
       W42ApIdx ap;
       const W42Fmt *fmt;
 
+      mark = FALSE;
       if (p == NULL)
         break;
       fmt = w42_ap_table_get (src->aps, p->ap);
@@ -4930,8 +5171,54 @@ copy_range (W42PieceTable *dst, gsize at, W42PieceTable *src, gsize from, gsize 
         }
       else if (piece_is_strux (p, W42_STRUX_BLOCK))
         {
-          w42_pt_insert_block (dst, at + put, ap);
+          /* The one after a cell's or a table's mark as it is: where it
+           * goes is no place for a caret yet, and inserting a paragraph
+           * there would move it on to one. */
+          if (after_mark)
+            copy_strux (dst, at + put, W42_STRUX_BLOCK, 0, ap);
+          else
+            w42_pt_insert_block (dst, at + put, ap);
           put += 1;
+        }
+      /* A table the range holds whole goes with it, when that is asked
+       * for: what a cell holds is moved from cell to cell that way, and
+       * a table in it has to move too. */
+      else if (tables && piece_is_strux (p, W42_STRUX_TABLE) && offset == 0 &&
+               table_mark_end (p, pos) <= from + n)
+        {
+          const W42TableProps *props = w42_pt_table_props (src, (int) p->offset);
+          int n_cols = props != NULL ? props->n_cols : 1;
+          int id = w42_pt_insert_table_start (dst, at + put, n_cols, NULL);
+          W42TableProps *copy = g_ptr_array_index (dst->tables, id);
+
+          /* Straight into a table no record has yet seen: undo takes the
+           * mark out, and the table's shape does not need taking back. */
+          if (props != NULL)
+            {
+              copy->borders = props->borders;
+              copy->header_rows = props->header_rows;
+              memcpy (copy->edge, props->edge, sizeof copy->edge);
+              for (int c = 0; c < n_cols && c < (int) props->widths->len; c++)
+                g_array_index (copy->widths, int, c) = g_array_index (props->widths, int, c);
+              g_array_append_vals (copy->row_heights, props->row_heights->data,
+                                   props->row_heights->len);
+            }
+          put += 1;
+          copied++;
+          mark = TRUE;
+        }
+      else if (copied > 0 && piece_is_strux (p, W42_STRUX_CELL))
+        {
+          copy_strux (dst, at + put, W42_STRUX_CELL, p->offset, ap);
+          put += 1;
+          mark = TRUE;
+        }
+      else if (copied > 0 && piece_is_strux (p, W42_STRUX_ENDTABLE))
+        {
+          copy_strux (dst, at + put, W42_STRUX_ENDTABLE, 0, ap);
+          put += 1;
+          copied--;
+          mark = TRUE;
         }
       /* Other marks -- sections, tables, cells, notes -- are not copied;
        * a cell's end still ends its paragraph. */
@@ -4953,31 +5240,40 @@ copy_range (W42PieceTable *dst, gsize at, W42PieceTable *src, gsize from, gsize 
   return put;
 }
 
-W42PieceTable *
-w42_pt_extract (W42PieceTable *pt, gsize start, gsize n)
+static W42PieceTable *
+pt_extract (W42PieceTable *pt, gsize start, gsize n, gboolean tables)
 {
   W42PieceTable *frag;
 
-  g_return_val_if_fail (pt != NULL, NULL);
-
   frag = w42_pt_new ();
   w42_pt_load_text (frag, "");
-  copy_range (frag, w42_pt_first_caret_pos (frag), pt, start, n);
+  copy_range (frag, w42_pt_first_caret_pos (frag), pt, start, n, tables);
   w42_pt_clear_undo (frag);
   return frag;
+}
+
+W42PieceTable *
+w42_pt_extract (W42PieceTable *pt, gsize start, gsize n)
+{
+  g_return_val_if_fail (pt != NULL, NULL);
+  return pt_extract (pt, start, n, FALSE);
+}
+
+static gsize
+pt_insert_fragment (W42PieceTable *pt, gsize pos, W42PieceTable *frag, gboolean tables)
+{
+  gsize first = w42_pt_first_caret_pos (frag);
+
+  if (frag->length <= first)
+    return 0;
+  return copy_range (pt, pos, frag, first, frag->length - first, tables);
 }
 
 gsize
 w42_pt_insert_fragment (W42PieceTable *pt, gsize pos, W42PieceTable *frag)
 {
-  gsize first;
-
   g_return_val_if_fail (pt != NULL && frag != NULL, 0);
-
-  first = w42_pt_first_caret_pos (frag);
-  if (frag->length <= first)
-    return 0;
-  return copy_range (pt, pos, frag, first, frag->length - first);
+  return pt_insert_fragment (pt, pos, frag, FALSE);
 }
 
 void
@@ -5175,7 +5471,7 @@ w42_pt_table_sort (W42PieceTable *pt, int table, gboolean descending)
           W42PieceTable *frag = NULL;
 
           if (w42_pt_cell_range (pt, table, r, c, &s, &e) && e > s)
-            frag = w42_pt_extract (pt, s, e - s);
+            frag = pt_extract (pt, s, e - s, TRUE);
           g_ptr_array_add (frags, frag);
         }
       {
@@ -5232,7 +5528,7 @@ w42_pt_table_sort (W42PieceTable *pt, int table, gboolean descending)
           if (e > s)
             w42_pt_delete (pt, s, e - s);
           if (frag != NULL)
-            w42_pt_insert_fragment (pt, s, frag);
+            pt_insert_fragment (pt, s, frag, TRUE);
         }
     }
   w42_pt_end_group (pt);

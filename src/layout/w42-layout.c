@@ -55,6 +55,8 @@ struct _W42Layout {
   double        furniture_cache_w;
   char         *furniture_cache_font;
   GArray       *cell_rects;  /* W42CellRect: table cell borders */
+  GArray       *table_room;  /* double, by table id: the width each table
+                              * was set across, 0 for one not laid out */
   GPtrArray    *note_marks;  /* PangoLayout*, the footnote numbers in the text */
   GArray       *note_rules;  /* W42NoteRule: the separator above the notes */
 
@@ -208,7 +210,25 @@ typedef struct {
   gboolean         narrow;
 } BlockLine;
 
-static guint8 cell_sides (W42ApTable *aps, const W42Block *blk, gboolean table_borders);
+static guint8 cell_sides (W42ApTable *aps, W42ApIdx cell_ap, gboolean table_borders);
+
+/* The cell a paragraph is in at nesting level `level` -- 0 the table in
+ * the text, 1 a table in one of its cells -- or a cell of table -1 when
+ * it is not that deep. */
+static inline W42BlockCell
+block_cell (const W42Block *blk, int level)
+{
+  W42BlockCell cell = { -1, 0, 0, 1, 0 };
+
+  w42_block_cell (blk, level, &cell);
+  return cell;
+}
+
+static inline int
+block_table (const W42Block *blk, int level)
+{
+  return block_cell (blk, level).table;
+}
 
 #define NOTE_SEP 12.0   /* px between the text and the notes, for the rule */
 
@@ -656,6 +676,7 @@ w42_layout_new (void)
   self->spell_caret = (gsize) -1;
   self->furniture = g_array_new (FALSE, FALSE, sizeof (W42Furniture));
   self->cell_rects = g_array_new (FALSE, FALSE, sizeof (W42CellRect));
+  self->table_room = g_array_new (FALSE, TRUE, sizeof (double));
   self->note_marks = g_ptr_array_new_with_free_func (g_object_unref);
   self->note_rules = g_array_new (FALSE, FALSE, sizeof (W42NoteRule));
   self->floats = g_array_new (FALSE, FALSE, sizeof (W42FloatBox));
@@ -683,6 +704,7 @@ w42_layout_free (W42Layout *self)
   g_free (self->furniture_cache_font);
   g_array_free (self->furniture, TRUE);
   g_array_free (self->cell_rects, TRUE);
+  g_array_free (self->table_room, TRUE);
   g_ptr_array_free (self->note_marks, TRUE);
   g_array_free (self->note_rules, TRUE);
   g_array_free (self->floats, TRUE);
@@ -1357,18 +1379,22 @@ build_block_layout (W42Layout      *self,
 }
 
 static void build_furniture (W42Layout *self, W42PieceTable *pt);
-static void layout_table (W42Layout *self, W42PieceTable *pt, W42ApTable *aps,
-                          guint first, guint last, double text_w, double text_h,
+static void layout_table (W42Layout *self, W42PieceTable *pt, W42ApTable *aps, int level,
+                          guint first, guint last, double x0, double text_w, double text_h,
                           double *y_io, int *page_io,
                           GArray *page_notes, double *notes_h);
 
 /* Lays the cell's paragraphs out one under another in a column `width`
  * wide, at x, starting at y on `page`, and returns the height used.  Lines
  * are appended as boxes; a row is placed whole, so nothing here breaks a
- * page. */
+ * page.  The cell is one of a table at nesting level `level`, and a table
+ * in it -- the paragraphs a level deeper -- is laid out whole, the width
+ * of the cell. */
 static double
 layout_cell (W42Layout      *self,
+             W42PieceTable  *pt,
              W42ApTable     *aps,
+             int             level,
              guint           first,
              guint           last,
              double          x,
@@ -1381,6 +1407,21 @@ layout_cell (W42Layout      *self,
   for (guint b = first; b <= last; b++)
     {
       const W42Block *block = g_ptr_array_index (self->blocks, b);
+
+      if (block->depth > level + 1)
+        {
+          int inner = block_table (block, level + 1);
+          guint end = b;
+
+          while (end + 1 <= last &&
+                 block_table (g_ptr_array_index (self->blocks, end + 1), level + 1) == inner)
+            end++;
+          layout_table (self, pt, aps, level + 1, b, end, x, width, 0.0, &y, &page,
+                        NULL, NULL);
+          b = end;
+          continue;
+        }
+
       const W42Fmt *fmt = w42_ap_table_get (aps, block->ap);
       const W42ParaFmt *pa = &fmt->pa;
       PangoLayout *layout = build_block_layout (self, block, aps, width, 0.0, 0, 0, 0);
@@ -1443,15 +1484,6 @@ typedef struct {
   W42CellRect  rect;
 } Merge;
 
-/* A row is laid out once and then placed, in one piece when it fits and
- * in several when it is taller than a page. */
-typedef struct {
-  int    page;
-  double top;        /* page y of the piece's top, without the margin */
-  double row_top;    /* how far into the row the piece starts */
-  double height;
-} RowSeg;
-
 #define MAX_ROW_PIECES 256   /* a row cannot go on for ever */
 
 /* The table's header rows set again at the top of `page`: every cell of
@@ -1467,41 +1499,45 @@ layout_header_rows (W42Layout *self, W42PieceTable *pt, W42ApTable *aps, guint f
                     int n_header, const double *col_x, int n_cols, int page,
                     double text_h, gboolean borders)
 {
+  /* Only the tables in the text repeat their heading rows: a table in a
+   * cell is placed whole with the row it is in. */
+  const int level = 0;
   const W42Block *head = g_ptr_array_index (self->blocks, first);
-  const W42TableProps *props = w42_pt_table_props (pt, head->table);
+  const W42TableProps *props = w42_pt_table_props (pt, block_table (head, level));
   double y = 0.0;
   guint b = first;
 
   while (b <= last)
     {
       const W42Block *blk = g_ptr_array_index (self->blocks, b);
-      int row = blk->row;
+      int row = block_cell (blk, level).row;
       double row_h = 0.0;
       guint c = b;
+      guint rect0 = self->cell_rects->len;
 
       if (row >= n_header)
         break;
 
       while (c <= last)
         {
-          const W42Block *cb = g_ptr_array_index (self->blocks, c);
+          W42BlockCell cb = block_cell (g_ptr_array_index (self->blocks, c), level);
           guint cell_last = c;
           int col, span;
 
-          if (cb->row != row)
+          if (cb.row != row)
             break;
-          col = CLAMP (cb->col, 0, n_cols - 1);
-          span = CLAMP (cb->span, 1, n_cols - col);
+          col = CLAMP (cb.col, 0, n_cols - 1);
+          span = CLAMP (cb.span, 1, n_cols - col);
           while (cell_last + 1 <= last)
             {
-              const W42Block *next = g_ptr_array_index (self->blocks, cell_last + 1);
+              W42BlockCell next = block_cell (g_ptr_array_index (self->blocks, cell_last + 1), level);
 
-              if (next->row != row || next->col != cb->col)
+              if (next.row != row || next.col != cb.col)
                 break;
               cell_last++;
             }
           /* Not inside MAX: the macro would lay the cell out twice. */
-          double h = layout_cell (self, aps, c, cell_last,
+          double h = layout_cell (self, pt, aps, level, c, cell_last,
                                   col_x[col] + CELL_PAD, y + CELL_PAD,
                                   MAX (col_x[col + span] - col_x[col] - 2 * CELL_PAD, 8.0),
                                   page);
@@ -1511,29 +1547,36 @@ layout_header_rows (W42Layout *self, W42PieceTable *pt, W42ApTable *aps, guint f
         }
       row_h += 2 * CELL_PAD;
 
+      /* The cells of the tables in its cells were placed from the top of
+       * the text, as their lines were; the lines are moved down with the
+       * row's own below, and these have to be too. */
+      for (guint k = rect0; k < self->cell_rects->len; k++)
+        g_array_index (self->cell_rects, W42CellRect, k).y += self->mar_t;
+
       /* The rectangles, one per cell; merged cells are not repeated in
        * detail, each column gets its own. */
       for (guint k = b; k < c; k++)
         {
-          const W42Block *cb = g_ptr_array_index (self->blocks, k);
+          W42BlockCell cb = block_cell (g_ptr_array_index (self->blocks, k), level);
           W42CellRect rect;
           int col, span;
 
-          if (k > b && cb->col == ((const W42Block *) g_ptr_array_index (self->blocks, k - 1))->col)
+          if (k > b && cb.col == block_cell (g_ptr_array_index (self->blocks, k - 1), level).col)
             continue;
-          col = CLAMP (cb->col, 0, n_cols - 1);
-          span = CLAMP (cb->span, 1, n_cols - col);
+          col = CLAMP (cb.col, 0, n_cols - 1);
+          span = CLAMP (cb.span, 1, n_cols - col);
           rect.page = page;
           rect.x = col_x[col];
           rect.y = self->mar_t + y;
           rect.w = col_x[col + span] - col_x[col];
           rect.h = row_h;
-          rect.table = head->table;
+          rect.table = cb.table;
+          rect.level = (guint8) level;
           rect.col = col + span - 1;
-          rect.sides = cell_sides (aps, cb, borders);
+          rect.sides = cell_sides (aps, cb.cell_ap, borders);
           rect.borders = rect.sides != 0;
           {
-            const W42ParaFmt *cpa = &w42_ap_table_get (aps, cb->cell_ap)->pa;
+            const W42ParaFmt *cpa = &w42_ap_table_get (aps, cb.cell_ap)->pa;
 
             rect.has_fill = cpa->has_shading_color;
             rect.fill = cpa->shading_color;
@@ -1560,9 +1603,9 @@ layout_header_rows (W42Layout *self, W42PieceTable *pt, W42ApTable *aps, guint f
  * ordinary cell, more for one merged downwards, and W42_CELL_COVERED for
  * a cell the one above covers. */
 static int
-cell_vspan (W42ApTable *aps, const W42Block *blk)
+cell_vspan (W42ApTable *aps, W42ApIdx cell_ap)
 {
-  const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk->cell_ap)->pa;
+  const W42ParaFmt *cpa = &w42_ap_table_get (aps, cell_ap)->pa;
 
   if (cpa->cell_vspan == W42_CELL_COVERED)
     return W42_CELL_COVERED;
@@ -1572,9 +1615,9 @@ cell_vspan (W42ApTable *aps, const W42Block *blk)
 /* Which sides of a cell are ruled: the cell's own, if it has them, else
  * all or none by the table's setting. */
 static guint8
-cell_sides (W42ApTable *aps, const W42Block *blk, gboolean table_borders)
+cell_sides (W42ApTable *aps, W42ApIdx cell_ap, gboolean table_borders)
 {
-  const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk->cell_ap)->pa;
+  const W42ParaFmt *cpa = &w42_ap_table_get (aps, cell_ap)->pa;
 
   if (cpa->border & W42_BORDER_CELL_SET)
     return cpa->border & W42_BORDER_BOX;
@@ -1960,18 +2003,92 @@ chain_last (W42Layout *self, W42ApTable *aps, guint b)
   return last;
 }
 
+/* A row is laid out once and then placed, in one piece when it fits and
+ * in several when it is taller than a page. */
+typedef struct {
+  int    page;
+  double top;        /* page y of the piece's top, without the margin */
+  double row_top;    /* how far into the row the piece starts */
+  double height;
+} RowSeg;
+
+/* Moves the cells of the tables in a row's cells to where the row went,
+ * as the row's lines are moved: rects [from, to) were laid out at y0, a
+ * y from the top of the text, and the row became the pieces in `segs`.
+ * A cell the cut of a row broken over pages goes through is cut there
+ * too, into a piece on each page with no rule where it was cut. */
+static void
+place_inner_rects (W42Layout *self, guint from, guint to, double y0, const GArray *segs,
+                   double margin)
+{
+  for (guint i = from; i < to; i++)
+    {
+      W42CellRect rect = g_array_index (self->cell_rects, W42CellRect, i);
+      double top_rel = rect.y - y0;
+      double bottom_rel = top_rel + rect.h;
+      guint sj = 0;
+      const RowSeg *seg;
+      double seg_end;
+
+      for (guint j = 1; j < segs->len; j++)
+        if (g_array_index (segs, RowSeg, j).row_top <= top_rel + 0.01)
+          sj = j;
+      seg = &g_array_index (segs, RowSeg, sj);
+      seg_end = seg->row_top + seg->height;
+
+      {
+        W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
+
+        r->page = seg->page;
+        r->y = margin + seg->top + (top_rel - seg->row_top);
+        if (sj + 1 >= segs->len || bottom_rel <= seg_end + 0.01)
+          continue;
+        r->h = seg_end - top_rel;
+        r->sides &= (guint8) ~W42_BORDER_BOTTOM;
+        r->borders = r->sides != 0;
+      }
+
+      for (guint k = sj + 1; k < segs->len; k++)
+        {
+          const RowSeg *next = &g_array_index (segs, RowSeg, k);
+          double next_end = next->row_top + next->height;
+          W42CellRect piece = rect;
+
+          if (bottom_rel <= next->row_top + 0.01)
+            break;
+          piece.page = next->page;
+          piece.y = margin + next->top;
+          piece.h = MIN (bottom_rel, next_end) - next->row_top;
+          piece.sides &= (guint8) ~W42_BORDER_TOP;
+          if (bottom_rel > next_end + 0.01 && k + 1 < segs->len)
+            piece.sides &= (guint8) ~W42_BORDER_BOTTOM;
+          piece.borders = piece.sides != 0;
+          g_array_append_val (self->cell_rects, piece);
+        }
+    }
+}
+
 /* A table: blocks `first` to `last`, all cells of one table.  Column widths
  * come from the table's properties, or share the text column equally.  Each
  * row is as tall as its tallest cell and is placed whole; a row that will
  * not fit starts the next page.  The line boxes are laid out once per row
  * at a provisional y and moved if the row has to move, which is cheaper than
- * laying them out twice. */
+ * laying them out twice.
+ *
+ * The table is at nesting level `level`: 0 is a table in the text, set
+ * across the text column from x0, and anything more a table in a cell of
+ * the one a level up, set across that cell.  A table in a cell is placed
+ * with the row it is in, so it breaks no page of its own; its lines and
+ * cells are left measured from the top of the text, and whoever places
+ * the row moves them with the rest of it. */
 static void
 layout_table (W42Layout      *self,
               W42PieceTable  *pt,
               W42ApTable     *aps,
+              int             level,
               guint           first,
               guint           last,
+              double          x0,
               double          text_w,
               double          text_h,
               double         *y_io,
@@ -1980,7 +2097,8 @@ layout_table (W42Layout      *self,
               double         *notes_h)
 {
   const W42Block *head = g_ptr_array_index (self->blocks, first);
-  const W42TableProps *props = w42_pt_table_props (pt, head->table);
+  int table = block_table (head, level);
+  const W42TableProps *props = w42_pt_table_props (pt, table);
   int n_cols = props != NULL ? props->n_cols : 1;
   double *col_x = g_new0 (double, n_cols + 1);
   GArray *merges = g_array_new (FALSE, FALSE, sizeof (Merge));
@@ -1988,6 +2106,15 @@ layout_table (W42Layout      *self,
   int page = *page_io;
   guint b = first;
   double total = 0.0;
+  gboolean nested = level > 0;
+  double margin = nested ? 0.0 : self->mar_t;   /* what the rects' y is from */
+
+  if (table >= 0)
+    {
+      if ((guint) table >= self->table_room->len)
+        g_array_set_size (self->table_room, (guint) table + 1);
+      g_array_index (self->table_room, double, table) = text_w;
+    }
 
   /* Column edges. */
   for (int c = 0; c < n_cols; c++)
@@ -1998,7 +2125,7 @@ layout_table (W42Layout      *self,
     }
   {
     double scale = (total > text_w && total > 0) ? text_w / total : 1.0;
-    col_x[0] = self->mar_l;
+    col_x[0] = x0;
     for (int c = 0; c < n_cols; c++)
       {
         int w = (props != NULL && c < (int) props->widths->len)
@@ -2010,9 +2137,10 @@ layout_table (W42Layout      *self,
 
   while (b <= last)
     {
-      int row = ((const W42Block *) g_ptr_array_index (self->blocks, b))->row;
+      int row = block_cell (g_ptr_array_index (self->blocks, b), level).row;
       guint row_first_line = self->lines->len;
-      guint row_line_end;
+      guint row_first_rect = self->cell_rects->len;
+      guint row_line_end, row_rect_end;
       double y0 = y;            /* where the row's lines were laid out */
       int page0 = page;
       GArray *segs;             /* the pieces of the row, one per page */
@@ -2030,8 +2158,10 @@ layout_table (W42Layout      *self,
       double *cell_h = g_new0 (double, n_cols);      /* each cell's text height */
       guint *cell_line0 = g_new0 (guint, n_cols);    /* and its lines */
       guint *cell_line1 = g_new0 (guint, n_cols);
+      guint *cell_rect0 = g_new0 (guint, n_cols);    /* and its tables' cells */
+      guint *cell_rect1 = g_new0 (guint, n_cols);
       gboolean first_row = (b == first);
-      gboolean last_row = (row == ((const W42Block *) g_ptr_array_index (self->blocks, last))->row);
+      gboolean last_row = (row == block_cell (g_ptr_array_index (self->blocks, last), level).row);
 
       /* Which cell owns each column of the row: a merged cell owns the
        * ones it spans, and those get no border of their own. */
@@ -2039,15 +2169,15 @@ layout_table (W42Layout      *self,
         owner[k] = -1;
       for (guint k = b; k <= last; k++)
         {
-          const W42Block *blk = g_ptr_array_index (self->blocks, k);
+          W42BlockCell blk = block_cell (g_ptr_array_index (self->blocks, k), level);
           int col0, span;
 
-          if (blk->row != row)
+          if (blk.row != row)
             break;
-          col0 = CLAMP (blk->col, 0, n_cols - 1);
-          span = CLAMP (blk->span, 1, n_cols - col0);
+          col0 = CLAMP (blk.col, 0, n_cols - 1);
+          span = CLAMP (blk.span, 1, n_cols - col0);
           spans[col0] = span;
-          vspans[col0] = cell_vspan (aps, blk);
+          vspans[col0] = cell_vspan (aps, blk.cell_ap);
           /* Covered, but by no merge that reaches this row: the text in
            * it would never be seen, so it is a cell of its own. */
           if (vspans[col0] == W42_CELL_COVERED)
@@ -2060,9 +2190,9 @@ layout_table (W42Layout      *self,
               if (!open)
                 vspans[col0] = 1;
             }
-          sides[col0] = cell_sides (aps, blk, props == NULL || props->borders);
+          sides[col0] = cell_sides (aps, blk.cell_ap, props == NULL || props->borders);
           {
-            const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk->cell_ap)->pa;
+            const W42ParaFmt *cpa = &w42_ap_table_get (aps, blk.cell_ap)->pa;
 
             has_fill[col0] = cpa->has_shading_color;
             fill[col0] = cpa->shading_color;
@@ -2081,19 +2211,19 @@ layout_table (W42Layout      *self,
       /* Lay each cell of the row out at y; the row's height is the tallest. */
       while (c <= last)
         {
-          const W42Block *blk = g_ptr_array_index (self->blocks, c);
+          W42BlockCell blk = block_cell (g_ptr_array_index (self->blocks, c), level);
           guint cell_last = c;
           double h;
           int col;
 
-          if (blk->row != row)
+          if (blk.row != row)
             break;
 
-          col = CLAMP (blk->col, 0, n_cols - 1);
+          col = CLAMP (blk.col, 0, n_cols - 1);
           while (cell_last + 1 <= last)
             {
-              const W42Block *next = g_ptr_array_index (self->blocks, cell_last + 1);
-              if (next->row != row || next->col != blk->col)
+              W42BlockCell next = block_cell (g_ptr_array_index (self->blocks, cell_last + 1), level);
+              if (next.row != row || next.col != blk.col)
                 break;
               cell_last++;
             }
@@ -2106,14 +2236,16 @@ layout_table (W42Layout      *self,
             }
 
           {
-            int span = CLAMP (blk->span, 1, n_cols - col);
+            int span = CLAMP (blk.span, 1, n_cols - col);
 
             cell_line0[col] = self->lines->len;
-            h = layout_cell (self, aps, c, cell_last,
+            cell_rect0[col] = self->cell_rects->len;
+            h = layout_cell (self, pt, aps, level, c, cell_last,
                              col_x[col] + CELL_PAD, y + CELL_PAD,
                              MAX (col_x[col + span] - col_x[col] - 2 * CELL_PAD, 8.0),
                              page);
             cell_line1[col] = self->lines->len;
+            cell_rect1[col] = self->cell_rects->len;
             cell_h[col] = h;
           }
           if (vspans[col] > 1 && vspans[col] != W42_CELL_COVERED)
@@ -2142,6 +2274,8 @@ layout_table (W42Layout      *self,
           shift = valign[col] == W42_CELL_VALIGN_CENTER ? spare / 2.0 : spare;
           for (guint i = cell_line0[col]; i < cell_line1[col]; i++)
             g_array_index (self->lines, W42LineBox, i).y += shift;
+          for (guint i = cell_rect0[col]; i < cell_rect1[col]; i++)
+            g_array_index (self->cell_rects, W42CellRect, i).y += shift;
         }
 
       /* Where the row goes.  A row that fits what is left of the page
@@ -2151,11 +2285,12 @@ layout_table (W42Layout      *self,
        * than running off the bottom of the sheet.  The header rows are
        * set again at the top of every page the table runs on to. */
       row_line_end = self->lines->len;
+      row_rect_end = self->cell_rects->len;
       segs = g_array_new (FALSE, FALSE, sizeof (RowSeg));
       {
         RowSeg seg;
 
-        if (self->galley)
+        if (self->galley || nested)
           {
             seg.page = page; seg.top = y; seg.row_top = 0.0; seg.height = row_h;
             g_array_append_val (segs, seg);
@@ -2242,6 +2377,8 @@ layout_table (W42Layout      *self,
           box->y = seg->top + (top_rel - seg->row_top);
         }
       (void) page0;
+      /* And the cells of the tables in its cells with them. */
+      place_inner_rects (self, row_first_rect, row_rect_end, y0, segs, margin);
 
       /* Borders: one rectangle per cell of the row, empty cells included,
        * a merged cell's covering all the columns it spans.  A row broken
@@ -2291,10 +2428,11 @@ layout_table (W42Layout      *self,
 
               rect.page = seg->page;
               rect.x = col_x[col];
-              rect.y = self->mar_t + seg->top;
+              rect.y = margin + seg->top;
               rect.w = col_x[col + span] - col_x[col];
               rect.h = seg->height;
-              rect.table = head->table;
+              rect.table = table;
+              rect.level = (guint8) level;
               rect.col = col + span - 1;
               rect.sides = owner[col] == col ? sides[col]
                            : (props == NULL || props->borders) ? W42_BORDER_BOX : 0;
@@ -2371,11 +2509,14 @@ layout_table (W42Layout      *self,
       g_free (cell_h);
       g_free (cell_line0);
       g_free (cell_line1);
+      g_free (cell_rect0);
+      g_free (cell_rect1);
 
       /* The lines were laid out relative to y=0 at the top margin;
        * layout_cell wrote box.y as a page-relative value from `y` without
-       * the margin, so add it now. */
-      for (guint i = row_first_line; i < self->lines->len; i++)
+       * the margin, so add it now -- unless the table is in a cell, when
+       * the row round it will. */
+      for (guint i = row_first_line; i < self->lines->len && !nested; i++)
         g_array_index (self->lines, W42LineBox, i).y += self->mar_t;
 
       y += row_h;
@@ -2442,6 +2583,7 @@ w42_layout_build_pt (W42Layout          *self,
   g_ptr_array_set_size (self->prefixes, 0);
   g_array_set_size (self->furniture, 0);
   g_array_set_size (self->cell_rects, 0);
+  g_array_set_size (self->table_room, 0);
   g_ptr_array_set_size (self->note_marks, 0);
   g_array_set_size (self->note_rules, 0);
 
@@ -2581,11 +2723,12 @@ w42_layout_build_pt (W42Layout          *self,
       if (block->table >= 0)
         {
           /* The whole table at once: every block up to the next one that
-           * is not a cell of this table. */
+           * is not a cell of this table, the tables in its cells with it. */
+          int outer = block_table (block, 0);
           guint last = b;
 
           while (last + 1 < self->blocks->len &&
-                 ((const W42Block *) g_ptr_array_index (self->blocks, last + 1))->table == block->table)
+                 block_table (g_ptr_array_index (self->blocks, last + 1), 0) == outer)
             last++;
 
           /* A table does not wrap beside a picture: it starts under one
@@ -2593,8 +2736,8 @@ w42_layout_build_pt (W42Layout          *self,
           for (int fs = 0; fs < 2; fs++)
             if (float_page[fs] == current_page && y < float_bottom[fs])
               y = float_bottom[fs];
-          layout_table (self, pt, aps, b, last, text_w, text_h, &y, &current_page,
-                        page_notes, &notes_h);
+          layout_table (self, pt, aps, 0, b, last, self->mar_l, text_w, text_h,
+                        &y, &current_page, page_notes, &notes_h);
           b = last;
           list_n = 0;
           frame_open = FALSE;         /* a frame does not run on past a table */
@@ -3747,28 +3890,37 @@ w42_layout_draw_backdrop (W42Layout *self, cairo_t *cr, int page)
     }
 
   /* Cells with a background of their own, painted before anything else so
-   * that a shaded paragraph inside one still shows over it. */
-  for (guint i = 0; i < self->cell_rects->len; i++)
-    {
-      const W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
+   * that a shaded paragraph inside one still shows over it -- and the
+   * cells of a table in a cell after the cell they are in, which was
+   * placed after them. */
+  {
+    guint deepest = 0;
 
-      if (r->page != page || (!r->has_fill && r->shading == 0))
-        continue;
-      cairo_save (cr);
-      if (r->has_fill)
-        cairo_set_source_rgb (cr, ((r->fill >> 16) & 0xFF) / 255.0,
-                              ((r->fill >> 8) & 0xFF) / 255.0,
-                              (r->fill & 0xFF) / 255.0);
-      else
+    for (guint i = 0; i < self->cell_rects->len; i++)
+      deepest = MAX (deepest, g_array_index (self->cell_rects, W42CellRect, i).level);
+    for (guint level = 0; level <= deepest; level++)
+      for (guint i = 0; i < self->cell_rects->len; i++)
         {
-          double g = 1.0 - CLAMP (r->shading, 0, 100) / 100.0;
+          const W42CellRect *r = &g_array_index (self->cell_rects, W42CellRect, i);
 
-          cairo_set_source_rgb (cr, g, g, g);
+          if (r->level != level || r->page != page || (!r->has_fill && r->shading == 0))
+            continue;
+          cairo_save (cr);
+          if (r->has_fill)
+            cairo_set_source_rgb (cr, ((r->fill >> 16) & 0xFF) / 255.0,
+                                  ((r->fill >> 8) & 0xFF) / 255.0,
+                                  (r->fill & 0xFF) / 255.0);
+          else
+            {
+              double g = 1.0 - CLAMP (r->shading, 0, 100) / 100.0;
+
+              cairo_set_source_rgb (cr, g, g, g);
+            }
+          cairo_rectangle (cr, r->x, r->y, r->w, r->h);
+          cairo_fill (cr);
+          cairo_restore (cr);
         }
-      cairo_rectangle (cr, r->x, r->y, r->w, r->h);
-      cairo_fill (cr);
-      cairo_restore (cr);
-    }
+  }
 
   /* Each paragraph's lines on this page, taken together, give the box the
    * shading fills and the borders run round.  A paragraph that runs on to
@@ -4827,6 +4979,16 @@ w42_layout_set_gridlines (W42Layout *self, gboolean show)
 /* ---------------------------------------------------------------------- */
 /* Table > AutoFit > AutoFit to Contents                                    */
 /* ---------------------------------------------------------------------- */
+
+double
+w42_layout_table_room (W42Layout *self, int table)
+{
+  g_return_val_if_fail (self != NULL, 0.0);
+
+  if (table < 0 || (guint) table >= self->table_room->len)
+    return 0.0;
+  return g_array_index (self->table_room, double, table);
+}
 
 gboolean
 w42_layout_table_content_widths (W42Layout *self, int table, GArray *out)

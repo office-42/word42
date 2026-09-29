@@ -1801,7 +1801,12 @@ typedef struct {
   GString    *text;
   gboolean    in_t;
 
-  int         depth_tbl;          /* nested tables are read as paragraphs */
+  int         depth_tbl;          /* w:tbl elements open */
+  int         table_level;        /* depth_tbl of the table being built: a
+                                   * table in a cell is one more, and one
+                                   * too deep is read as paragraphs */
+  gboolean    in_tc;              /* inside that table's w:tc */
+  GArray     *outer_tables;       /* DocxOuterTable: the tables round it */
   gboolean    cell_pending;
   int         cell_span;
   int         cell_vmerge;   /* 0 none, 1 the merge starts here, 2 it carries on */
@@ -1902,6 +1907,84 @@ typedef struct {
   gboolean       note_skipped;    /* a separator, not a note */
   gboolean       note_lead;       /* drop the space Word puts after the mark */
 } Docx;
+
+/* A table being read, set aside while a table in one of its cells is:
+ * what its rows and cells go on to need. */
+typedef struct {
+  int         level;
+  gboolean    in_tc;
+  GArray     *grid;
+  gboolean    table_started;
+  gboolean    tbl_borders;
+  gboolean    tbl_style_edges;
+  const DocxTableStyle *tbl_style;
+  gboolean    look_first_row, look_bands;
+  W42BorderEdge tbl_edge[W42_N_EDGES];
+  gboolean    cell_run_bold, cell_run_has_color;
+  guint32     cell_run_color;
+} DocxOuterTable;
+
+/* Whether the element being read belongs to the table being built, and
+ * not to one in its cells read as their paragraphs. */
+static inline gboolean
+docx_reading_table (const Docx *d)
+{
+  return d->depth_tbl > 0 && d->depth_tbl == d->table_level;
+}
+
+/* A table begins in a cell: the one round it waits. */
+static void
+docx_push_table (Docx *d)
+{
+  DocxOuterTable saved;
+
+  saved.level = d->table_level;
+  saved.in_tc = d->in_tc;
+  saved.grid = d->grid;
+  saved.table_started = d->table_started;
+  saved.tbl_borders = d->tbl_borders;
+  saved.tbl_style_edges = d->tbl_style_edges;
+  saved.tbl_style = d->tbl_style;
+  saved.look_first_row = d->look_first_row;
+  saved.look_bands = d->look_bands;
+  memcpy (saved.tbl_edge, d->tbl_edge, sizeof saved.tbl_edge);
+  saved.cell_run_bold = d->cell_run_bold;
+  saved.cell_run_has_color = d->cell_run_has_color;
+  saved.cell_run_color = d->cell_run_color;
+  g_array_append_val (d->outer_tables, saved);
+  d->grid = g_array_new (FALSE, FALSE, sizeof (int));
+  d->in_tc = FALSE;
+}
+
+/* Back to the table round the one just read, or to none. */
+static void
+docx_pop_table (Docx *d)
+{
+  const DocxOuterTable *saved;
+
+  if (d->outer_tables->len == 0)
+    {
+      d->table_level = 0;
+      d->in_tc = FALSE;
+      return;
+    }
+  saved = &g_array_index (d->outer_tables, DocxOuterTable, d->outer_tables->len - 1);
+  g_array_free (d->grid, TRUE);
+  d->table_level = saved->level;
+  d->in_tc = saved->in_tc;
+  d->grid = saved->grid;
+  d->table_started = saved->table_started;
+  d->tbl_borders = saved->tbl_borders;
+  d->tbl_style_edges = saved->tbl_style_edges;
+  d->tbl_style = saved->tbl_style;
+  d->look_first_row = saved->look_first_row;
+  d->look_bands = saved->look_bands;
+  memcpy (d->tbl_edge, saved->tbl_edge, sizeof d->tbl_edge);
+  d->cell_run_bold = saved->cell_run_bold;
+  d->cell_run_has_color = saved->cell_run_has_color;
+  d->cell_run_color = saved->cell_run_color;
+  g_array_set_size (d->outer_tables, d->outer_tables->len - 1);
+}
 
 typedef struct {
   gsize      start, end;
@@ -2546,7 +2629,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       w42_builder_reset_para (&d->b);
       d->have_style_ch = FALSE;
       docx_apply_style (d, g_intern_static_string ("Normal"));
-      if (d->depth_tbl == 1 && d->tbl_style != NULL && d->tbl_style->has_spacing)
+      if (docx_reading_table (d) && d->tbl_style != NULL && d->tbl_style->has_spacing)
         {
           /* A cell's paragraphs are spaced as the design says, under
            * their own pPr: Word 2007's designs close up the air Normal
@@ -3361,9 +3444,39 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
     d->skip_depth = 1;                /* the tables have made all they may */
   else if (g_str_equal (tag, "tbl"))
     {
-      d->depth_tbl++;
-      if (d->depth_tbl == 1)
+      gboolean inner = docx_reading_table (d) && d->in_tc &&
+                       w42_builder_table_depth (&d->b) < W42_TABLE_MAX_DEPTH &&
+                       d->table_cells < DOCX_MAX_CELLS;
+
+      if (inner)
         {
+          /* A table in a cell: the cell is begun if no paragraph has
+           * begun it, and the table goes in it after what it has. */
+          docx_flush_text (d);
+          if (d->cell_pending)
+            {
+              w42_builder_begin_cell (&d->b, d->cell_span);
+              d->cell_pending = FALSE;
+              docx_apply_cell_props (d);
+              if (d->cell_vmerge != 0 && d->b.cell_pos != (gsize) -1)
+                w42_pt_set_cell_vspan (d->pt, d->b.cell_pos,
+                                       d->cell_vmerge == 1 ? 2 : W42_CELL_COVERED);
+            }
+          inner = d->b.in_cell;
+        }
+      d->depth_tbl++;
+      if (inner)
+        {
+          docx_push_table (d);
+          d->table_level = d->depth_tbl;
+        }
+      if (d->depth_tbl == 1 || inner)
+        {
+          if (d->depth_tbl == 1)
+            {
+              d->table_level = 1;
+              d->in_tc = FALSE;
+            }
           docx_flush_text (d);
       if (d->drop_join > 0 || d->drop_pending > 0)
         {
@@ -3382,7 +3495,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
     }
-  else if (g_str_equal (tag, "tblBorders") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tblBorders") && docx_reading_table (d))
     {
       /* The sides it does not name are the table style's: its own rules
        * when the file defines it, else the grid's hairline, or nothing. */
@@ -3403,7 +3516,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       if (border_element (an, av, &d->tbl_edge[border_edge_index (tag)]))
         d->tbl_borders = TRUE;
     }
-  else if (g_str_equal (tag, "tblStyle") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tblStyle") && docx_reading_table (d))
     {
       const char *val = attr (an, av, "val");
       const DocxTableStyle *style = val != NULL ? g_hash_table_lookup (d->table_styles, val) : NULL;
@@ -3428,7 +3541,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           memset (d->tbl_edge, 0, sizeof d->tbl_edge);
         }
     }
-  else if (g_str_equal (tag, "tblLook") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tblLook") && docx_reading_table (d))
     {
       /* Which of the design's conditional parts the table uses: named
        * attributes, or Word 2007's bit mask, where 0x20 is the first row
@@ -3446,22 +3559,28 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else if (val != NULL)
         d->look_bands = (strtoul (val, NULL, 16) & 0x200) == 0;
     }
-  else if (g_str_equal (tag, "gridCol") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "gridCol") && docx_reading_table (d))
     {
       int w = CLAMP (attr_int (an, av, "w", 1440), 0, 31680);
 
       g_array_append_val (d->grid, w);
     }
-  else if (g_str_equal (tag, "tr") && d->depth_tbl == 1 && d->table_cells >= DOCX_MAX_CELLS)
+  else if (g_str_equal (tag, "tr") && docx_reading_table (d) && d->table_cells >= DOCX_MAX_CELLS)
     d->skip_depth = 1;
-  else if (g_str_equal (tag, "tr") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tr") && docx_reading_table (d))
     {
       if (!d->table_started)
         {
           int n = (int) d->grid->len;
 
-          w42_builder_begin_table (&d->b, n > 0 ? n : 1,
-                                   n > 0 ? (const int *) d->grid->data : NULL);
+          if (!w42_builder_begin_table (&d->b, n > 0 ? n : 1,
+                                        n > 0 ? (const int *) d->grid->data : NULL))
+            {
+              /* No table can go here after all: its rows are read as
+               * the paragraphs of the cell round it. */
+              docx_pop_table (d);
+              return;
+            }
           d->table_started = TRUE;
           w42_pt_table_set_borders (d->pt, d->b.table, d->tbl_borders);
           for (int e = 0; e < W42_N_EDGES; e++)
@@ -3469,7 +3588,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
         }
       d->table_cells += (gsize) MAX (d->b.n_cols, 1);
     }
-  else if (g_str_equal (tag, "trHeight") && d->depth_tbl == 1 && d->table_started)
+  else if (g_str_equal (tag, "trHeight") && docx_reading_table (d) && d->table_started)
     {
       const char *rule = attr (an, av, "hRule");
 
@@ -3477,17 +3596,18 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       if (rule == NULL || !g_str_equal (rule, "auto"))
         w42_pt_table_set_row_height (d->pt, d->b.table, d->b.row, attr_int (an, av, "val", 0));
     }
-  else if (g_str_equal (tag, "tblHeader") && d->depth_tbl == 1 && d->table_started)
+  else if (g_str_equal (tag, "tblHeader") && docx_reading_table (d) && d->table_started)
     {
       const char *val = attr (an, av, "val");
 
       if (val == NULL || g_str_equal (val, "1") || g_str_equal (val, "true") || g_str_equal (val, "on"))
         w42_pt_table_set_header_rows (d->pt, d->b.table, d->b.row + 1);
     }
-  else if (g_str_equal (tag, "tc") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tc") && docx_reading_table (d))
     {
       d->drop_join = d->drop_pending = 0;
       d->cell_pending = TRUE;
+      d->in_tc = TRUE;
       d->cell_span = 1;
       d->cell_sides = -1;
       d->cell_vmerge = 0;
@@ -3540,7 +3660,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
             }
         }
     }
-  else if (g_str_equal (tag, "vAlign") && d->depth_tbl == 1 && d->cell_pending)
+  else if (g_str_equal (tag, "vAlign") && docx_reading_table (d) && d->cell_pending)
     {
       const char *val = attr (an, av, "val");
 
@@ -3548,7 +3668,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
                      : g_str_equal (val, "center") ? W42_CELL_VALIGN_CENTER
                      : g_str_equal (val, "bottom") ? W42_CELL_VALIGN_BOTTOM : W42_CELL_VALIGN_TOP;
     }
-  else if (g_str_equal (tag, "tcBorders") && d->depth_tbl == 1 && d->cell_pending)
+  else if (g_str_equal (tag, "tcBorders") && docx_reading_table (d) && d->cell_pending)
     {
       /* A side the cell does not name is the table's, not a rule of its
        * own, so the sides start where the table left them. */
@@ -3571,7 +3691,7 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
       else
         d->cell_sides &= ~(1 << e);
     }
-  else if (g_str_equal (tag, "shd") && d->depth_tbl == 1 && d->cell_pending &&
+  else if (g_str_equal (tag, "shd") && docx_reading_table (d) && d->cell_pending &&
            !d->in_ppr && !d->in_rpr)
     {
       const char *fill = attr (an, av, "fill");
@@ -3588,9 +3708,9 @@ docx_start (GMarkupParseContext *ctx, const char *name, const char **an,
           d->cell_has_fill = TRUE;
         }
     }
-  else if (g_str_equal (tag, "gridSpan") && d->depth_tbl == 1 && d->cell_pending)
+  else if (g_str_equal (tag, "gridSpan") && docx_reading_table (d) && d->cell_pending)
     d->cell_span = CLAMP (attr_int (an, av, "val", 1), 1, 63);
-  else if (g_str_equal (tag, "vMerge") && d->depth_tbl == 1 && d->cell_pending)
+  else if (g_str_equal (tag, "vMerge") && docx_reading_table (d) && d->cell_pending)
     {
       /* Without a value, the cell carries on the merge above it. */
       const char *val = attr (an, av, "val");
@@ -3894,7 +4014,7 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
     docx_finish_drawing (d);
   else if (d->in_pict && (g_str_equal (tag, "pict") || g_str_equal (tag, "object")))
     docx_finish_drawing (d);
-  else if (g_str_equal (tag, "tc") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tc") && docx_reading_table (d))
     {
       docx_flush_text (d);
       if (d->cell_pending)
@@ -3904,8 +4024,9 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
           docx_apply_cell_props (d);
         }
       w42_builder_end_cell (&d->b);
+      d->in_tc = FALSE;
     }
-  else if (g_str_equal (tag, "tr") && d->depth_tbl == 1)
+  else if (g_str_equal (tag, "tr") && docx_reading_table (d))
     w42_builder_end_row (&d->b);
   else if (g_str_equal (tag, "tblBorders"))
     d->in_tblborders = FALSE;
@@ -3915,13 +4036,19 @@ docx_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **er
     {
       /* > 0: a stray tbl inside pPr was never counted on the way in, so
        * its close must not walk the depth below the tables that were. */
-      if (d->depth_tbl == 1)
+      if (docx_reading_table (d))
         {
           int table = d->b.table;
 
-          w42_builder_end_table (&d->b);
-          if (table >= 0)
-            w42_pt_resolve_vmerges (d->pt, table);
+          /* A table with no rows began nothing, and ending one would end
+           * the table round it. */
+          if (d->table_started)
+            {
+              w42_builder_end_table (&d->b);
+              if (table >= 0)
+                w42_pt_resolve_vmerges (d->pt, table);
+            }
+          docx_pop_table (d);
         }
       d->depth_tbl--;
     }
@@ -4020,6 +4147,7 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   d.shape_text = g_string_new (NULL);
   d.fld_instr = g_string_new (NULL);
   d.grid = g_array_new (FALSE, FALSE, sizeof (int));
+  d.outer_tables = g_array_new (FALSE, FALSE, sizeof (DocxOuterTable));
   d.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   d.bookmark_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   d.section_first = (gsize) -1;
@@ -4040,6 +4168,10 @@ read_note_bodies (Docx *outer, W42Zip *zip, const char *part, const char *kind,
   g_string_free (d.text, TRUE);
   g_string_free (d.shape_text, TRUE);
   g_string_free (d.fld_instr, TRUE);
+  /* A file that ends inside a table leaves the ones round it set aside. */
+  while (d.outer_tables->len > 0)
+    docx_pop_table (&d);
+  g_array_free (d.outer_tables, TRUE);
   g_array_free (d.grid, TRUE);
   g_hash_table_destroy (d.bookmarks);
   g_hash_table_destroy (d.bookmark_start);
@@ -4123,6 +4255,7 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   d.shape_text = g_string_new (NULL);
   d.fld_instr = g_string_new (NULL);
   d.grid = g_array_new (FALSE, FALSE, sizeof (int));
+  d.outer_tables = g_array_new (FALSE, FALSE, sizeof (DocxOuterTable));
   d.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   d.bookmark_start = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   d.section_first = (gsize) -1;
@@ -4140,6 +4273,10 @@ w42_docx_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **erro
   g_string_free (d.text, TRUE);
   g_string_free (d.shape_text, TRUE);
   g_string_free (d.fld_instr, TRUE);
+  /* A file that ends inside a table leaves the ones round it set aside. */
+  while (d.outer_tables->len > 0)
+    docx_pop_table (&d);
+  g_array_free (d.outer_tables, TRUE);
   g_array_free (d.grid, TRUE);
   g_hash_table_destroy (d.bookmarks);
   g_hash_table_destroy (d.bookmark_start);
@@ -5070,6 +5207,202 @@ write_ppr (GString *out, Parts *parts, const W42ParaFmt *pa, const W42PageSetup 
   g_string_append (out, "</w:pPr>");
 }
 
+/* A table open while the body is written, at one level of the tables
+ * round the text: the table, and the row and the cell open in it. */
+typedef struct {
+  int       table;
+  int       row;            /* the row open, or -1 */
+  int       col;            /* the cell open, when one is */
+  gboolean  cell;
+  int      *widths;         /* its columns' widths in twips, all real */
+  int       n_cols;
+} DocxOpenTable;
+
+/* The room Word leaves either side of a cell's text, which a table in the
+ * cell does not have to fill. */
+#define DOCX_CELL_MARGINS 216
+
+/* Begins what `block` is in and is not open yet: from the outermost
+ * table in, each level's table, its row and its cell.  `room` is the text
+ * column's width in twips, which a table in the text is set across; a
+ * table in a cell is set across the cell. */
+static void
+docx_tables_open (GString *doc, W42PieceTable *pt, W42ApTable *aps, const W42Block *block,
+                  DocxOpenTable *open, int *open_depth, int room)
+{
+  for (int level = 0; level < block->depth; level++)
+    {
+      DocxOpenTable *ot = &open[level];
+      const W42TableProps *props;
+      W42BlockCell cell;
+
+      if (!w42_block_cell (block, level, &cell))
+        break;
+      props = w42_pt_table_props (pt, cell.table);
+
+      if (level >= *open_depth)
+        {
+          static const int order[W42_N_EDGES] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
+                                                  W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
+          gboolean ruled = props == NULL || props->borders;
+          int n_cols = props != NULL ? MAX (props->n_cols, 1) : 1;
+
+          if (level > 0)
+            {
+              const DocxOpenTable *up = &open[level - 1];
+              W42BlockCell outer;
+              int width = 0;
+
+              w42_block_cell (block, level - 1, &outer);
+              for (int c = outer.col; c < outer.col + MAX (outer.span, 1) && c < up->n_cols; c++)
+                width += up->widths[c];
+              room = MAX (width - DOCX_CELL_MARGINS, 360);
+            }
+          ot->table = cell.table;
+          ot->row = -1;
+          ot->cell = FALSE;
+          ot->n_cols = n_cols;
+          ot->widths = g_new0 (int, n_cols);
+          for (int c = 0; c < n_cols; c++)
+            {
+              int w = props != NULL && c < (int) props->widths->len
+                      ? g_array_index (props->widths, int, c) : 0;
+
+              /* A width of nothing means an equal share of the column. */
+              ot->widths[c] = w > 0 ? w : room / n_cols;
+            }
+
+          g_string_append (doc, "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>");
+          for (int e = 0; e < W42_N_EDGES; e++)
+            write_border_element (doc, order[e], props != NULL ? &props->edge[order[e]] : NULL,
+                                  ruled, 0);
+          g_string_append (doc, "</w:tblBorders></w:tblPr><w:tblGrid>");
+          if (props != NULL)
+            for (int c = 0; c < n_cols; c++)
+              g_string_append_printf (doc, "<w:gridCol w:w=\"%d\"/>", ot->widths[c]);
+          g_string_append (doc, "</w:tblGrid>");
+          *open_depth = level + 1;
+        }
+
+      if (ot->row != cell.row)
+        {
+          int least = w42_pt_table_get_row_height (pt, cell.table, cell.row);
+          gboolean repeat = props != NULL && cell.row < props->header_rows;
+
+          g_string_append (doc, "<w:tr>");
+          if (least > 0 || repeat)
+            {
+              g_string_append (doc, "<w:trPr>");
+              if (least > 0)
+                g_string_append_printf (doc, "<w:trHeight w:val=\"%d\" w:hRule=\"atLeast\"/>", least);
+              if (repeat)
+                g_string_append (doc, "<w:tblHeader/>");
+              g_string_append (doc, "</w:trPr>");
+            }
+          ot->row = cell.row;
+        }
+
+      if (!ot->cell)
+        {
+          const W42ParaFmt *cpa = &w42_ap_table_get (aps, cell.cell_ap)->pa;
+          int width = 0;
+
+          if (props != NULL)
+            for (int c = cell.col; c < MIN (cell.col + cell.span, ot->n_cols); c++)
+              width += ot->widths[c];
+          g_string_append (doc, "<w:tc><w:tcPr>");
+          if (width > 0)
+            g_string_append_printf (doc, "<w:tcW w:w=\"%d\" w:type=\"dxa\"/>", width);
+          if (cell.span > 1)
+            g_string_append_printf (doc, "<w:gridSpan w:val=\"%d\"/>", cell.span);
+          /* A cell merged downwards: Word says where it starts and
+           * which cells it swallows. */
+          if (cpa->cell_vspan == W42_CELL_COVERED)
+            g_string_append (doc, "<w:vMerge/>");
+          else if (cpa->cell_vspan > 1)
+            g_string_append (doc, "<w:vMerge w:val=\"restart\"/>");
+          if (cpa->border & W42_BORDER_CELL_SET)
+            {
+              static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
+
+              /* A side that is on but has no line of its own is the
+               * table's, which is what leaving it out means. */
+              g_string_append (doc, "<w:tcBorders>");
+              for (int k = 0; k < 4; k++)
+                {
+                  const W42BorderEdge *edge = &cpa->edge[order[k]];
+                  gboolean on = (cpa->border & (1 << order[k])) != 0;
+
+                  if (on && edge->width == 0 && edge->style == 0 && edge->color == 0)
+                    continue;
+                  write_border_element (doc, order[k], edge, on, 0);
+                }
+              g_string_append (doc, "</w:tcBorders>");
+            }
+          if (cpa->has_shading_color)
+            g_string_append_printf (doc, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"%06X\"/>",
+                                    cpa->shading_color & 0xFFFFFF);
+          else if (cpa->shading > 0)
+            g_string_append_printf (doc, "<w:shd w:val=\"pct%d\" w:color=\"auto\" w:fill=\"auto\"/>",
+                                    (int) cpa->shading);
+          if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
+            g_string_append (doc, "<w:vAlign w:val=\"center\"/>");
+          else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
+            g_string_append (doc, "<w:vAlign w:val=\"bottom\"/>");
+          g_string_append (doc, "</w:tcPr>");
+          ot->cell = TRUE;
+          ot->col = cell.col;
+        }
+    }
+}
+
+/* Ends what the paragraph after the one just written is not in: the
+ * cells, rows and tables open, from the innermost out.  `next` may be
+ * NULL. */
+static void
+docx_tables_close (GString *doc, const W42Block *next, DocxOpenTable *open, int *open_depth)
+{
+  int next_depth = next != NULL && next->note < 0 ? next->depth : 0;
+  int keep = 0;
+
+  /* The levels the next paragraph is in the same cell at. */
+  while (keep < *open_depth && keep < next_depth)
+    {
+      W42BlockCell c;
+
+      w42_block_cell (next, keep, &c);
+      if (c.table != open[keep].table || c.row != open[keep].row || c.col != open[keep].col)
+        break;
+      keep++;
+    }
+
+  for (int level = *open_depth - 1; level >= keep; level--)
+    {
+      DocxOpenTable *ot = &open[level];
+      W42BlockCell c;
+
+      if (ot->cell)
+        {
+          g_string_append (doc, "</w:tc>");
+          ot->cell = FALSE;
+        }
+      if (level < next_depth && w42_block_cell (next, level, &c) && c.table == ot->table)
+        {
+          /* Another cell of this table: its row may go on. */
+          if (c.row != ot->row)
+            {
+              g_string_append (doc, "</w:tr>");
+              ot->row = -1;
+            }
+          break;
+        }
+      g_string_append (doc, "</w:tr></w:tbl>");
+      g_free (ot->widths);
+      ot->widths = NULL;
+      *open_depth = level;
+    }
+}
+
 static void
 write_paragraph (GString *out, Parts *parts, W42PieceTable *pt, W42ApTable *aps,
                  const W42Block *block, const W42CharFmt *base, const W42PageSetup *page,
@@ -5432,7 +5765,8 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
   W42ZipWriter *zip;
   W42PageSetup pg;
   int sect_cols, sect_gap;
-  int table_open = -1, row_open = -1;
+  DocxOpenTable open[W42_TABLE_MAX_DEPTH];
+  int open_depth = 0;         /* the tables open, round one another */
   char *header_rid = NULL, *footer_rid = NULL;
   const W42PageText *header, *footer;
   gboolean want_settings;
@@ -5572,130 +5906,15 @@ w42_docx_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError 
 
       if (block->table >= 0)
         {
-          const W42Block *prev = b > 0 ? g_ptr_array_index (blocks, b - 1) : NULL;
-          gboolean cell_start = prev == NULL || prev->table != block->table ||
-                                prev->row != block->row || prev->col != block->col;
-          gboolean cell_end = next == NULL || next->table != block->table ||
-                              next->row != block->row || next->col != block->col;
-
-          if (block->table != table_open)
-            {
-              const W42TableProps *props = w42_pt_table_props (pt, block->table);
-
-              {
-                static const int order[W42_N_EDGES] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM,
-                                                        W42_EDGE_RIGHT, W42_EDGE_INSIDE_H, W42_EDGE_INSIDE_V };
-                gboolean ruled = props == NULL || props->borders;
-
-                g_string_append (doc, "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>");
-                for (int e = 0; e < W42_N_EDGES; e++)
-                  write_border_element (doc, order[e], props != NULL ? &props->edge[order[e]] : NULL,
-                                        ruled, 0);
-                g_string_append (doc, "</w:tblBorders></w:tblPr><w:tblGrid>");
-              }
-              if (props != NULL)
-                for (int c = 0; c < props->n_cols; c++)
-                  {
-                    int w = g_array_index (props->widths, int, c);
-
-                    /* A width of nothing means an equal share of the column. */
-                    if (w <= 0)
-                      w = (pg.width - pg.margin_left - pg.margin_right) / MAX (props->n_cols, 1);
-                    g_string_append_printf (doc, "<w:gridCol w:w=\"%d\"/>", w);
-                  }
-              g_string_append (doc, "</w:tblGrid>");
-              table_open = block->table;
-              row_open = -1;
-            }
-          if (block->row != row_open)
-            {
-              const W42TableProps *props = w42_pt_table_props (pt, block->table);
-              int least = w42_pt_table_get_row_height (pt, block->table, block->row);
-              gboolean repeat = props != NULL && block->row < props->header_rows;
-
-              if (row_open >= 0)
-                g_string_append (doc, "</w:tr>");
-              g_string_append (doc, "<w:tr>");
-              if (least > 0 || repeat)
-                {
-                  g_string_append (doc, "<w:trPr>");
-                  if (least > 0)
-                    g_string_append_printf (doc, "<w:trHeight w:val=\"%d\" w:hRule=\"atLeast\"/>", least);
-                  if (repeat)
-                    g_string_append (doc, "<w:tblHeader/>");
-                  g_string_append (doc, "</w:trPr>");
-                }
-              row_open = block->row;
-            }
-          if (cell_start)
-            {
-              const W42TableProps *props = w42_pt_table_props (pt, block->table);
-              int width = 0;
-
-              if (props != NULL)
-                for (int c = block->col; c < MIN (block->col + block->span, props->n_cols); c++)
-                  {
-                    int w = g_array_index (props->widths, int, c);
-
-                    width += w > 0 ? w : (pg.width - pg.margin_left - pg.margin_right) / MAX (props->n_cols, 1);
-                  }
-              g_string_append (doc, "<w:tc><w:tcPr>");
-              if (width > 0)
-                g_string_append_printf (doc, "<w:tcW w:w=\"%d\" w:type=\"dxa\"/>", width);
-              if (block->span > 1)
-                g_string_append_printf (doc, "<w:gridSpan w:val=\"%d\"/>", block->span);
-              {
-                /* A cell merged downwards: Word says where it starts and
-                 * which cells it swallows. */
-                const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
-
-                if (cpa->cell_vspan == W42_CELL_COVERED)
-                  g_string_append (doc, "<w:vMerge/>");
-                else if (cpa->cell_vspan > 1)
-                  g_string_append (doc, "<w:vMerge w:val=\"restart\"/>");
-              }
-              {
-                const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
-
-                if (cpa->border & W42_BORDER_CELL_SET)
-                  {
-                    static const int order[4] = { W42_EDGE_TOP, W42_EDGE_LEFT, W42_EDGE_BOTTOM, W42_EDGE_RIGHT };
-
-                    /* A side that is on but has no line of its own is the
-                     * table's, which is what leaving it out means. */
-                    g_string_append (doc, "<w:tcBorders>");
-                    for (int k = 0; k < 4; k++)
-                      {
-                        const W42BorderEdge *edge = &cpa->edge[order[k]];
-                        gboolean on = (cpa->border & (1 << order[k])) != 0;
-
-                        if (on && edge->width == 0 && edge->style == 0 && edge->color == 0)
-                          continue;
-                        write_border_element (doc, order[k], edge, on, 0);
-                      }
-                    g_string_append (doc, "</w:tcBorders>");
-                  }
-                if (cpa->has_shading_color)
-                  g_string_append_printf (doc, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"%06X\"/>",
-                                          cpa->shading_color & 0xFFFFFF);
-                else if (cpa->shading > 0)
-                  g_string_append_printf (doc, "<w:shd w:val=\"pct%d\" w:color=\"auto\" w:fill=\"auto\"/>",
-                                          (int) cpa->shading);
-                if (cpa->cell_valign == W42_CELL_VALIGN_CENTER)
-                  g_string_append (doc, "<w:vAlign w:val=\"center\"/>");
-                else if (cpa->cell_valign == W42_CELL_VALIGN_BOTTOM)
-                  g_string_append (doc, "<w:vAlign w:val=\"bottom\"/>");
-              }
-              g_string_append (doc, "</w:tcPr>");
-            }
+          /* The cells the paragraph is in, a table in a cell a level
+           * deeper: begun as far as they are not open already, and ended
+           * as far as the next paragraph is not in them. */
+          docx_tables_open (doc, pt, aps, block, open, &open_depth,
+                            pg.width - pg.margin_left - pg.margin_right);
           write_paragraph (doc, &parts, pt, aps, block, &base.ch, &pg, FALSE, 0, 0);
-          if (cell_end)
-            g_string_append (doc, "</w:tc>");
-          if (next == NULL || next->table != block->table)
+          docx_tables_close (doc, next, open, &open_depth);
+          if (open_depth == 0)
             {
-              g_string_append (doc, "</w:tr></w:tbl>");
-              table_open = -1;
-              row_open = -1;
               /* Word wants a paragraph after a table that ends the body
                * or a section; a section's properties go on it. */
               if (next == NULL || next->note >= 0)

@@ -148,6 +148,10 @@ typedef struct {
   GArray      *table_cols;       /* each <table>'s columns, in file order */
   int          tables_seen;
   GArray      *cover;            /* AbwCover, per column of the open table */
+  GPtrArray   *outer_covers;     /* the covers of the tables round it, when
+                                  * it is in a cell */
+  int          flat_tables;      /* tables open that are read as paragraphs:
+                                  * deeper than tables go */
   gsize        table_cells;      /* the cells the rows of every table have made */
   GHashTable  *bookmarks;        /* name -> where it starts */
   GPtrArray   *styles;           /* AbwStyle, until the last is read */
@@ -1233,10 +1237,23 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
             }
           g_strfreev (parts);
         }
-      if (w42_builder_in_table (&a->b) || a->in_hf || a->table_cells >= ABW_MAX_CELLS)
-        a->skip_depth = 1;            /* nested, in a header, or one too many: not read */
+      if (a->in_hf || a->table_cells >= ABW_MAX_CELLS)
+        a->skip_depth = 1;            /* in a header, or one too many: not read */
+      else if (a->flat_tables > 0 ||
+               (w42_builder_in_table (&a->b) &&
+                (!a->b.in_cell || a->b.cell_pos == (gsize) -1 ||
+                 w42_builder_table_depth (&a->b) >= W42_TABLE_MAX_DEPTH)))
+        {
+          /* A table in a cell deeper than tables go, or between cells:
+           * its cells are read as the paragraphs of the cell it is in. */
+          a->flat_tables++;
+          if (a->b.in_para)
+            w42_builder_end_paragraph (&a->b);
+        }
       else
         {
+          gboolean inner = w42_builder_in_table (&a->b);
+
           /* As many columns as its cells reach, which the first pass
            * counted: a table that gives no widths is not one column. */
           n_cols = MAX (n_cols, (int) widths->len);
@@ -1246,6 +1263,12 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
           /* AbiWord keeps every rule in the cells, so the table's own
            * "ruled" flag is off and each cell says what it wants. */
           w42_pt_table_set_borders (a->pt, a->b.table, FALSE);
+          /* A table in a cell: the merges of the one round it wait. */
+          if (inner)
+            {
+              g_ptr_array_add (a->outer_covers, a->cover);
+              a->cover = g_array_new (FALSE, TRUE, sizeof (AbwCover));
+            }
           g_array_set_size (a->cover, 0);
         }
       g_array_free (widths, TRUE);
@@ -1262,6 +1285,13 @@ abw_start (GMarkupParseContext *ctx, const char *name, const char **an,
       each_prop (props, attach_prop, &at);
       each_prop (props, para_prop, &cell_pa);
       abw_flush (a);
+      if (a->flat_tables > 0)
+        {
+          /* A cell of a table read as paragraphs: one begins. */
+          if (a->b.in_para)
+            w42_builder_end_paragraph (&a->b);
+          return;
+        }
       if (w42_builder_in_table (&a->b) && a->table_cells >= ABW_MAX_CELLS)
         {
           a->skip_depth = 1;          /* the tables have made all they may */
@@ -1460,12 +1490,15 @@ abw_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **err
   else if (g_str_equal (name, "cell"))
     {
       abw_flush (a);
-      w42_builder_end_cell (&a->b);
+      if (a->flat_tables == 0)
+        w42_builder_end_cell (&a->b);
     }
   else if (g_str_equal (name, "table"))
     {
       abw_flush (a);
-      if (w42_builder_in_table (&a->b))
+      if (a->flat_tables > 0)
+        a->flat_tables--;
+      else if (w42_builder_in_table (&a->b))
         {
           int table = a->b.table;
 
@@ -1478,6 +1511,12 @@ abw_end (GMarkupParseContext *ctx, const char *name, gpointer data, GError **err
           w42_builder_end_table (&a->b);
           w42_pt_resolve_vmerges (a->pt, table);
           g_array_set_size (a->cover, 0);
+          /* Back in a cell of the table round it, with its merges. */
+          if (w42_builder_in_table (&a->b) && a->outer_covers->len > 0)
+            {
+              g_array_free (a->cover, TRUE);
+              a->cover = g_ptr_array_steal_index (a->outer_covers, a->outer_covers->len - 1);
+            }
         }
     }
   else if (g_str_equal (name, "frame"))
@@ -1719,6 +1758,7 @@ w42_abw_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   a.images = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) g_bytes_unref);
   a.table_cols = g_array_new (FALSE, FALSE, sizeof (int));
   a.cover = g_array_new (FALSE, TRUE, sizeof (AbwCover));
+  a.outer_covers = g_ptr_array_new_with_free_func ((GDestroyNotify) g_array_unref);
   a.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   a.styles = g_ptr_array_new_with_free_func (abw_style_free);
   a.comments = g_ptr_array_new ();
@@ -1794,6 +1834,7 @@ w42_abw_load (W42PieceTable *pt, W42PageSetup *page, GFile *file, GError **error
   g_hash_table_destroy (a.images);
   g_array_free (a.table_cols, TRUE);
   g_array_free (a.cover, TRUE);
+  g_ptr_array_free (a.outer_covers, TRUE);
   g_hash_table_destroy (a.bookmarks);
   g_ptr_array_free (a.styles, TRUE);
   g_ptr_array_free (a.comments, TRUE);
@@ -2557,6 +2598,172 @@ write_page_text (GString *body, const W42PageText *text, const char *type, int i
   g_string_append (body, "</p></section>\n");
 }
 
+/* A table open while the body is written, at one level of the tables
+ * round the text, and the cell open in it. */
+typedef struct {
+  int       table;
+  int       row, col;       /* the cell open, when one is */
+  gboolean  cell;
+  gboolean  covered;        /* the open cell is one a merge covers: not
+                             * written, nor anything in it */
+} AbwOpenTable;
+
+/* The start of a cell: where it is, its own rules and its background. */
+static void
+abw_cell_start (GString *body, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+                guint b, int level, const W42BlockCell *cell)
+{
+  const W42ParaFmt *cpa = &w42_ap_table_get (aps, cell->cell_ap)->pa;
+  GString *cell_props = g_string_new (NULL);
+  int rows = cpa->cell_vspan > 1 ? cpa->cell_vspan : 1;
+
+  /* The cell's own rules and background, in the same words a
+   * paragraph's are written in. */
+  {
+    const W42TableProps *tp = w42_pt_table_props (pt, cell->table);
+    W42ParaFmt shown = *cpa;
+    gboolean own = (cpa->border & W42_BORDER_CELL_SET) != 0;
+    gboolean first_row = cell->row == 0, last_row = TRUE;
+    int n_cols = tp != NULL ? tp->n_cols : 1;
+
+    for (guint k = b + 1; k < blocks->len; k++)
+      {
+        W42BlockCell rc;
+
+        if (!w42_block_cell (g_ptr_array_index (blocks, k), level, &rc) ||
+            rc.table != cell->table)
+          break;
+        if (rc.row >= cell->row + rows)
+          {
+            last_row = FALSE;
+            break;
+          }
+      }
+    /* Each side's line: the cell's own, else the table's --
+     * its outer line round the outside, its inside rule
+     * between the cells -- so that a reader that looks only
+     * at the cells sees the table whole. */
+    shown.border = own ? (cpa->border & W42_BORDER_BOX)
+                 : (tp == NULL || tp->borders) ? W42_BORDER_BOX : 0;
+    for (int k = 0; k < 4; k++)
+      {
+        gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
+                         (k == W42_EDGE_LEFT && cell->col == 0) ||
+                         (k == W42_EDGE_RIGHT && cell->col + cell->span >= n_cols);
+        const W42BorderEdge *e = &cpa->edge[k];
+
+        if (own && (e->width != 0 || e->style != 0 || e->color != 0))
+          continue;
+        shown.edge[k] = tp != NULL
+          ? tp->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)]
+          : (W42BorderEdge) { 0, 0, 0 };
+        if (shown.edge[k].style == W42_BORDER_NONE)
+          {
+            shown.border &= (guint8) ~(1 << k);
+            shown.edge[k].style = W42_BORDER_SINGLE;
+          }
+      }
+    if (!cpa->has_shading_color && cpa->shading > 0)
+      {
+        int grey = 255 - (int) cpa->shading * 255 / 100;
+
+        shown.has_shading_color = 1;
+        shown.shading_color = (guint32) ((grey << 16) | (grey << 8) | grey);
+        shown.shading = 0;
+      }
+    if (shown.border != 0 || shown.has_shading_color || own)
+      para_props (cell_props, &shown, NULL);
+  }
+  /* A cell merged down runs to the row its merge ends at. */
+  g_string_append_printf (body, "<cell props=\"left-attach:%d; right-attach:%d; top-attach:%d; bot-attach:%d%s%s\">\n",
+                          cell->col, cell->col + MAX (cell->span, 1), cell->row, cell->row + rows,
+                          cell_props->len > 0 ? "; " : "", cell_props->str);
+  g_string_free (cell_props, TRUE);
+}
+
+/* Begins what block `b` is in and is not open yet: from the outermost
+ * table in, each level's table and its cell.  FALSE when the block is in
+ * a cell a merge covers, and is not to be written. */
+static gboolean
+abw_tables_open (GString *body, W42PieceTable *pt, W42ApTable *aps, GPtrArray *blocks,
+                 guint b, AbwOpenTable *open, int *open_depth)
+{
+  const W42Block *block = g_ptr_array_index (blocks, b);
+
+  for (int level = 0; level < block->depth; level++)
+    {
+      AbwOpenTable *ot = &open[level];
+      W42BlockCell cell;
+
+      if (!w42_block_cell (block, level, &cell))
+        break;
+      if (level >= *open_depth)
+        {
+          const W42TableProps *tp = w42_pt_table_props (pt, cell.table);
+          GString *cols = g_string_new (NULL);
+          char b1[G_ASCII_DTOSTR_BUF_SIZE];
+
+          if (tp != NULL)
+            for (int c = 0; c < tp->n_cols; c++)
+              g_string_append_printf (cols, "%sin/", g_ascii_formatd (b1, sizeof b1, "%.4f",
+                                      g_array_index (tp->widths, int, c) / 1440.0));
+          g_string_append_printf (body, "<table props=\"table-column-props:%s\">\n", cols->str);
+          g_string_free (cols, TRUE);
+          ot->table = cell.table;
+          ot->cell = FALSE;
+          ot->covered = FALSE;
+          *open_depth = level + 1;
+        }
+      if (!ot->cell)
+        {
+          ot->covered = w42_ap_table_get (aps, cell.cell_ap)->pa.cell_vspan == W42_CELL_COVERED;
+          if (!ot->covered)
+            abw_cell_start (body, pt, aps, blocks, b, level, &cell);
+          ot->cell = TRUE;
+          ot->row = cell.row;
+          ot->col = cell.col;
+        }
+      if (ot->covered)
+        return FALSE;
+    }
+  return TRUE;
+}
+
+/* Ends what the paragraph after the one just written is not in: the
+ * cells and tables open, from the innermost out.  `next` may be NULL. */
+static void
+abw_tables_close (GString *body, const W42Block *next, AbwOpenTable *open, int *open_depth)
+{
+  int next_depth = next != NULL && next->note < 0 ? next->depth : 0;
+  int keep = 0;
+
+  /* The levels the next paragraph is in the same cell at. */
+  while (keep < *open_depth && keep < next_depth)
+    {
+      W42BlockCell c;
+
+      w42_block_cell (next, keep, &c);
+      if (c.table != open[keep].table || c.row != open[keep].row || c.col != open[keep].col)
+        break;
+      keep++;
+    }
+
+  for (int level = *open_depth - 1; level >= keep; level--)
+    {
+      AbwOpenTable *ot = &open[level];
+      W42BlockCell c;
+
+      if (ot->cell && !ot->covered)
+        g_string_append (body, "</cell>\n");
+      ot->cell = FALSE;
+      ot->covered = FALSE;
+      if (level < next_depth && w42_block_cell (next, level, &c) && c.table == ot->table)
+        break;              /* another cell of this table */
+      g_string_append (body, "</table>\n");
+      *open_depth = level;
+    }
+}
+
 gboolean
 w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError **error)
 {
@@ -2570,7 +2777,8 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   W42PageSetup pg;
   const W42PageText *heads[3], *feet[3];
   gboolean has_header = FALSE, has_footer = FALSE;
-  int table_open = -1;
+  AbwOpenTable open[W42_TABLE_MAX_DEPTH];
+  int open_depth = 0;               /* the tables open, round one another */
   int sect_cols, sect_gap;
   gboolean ok;
   char b1[G_ASCII_DTOSTR_BUF_SIZE], b2[G_ASCII_DTOSTR_BUF_SIZE];
@@ -2661,11 +2869,6 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         {
           GString *sp = g_string_new (NULL);
 
-          if (table_open >= 0)
-            {
-              g_string_append (body, "</table>\n");
-              table_open = -1;
-            }
           sect_cols = MAX (pa->columns, 1);
           sect_gap = pa->column_gap > 0 ? pa->column_gap : 720;
           append_twips (sp, "page-margin-left", pg.margin_left);
@@ -2681,103 +2884,15 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
           g_string_free (sp, TRUE);
         }
 
-      /* Tables. */
-      if (block->table >= 0 && block->table != table_open)
+      /* Tables: the cells the paragraph is in, a table in a cell a level
+       * deeper, begun as far as they are not open already.  A cell a
+       * merge above covers is no cell in AbiWord, and what it holds is
+       * not written. */
+      if (block->table >= 0 &&
+          !abw_tables_open (body, pt, aps, blocks, b, open, &open_depth))
         {
-          const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-          GString *cols = g_string_new (NULL);
-
-          if (tp != NULL)
-            for (int c = 0; c < tp->n_cols; c++)
-              g_string_append_printf (cols, "%sin/", g_ascii_formatd (b1, sizeof b1, "%.4f",
-                                      g_array_index (tp->widths, int, c) / 1440.0));
-          g_string_append_printf (body, "<table props=\"table-column-props:%s\">\n", cols->str);
-          g_string_free (cols, TRUE);
-          table_open = block->table;
-        }
-      if (block->table >= 0)
-        {
-          const W42ParaFmt *cpa = &w42_ap_table_get (aps, block->cell_ap)->pa;
-          gboolean cell_start = prev == NULL || prev->table != block->table ||
-                                prev->row != block->row || prev->col != block->col;
-
-          if (cpa->cell_vspan == W42_CELL_COVERED)
-            {
-              /* A cell a merge above covers: AbiWord has no cell there. */
-              if (next == NULL || next->table != block->table)
-                {
-                  g_string_append (body, "</table>\n");
-                  table_open = -1;
-                }
-              continue;
-            }
-          if (cell_start)
-            {
-              GString *cell_props = g_string_new (NULL);
-              int rows = cpa->cell_vspan > 1 ? cpa->cell_vspan : 1;
-
-              /* The cell's own rules and background, in the same words a
-               * paragraph's are written in. */
-              {
-                const W42TableProps *tp = w42_pt_table_props (pt, block->table);
-                W42ParaFmt shown = *cpa;
-                gboolean own = (cpa->border & W42_BORDER_CELL_SET) != 0;
-                gboolean first_row = block->row == 0, last_row = TRUE;
-                int n_cols = tp != NULL ? tp->n_cols : 1;
-
-                for (guint k = b + 1; k < blocks->len; k++)
-                  {
-                    const W42Block *rb = g_ptr_array_index (blocks, k);
-
-                    if (rb->table != block->table)
-                      break;
-                    if (rb->row >= block->row + rows)
-                      {
-                        last_row = FALSE;
-                        break;
-                      }
-                  }
-                /* Each side's line: the cell's own, else the table's --
-                 * its outer line round the outside, its inside rule
-                 * between the cells -- so that a reader that looks only
-                 * at the cells sees the table whole. */
-                shown.border = own ? (cpa->border & W42_BORDER_BOX)
-                             : (tp == NULL || tp->borders) ? W42_BORDER_BOX : 0;
-                for (int k = 0; k < 4; k++)
-                  {
-                    gboolean outer = (k == W42_EDGE_TOP && first_row) || (k == W42_EDGE_BOTTOM && last_row) ||
-                                     (k == W42_EDGE_LEFT && block->col == 0) ||
-                                     (k == W42_EDGE_RIGHT && block->col + block->span >= n_cols);
-                    const W42BorderEdge *e = &cpa->edge[k];
-
-                    if (own && (e->width != 0 || e->style != 0 || e->color != 0))
-                      continue;
-                    shown.edge[k] = tp != NULL
-                      ? tp->edge[outer ? k : (k <= W42_EDGE_BOTTOM ? W42_EDGE_INSIDE_H : W42_EDGE_INSIDE_V)]
-                      : (W42BorderEdge) { 0, 0, 0 };
-                    if (shown.edge[k].style == W42_BORDER_NONE)
-                      {
-                        shown.border &= (guint8) ~(1 << k);
-                        shown.edge[k].style = W42_BORDER_SINGLE;
-                      }
-                  }
-                if (!cpa->has_shading_color && cpa->shading > 0)
-                  {
-                    int grey = 255 - (int) cpa->shading * 255 / 100;
-
-                    shown.has_shading_color = 1;
-                    shown.shading_color = (guint32) ((grey << 16) | (grey << 8) | grey);
-                    shown.shading = 0;
-                  }
-                if (shown.border != 0 || shown.has_shading_color || own)
-                  para_props (cell_props, &shown, NULL);
-              }
-              /* A cell merged down runs to the row its merge ends at. */
-              g_string_append_printf (body, "<cell props=\"left-attach:%d; right-attach:%d; top-attach:%d; bot-attach:%d%s%s\">\n",
-                                      block->col, block->col + MAX (block->span, 1), block->row, block->row + rows,
-                                      cell_props->len > 0 ? "; " : "", cell_props->str);
-              g_string_free (cell_props, TRUE);
-            }
+          abw_tables_close (body, next, open, &open_depth);
+          continue;
         }
 
       /* Paragraphs in a frame: AbiWord's text box, after the paragraph
@@ -2812,18 +2927,7 @@ w42_abw_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
         g_string_append (body, "</frame>\n");
 
       if (block->table >= 0)
-        {
-          gboolean cell_end = next == NULL || next->table != block->table ||
-                              next->row != block->row || next->col != block->col;
-
-          if (cell_end)
-            g_string_append (body, "</cell>\n");
-          if (next == NULL || next->table != block->table)
-            {
-              g_string_append (body, "</table>\n");
-              table_open = -1;
-            }
-        }
+        abw_tables_close (body, next, open, &open_depth);
     }
   g_string_append (body, "</section>\n");
 

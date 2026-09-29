@@ -54,7 +54,7 @@ short table.
 | Lists: bullets, numbers, nine levels, restart | yes | yes | yes | yes |
 | Heading numbering, table of contents, index | yes, yes, yes | yes, yes, yes | via lists, yes, no | yes, yes, yes |
 | Tables: merge across and down, borders per side, AutoFit (window, contents), AutoFormat, sort, formula | yes | yes | most | yes |
-| Nested tables | no | yes | yes | yes |
+| Nested tables | yes | yes | yes | yes |
 | Footnotes and endnotes | yes | yes | yes | yes |
 | Headers and footers | one line each, with a different first and even page | full, per section | full, per section | full, per section |
 | Pictures: inline, wrapped, positioned | yes | yes | yes | yes |
@@ -91,6 +91,6 @@ letter, a thesis or a newsletter needs, including several things
 AbiWord lacks (an index, hyphenation, mail merge from CSV, envelopes,
 a split window, AutoFormat).  What it lacks against all three is the
 same short list: text boxes placed on the page, headers and footers
-richer than one line, per-section page orientation, nested tables,
+richer than one line, per-section page orientation,
 equations, grammar, translations and a screen reader's view of the
 page.  [Word42.md](../Word42.md) is the order they will be taken in.

@@ -423,7 +423,9 @@ typedef struct {
   GByteArray *data;         /* the Data stream: big PAPXs, pictures */
   GArray     *lists;        /* ListDef: one per list, its LFO the same place + 1 */
   int         cur_list[2];  /* the numbered and the bulleted list going on, or -1 */
-  GArray     *row_cells;    /* CellInfo: the cells of the row being written */
+  GArray     *row_cells[W42_TABLE_MAX_DEPTH];   /* CellInfo: the cells of the row
+                             * being written, at each depth of the tables */
+  gboolean    inner_cell_end;   /* the paragraph ends a cell of a table in a cell */
   GHashTable *bookmarks;    /* name -> Bookmark*, the main text's */
   guint       n_pictures;
   const W42Block *next_block;   /* the main text's paragraph after the one being written */
@@ -1560,6 +1562,15 @@ write_block (Writer *w, const W42Block *block, gunichar mark, gboolean note_mark
     list_sprms (w, extra, &fmt->pa);
     if (block->table >= 0 && w->story == STORY_MAIN)
       sprm8 (extra, 0x2416, 1);                        /* sprmPFInTable */
+    if (block->depth > 1 && w->story == STORY_MAIN)
+      {
+        /* A table in a cell: how deep the paragraph is, and a cell of
+         * it ends in a paragraph mark that says so, not in a cell mark. */
+        put16 (extra, 0x6649);                         /* sprmPItap */
+        put32 (extra, (guint32) block->depth);
+        if (w->inner_cell_end)
+          sprm8 (extra, 0x244B, 1);                    /* sprmPFInnerTableCell */
+      }
     para_extra (w, extra);
     g_byte_array_free (extra, TRUE);
   }
@@ -1582,35 +1593,79 @@ cell_brc (const W42TableProps *props, const W42ParaFmt *cell, int edge, gboolean
   }
 }
 
+/* The width a table at nesting level `level` has to fill, in twips: the
+ * text column's, or the inside of the cell of the table round it that
+ * `block` is in. */
+static int
+table_room (Writer *w, const W42Block *block, int level)
+{
+  const W42PageSetup *page = w->page;
+  int width = page != NULL && page->width > 0 ? page->width : 12240;
+  int room = MAX (width - (page != NULL ? page->margin_left + page->margin_right : 3600), 1440);
+
+  for (int l = 0; l < level; l++)
+    {
+      W42BlockCell c;
+      const W42TableProps *props;
+      int n_cols, cell_w = 0;
+
+      if (!w42_block_cell (block, l, &c))
+        break;
+      props = w42_pt_table_props (w->pt, c.table);
+      n_cols = props != NULL ? MAX (props->n_cols, 1) : 1;
+      for (int k = c.col; k < c.col + MAX (c.span, 1) && k < n_cols; k++)
+        {
+          int cw = props != NULL && (guint) k < props->widths->len
+                   ? g_array_index (props->widths, int, k) : 0;
+
+          cell_w += cw > 0 ? cw : room / n_cols;
+        }
+      room = MAX (cell_w - 216, 360);   /* less the gap either side */
+    }
+  return room;
+}
+
 /* The mark that ends a table row, 7 in a paragraph of its own, whose
  * PAPX carries the row's shape: the gap between cells, its height, the
  * edges of its cells and each one's TC80, their backgrounds, and the
- * table's own lines. */
+ * table's own lines.  The row of a table in a cell ends in a paragraph
+ * mark instead, which says it is an inner table's row end and how deep
+ * the table is.  The row is the one `block` is in at nesting level
+ * `level`. */
 static void
-end_row (Writer *w, int table, int row)
+end_row (Writer *w, const W42Block *block, int level)
 {
-  const W42TableProps *props = w42_pt_table_props (w->pt, table);
+  W42BlockCell cell = { -1, 0, 0, 1, 0 };
+  GArray *row_cells = w->row_cells[level];
+  int table, row;
+  const W42TableProps *props;
   GByteArray *s = g_byte_array_new ();
-  int n = (int) MIN (w->row_cells->len, 63);
-  int n_cols = props != NULL ? MAX (props->n_cols, 1) : MAX (n, 1);
-  int rows = w42_pt_table_rows (w->pt, table);
+  int n = (int) MIN (row_cells->len, 63);
+  int n_cols;
+  int rows;
   int text_w;
   int x = -108;
   gboolean any_fill = FALSE;
 
-  {
-    const W42PageSetup *page = w->page;
-    int width = page != NULL && page->width > 0 ? page->width : 12240;
+  w42_block_cell (block, level, &cell);
+  table = cell.table;
+  row = cell.row;
+  props = w42_pt_table_props (w->pt, table);
+  n_cols = props != NULL ? MAX (props->n_cols, 1) : MAX (n, 1);
+  rows = w42_pt_table_rows (w->pt, table);
+  text_w = table_room (w, block, level);
 
-    text_w = width - (page != NULL ? page->margin_left + page->margin_right : 3600);
-    if (text_w < 1440)
-      text_w = 1440;
-  }
-
-  end_para (w, 0x07, NULL, NULL, NULL, NULL, ISTD_NORMAL);
+  end_para (w, level > 0 ? 0x0D : 0x07, NULL, NULL, NULL, NULL, ISTD_NORMAL);
 
   sprm8 (s, 0x2416, 1);                                  /* sprmPFInTable */
-  sprm8 (s, 0x2417, 1);                                  /* sprmPFTtp */
+  if (level > 0)
+    {
+      put16 (s, 0x6649);                                 /* sprmPItap */
+      put32 (s, (guint32) level + 1);
+      sprm8 (s, 0x244C, 1);                              /* sprmPFInnerTtp */
+    }
+  else
+    sprm8 (s, 0x2417, 1);                                /* sprmPFTtp */
   sprm16 (s, 0x9602, 108);                               /* sprmTDxaGapHalf */
   if (props != NULL && props->row_heights != NULL && (guint) row < props->row_heights->len &&
       g_array_index (props->row_heights, int, row) > 0)
@@ -1635,7 +1690,7 @@ end_row (Writer *w, int table, int row)
   put16 (s, (guint16) x);
   for (int i = 0; i < n; i++)
     {
-      const CellInfo *c = &g_array_index (w->row_cells, CellInfo, i);
+      const CellInfo *c = &g_array_index (row_cells, CellInfo, i);
 
       for (int k = 0; k < c->span; k++)
         {
@@ -1649,7 +1704,7 @@ end_row (Writer *w, int table, int row)
     }
   for (int i = 0; i < n; i++)
     {
-      const CellInfo *c = &g_array_index (w->row_cells, CellInfo, i);
+      const CellInfo *c = &g_array_index (row_cells, CellInfo, i);
       const W42ParaFmt *pa = &w42_ap_table_get (w->aps, c->cell_ap)->pa;
       guint flags = 0;
 
@@ -1679,7 +1734,7 @@ end_row (Writer *w, int table, int row)
 
       for (int i = 0; i < n; i++)
         {
-          const W42ParaFmt *pa = &w42_ap_table_get (w->aps, g_array_index (w->row_cells, CellInfo, i).cell_ap)->pa;
+          const W42ParaFmt *pa = &w42_ap_table_get (w->aps, g_array_index (row_cells, CellInfo, i).cell_ap)->pa;
           guint32 rgb;
 
           if (i % 22 == 0)
@@ -1702,7 +1757,7 @@ end_row (Writer *w, int table, int row)
 
   para_extra (w, s);
   g_byte_array_free (s, TRUE);
-  g_array_set_size (w->row_cells, 0);
+  g_array_set_size (row_cells, 0);
 }
 
 static void
@@ -1716,6 +1771,19 @@ static void
 end_story (Writer *w, int story)
 {
   w->ccp[story] = w->text->len - w->story_start[story];
+}
+
+/* Whether `a` is in the same row of the table at nesting level `level`
+ * as `block` -- and with `cell`, in the same cell. */
+static gboolean
+same_place (const W42Block *a, const W42Block *block, int level, gboolean cell)
+{
+  W42BlockCell ca, cb;
+
+  if (a == NULL || a->note >= 0 ||
+      !w42_block_cell (a, level, &ca) || !w42_block_cell (block, level, &cb))
+    return FALSE;
+  return ca.table == cb.table && ca.row == cb.row && (!cell || ca.col == cb.col);
 }
 
 /* The main text, and the sections it falls into.  A paragraph that
@@ -1746,21 +1814,25 @@ write_main_text (Writer *w, GPtrArray *blocks)
 
       if (block->table >= 0)
         {
-          gboolean cell_start = prev == NULL || prev->table != block->table ||
-                                prev->row != block->row || prev->col != block->col;
-          gboolean cell_end = next == NULL || next->table != block->table ||
-                              next->row != block->row || next->col != block->col;
-          gboolean row_end = next == NULL || next->table != block->table || next->row != block->row;
+          /* Only the innermost cell can begin or end at a paragraph: a
+           * cell opens with a paragraph of its own, and one follows a
+           * table in it. */
+          int level = MIN (block->depth, W42_TABLE_MAX_DEPTH) - 1;
+          gboolean cell_start = !same_place (prev, block, level, TRUE);
+          gboolean cell_end = !same_place (next, block, level, TRUE);
+          gboolean row_end = !same_place (next, block, level, FALSE);
 
           if (cell_start)
             {
               CellInfo c = { block->col, MAX (block->span, 1), block->cell_ap };
-              g_array_append_val (w->row_cells, c);
+              g_array_append_val (w->row_cells[level], c);
             }
           w->next_block = next;
-          write_block (w, block, cell_end ? 0x07 : 0x0D, FALSE);
+          w->inner_cell_end = level > 0 && cell_end;
+          write_block (w, block, cell_end && level == 0 ? 0x07 : 0x0D, FALSE);
+          w->inner_cell_end = FALSE;
           if (row_end)
-            end_row (w, block->table, block->row);
+            end_row (w, block, level);
           prev = block;
           continue;
         }
@@ -2930,7 +3002,8 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   w.data = g_byte_array_new ();
   w.lists = g_array_new (FALSE, FALSE, sizeof (ListDef));
   w.cur_list[0] = w.cur_list[1] = -1;
-  w.row_cells = g_array_new (FALSE, FALSE, sizeof (CellInfo));
+  for (int l = 0; l < W42_TABLE_MAX_DEPTH; l++)
+    w.row_cells[l] = g_array_new (FALSE, FALSE, sizeof (CellInfo));
   w.bookmarks = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
   w.comments = g_array_new (FALSE, FALSE, sizeof (Comment));
   w.custom = g_ptr_array_new_with_free_func (custom_prop_free);
@@ -3228,7 +3301,8 @@ w42_doc_save (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GError *
   g_array_free (w.sections, TRUE);
   g_byte_array_free (w.data, TRUE);
   g_array_free (w.lists, TRUE);
-  g_array_free (w.row_cells, TRUE);
+  for (int l = 0; l < W42_TABLE_MAX_DEPTH; l++)
+    g_array_free (w.row_cells[l], TRUE);
   g_hash_table_destroy (w.bookmarks);
   g_array_free (w.comments, TRUE);
   g_ptr_array_free (w.custom, TRUE);

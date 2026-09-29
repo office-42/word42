@@ -6022,9 +6022,11 @@ window_sync_state (W42Window *self)
           g_simple_action_set_enabled (G_SIMPLE_ACTION (a), in_table);
       }
     {
+      /* In a cell too: the table goes in the cell. */
       GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), "table-insert");
       if (a != NULL)
-        g_simple_action_set_enabled (G_SIMPLE_ACTION (a), !in_table);
+        g_simple_action_set_enabled (G_SIMPLE_ACTION (a),
+                                     !in_table || w42_view_can_insert_table (self->view));
     }
   }
 

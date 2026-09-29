@@ -2,6 +2,17 @@
 
 ## 1.0.9 (in development)
 
+### New
+
+- **Tables in tables.** Table ▸ Insert ▸ Table with the caret in a cell
+  puts a table in the cell, as wide as the cell, and a table can go in a
+  cell of that one in turn, sixteen deep. They are laid out with the row
+  they are in, break across pages between their rows with it, and every
+  table command works on the innermost table the caret is in. Word's
+  .doc and .docx, OpenDocument, RTF, HTML and AbiWord files keep them both
+  ways; LaTeX sets them as tabulars in the cell, and WordPerfect, which
+  has none, gets their text as the cell's paragraphs.
+
 ## 1.0.8
 
 ### Fixed

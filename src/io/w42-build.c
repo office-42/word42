@@ -178,12 +178,59 @@ w42_builder_in_table (W42Builder *b)
   return b->table >= 0;
 }
 
-void
+int
+w42_builder_table_depth (W42Builder *b)
+{
+  return b->table >= 0 ? b->depth : 0;
+}
+
+/* A table in the open cell: it goes after the paragraph the cell is at,
+ * which its TABLE mark ends, and the cell's state waits for its end. */
+static gboolean
+builder_begin_inner_table (W42Builder *b, int n_cols, const int *widths)
+{
+  W42BuilderTable *saved;
+
+  if (!b->in_cell || b->depth >= W42_TABLE_MAX_DEPTH)
+    return FALSE;
+
+  /* A paragraph with text in it gets its formatting now, as its end
+   * would give it; one that has ended already has had it, and no
+   * paragraph waits to follow it: the table does.  A cell with nothing
+   * in it yet keeps its first paragraph, empty, above the table, since
+   * a cell opens with a paragraph mark. */
+  if (b->in_para)
+    builder_apply_para (b);
+  b->cell_break_pending = FALSE;
+  b->in_para = FALSE;
+  w42_builder_reset_para (b);
+
+  saved = &b->outer[b->depth - 1];
+  saved->table = b->table;
+  saved->row = b->row;
+  saved->col = b->col;
+  saved->n_cols = b->n_cols;
+  saved->cell_pos = b->cell_pos;
+  saved->table_before_block = b->table_before_block;
+  b->depth++;
+
+  b->n_cols = n_cols;
+  b->table = w42_pt_insert_table_start (b->pt, b->pos, b->n_cols, widths);
+  b->pos += 1;
+  b->row = 0;
+  b->col = 0;
+  b->in_cell = FALSE;
+  b->cell_break_pending = FALSE;
+  b->table_before_block = FALSE;
+  return TRUE;
+}
+
+gboolean
 w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths)
 {
-  if (b->table >= 0)
-    return;
   n_cols = CLAMP (n_cols, 1, 1023);
+  if (b->table >= 0)
+    return builder_begin_inner_table (b, n_cols, widths);
 
   /* Only a paragraph that is actually open needs ending; one that has just
    * ended left its mark behind, and ending it again would leave an empty
@@ -224,6 +271,8 @@ w42_builder_begin_table (W42Builder *b, int n_cols, const int *widths)
   b->col = 0;
   b->in_cell = FALSE;
   b->cell_break_pending = FALSE;
+  b->depth = 1;
+  return TRUE;
 }
 
 void
@@ -308,6 +357,26 @@ w42_builder_end_table (W42Builder *b)
     }
   b->table = -1;
   b->in_para = FALSE;
+
+  /* A table in a cell: back to the cell, in the paragraph that follows
+   * the table there. */
+  if (b->depth > 1)
+    {
+      const W42BuilderTable *saved;
+
+      b->depth--;
+      saved = &b->outer[b->depth - 1];
+      b->table = saved->table;
+      b->row = saved->row;
+      b->col = saved->col;
+      b->n_cols = saved->n_cols;
+      b->cell_pos = saved->cell_pos;
+      b->table_before_block = saved->table_before_block;
+      b->in_cell = TRUE;
+      b->cell_break_pending = FALSE;
+    }
+  else
+    b->depth = 0;
 }
 
 void
@@ -315,7 +384,8 @@ w42_builder_finish (W42Builder *b)
 {
   if (b->note_return != (gsize) -1)
     w42_builder_end_note (b);
-  w42_builder_end_table (b);
+  while (b->table >= 0)
+    w42_builder_end_table (b);
 
   /* The last paragraph's end left an empty paragraph behind, as a
    * trailing newline would in a text file.  Drop it -- remembering that the

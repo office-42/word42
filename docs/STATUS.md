@@ -320,7 +320,12 @@ Early, but real. Word42 today is a working word processor:
   keeping every cell's paragraphs, or down a column and it makes one cell as
   tall as the rows it covers — Split Cells gives them back, and what a merge
   hid comes back with them. Rows are as tall as their tallest cell and
-  move to the next page whole. The marks that hold a table together cannot
+  move to the next page whole. Insert Table with the caret in a cell puts
+  a table in the cell, sixteen deep at most, and every command on the
+  Table menu works on the innermost table the caret is in; tables in
+  cells are read and written in .doc, .docx, .odt, RTF, HTML and .abw,
+  set as tabulars in LaTeX, and as the cell's paragraphs in WordPerfect,
+  which has none. The marks that hold a table together cannot
   be deleted by accident, only the text in the cells.  Table AutoFormat
   puts a ready-made look on a table -- rules, shading, a bold heading --
   chosen from a list with a preview. RTF carries tables as

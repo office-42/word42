@@ -428,6 +428,10 @@ typedef struct {
   int      dya_line;
   int      f_mult;
   gboolean in_table, ttp, page_break;
+  int      itap;            /* sprmPItap: the depth of tables it is in */
+  gboolean inner_cell;      /* sprmPFInnerTableCell: it ends a cell of a
+                             * table in a cell */
+  gboolean inner_ttp;       /* sprmPFInnerTtp: it ends a row of one */
   gboolean keep_next, keep_together, widow, bidi;
   int      ilfo, ilvl;
   RowShape *row;            /* owned; NULL until a table sprm */
@@ -1247,6 +1251,9 @@ apply_papx (const guint8 *grpprl, guint len, Para *pa)
           break;
         case 0x2416: pa->in_table = op[0] != 0; break;
         case 0x2417: pa->ttp = op[0] != 0; break;
+        case 0x6649: pa->itap = (int) MIN (rd32 (op), 0xFFFFu); break;
+        case 0x244B: pa->inner_cell = op[0] != 0; break;
+        case 0x244C: pa->inner_ttp = op[0] != 0; break;
         case 0x2407: pa->page_break = op[0] != 0; break;
         case 0x2406: pa->keep_next = op[0] != 0; break;
         case 0x2405: pa->keep_together = op[0] != 0; break;
@@ -2725,10 +2732,27 @@ find_picture (Doc *doc, guint32 fc, int *width, int *height, const char **ext)
   return NULL;
 }
 
+/* A table being read, set aside while a table in one of its cells is. */
+typedef struct {
+  int            table;
+  int            row, col;
+  gboolean       in_cell, skip_cell;
+  gsize          last_cell_pos;
+  int            last_cell_span;
+  int            cell_index;
+  int            n_cols;
+  int            grid[65];
+  gboolean       table_before_block;
+  guint          shape_from, shape_to;
+  const RowShape *shape;
+} DocTable;
+
 typedef struct {
   W42PieceTable *pt;
   Doc           *doc;
   gsize          pos;
+  int            depth;       /* the tables open: a table in a cell is one more */
+  DocTable       outer[W42_TABLE_MAX_DEPTH];   /* the depth - 1 round `table` */
   int            table;
   int            row, col;
   gboolean       in_cell;
@@ -3033,10 +3057,39 @@ apply_para (Builder *b, const DocPara *dp)
                          W42_PARA_ALL, &fmt.pa);
 }
 
-static gboolean
-has_row_shape (const Para *pa)
+/* How many tables a paragraph is in: 0 outside any, 1 in a table in the
+ * text, more in a table in a cell.  A depth past the deepest a document
+ * can have is taken for that. */
+static int
+para_depth (const Para *pa)
 {
-  return pa->ttp && pa->row != NULL && pa->row->itc_mac > 0;
+  return pa->in_table ? CLAMP (pa->itap, 1, W42_TABLE_MAX_DEPTH) : 0;
+}
+
+/* Whether the paragraph is the mark that ends a row of a table at depth
+ * `d`: a cell mark with sprmPFTtp in a table in the text, a paragraph mark
+ * with sprmPFInnerTtp in a table in a cell. */
+static gboolean
+is_row_end (const Para *pa, int d)
+{
+  return para_depth (pa) == d && (d <= 1 ? pa->ttp : (pa->inner_ttp || pa->ttp));
+}
+
+/* Whether the paragraph's mark ends a cell of a table at depth `d`: a
+ * cell mark in a table in the text, a paragraph mark that says it does
+ * in a table in a cell. */
+static gboolean
+is_cell_end (Doc *doc, const DocPara *dp, int d)
+{
+  gunichar mark = char_at (doc, dp->cp_end);
+
+  return d <= 1 ? mark == 0x07 : (dp->pa.inner_cell || mark == 0x07);
+}
+
+static gboolean
+has_row_shape (const Para *pa, int d)
+{
+  return is_row_end (pa, d) && pa->row != NULL && pa->row->itc_mac > 0;
 }
 
 /* A row's shape -- its columns, their widths and each cell's borders and
@@ -3059,12 +3112,14 @@ row_shape (Builder *b, GArray *paras, guint index)
     {
       const DocPara *q = &g_array_index (paras, DocPara, k);
 
-      if (has_row_shape (&q->pa))
+      if (has_row_shape (&q->pa, b->depth))
         {
           b->shape = q->pa.row;
           break;
         }
-      if (!q->pa.in_table)
+      /* A table in a cell has rows of its own; the paragraph after the
+       * table is out of it. */
+      if (para_depth (&q->pa) < b->depth)
         break;
     }
   b->shape_from = index;
@@ -3085,12 +3140,66 @@ grid_column (const Builder *b, int edge)
   return best;
 }
 
+/* The table round the one about to begin waits, as it stands. */
+static void
+push_table (Builder *b)
+{
+  DocTable *t = &b->outer[b->depth - 1];
+
+  t->table = b->table;
+  t->row = b->row;
+  t->col = b->col;
+  t->in_cell = b->in_cell;
+  t->skip_cell = b->skip_cell;
+  t->last_cell_pos = b->last_cell_pos;
+  t->last_cell_span = b->last_cell_span;
+  t->cell_index = b->cell_index;
+  t->n_cols = b->n_cols;
+  memcpy (t->grid, b->grid, sizeof t->grid);
+  t->table_before_block = b->table_before_block;
+  t->shape_from = b->shape_from;
+  t->shape_to = b->shape_to;
+  t->shape = b->shape;
+}
+
+static void
+pop_table (Builder *b)
+{
+  const DocTable *t = &b->outer[b->depth - 2];
+
+  b->table = t->table;
+  b->row = t->row;
+  b->col = t->col;
+  b->in_cell = t->in_cell;
+  b->skip_cell = t->skip_cell;
+  b->last_cell_pos = t->last_cell_pos;
+  b->last_cell_span = t->last_cell_span;
+  b->cell_index = t->cell_index;
+  b->n_cols = t->n_cols;
+  memcpy (b->grid, t->grid, sizeof b->grid);
+  b->table_before_block = t->table_before_block;
+  b->shape_from = t->shape_from;
+  b->shape_to = t->shape_to;
+  b->shape = t->shape;
+}
+
+/* A table begins at paragraph `index`, one deeper than the tables open:
+ * in the text, or in the cell of the one round it that is open. */
 static void
 open_table (Builder *b, GArray *paras, guint index)
 {
-  const RowShape *shape = row_shape (b, paras, index);
+  const RowShape *shape;
   int n_cols = 1;
   int widths[64] = { 0 };
+  gsize cell_mark = b->last_cell_pos;
+  int d;
+
+  if (b->depth > 0)
+    push_table (b);
+  d = ++b->depth;
+  b->shape_from = b->shape_to = 0;
+  b->shape = NULL;
+  shape = row_shape (b, paras, index);
 
   /* Every row has a shape of its own, and a row with fewer, wider cells
    * is how Word merges across.  The table's grid is every row's edges
@@ -3102,9 +3211,9 @@ open_table (Builder *b, GArray *paras, guint index)
       {
         const DocPara *q = &g_array_index (paras, DocPara, k);
 
-        if (!q->pa.in_table)
+        if (para_depth (&q->pa) < d)
           break;
-        if (!has_row_shape (&q->pa))
+        if (!has_row_shape (&q->pa, d))
           continue;
         for (int c = 0; c <= q->pa.row->itc_mac && c < 65; c++)
           {
@@ -3152,9 +3261,9 @@ open_table (Builder *b, GArray *paras, guint index)
         {
           const DocPara *q = &g_array_index (paras, DocPara, k);
 
-          if (!q->pa.in_table || q->pa.ttp)
+          if (para_depth (&q->pa) < d || is_row_end (&q->pa, d))
             break;
-          if (char_at (b->doc, q->cp_end) == 0x07)
+          if (para_depth (&q->pa) == d && is_cell_end (b->doc, q, d))
             cells++;
         }
       n_cols = CLAMP (cells, 1, 64);
@@ -3167,8 +3276,16 @@ open_table (Builder *b, GArray *paras, guint index)
    * document's length would make every table after the first footnote
    * gain an empty paragraph before it. */
   b->table_before_block = FALSE;
-  if (b->pos >= 2 && b->pos == (w42_pt_notes_start (b->pt) != (gsize) -1
-                                ? w42_pt_notes_start (b->pt) : w42_pt_length (b->pt)))
+  if (d > 1)
+    {
+      /* In a cell, the empty paragraph a paragraph's end has just opened
+       * is the one that follows the table, and the table goes in ahead of
+       * it; not the paragraph the cell opens with, which is the cell's. */
+      b->table_before_block = b->pos >= 1 && b->pos != cell_mark + 2 &&
+                              w42_pt_is_block_mark (b->pt, b->pos - 1);
+    }
+  else if (b->pos >= 2 && b->pos == (w42_pt_notes_start (b->pt) != (gsize) -1
+                                     ? w42_pt_notes_start (b->pt) : w42_pt_length (b->pt)))
     {
       char *tail = w42_pt_get_text (b->pt, b->pos - 1, 1);
       b->table_before_block = (tail != NULL && *tail == '\n');
@@ -3193,18 +3310,19 @@ open_table (Builder *b, GArray *paras, guint index)
 }
 
 /* Whether the row that paragraph `index` is in is its table's last:
- * the paragraph after its row-end mark is not in a table. */
+ * the paragraph after its row-end mark is not in the table.  The table
+ * is at depth `d`. */
 static gboolean
-row_is_last (GArray *paras, guint index)
+row_is_last (GArray *paras, guint index, int d)
 {
   for (guint k = index; k < paras->len; k++)
     {
       const DocPara *q = &g_array_index (paras, DocPara, k);
 
-      if (q->pa.ttp)
+      if (is_row_end (&q->pa, d))
         return k + 1 >= paras->len ||
-               !((const DocPara *) &g_array_index (paras, DocPara, k + 1))->pa.in_table;
-      if (!q->pa.in_table)
+               para_depth (&((const DocPara *) &g_array_index (paras, DocPara, k + 1))->pa) < d;
+      if (para_depth (&q->pa) < d)
         break;
     }
   return TRUE;
@@ -3229,7 +3347,7 @@ doc_apply_cell (Builder *b, GArray *paras, guint index, const RowShape *shape, g
    * the cells. */
   if (shape->has_tbl_edge)
     {
-      gboolean first_row = b->row == 0, last_row = row_is_last (paras, index);
+      gboolean first_row = b->row == 0, last_row = row_is_last (paras, index, b->depth);
       gboolean first_col = b->col == 0, last_col = b->col + b->last_cell_span >= b->n_cols;
 
       for (int e = 0; e < 4; e++)
@@ -3272,6 +3390,8 @@ doc_apply_cell (Builder *b, GArray *paras, guint index, const RowShape *shape, g
     }
 }
 
+/* The innermost table open ends; a table in a cell goes back to the
+ * cell, in the paragraph after the table. */
 static void
 close_table (Builder *b, W42ApIdx ap)
 {
@@ -3287,6 +3407,61 @@ close_table (Builder *b, W42ApIdx ap)
       b->pos += 2;
     }
   b->table = -1;
+  if (b->depth > 1)
+    pop_table (b);
+  b->depth = MAX (b->depth - 1, 0);
+}
+
+/* The next cell of the innermost table open begins, at paragraph `i`. */
+static void
+open_cell (Builder *b, GArray *paras, guint i, W42ApIdx ap)
+{
+  W42PieceTable *pt = b->pt;
+  const RowShape *shape = row_shape (b, paras, i);
+  gsize cell_pos = b->pos;
+
+  /* A cell merged into the one before it: that one grows
+   * over its column, and what it holds -- nothing, in a
+   * file Word wrote -- is left out. */
+  if (shape != NULL && b->cell_index > 0 && b->cell_index < 64 &&
+      (shape->cell_flags[b->cell_index] & 0x0002) && b->last_cell_pos != (gsize) -1)
+    {
+      b->last_cell_span = MIN (b->last_cell_span + 1, 1023);
+      w42_pt_set_cell_span (pt, b->last_cell_pos, b->last_cell_span);
+      b->in_cell = TRUE;
+      b->skip_cell = TRUE;
+    }
+  else if (b->col >= b->n_cols || b->col > 1023 || b->row >= W42_TABLE_MAX_ROWS)
+    {
+      /* More cells than the grid has columns, or rows than a
+       * table can number: dropped, as the other readers drop
+       * them. */
+      b->in_cell = TRUE;
+      b->skip_cell = TRUE;
+    }
+  else
+    {
+      int span = 1;
+
+      if (shape != NULL && b->cell_index < 64 && b->cell_index < shape->itc_mac)
+        {
+          int c0 = grid_column (b, shape->cellx[b->cell_index]);
+          int c1 = grid_column (b, shape->cellx[b->cell_index + 1]);
+
+          b->col = CLAMP (c0, 0, b->n_cols - 1);
+          span = CLAMP (c1 - c0, 1, b->n_cols - b->col);
+        }
+      w42_pt_insert_cell (pt, b->pos, b->table, b->row, b->col, ap);
+      if (span > 1)
+        w42_pt_set_cell_span (pt, cell_pos, span);
+      b->pos += 2;
+      b->in_cell = TRUE;
+      b->skip_cell = FALSE;
+      b->last_cell_pos = cell_pos;
+      b->last_cell_span = span;
+      if (shape != NULL && b->cell_index >= 0 && b->cell_index < 64)
+        doc_apply_cell (b, paras, i, shape, cell_pos);
+    }
 }
 
 /* The text of one kind of note, from its story: the PLC at FIB entry
@@ -3399,13 +3574,17 @@ build_document (Doc *doc, W42PieceTable *pt)
   for (guint i = 0; i < paras->len; i++)
     {
       const DocPara *dp = &g_array_index (paras, DocPara, i);
-      gunichar mark = char_at (doc, dp->cp_end);
       W42ApIdx ap = para_ap (&b, dp);
+      int d = para_depth (&dp->pa);
 
-      if (dp->pa.ttp)
+      /* The tables in cells the paragraph has come out of end. */
+      while (b.depth > d)
+        close_table (&b, ap);
+
+      if (d > 0 && is_row_end (&dp->pa, d))
         {
           /* The row-end mark: its own paragraph, with nothing to show. */
-          if (b.table >= 0)
+          if (b.table >= 0 && b.depth == d)
             {
               b.row++;
               b.col = 0;
@@ -3415,62 +3594,26 @@ build_document (Doc *doc, W42PieceTable *pt)
           continue;
         }
 
-      if (dp->pa.in_table)
+      if (d > 0)
         {
-          if (b.table < 0)
-            open_table (&b, paras, i);
-          if (!b.in_cell)
+          gboolean cell_end = is_cell_end (doc, dp, d);
+
+          /* And the ones it has gone into begin, each in a cell of the
+           * one round it. */
+          while (b.depth < d)
             {
-              const RowShape *shape = row_shape (&b, paras, i);
-              gsize cell_pos = b.pos;
-
-              /* A cell merged into the one before it: that one grows
-               * over its column, and what it holds -- nothing, in a
-               * file Word wrote -- is left out. */
-              if (shape != NULL && b.cell_index > 0 && b.cell_index < 64 &&
-                  (shape->cell_flags[b.cell_index] & 0x0002) && b.last_cell_pos != (gsize) -1)
-                {
-                  b.last_cell_span = MIN (b.last_cell_span + 1, 1023);
-                  w42_pt_set_cell_span (pt, b.last_cell_pos, b.last_cell_span);
-                  b.in_cell = TRUE;
-                  b.skip_cell = TRUE;
-                }
-              else if (b.col >= b.n_cols || b.col > 1023 || b.row >= W42_TABLE_MAX_ROWS)
-                {
-                  /* More cells than the grid has columns, or rows than a
-                   * table can number: dropped, as the other readers drop
-                   * them. */
-                  b.in_cell = TRUE;
-                  b.skip_cell = TRUE;
-                }
-              else
-                {
-                  int span = 1;
-
-                  if (shape != NULL && b.cell_index < 64 && b.cell_index < shape->itc_mac)
-                    {
-                      int c0 = grid_column (&b, shape->cellx[b.cell_index]);
-                      int c1 = grid_column (&b, shape->cellx[b.cell_index + 1]);
-
-                      b.col = CLAMP (c0, 0, b.n_cols - 1);
-                      span = CLAMP (c1 - c0, 1, b.n_cols - b.col);
-                    }
-                  w42_pt_insert_cell (pt, b.pos, b.table, b.row, b.col, ap);
-                  if (span > 1)
-                    w42_pt_set_cell_span (pt, cell_pos, span);
-                  b.pos += 2;
-                  b.in_cell = TRUE;
-                  b.skip_cell = FALSE;
-                  b.last_cell_pos = cell_pos;
-                  b.last_cell_span = span;
-                  if (shape != NULL && b.cell_index >= 0 && b.cell_index < 64)
-                    doc_apply_cell (&b, paras, i, shape, cell_pos);
-                }
+              if (b.depth > 0 && !b.in_cell)
+                open_cell (&b, paras, i, ap);
+              if (b.depth > 0 && b.skip_cell)
+                break;              /* a cell that is dropped holds no table */
+              open_table (&b, paras, i);
             }
+          if (!b.in_cell)
+            open_cell (&b, paras, i, ap);
 
           if (b.skip_cell)
             {
-              if (mark == 0x07)
+              if (cell_end && b.depth == d)
                 {
                   b.in_cell = FALSE;
                   b.cell_index++;
@@ -3482,7 +3625,7 @@ build_document (Doc *doc, W42PieceTable *pt)
           emit_text (&b, dp);
           apply_para (&b, dp);
 
-          if (mark == 0x07)
+          if (cell_end && b.depth == d)
             {
               b.in_cell = FALSE;
               b.cell_index++;
@@ -3496,9 +3639,6 @@ build_document (Doc *doc, W42PieceTable *pt)
           continue;
         }
 
-      if (b.table >= 0)
-        close_table (&b, ap);
-
       emit_text (&b, dp);
       apply_para (&b, dp);
 
@@ -3510,7 +3650,7 @@ build_document (Doc *doc, W42PieceTable *pt)
         }
     }
 
-  if (b.table >= 0)
+  while (b.depth > 0)
     close_table (&b, w42_ap_table_default (w42_pt_ap_table (pt)));
 
   /* The notes' text: the footnote story follows the main text, the

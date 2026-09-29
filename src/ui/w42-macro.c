@@ -2319,11 +2319,13 @@ NATIVE (n_doc_tables_count)
   int n = 0;
 
   OPEN (); CLOSE ();
+  /* The document's own tables, as Word counts them: a table in a cell
+   * is one of its table's, not the document's. */
   for (int t = 0; t < 4096; t++)
     {
       gsize a, b;
 
-      if (w42_pt_table_bounds (pt, t, &a, &b))
+      if (w42_pt_table_bounds (pt, t, &a, &b) && w42_pt_table_parent (pt, t) < 0)
         n++;
     }
   return mb_push_int (s, l, n);
