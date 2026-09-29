@@ -404,6 +404,15 @@ Early, but real. Word42 today is a working word processor:
   and case, and goes on the selected text the way Bold does. Word,
   OpenDocument and AbiWord files carry them, and styles those files define
   are read in.
+- **Code in colour** — the HTML Source, JavaScript Source and XML Source
+  styles set code in Courier New and colour it as it is typed, the way a
+  programmer's editor does: tags, attributes, values, keywords, strings,
+  numbers, comments, regular expressions and entities, with the script and
+  style sheet inside an HTML page's `<script>` and `<style>` coloured as
+  JavaScript and CSS. A comment or a tag open at the end of a line carries
+  on into the next paragraph of the same code. AutoCorrect and spelling
+  leave code alone. HTML writes it as `<pre class="language-...">` and
+  reads that back, Markdown's code blocks included.
 - **Summary Info** — File ▸ Summary Info takes a title, subject, author,
   keywords and comments, and Word, OpenDocument and RTF files carry them
   (docProps/core.xml, meta.xml, the `\info` group); what those files say is

@@ -5,6 +5,7 @@
  */
 
 #include "w42-style.h"
+#include "w42-syntax.h"
 
 #include <string.h>
 
@@ -68,6 +69,18 @@ add_defaults (W42StyleSheet *sheet)
    * and below so it sits apart from the picture and the text. */
   g_ptr_array_add (sheet->styles,
     style_new ("Caption",   "Times New Roman", 18, TRUE,  FALSE, 120, 120, 0));
+
+  /* Code quoted in the text, which the layout colours as an editor
+   * would (w42-syntax.h): a typewriter face, so the columns line up. */
+  {
+    static const char *const CODE[] = { W42_SYNTAX_STYLE_HTML,
+                                        W42_SYNTAX_STYLE_JAVASCRIPT,
+                                        W42_SYNTAX_STYLE_XML };
+
+    for (guint i = 0; i < G_N_ELEMENTS (CODE); i++)
+      g_ptr_array_add (sheet->styles,
+        style_new (CODE[i], "Courier New", 20, FALSE, FALSE, 0, 0, 0));
+  }
 }
 
 W42StyleSheet *

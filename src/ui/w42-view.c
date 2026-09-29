@@ -13,6 +13,7 @@
 #include "w42-compare.h"
 #include "w42-autoformat.h"
 #include "w42-hyphenate.h"
+#include "w42-syntax.h"
 #include <glib/gstdio.h>
 #include "w42-rtf.h"
 #include "w42-html.h"
@@ -1682,6 +1683,11 @@ w42_view_find_misspelling (W42View *self, W42Spell *spell, gsize from,
       gsize s = 0, e = 0;
 
       if (base + g_utf8_strlen (text, -1) < from)
+        continue;
+      /* Code, which the page does not underline either. */
+      if (w42_syntax_style_lang (w42_pt_stylesheet (pt),
+            w42_ap_table_get (w42_pt_ap_table (pt), block->ap)->pa.style)
+          != W42_SYNTAX_NONE)
         continue;
 
       while (w42_spell_next_word (text, block->text->len, &s, &e))
@@ -4250,6 +4256,13 @@ autocorrect_after_typing (W42View *self, const char *typed)
     return;
   if (g_utf8_strlen (typed, -1) != 1)
     return;                       /* pasted or composed text is left alone */
+  /* Code is typed as it is meant: a quote curled or a first letter made
+   * capital would break it. */
+  if (w42_syntax_style_lang (w42_pt_stylesheet (pt),
+        w42_ap_table_get (w42_pt_ap_table (pt),
+                          w42_pt_block_ap_at (pt, para_pos (self, self->caret)))->pa.style)
+      != W42_SYNTAX_NONE)
+    return;
 
   c = g_utf8_get_char (typed);
   before = text_before_caret (self);

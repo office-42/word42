@@ -15,6 +15,7 @@ w42_core_sources = files(
   'model/w42-piecetable.c',
   'model/w42-document.c',
   'model/w42-search.c',
+  'model/w42-syntax.c',
   'model/w42-spell.c',
   'layout/w42-layout.c',
   'layout/w42-index.c',

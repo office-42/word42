@@ -18,6 +18,15 @@
   `\1` to `\9` what the pattern's groups matched, so `(\w+), (\w+)`
   replaced with `\2 \1` turns "Twain, Mark" into "Mark Twain". A pattern
   that is not one says what is wrong with it.
+- **Code in colour.** Three new styles, HTML Source, JavaScript Source
+  and XML Source, set code in Courier New and colour it as you type, as a
+  programmer's editor does: tags, attributes and values, keywords,
+  strings, numbers, comments, regular expressions and entities, with the
+  `<script>` and `<style>` of an HTML page coloured as JavaScript and CSS.
+  A comment left open at the end of one paragraph carries on into the
+  next. AutoCorrect and the spelling checker leave code alone, and HTML
+  writes and reads it as `<pre class="language-...">`, so Markdown's code
+  blocks come in coloured.
 
 ## 1.0.8
 

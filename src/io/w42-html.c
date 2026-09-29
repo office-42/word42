@@ -10,6 +10,7 @@
 
 #include "w42-image.h"
 #include "w42-lang.h"
+#include "w42-syntax.h"
 
 static void
 append_escaped (GString *out, const char *text, gsize len)
@@ -101,6 +102,9 @@ tag_for (W42StyleSheet *styles, const char *style)
     }
   if (style != NULL && g_ascii_strcasecmp (style, "Title") == 0)
     return "h1";
+  /* Code, whose spaces and lines are its own. */
+  if (w42_syntax_style_lang (styles, style) != W42_SYNTAX_NONE)
+    return "pre";
   return "p";
 }
 
@@ -814,8 +818,8 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
    * smaller type -- have selectors the reader passes over, which it would
    * otherwise take for the text's own formatting. */
   g_string_append (out,
-    "p { margin: 0; }\nh1, h2, h3, h4, h5, h6 { margin: 0.5em 0 0.25em; }\n"
-    "p, li, h1, h2, h3, h4, h5, h6 { white-space: pre-wrap; }\n"
+    "p, pre { margin: 0; }\nh1, h2, h3, h4, h5, h6 { margin: 0.5em 0 0.25em; }\n"
+    "p, li, pre, h1, h2, h3, h4, h5, h6 { white-space: pre-wrap; }\n"
     "table { border-collapse: collapse; }\ntd { padding: 2pt 4pt; vertical-align: top; }\n"
     "table.ruled td { border: 1px solid #000; }\n"
     "a[href] { color: #000080; }\n.comment { background: #fff5b0; }\n"
@@ -956,11 +960,20 @@ w42_html_export (W42PieceTable *pt, const W42PageSetup *page, GFile *file, GErro
           g_string_append_printf (out, "<%s", tag);
           if (pa->rtl)
             g_string_append (out, " dir=\"rtl\"");
-          if (pa->drop_cap > 0 || (pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0))
-            g_string_append_printf (out, " class=\"%s%s%s\"",
-                                    pa->drop_cap > 0 ? "dropcap" : "",
-                                    pa->drop_cap > 0 && pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0 ? " " : "",
-                                    pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0 ? "title" : "");
+          {
+            /* Code says its language the way the web's highlighters
+             * look for it, and the reader reads it back by. */
+            const char *code = w42_syntax_lang_id (w42_syntax_style_lang (styles, pa->style));
+            gboolean is_title = pa->style != NULL && g_ascii_strcasecmp (pa->style, "Title") == 0;
+
+            if (pa->drop_cap > 0 || is_title || code != NULL)
+              g_string_append_printf (out, " class=\"%s%s%s%s%s\"",
+                                      pa->drop_cap > 0 ? "dropcap" : "",
+                                      pa->drop_cap > 0 && (is_title || code != NULL) ? " " : "",
+                                      is_title ? "title" : "",
+                                      code != NULL ? (is_title ? " language-" : "language-") : "",
+                                      code != NULL ? code : "");
+          }
           write_para_style (out, pa, hstyle != NULL ? &hstyle->pa : NULL,
                             *frame != '\0' ? frame : NULL);
           g_string_append (out, ">");

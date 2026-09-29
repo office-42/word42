@@ -360,6 +360,26 @@ The Spelling box walks the document with the same word splitter, selects
 each unknown word in the view and edits through the view's ordinary
 insert-over-selection, so Change is undoable like any other typing.
 
+## Code
+
+Three built-in paragraph styles -- HTML Source, JavaScript Source, XML
+Source -- mark a paragraph as code, and the layout colours it as it
+shapes it, the way it underlines misspellings: nothing in the model
+changes, and the colours are Pango attributes on the paragraph's layout.
+`w42-syntax.c` holds the scanners, one for markup (HTML's with a
+JavaScript and a CSS scanner inside for `<script>` and `<style>`) and one
+for JavaScript. They are scanners, not parsers: what a line can leave open
+for the next -- a comment, a string, a tag, a script -- is a number of
+a few bits, the state. Each pass of the layout scans the code paragraphs
+in order, without keeping tokens, to learn the state each one starts in;
+that state goes into the paragraph's shaping signature, so a comment
+opened on one line reshapes the lines below it and nothing else, and the
+paragraph being shaped is scanned again for its tokens. A style based on
+one of the three is the same language, found by following `based_on`.
+Text coloured by hand, a link or a revision mark keeps its own colour.
+HTML writes the paragraphs as `<pre class="language-...">` and reads that
+class back, as it comes from Markdown and the web's highlighters.
+
 ## Lists
 
 A list item is a paragraph property, `W42ParaFmt.list`, and nothing more in

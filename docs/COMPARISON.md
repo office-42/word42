@@ -51,6 +51,7 @@ short table.
 | Feature | Word42 | Word | AbiWord | Writer |
 |---|---|---|---|---|
 | Styles: paragraph and character, based on, following their base | yes | yes | yes | yes |
+| Code coloured as it is typed (HTML, JavaScript, XML) | yes | no | no | no |
 | Lists: bullets, numbers, nine levels, restart | yes | yes | yes | yes |
 | Heading numbering, table of contents, index | yes, yes, yes | yes, yes, yes | via lists, yes, no | yes, yes, yes |
 | Tables: merge across and down, borders per side, AutoFit (window, contents), AutoFormat, sort, formula | yes | yes | most | yes |

@@ -22,6 +22,7 @@
 #include "w42-html.h"
 #include "w42-image.h"
 #include "w42-lang.h"
+#include "w42-syntax.h"
 
 /* ---------------------------------------------------------------------- */
 /* The writer: text goes in at `pos` with the formatting on the stack      */
@@ -94,6 +95,7 @@ typedef struct {
   const char    *pending_bookmark;  /* an empty <a name>: a place, not a run */
   char          *meta[5];           /* title, subject, author, keywords, comments */
   int            pre_depth;         /* inside <pre>: whitespace kept */
+  gboolean       pre_newline_last;  /* the last text was a newline kept */
   gboolean       cell_break_pending; /* a paragraph ended in a cell; the
                                       * next text starts a new one */
   GPtrArray     *rules;             /* the page's <style> rules: CssRule */
@@ -289,7 +291,8 @@ add_text (Html *h, const char *text, gsize len)
         }
       else
         {
-          if (h->pre_depth > 0 && c == '\n')
+          h->pre_newline_last = h->pre_depth > 0 && c == '\n';
+          if (h->pre_newline_last)
             {
               g_string_append_unichar (h->pending, 0x2028);
             }
@@ -319,6 +322,21 @@ end_paragraph (Html *h)
       h->pa_dirty = TRUE;
     }
   flush_text (h);
+
+  /* The newline a <pre> ends with -- a Markdown code block always has
+   * one -- ends its last line, which a browser shows no line after. */
+  if (h->pre_newline_last && h->pos > 0)
+    {
+      char *last = w42_pt_get_text (h->pt, h->pos - 1, 1);
+
+      if (last != NULL && g_str_equal (last, "\342\200\250"))
+        {
+          w42_pt_delete (h->pt, h->pos - 1, 1);
+          h->pos--;
+        }
+      g_free (last);
+    }
+  h->pre_newline_last = FALSE;
 
   if (!h->in_para && !h->pa_dirty)
     {
@@ -2472,6 +2490,37 @@ note_pre (Html *h, int pre_before, guint8 *flags)
     }
 }
 
+/* The code a <pre>, or a <code> in one, holds, by the class the web's
+ * highlighters go by -- language-js, lang-html -- which Word42 writes
+ * too: the paragraph is then in that language's source style. */
+static void
+read_code_class (Html *h, lxb_dom_element_t *el)
+{
+  char *cls = elem_attr (el, "class");
+  W42SyntaxLang lang = W42_SYNTAX_NONE;
+  char **names;
+
+  if (cls == NULL)
+    return;
+  names = g_strsplit_set (cls, " \t\n\r\f", -1);
+  for (guint i = 0; names[i] != NULL && lang == W42_SYNTAX_NONE; i++)
+    {
+      if (g_ascii_strncasecmp (names[i], "language-", 9) == 0)
+        lang = w42_syntax_lang_from_id (names[i] + 9);
+      else if (g_ascii_strncasecmp (names[i], "lang-", 5) == 0)
+        lang = w42_syntax_lang_from_id (names[i] + 5);
+    }
+  g_strfreev (names);
+  g_free (cls);
+
+  if (lang != W42_SYNTAX_NONE &&
+      w42_stylesheet_find (w42_pt_stylesheet (h->pt), w42_syntax_lang_style (lang)) != NULL)
+    {
+      h->pa.style = g_intern_string (w42_syntax_lang_style (lang));
+      h->pa_dirty = TRUE;
+    }
+}
+
 static WalkEnter
 element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
 {
@@ -2612,6 +2661,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
           h->pre_depth++;
           note_pre (h, pre_before, flags);
           h->ch[h->depth].family = g_intern_string ("Courier New");
+          read_code_class (h, el);
         }
       if ((style = elem_style (h, el)) != NULL)
         {
@@ -2649,6 +2699,7 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
     {
       emit_space (h);
       g_string_append_unichar (h->pending, 0x2028);
+      h->pre_newline_last = FALSE;
       h->space_pending = FALSE;
       h->at_para_start = FALSE;
       return WALK_SKIP;
@@ -2957,7 +3008,12 @@ element_start (Html *h, const char *name, lxb_dom_element_t *el, guint8 *flags)
     h->ch[h->depth].highlight = 7;
   else if (g_str_equal (name, "code") || g_str_equal (name, "tt") ||
            g_str_equal (name, "kbd") || g_str_equal (name, "samp"))
-    h->ch[h->depth].family = g_intern_string ("Courier New");
+    {
+      h->ch[h->depth].family = g_intern_string ("Courier New");
+      /* Markdown's code block: <pre><code class="language-js">. */
+      if (h->pre_depth > 0 && g_str_equal (name, "code"))
+        read_code_class (h, el);
+    }
   else if (g_str_equal (name, "small"))
     h->ch[h->depth].size = MAX (h->ch[h->depth].size * 5 / 6, 8);
   else if (g_str_equal (name, "big"))

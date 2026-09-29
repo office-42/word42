@@ -52,6 +52,7 @@ yardstick.
 | Keep with next/together, widows, page break before | full | full | full |
 | Right-to-left paragraphs | full | (Middle East editions) | full |
 | Styles: paragraph styles, character styles, user-defined, based on | full: a style keeps its own settings and follows its base for the rest | full | full |
+| Syntax highlighting of code (HTML, JavaScript, XML source styles) | full: coloured as typed, state carried across paragraphs | no | no |
 | Lists: bullets, numbers, letters, roman, restart | nine levels | multi-level, outline numbered | multi-level |
 | Heading numbering (1, 1.1) | full | full | via lists |
 | Drop caps | yes (Format ▸ Drop Cap; docx, odt, html) | yes | no |

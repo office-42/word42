@@ -7,6 +7,7 @@
 #include "w42-layout.h"
 
 #include "w42-image.h"
+#include "w42-syntax.h"
 
 #include <math.h>
 #include <string.h>
@@ -69,6 +70,10 @@ struct _W42Layout {
   GHashTable   *shaped;      /* GBytes* signature -> Shaped* */
   guint         generation;  /* which pass we are on */
   GByteArray   *keybuf;      /* the signature being built, reused */
+  /* The code paragraphs of the last pass (w42-syntax.h), and for each
+   * its language and the state the code before it left, packed as
+   * lang << 24 | state: never 0, as a language is not. */
+  GHashTable   *code_in;     /* W42Block* -> GUINT */
   gpointer      cache_pt;    /* the document the cache belongs to */
   gpointer      cache_aps;
   guint         hits, misses;   /* what the last pass did */
@@ -687,6 +692,7 @@ w42_layout_new (void)
   self->n_pages = 1;
   self->shaped = g_hash_table_new_full (key_hash, key_equal, key_free, shaped_free);
   self->keybuf = g_byte_array_new ();
+  self->code_in = g_hash_table_new (NULL, NULL);
 
   return self;
 }
@@ -713,6 +719,7 @@ w42_layout_free (W42Layout *self)
   g_array_free (self->lines, TRUE);
   g_hash_table_destroy (self->shaped);
   g_byte_array_free (self->keybuf, TRUE);
+  g_hash_table_destroy (self->code_in);
   g_clear_pointer (&self->reduced, g_hash_table_destroy);
   g_object_unref (self->ctx);
   g_object_unref (self->ctx_rtl);
@@ -1131,6 +1138,113 @@ w42_layout_set_spell_caret (W42Layout *self, gsize pos)
   self->spell_caret = pos;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Code                                                                    */
+/* ---------------------------------------------------------------------- */
+
+/* Code runs on from one paragraph to the next in the same place -- the
+ * body, a cell, a note -- as long as the paragraphs are in the same
+ * language: a comment open at the foot of one is open at the top of the
+ * next. */
+static gboolean
+same_flow (const W42Block *a, const W42Block *b)
+{
+  return a->note == b->note && a->depth == b->depth && a->table == b->table &&
+         a->row == b->row && a->col == b->col;
+}
+
+/* The state each code paragraph starts in.  A pass scans all the code
+ * again, without keeping its tokens: a comment opened on one line
+ * changes every line below it, and scanning is little next to shaping,
+ * which the signature spares any paragraph whose state is as it was. */
+static void
+find_code (W42Layout *self)
+{
+  const W42Block *prev = NULL;
+  W42SyntaxLang prev_lang = W42_SYNTAX_NONE;
+  guint32 carry = 0;
+  /* The last style looked up: a long document is long runs of one. */
+  const char *seen = NULL;
+  W42SyntaxLang seen_lang = W42_SYNTAX_NONE;
+
+  g_hash_table_remove_all (self->code_in);
+  for (guint b = 0; b < self->blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (self->blocks, b);
+      const char *style = w42_ap_table_get (self->aps, block->ap)->pa.style;
+      W42SyntaxLang lang;
+      guint32 in;
+
+      if (b == 0 || style != seen)
+        {
+          seen = style;
+          seen_lang = w42_syntax_style_lang (self->styles, style);
+        }
+      lang = seen_lang;
+      if (lang == W42_SYNTAX_NONE)
+        {
+          prev = NULL;
+          continue;
+        }
+      in = prev != NULL && prev_lang == lang && same_flow (prev, block) ? carry : 0;
+      g_hash_table_insert (self->code_in, (gpointer) block,
+                           GUINT_TO_POINTER ((guint) lang << 24 | in));
+      carry = w42_syntax_scan (lang, block->text->str, block->text->len, in, NULL);
+      prev = block;
+      prev_lang = lang;
+    }
+}
+
+/* The colours of a code paragraph, over the text an explicit colour, a
+ * hyperlink or a revision mark does not already colour: those say
+ * something about the document, and a keyword's blue does not. */
+static void
+add_code_colours (PangoAttrList *attrs, const W42Block *block, W42ApTable *aps,
+                  guint code)
+{
+  GArray *tokens = g_array_new (FALSE, FALSE, sizeof (W42SyntaxToken));
+  guint r = 0;
+
+  w42_syntax_scan ((W42SyntaxLang) (code >> 24), block->text->str, block->text->len,
+                   code & 0xFFFFFFu, tokens);
+  for (guint t = 0; t < tokens->len; t++)
+    {
+      const W42SyntaxToken *tok = &g_array_index (tokens, W42SyntaxToken, t);
+      guint32 rgb;
+      gboolean italic;
+
+      w42_syntax_look (tok->kind, &rgb, &italic);
+      /* Runs and tokens are both in order: a run behind this token is
+       * behind every later one too. */
+      while (r < block->runs->len &&
+             g_array_index (block->runs, W42Run, r).byte_offset +
+             g_array_index (block->runs, W42Run, r).n_bytes <= tok->start)
+        r++;
+      for (guint i = r; i < block->runs->len; i++)
+        {
+          const W42Run *run = &g_array_index (block->runs, W42Run, i);
+          const W42CharFmt *ch = &w42_ap_table_get (aps, run->ap)->ch;
+          gsize from = MAX (tok->start, run->byte_offset);
+          gsize to = MIN (tok->end, run->byte_offset + run->n_bytes);
+
+          if (run->byte_offset >= tok->end)
+            break;
+          if (to <= from || run->object != W42_OBJECT_NONE || run->footnote > 0 ||
+              ch->color != 0 || ch->link != NULL || ch->revision != 0)
+            continue;
+          add_attr (attrs,
+                    pango_attr_foreground_new ((guint16) (((rgb >> 16) & 0xff) * 257),
+                                               (guint16) (((rgb >> 8) & 0xff) * 257),
+                                               (guint16) ((rgb & 0xff) * 257)),
+                    (guint) from, (guint) to);
+          if (italic)
+            add_attr (attrs, pango_attr_style_new (PANGO_STYLE_ITALIC),
+                      (guint) from, (guint) to);
+        }
+    }
+  g_array_free (tokens, TRUE);
+}
+
 /* Everything that goes into the shaping of one paragraph, as bytes.
  *
  * What is in here decides when a paragraph has to be shaped again, so
@@ -1171,6 +1285,9 @@ shaping_key (W42Layout      *self,
   n32 = hide_from;   PUT (&n32, 4);
   n32 = hide_to;     PUT (&n32, 4);
   n32 = block->ap;   PUT (&n32, 4);
+  /* A code paragraph's colours hang on the state the one above left. */
+  n32 = GPOINTER_TO_UINT (g_hash_table_lookup (self->code_in, block));
+  PUT (&n32, 4);
 
   /* The red underlines: which dictionary state, and the word the caret
    * is in, which is left alone.  The caret's place is counted from the
@@ -1251,8 +1368,16 @@ build_block_layout (W42Layout      *self,
   pango_layout_set_text (layout, block->text->str, (int) block->text->len);
 
   attrs = build_attributes (self, block, aps, text_width, extra_indent);
-  if (self->spell != NULL)
-    add_spelling (self, attrs, block, aps);
+  {
+    guint code = GPOINTER_TO_UINT (g_hash_table_lookup (self->code_in, block));
+
+    /* Code is not checked for spelling: every other name in it would
+     * be underlined. */
+    if (code != 0)
+      add_code_colours (attrs, block, aps, code);
+    else if (self->spell != NULL)
+      add_spelling (self, attrs, block, aps);
+  }
   /* Text set elsewhere -- a dropped letter, or the part of the paragraph
    * in another layout -- is still here, as glyphs of no size, so that byte
    * offsets mean the same in every layout of the paragraph. */
@@ -2643,6 +2768,7 @@ w42_layout_build_pt (W42Layout          *self,
   /* The paragraphs of the last pass are handed back to the snapshot to
    * be filled again rather than freed and allocated afresh. */
   self->blocks = w42_pt_snapshot_blocks_reusing (pt, self->blocks);
+  find_code (self);
   g_array_set_size (self->floats, 0);
 
   /* A wrapped picture: the paragraph it is anchored to and those after it

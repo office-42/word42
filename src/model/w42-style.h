@@ -57,7 +57,8 @@ enum {
 
 typedef struct _W42StyleSheet W42StyleSheet;
 
-/* A new sheet holds Word 97's defaults: Normal, Heading 1 to 3, Title. */
+/* A new sheet holds Word 97's defaults -- Normal, Heading 1 to 3, Title,
+ * Caption -- and the source styles code is set in (w42-syntax.h). */
 W42StyleSheet   *w42_stylesheet_new  (void);
 void             w42_stylesheet_free (W42StyleSheet *sheet);
 /* A copy to set beside the sheet, to know what a style was before an

@@ -591,7 +591,8 @@ bullets — and restarts the numbering at the item you are on.
 ## 7. Styles
 
 A style is a named set of formatting. Word42 starts with Normal,
-Heading 1, Heading 2, Heading 3, Title and Caption.
+Heading 1, Heading 2, Heading 3, Title and Caption, and three styles for
+code (below).
 
 - **Apply** one from the Style box at the left of the formatting toolbar,
   or with Ctrl+Shift+N (Normal) and Ctrl+Alt+1/2/3 (the headings).
@@ -612,6 +613,28 @@ Heading 1, Heading 2, Heading 3, Title and Caption.
   colour and case, and goes on to the selected text the way Bold does,
   leaving the paragraph alone.
 - **Delete** removes a style; its paragraphs fall back to Normal.
+
+**Code.** Three more styles hold code quoted in a document: **HTML
+Source**, **JavaScript Source** and **XML Source**, in 10-point Courier
+New. Word42 colours the code in them as a programmer's editor does, as you
+type: tags, attributes and their values, keywords, strings, numbers,
+comments, regular expressions and entities — and in HTML the script and
+the style sheet inside `<script>` and `<style>`. A comment, a string or a
+tag left open at the end of one paragraph goes on colouring the
+paragraphs after it in the same style until it is closed; a line break
+(Shift+Enter) ends a line of code as a new paragraph does. A style based
+on one of the three is code in the same language.
+
+In these paragraphs AutoCorrect leaves what you type alone — quotes stay
+straight, nothing is capitalized — and spelling is not checked, neither
+by the red underlines nor by Tools ▸ Spelling. The colours are how the
+code is shown rather than formatting: files keep the style, not the
+colours, and text you colour yourself keeps its own colour. They print
+and go into PDFs as you see them. HTML writes each code paragraph as a
+`<pre class="language-javascript">` (or `-html`, `-xml`), the class the
+web's code highlighters look for, and reads such a block back — the
+`<pre><code class="language-js">` Markdown makes, too — into the matching
+style.
 
 **Format ▸ Heading Numbering** numbers the headings from their outline
 levels — 1, 1.1, 1.2, 2 — and keeps the numbering right as you edit.
