@@ -538,7 +538,9 @@ Early, but real. Word42 today is a working word processor:
   Font Effects sets the text's colour from the classic sixteen.
 - **Find and Replace** — match case, whole words, search up, wrap-around, and
   a Replace All that is one undo step and keeps the formatting of the text it
-  replaces.
+  replaces. With Use Regular Expressions, what is looked for is a pattern
+  (Perl's syntax, as GLib has it), within a paragraph, and the replacement
+  puts back what the pattern's groups matched with `\1` to `\9`.
 - **Drag-and-drop of text** — press inside the selection and pull: a grey
   caret follows the pointer, and letting go moves the text there,
   formatting and all, as one undo step; Ctrl held while letting go puts a

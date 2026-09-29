@@ -64,7 +64,7 @@ short table.
 | Equations | no | yes | MathML | Math |
 | Columns and sections | yes | yes | yes | yes |
 | Per-section page size and orientation | no | yes | yes | yes |
-| Find and replace | text, case, whole word | with formats and wildcards | with regular expressions | with regular expressions |
+| Find and replace | text, case, whole word, regular expressions | with formats and wildcards | with regular expressions | with regular expressions |
 | Spelling as you type | yes (Enchant) | yes | yes | yes |
 | Grammar, thesaurus | no, yes (MyThes) | yes, yes | no, no | extension, yes |
 | Hyphenation | yes | yes | stub | yes |

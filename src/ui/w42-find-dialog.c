@@ -22,6 +22,7 @@ struct _W42FindDialog {
   GtkWidget *replace_all_button;
   GtkWidget *match_case;
   GtkWidget *whole_word;
+  GtkWidget *regex;
   GtkWidget *backwards;
   GtkWidget *status;
 };
@@ -37,6 +38,8 @@ dialog_options (W42FindDialog *self, W42SearchOptions *options)
     gtk_check_button_get_active (GTK_CHECK_BUTTON (self->whole_word));
   options->backwards =
     gtk_check_button_get_active (GTK_CHECK_BUTTON (self->backwards));
+  options->regex =
+    gtk_check_button_get_active (GTK_CHECK_BUTTON (self->regex));
   options->wrap = TRUE;
 }
 
@@ -50,6 +53,30 @@ static void
 set_status (W42FindDialog *self, const char *text)
 {
   gtk_label_set_text (GTK_LABEL (self->status), text != NULL ? text : "");
+}
+
+/* Whether what is to be looked for can be: a regular expression that is
+ * not one says so, and why, rather than finding nothing. */
+static gboolean
+needle_ok (W42FindDialog *self, const char *needle, const W42SearchOptions *options)
+{
+  GError *error = NULL;
+  char *message;
+
+  if (w42_search_check (needle, options, &error))
+    return TRUE;
+  if (error == NULL)
+    {
+      set_status (self, _("Type what to look for."));
+      return FALSE;
+    }
+  /* Translators: the %s is GLib's own account of what is wrong with it,
+   * which comes in English. */
+  message = g_strdup_printf (_("That is not a regular expression: %s"), error->message);
+  set_status (self, message);
+  g_free (message);
+  g_error_free (error);
+  return FALSE;
 }
 
 /* Searching starts from the far end of the selection, so that Find Next moves
@@ -92,6 +119,8 @@ do_find (W42FindDialog *self, gboolean quiet)
     }
 
   dialog_options (self, &options);
+  if (!needle_ok (self, needle, &options))
+    return FALSE;
 
   if (!w42_search_find (w42_document_pt (doc), search_origin (self, &options),
                         needle, &options, &start, &end))
@@ -121,44 +150,49 @@ static void
 on_replace (GtkButton *button, gpointer data)
 {
   W42FindDialog *self = data;
+  W42Document *doc = w42_view_get_document (self->view);
   W42SearchOptions options;
-  char *selected;
   const char *needle = dialog_needle (self);
-  gboolean matches = FALSE;
+  char *with = NULL;
+  gsize start = 0, end = 0;
 
   (void) button;
 
-  if (needle == NULL || *needle == '\0')
+  if (doc == NULL || needle == NULL || *needle == '\0')
     {
       set_status (self, _("Type what to look for."));
       return;
     }
 
   dialog_options (self, &options);
-  selected = w42_view_get_selected_text (self->view);
+  if (!needle_ok (self, needle, &options))
+    return;
 
   /* Compared the way the search compares, so that a word Find Next
-   * selected across its soft hyphens is the word looked for. */
-  if (selected != NULL)
-    matches = w42_search_is_match (selected, needle, &options);
-
-  g_free (selected);
-
-  if (matches)
+   * selected across its soft hyphens is the word looked for; and for a
+   * regular expression, what replaces it is what its groups matched put
+   * in the replacement. */
+  if (w42_view_has_selection (self->view))
     {
-      const char *with =
-        gtk_editable_get_text (GTK_EDITABLE (self->replace_entry));
+      w42_view_get_selection_bounds (self->view, &start, &end);
+      with = w42_search_replacement_at (w42_document_pt (doc), start, end, needle,
+                                        gtk_editable_get_text (GTK_EDITABLE (self->replace_entry)),
+                                        &options);
+    }
 
+  if (with != NULL)
+    {
       /* Replacing with nothing is a deletion, and inserting nothing is
        * not one: the match would have stayed where it was. */
-      if (with == NULL || *with == '\0')
+      if (*with == '\0')
         w42_view_clear (self->view);
       else
         w42_view_insert_text (self->view, with);
       set_status (self, "");
     }
 
-  do_find (self, matches);
+  do_find (self, with != NULL);
+  g_free (with);
 }
 
 static void
@@ -181,6 +215,8 @@ on_replace_all (GtkButton *button, gpointer data)
     }
 
   dialog_options (self, &options);
+  if (!needle_ok (self, needle, &options))
+    return;
   with = gtk_editable_get_text (GTK_EDITABLE (self->replace_entry));
 
   n = w42_search_replace_all (w42_document_pt (doc), needle, with, &options);
@@ -292,13 +328,23 @@ w42_find_dialog_init (W42FindDialog *self)
   self->replace_row = labelled_row (grid, 1, _("Re_place With:"),
                                     self->replace_entry);
 
-  options = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
+  options = gtk_grid_new ();
+  gtk_grid_set_row_spacing (GTK_GRID (options), 4);
+  gtk_grid_set_column_spacing (GTK_GRID (options), 16);
   self->match_case = gtk_check_button_new_with_mnemonic (_("Match _Case"));
   self->whole_word = gtk_check_button_new_with_mnemonic (_("Find _Whole Words Only"));
   self->backwards  = gtk_check_button_new_with_mnemonic (_("Search _Up"));
-  gtk_box_append (GTK_BOX (options), self->match_case);
-  gtk_box_append (GTK_BOX (options), self->whole_word);
-  gtk_box_append (GTK_BOX (options), self->backwards);
+  /* Perl's regular expressions, as GLib has them: \1 and \g<name> in
+   * the replacement put back what a group matched. */
+  self->regex      = gtk_check_button_new_with_mnemonic (_("Use Regular E_xpressions"));
+  gtk_widget_set_tooltip_text (self->regex,
+                               _("Find what matches a pattern: . any character, \\d a digit, "
+                                 "\\w a letter, * + ? to repeat, ( ) to group. In the replacement, "
+                                 "\\0 is what was found and \\1 to \\9 its groups."));
+  gtk_grid_attach (GTK_GRID (options), self->match_case, 0, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (options), self->whole_word, 1, 0, 1, 1);
+  gtk_grid_attach (GTK_GRID (options), self->regex, 0, 1, 1, 1);
+  gtk_grid_attach (GTK_GRID (options), self->backwards, 1, 1, 1, 1);
   gtk_box_append (GTK_BOX (box), options);
 
   self->status = gtk_label_new ("");

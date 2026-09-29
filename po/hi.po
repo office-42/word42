@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: word42\n"
 "Report-Msgid-Bugs-To: https://github.com/office-42/word42/issues\n"
-"POT-Creation-Date: 2026-09-27 21:32+0000\n"
+"POT-Creation-Date: 2026-09-29 11:59+0000\n"
 "PO-Revision-Date: 2026-09-25 12:00+0000\n"
 "Last-Translator: Word42 translators\n"
 "Language-Team: Hindi\n"
@@ -47,12 +47,12 @@ msgstr "खोलें(_O)..."
 msgid "_Close"
 msgstr "बंद करें(_C)"
 
-#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6930 src/ui/w42-window.c:1725
-#: src/ui/w42-window.c:1937
+#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6930 src/ui/w42-window.c:1712
+#: src/ui/w42-window.c:1924
 msgid "_Save"
 msgstr "सहेजें(_S)"
 
-#: data/ui/menus.ui:35 src/ui/w42-window.c:1725
+#: data/ui/menus.ui:35 src/ui/w42-window.c:1712
 msgid "Save _As..."
 msgstr "इस रूप में सहेजें(_A)..."
 
@@ -60,7 +60,7 @@ msgstr "इस रूप में सहेजें(_A)..."
 msgid "Save as Temp_late..."
 msgstr "टेम्पलेट के रूप में सहेजें(_L)..."
 
-#: data/ui/menus.ui:43 src/ui/w42-window.c:1387
+#: data/ui/menus.ui:43 src/ui/w42-window.c:1374
 msgid "_Revert"
 msgstr "वापस लौटाएँ(_R)"
 
@@ -140,7 +140,7 @@ msgstr "फिर से करें(_D)"
 msgid "_Repeat"
 msgstr "दोहराएँ(_R)"
 
-#: data/ui/menus.ui:133 src/ui/w42-view.c:6041
+#: data/ui/menus.ui:133 src/ui/w42-view.c:6082
 msgid "Cu_t"
 msgstr "काटें(_T)"
 
@@ -324,7 +324,7 @@ msgstr "नोट पर जाएँ(_G)"
 msgid "Boo_kmark..."
 msgstr "बुकमार्क(_K)..."
 
-#: data/ui/menus.ui:343 src/ui/w42-view.c:6050
+#: data/ui/menus.ui:343 src/ui/w42-view.c:6091
 msgid "_Hyperlink..."
 msgstr "हाइपरलिंक(_H)..."
 
@@ -388,11 +388,11 @@ msgstr "फ़ाइल(_F)..."
 msgid "F_ormat"
 msgstr "स्वरूप(_O)"
 
-#: data/ui/menus.ui:415 src/ui/w42-view.c:6047
+#: data/ui/menus.ui:415 src/ui/w42-view.c:6088
 msgid "_Font..."
 msgstr "फ़ॉन्ट(_F)..."
 
-#: data/ui/menus.ui:419 src/ui/w42-view.c:6048
+#: data/ui/menus.ui:419 src/ui/w42-view.c:6089
 msgid "P_aragraph..."
 msgstr "अनुच्छेद(_A)..."
 
@@ -759,20 +759,20 @@ msgid "_About Word42"
 msgstr "Word42 के बारे में(_A)"
 
 #. Translators: %s says what the fault is.
-#: src/io/w42-abw.c:1640
+#: src/io/w42-abw.c:1679
 #, c-format
 msgid "The compressed AbiWord file is damaged: %s"
 msgstr "संपीड़ित AbiWord फ़ाइल क्षतिग्रस्त है: %s"
 
-#: src/io/w42-abw.c:1648
+#: src/io/w42-abw.c:1687
 msgid "The compressed AbiWord file unpacks to more than 256 MB."
 msgstr "संपीड़ित AbiWord फ़ाइल खोलने पर 256 MB से अधिक हो जाती है।"
 
-#: src/io/w42-abw.c:1665
+#: src/io/w42-abw.c:1704
 msgid "The compressed AbiWord file is cut short."
 msgstr "संपीड़ित AbiWord फ़ाइल अधूरी है।"
 
-#: src/io/w42-abw.c:2959
+#: src/io/w42-abw.c:3063
 msgid "The document could not be compressed."
 msgstr "दस्तावेज़ को संपीड़ित नहीं किया जा सका।"
 
@@ -820,42 +820,42 @@ msgstr "OLE मिनी स्ट्रीम %s क्षतिग्रस्
 msgid "The document has no %s stream."
 msgstr "दस्तावेज़ में कोई %s स्ट्रीम नहीं है।"
 
-#: src/io/w42-doc.c:538
+#: src/io/w42-doc.c:542
 msgid "The document has no piece table."
 msgstr "दस्तावेज़ में कोई पीस तालिका नहीं है।"
 
-#: src/io/w42-doc.c:546 src/io/w42-doc.c:550 src/io/w42-doc.c:555
+#: src/io/w42-doc.c:550 src/io/w42-doc.c:554 src/io/w42-doc.c:559
 msgid "Piece table is damaged"
 msgstr "पीस तालिका क्षतिग्रस्त है"
 
-#: src/io/w42-doc.c:602
+#: src/io/w42-doc.c:606
 msgid "The document has no text pieces."
 msgstr "दस्तावेज़ में कोई पाठ खंड नहीं हैं।"
 
-#: src/io/w42-doc.c:3792
+#: src/io/w42-doc.c:3932
 msgid "The document's text is out of reach."
 msgstr "दस्तावेज़ का पाठ पहुँच से बाहर है।"
 
 #. Translators: WordDocument is the name of the part of
 #. * a Word 97 file that holds its text; keep it as it is.
-#: src/io/w42-doc.c:3854
+#: src/io/w42-doc.c:3994
 #, c-format
 msgid "The WordDocument stream is too short to be one."
 msgstr "WordDocument स्ट्रीम इतनी छोटी है कि वह वैध नहीं हो सकती।"
 
-#: src/io/w42-doc.c:3864
+#: src/io/w42-doc.c:4004
 #, c-format
 msgid "This is not a Word document."
 msgstr "यह Word दस्तावेज़ नहीं है।"
 
-#: src/io/w42-doc.c:3876
+#: src/io/w42-doc.c:4016
 #, c-format
 msgid "The document is encrypted, and Word42 cannot open encrypted documents."
 msgstr "दस्तावेज़ एन्क्रिप्टेड है, और Word42 एन्क्रिप्टेड दस्तावेज़ नहीं खोल सकता।"
 
 #. Translators: word/document.xml is the name of a file
 #. * inside a .docx; keep it as it is.
-#: src/io/w42-docx.c:4076
+#: src/io/w42-docx.c:4208
 #, c-format
 msgid "The file is not a Word document: it has no word/document.xml."
 msgstr "फ़ाइल Word दस्तावेज़ नहीं है: इसमें word/document.xml नहीं है।"
@@ -906,14 +906,14 @@ msgstr "दस्तावेज़ का फ़ोल्डर किसी Gi
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
-#: src/io/w42-htmlin.c:3608
+#: src/io/w42-htmlin.c:3719
 #, c-format
 msgid "The page nests its elements too deeply to be a document."
 msgstr "पृष्ठ के तत्व इतनी गहराई तक नेस्ट किए गए हैं कि इसे दस्तावेज़ नहीं माना जा सकता।"
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
-#: src/io/w42-htmlin.c:3622
+#: src/io/w42-htmlin.c:3733
 #, c-format
 msgid "The page could not be parsed."
 msgstr "पृष्ठ को पार्स नहीं किया जा सका।"
@@ -945,7 +945,7 @@ msgstr "अस्थायी फ़ाइल नहीं बनाई जा �
 
 #. Translators: content.xml is the name of a file inside
 #. * an .odt; keep it as it is.
-#: src/io/w42-odt.c:2710
+#: src/io/w42-odt.c:2823
 #, c-format
 msgid "The file is not an OpenDocument text: it has no content.xml."
 msgstr "फ़ाइल OpenDocument पाठ नहीं है: इसमें content.xml नहीं है।"
@@ -1070,7 +1070,7 @@ msgstr "स्लाइड"
 msgid "That file is not a presentation: it has no ppt/presentation.xml."
 msgstr "वह फ़ाइल प्रस्तुति नहीं है: इसमें ppt/presentation.xml नहीं है।"
 
-#: src/io/w42-rtf.c:3964
+#: src/io/w42-rtf.c:4397
 #, c-format
 msgid "That file does not begin like an RTF document."
 msgstr "वह फ़ाइल RTF दस्तावेज़ की तरह शुरू नहीं होती।"
@@ -1086,7 +1086,7 @@ msgid "The zip file is cut short."
 msgstr "zip फ़ाइल अधूरी है।"
 
 #. Translators: %d is a line of the macro, %s what is wrong with it.
-#: src/macro/w42-vba.c:276 src/ui/w42-macro.c:2791
+#: src/macro/w42-vba.c:276 src/ui/w42-macro.c:2794
 #, c-format
 msgid "Line %d: %s"
 msgstr "पंक्ति %d: %s"
@@ -1752,7 +1752,7 @@ msgstr "default:LTR"
 
 #: src/ui/w42-dialogs.c:264 src/ui/w42-dialogs.c:318 src/ui/w42-dialogs.c:1264
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:402 src/ui/w42-versions.c:610
-#: src/ui/w42-window.c:1106 src/ui/w42-window.c:1141 src/ui/w42-window.c:4433
+#: src/ui/w42-window.c:1093 src/ui/w42-window.c:1128 src/ui/w42-window.c:4420
 msgid "_OK"
 msgstr "ठीक(_O)"
 
@@ -1760,9 +1760,9 @@ msgstr "ठीक(_O)"
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:369 src/ui/w42-macro.c:370
 #: src/ui/w42-macro.c:402 src/ui/w42-print.c:379 src/ui/w42-print.c:883
 #: src/ui/w42-thesaurus-dialog.c:360 src/ui/w42-versions.c:409
-#: src/ui/w42-versions.c:611 src/ui/w42-view.c:1273 src/ui/w42-window.c:1106
-#: src/ui/w42-window.c:1141 src/ui/w42-window.c:1387 src/ui/w42-window.c:1569
-#: src/ui/w42-window.c:1725 src/ui/w42-window.c:1937
+#: src/ui/w42-versions.c:611 src/ui/w42-view.c:1273 src/ui/w42-window.c:1093
+#: src/ui/w42-window.c:1128 src/ui/w42-window.c:1374 src/ui/w42-window.c:1556
+#: src/ui/w42-window.c:1712 src/ui/w42-window.c:1924
 msgid "Cancel"
 msgstr "रद्द करें"
 
@@ -2019,7 +2019,7 @@ msgstr "वर्ण शैली (केवल चयनित पाठ पर
 msgid "Based on %s."
 msgstr "%s पर आधारित।"
 
-#: src/ui/w42-dialogs.c:1154 src/ui/w42-window.c:5164
+#: src/ui/w42-dialogs.c:1154 src/ui/w42-window.c:5020
 msgid "Style"
 msgstr "शैली"
 
@@ -2111,7 +2111,7 @@ msgid "Save the definition and apply the style to the selected paragraphs."
 msgstr "परिभाषा सहेजें और चयनित अनुच्छेदों पर शैली लागू करें।"
 
 #. Translators: the tooltip of the button that centres the paragraph.
-#: src/ui/w42-dialogs.c:1303 src/ui/w42-window.c:5153
+#: src/ui/w42-dialogs.c:1303 src/ui/w42-window.c:5009
 msgctxt "alignment"
 msgid "Center"
 msgstr "केंद्र में"
@@ -2187,7 +2187,7 @@ msgstr "स्थिति"
 msgid "_Position:"
 msgstr "स्थिति(_P):"
 
-#: src/ui/w42-dialogs.c:1588 src/ui/w42-window.c:5243
+#: src/ui/w42-dialogs.c:1588 src/ui/w42-window.c:5099
 msgid "Numbering"
 msgstr "क्रमांकन"
 
@@ -2348,9 +2348,8 @@ msgstr "प्रतीक"
 
 #: src/ui/w42-dialogs.c:2076 src/ui/w42-dialogs.c:3190
 #: src/ui/w42-dialogs.c:3675 src/ui/w42-dialogs.c:4065
-#: src/ui/w42-dialogs.c:7256 src/ui/w42-find-dialog.c:316
+#: src/ui/w42-dialogs.c:7256 src/ui/w42-find-dialog.c:362
 #: src/ui/w42-spell-dialog.c:401 src/ui/w42-versions.c:800
-#: src/ui/w42-window.c:4570
 msgid "Close"
 msgstr "बंद करें"
 
@@ -2376,7 +2375,7 @@ msgstr ""
 "वाक्य बड़े अक्षर से शुरू होता है, दो हाइफ़न डैश बन जाते हैं, और नीचे दिए गए शब्द ठीक कर दिए "
 "जाते हैं।"
 
-#: src/ui/w42-dialogs.c:2137 src/ui/w42-find-dialog.c:240
+#: src/ui/w42-dialogs.c:2137 src/ui/w42-find-dialog.c:276
 msgid "Replace"
 msgstr "बदलें"
 
@@ -2490,7 +2489,7 @@ msgid "Annotations and revisions carry this name in the files you save."
 msgstr "आपके द्वारा सहेजी गई फ़ाइलों में टिप्पणियों और संशोधनों के साथ यह नाम रहता है।"
 
 #: src/ui/w42-dialogs.c:2499 src/ui/w42-spell-dialog.c:319
-#: src/ui/w42-window.c:4693
+#: src/ui/w42-window.c:4549
 msgid "Spelling"
 msgstr "वर्तनी"
 
@@ -2532,108 +2531,108 @@ msgstr "मिनट"
 
 #: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
 #: src/ui/w42-dialogs.c:3239 src/ui/w42-dialogs.c:4173
-#: src/ui/w42-dialogs.c:5255 src/ui/w42-window.c:4898
+#: src/ui/w42-dialogs.c:5255 src/ui/w42-window.c:4754
 msgctxt "colour"
 msgid "Black"
 msgstr "काला"
 
 #: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
 #: src/ui/w42-dialogs.c:3229 src/ui/w42-dialogs.c:3239
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4898
-#: src/ui/w42-window.c:4911
+#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4754
+#: src/ui/w42-window.c:4767
 msgctxt "colour"
 msgid "Blue"
 msgstr "नीला"
 
 #: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
-#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4898
+#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4754
 msgctxt "colour"
 msgid "Cyan"
 msgstr "सियान"
 
 #: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
 #: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3240
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4899
-#: src/ui/w42-window.c:4912
+#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4755
+#: src/ui/w42-window.c:4768
 msgctxt "colour"
 msgid "Green"
 msgstr "हरा"
 
 #: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
-#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4899
+#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4755
 msgctxt "colour"
 msgid "Magenta"
 msgstr "मैजेंटा"
 
 #: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
 #: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3241
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4899
-#: src/ui/w42-window.c:4911
+#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4755
+#: src/ui/w42-window.c:4767
 msgctxt "colour"
 msgid "Red"
 msgstr "लाल"
 
 #: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
 #: src/ui/w42-dialogs.c:3228 src/ui/w42-dialogs.c:3241
-#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4900
-#: src/ui/w42-window.c:4910
+#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4756
+#: src/ui/w42-window.c:4766
 msgctxt "colour"
 msgid "Yellow"
 msgstr "पीला"
 
 #: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
-#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:4173 src/ui/w42-window.c:4900
+#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:4173 src/ui/w42-window.c:4756
 msgctxt "colour"
 msgid "White"
 msgstr "सफ़ेद"
 
 #: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
 #: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3242
-#: src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4900 src/ui/w42-window.c:4912
+#: src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4756 src/ui/w42-window.c:4768
 msgctxt "colour"
 msgid "Dark Blue"
 msgstr "गहरा नीला"
 
 #: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4901
+#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4757
 msgctxt "colour"
 msgid "Dark Cyan"
 msgstr "गहरा सियान"
 
 #: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4901
+#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4757
 msgctxt "colour"
 msgid "Dark Green"
 msgstr "गहरा हरा"
 
 #: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
-#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4901
+#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4757
 msgctxt "colour"
 msgid "Dark Magenta"
 msgstr "गहरा मैजेंटा"
 
 #: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
 #: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3243
-#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4902 src/ui/w42-window.c:4913
+#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4758 src/ui/w42-window.c:4769
 msgctxt "colour"
 msgid "Dark Red"
 msgstr "गहरा लाल"
 
 #: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
 #: src/ui/w42-dialogs.c:3232 src/ui/w42-dialogs.c:3243
-#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4902 src/ui/w42-window.c:4913
+#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4758 src/ui/w42-window.c:4769
 msgctxt "colour"
 msgid "Dark Yellow"
 msgstr "गहरा पीला"
 
 #: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4902
+#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4758
 msgctxt "colour"
 msgid "Dark Gray"
 msgstr "गहरा धूसर"
 
 #: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4903
+#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4759
 msgctxt "colour"
 msgid "Light Gray"
 msgstr "हल्का धूसर"
@@ -2641,7 +2640,7 @@ msgstr "हल्का धूसर"
 #. Translators: no colour.
 #. Translators: no highlight colour.
 #. Translators: no highlight colour, and the automatic text colour.
-#: src/ui/w42-dialogs.c:2584 src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:5105
+#: src/ui/w42-dialogs.c:2584 src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4961
 msgctxt "colour"
 msgid "None"
 msgstr "कोई नहीं"
@@ -2913,43 +2912,43 @@ msgctxt "underline"
 msgid "Wave"
 msgstr "लहरदार"
 
-#: src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4910
+#: src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4766
 msgctxt "colour"
 msgid "Bright Green"
 msgstr "चमकीला हरा"
 
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4910
+#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4766
 msgctxt "colour"
 msgid "Turquoise"
 msgstr "फ़िरोज़ी"
 
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4911
+#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4767
 msgctxt "colour"
 msgid "Pink"
 msgstr "गुलाबी"
 
-#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4912
+#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4768
 msgctxt "colour"
 msgid "Teal"
 msgstr "टील"
 
-#: src/ui/w42-dialogs.c:3231 src/ui/w42-window.c:4913
+#: src/ui/w42-dialogs.c:3231 src/ui/w42-window.c:4769
 msgctxt "colour"
 msgid "Violet"
 msgstr "बैंगनी"
 
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4914
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4770
 msgctxt "colour"
 msgid "Gray 50%"
 msgstr "धूसर 50%"
 
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4914
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4770
 msgctxt "colour"
 msgid "Gray 25%"
 msgstr "धूसर 25%"
 
 #. Translators: the automatic text colour, which is black.
-#: src/ui/w42-dialogs.c:3239 src/ui/w42-window.c:5105
+#: src/ui/w42-dialogs.c:3239 src/ui/w42-window.c:4961
 msgctxt "colour"
 msgid "Auto"
 msgstr "स्वचालित"
@@ -3006,7 +3005,7 @@ msgstr "उभार(_B)"
 msgid "En_grave"
 msgstr "उत्कीर्ण(_G)"
 
-#: src/ui/w42-dialogs.c:3360 src/ui/w42-window.c:5216
+#: src/ui/w42-dialogs.c:3360 src/ui/w42-window.c:5072
 msgid "Underline"
 msgstr "रेखांकन"
 
@@ -3014,7 +3013,7 @@ msgstr "रेखांकन"
 msgid "_Underline:"
 msgstr "रेखांकन(_U):"
 
-#: src/ui/w42-dialogs.c:3364 src/ui/w42-window.c:5079
+#: src/ui/w42-dialogs.c:3364 src/ui/w42-window.c:4935
 msgid "Highlight"
 msgstr "हाइलाइट"
 
@@ -3167,7 +3166,7 @@ msgstr "Word42 मर्ज किया गया दस्तावेज़ �
 msgid "The data source has no records."
 msgstr "डेटा स्रोत में कोई रिकॉर्ड नहीं है।"
 
-#: src/ui/w42-dialogs.c:3983 src/ui/w42-window.c:350
+#: src/ui/w42-dialogs.c:3983 src/ui/w42-window.c:337
 msgid "Rich Text Format (*.rtf)"
 msgstr "रिच टेक्स्ट फ़ॉर्मेट (*.rtf)"
 
@@ -4267,62 +4266,83 @@ msgstr[1] ""
 "%s\n"
 "%s शब्द"
 
-#: src/ui/w42-find-dialog.c:90 src/ui/w42-find-dialog.c:133
-#: src/ui/w42-find-dialog.c:179
+#: src/ui/w42-find-dialog.c:70 src/ui/w42-find-dialog.c:117
+#: src/ui/w42-find-dialog.c:163 src/ui/w42-find-dialog.c:213
 msgid "Type what to look for."
 msgstr "जो ढूँढना है उसे टाइप करें।"
 
-#: src/ui/w42-find-dialog.c:100
+#. Translators: the %s is GLib's own account of what is wrong with it,
+#. * which comes in English.
+#: src/ui/w42-find-dialog.c:75
+#, c-format
+msgid "That is not a regular expression: %s"
+msgstr "यह रेगुलर एक्सप्रेशन नहीं है: %s"
+
+#: src/ui/w42-find-dialog.c:129
 msgid ""
 "Word42 has finished searching the document. The search item was not found."
 msgstr "Word42 ने दस्तावेज़ में खोज पूरी कर ली है। खोज आइटम नहीं मिला।"
 
-#: src/ui/w42-find-dialog.c:194
+#: src/ui/w42-find-dialog.c:230
 #, c-format
 msgid "%lu replacement made."
 msgid_plural "%lu replacements made."
 msgstr[0] "%lu प्रतिस्थापन किया गया।"
 msgstr[1] "%lu प्रतिस्थापन किए गए।"
 
-#: src/ui/w42-find-dialog.c:198
+#: src/ui/w42-find-dialog.c:234
 msgid "The search item was not found."
 msgstr "खोज आइटम नहीं मिला।"
 
-#: src/ui/w42-find-dialog.c:240 src/ui/w42-find-dialog.c:271
-#: src/ui/w42-window.c:4705
+#: src/ui/w42-find-dialog.c:276 src/ui/w42-find-dialog.c:307
+#: src/ui/w42-window.c:4561
 msgid "Find"
 msgstr "ढूँढें"
 
-#: src/ui/w42-find-dialog.c:289
+#: src/ui/w42-find-dialog.c:325
 msgid "Fi_nd What:"
 msgstr "क्या ढूँढें(_N):"
 
-#: src/ui/w42-find-dialog.c:292
+#: src/ui/w42-find-dialog.c:328
 msgid "Re_place With:"
 msgstr "इससे बदलें(_P):"
 
-#: src/ui/w42-find-dialog.c:296
+#: src/ui/w42-find-dialog.c:334
 msgid "Match _Case"
 msgstr "केस मिलाएँ(_C)"
 
-#: src/ui/w42-find-dialog.c:297
+#: src/ui/w42-find-dialog.c:335
 msgid "Find _Whole Words Only"
 msgstr "केवल पूरे शब्द ढूँढें(_W)"
 
-#: src/ui/w42-find-dialog.c:298
+#: src/ui/w42-find-dialog.c:336
 msgid "Search _Up"
 msgstr "ऊपर की ओर खोजें(_U)"
 
-#: src/ui/w42-find-dialog.c:315
+#: src/ui/w42-find-dialog.c:339
+msgid "Use Regular E_xpressions"
+msgstr "रेगुलर एक्सप्रेशन का उपयोग करें(_X)"
+
+#: src/ui/w42-find-dialog.c:341
+msgid ""
+"Find what matches a pattern: . any character, \\d a digit, \\w a letter, * "
+"+ ? to repeat, ( ) to group. In the replacement, \\0 is what was found and "
+"\\1 to \\9 its groups."
+msgstr ""
+"किसी पैटर्न से मेल खाने वाला ढूँढें: . कोई भी वर्ण, \\d एक अंक, \\w एक अक्षर, * + ? "
+"दोहराने के लिए, ( ) समूह बनाने के लिए। बदलने वाले पाठ में \\0 वह है जो मिला और \\1 से "
+"\\9 उसके समूह।"
+
+#: src/ui/w42-find-dialog.c:361
 msgid "_Find Next"
 msgstr "अगला ढूँढें(_F)"
 
-#: src/ui/w42-find-dialog.c:318 src/ui/w42-thesaurus-dialog.c:358
-#: src/ui/w42-window.c:1569
+#: src/ui/w42-find-dialog.c:364 src/ui/w42-thesaurus-dialog.c:358
+#: src/ui/w42-window.c:1556
 msgid "_Replace"
 msgstr "बदलें(_R)"
 
-#: src/ui/w42-find-dialog.c:319
+#: src/ui/w42-find-dialog.c:365
 msgid "Replace _All"
 msgstr "सभी बदलें(_A)"
 
@@ -4470,7 +4490,7 @@ msgid "The LaTeX source they were set from"
 msgstr "वह LaTeX स्रोत जिससे उन्हें टाइपसेट किया गया"
 
 #: src/ui/w42-latex-preview.c:791 src/ui/w42-view.c:1273
-#: src/ui/w42-window.c:1424 src/ui/w42-window.c:4688
+#: src/ui/w42-window.c:1411 src/ui/w42-window.c:4544
 msgid "Open"
 msgstr "खोलें"
 
@@ -4572,7 +4592,7 @@ msgstr "हाँ(_Y)"
 msgid "_No"
 msgstr "नहीं(_N)"
 
-#: src/ui/w42-macro.c:393 src/ui/w42-macro.c:417 src/ui/w42-macro.c:2687
+#: src/ui/w42-macro.c:393 src/ui/w42-macro.c:417 src/ui/w42-macro.c:2690
 msgid "The document was closed while the macro ran"
 msgstr "मैक्रो चलते समय दस्तावेज़ बंद कर दिया गया"
 
@@ -4607,13 +4627,13 @@ msgstr "%s नाम की कोई शैली नहीं है"
 
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2113
+#: src/ui/w42-macro.c:2114
 msgid "The document has never been saved: use ActiveDocument.SaveAs \"name\""
 msgstr "दस्तावेज़ कभी सहेजा नहीं गया है: ActiveDocument.SaveAs \"नाम\" का उपयोग करें"
 
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2120
+#: src/ui/w42-macro.c:2121
 msgid ""
 "The document came from a format Word42 does not write back as it was: use "
 "ActiveDocument.SaveAs \"name\""
@@ -4621,19 +4641,19 @@ msgstr ""
 "दस्तावेज़ ऐसे प्रारूप से आया है जिसे Word42 उसी रूप में वापस नहीं लिखता: ActiveDocument."
 "SaveAs \"नाम\" का उपयोग करें"
 
-#: src/ui/w42-macro.c:2124 src/ui/w42-macro.c:2178 src/ui/w42-macro.c:2226
+#: src/ui/w42-macro.c:2125 src/ui/w42-macro.c:2179 src/ui/w42-macro.c:2227
 msgid "The document could not be saved"
 msgstr "दस्तावेज़ सहेजा नहीं जा सका"
 
 #. Translators: "SaveAs" is a name in the macro language: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2153
+#: src/ui/w42-macro.c:2154
 msgid "SaveAs needs a file name"
 msgstr "SaveAs के लिए फ़ाइल नाम आवश्यक है"
 
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2222
+#: src/ui/w42-macro.c:2223
 msgid ""
 "The document has no file to be saved to: use ActiveDocument.SaveAs \"name\" "
 "first"
@@ -4641,40 +4661,40 @@ msgstr ""
 "दस्तावेज़ की कोई फ़ाइल नहीं है जिसमें उसे सहेजा जा सके: पहले ActiveDocument.SaveAs "
 "\"नाम\" का उपयोग करें"
 
-#: src/ui/w42-macro.c:2449
+#: src/ui/w42-macro.c:2452
 msgid "A new document could not be made"
 msgstr "नया दस्तावेज़ नहीं बनाया जा सका"
 
 #. Translators: "Open" is Documents.Open, a name in the macro
 #. * language: keep it in English.
-#: src/ui/w42-macro.c:2486
+#: src/ui/w42-macro.c:2489
 msgid "Open needs a file name"
 msgstr "Open के लिए फ़ाइल नाम आवश्यक है"
 
 #. Translators: %s is a file name.
-#: src/ui/w42-macro.c:2493
+#: src/ui/w42-macro.c:2496
 #, c-format
 msgid "There is no file %s"
 msgstr "%s नाम की कोई फ़ाइल नहीं है"
 
-#: src/ui/w42-macro.c:2504
+#: src/ui/w42-macro.c:2507
 msgid "The file could not be opened"
 msgstr "फ़ाइल खोली नहीं जा सकी"
 
-#: src/ui/w42-macro.c:2664
+#: src/ui/w42-macro.c:2667
 msgid "Error"
 msgstr "त्रुटि"
 
-#: src/ui/w42-macro.c:2684
+#: src/ui/w42-macro.c:2687
 msgid "The macro ran too long and was stopped"
 msgstr "मैक्रो बहुत देर तक चला और उसे रोक दिया गया"
 
-#: src/ui/w42-macro.c:2732
+#: src/ui/w42-macro.c:2735
 msgid "A macro is running already: answer its box first."
 msgstr "एक मैक्रो पहले से चल रहा है: पहले उसके संवाद का उत्तर दें।"
 
 #. Translators: %s is the macro's name.
-#: src/ui/w42-macro.c:2930
+#: src/ui/w42-macro.c:2933
 #, c-format
 msgid "The macro %s could not be deleted."
 msgstr "मैक्रो %s हटाया नहीं जा सका।"
@@ -4705,7 +4725,7 @@ msgstr "पूरा पृष्ठ"
 msgid "Two Pages"
 msgstr "दो पृष्ठ"
 
-#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4692
+#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4548
 msgid "Print Preview"
 msgstr "मुद्रण पूर्वावलोकन"
 
@@ -4757,8 +4777,8 @@ msgstr "कोई मुद्रण बैकएंड उपलब्ध न�
 msgid "Word42 could not write the PDF."
 msgstr "Word42 PDF नहीं लिख सका।"
 
-#: src/ui/w42-print.c:351 src/ui/w42-print.c:687 src/ui/w42-window.c:361
-#: src/ui/w42-window.c:3192
+#: src/ui/w42-print.c:351 src/ui/w42-print.c:687 src/ui/w42-window.c:348
+#: src/ui/w42-window.c:3179
 msgid "PDF Documents (*.pdf)"
 msgstr "PDF दस्तावेज़ (*.pdf)"
 
@@ -4814,7 +4834,7 @@ msgstr "विषम पृष्ठ"
 msgid "Even pages"
 msgstr "सम पृष्ठ"
 
-#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4691
+#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4547
 msgid "Print"
 msgstr "मुद्रित करें"
 
@@ -5126,7 +5146,7 @@ msgstr ""
 
 #. Translators: the comment kept with the first version of a document
 #. * once versions are kept of it; %s is its file name.
-#: src/ui/w42-versions.c:446 src/ui/w42-window.c:1458
+#: src/ui/w42-versions.c:446 src/ui/w42-window.c:1445
 #, c-format
 msgid "Saved %s"
 msgstr "%s सहेजा गया"
@@ -5150,7 +5170,7 @@ msgid ""
 msgstr "अब दस्तावेज़ सहेजने पर संस्करण नहीं रखे जाते। जो पहले से रखे गए हैं, वे बने रहते हैं।"
 
 #. Translators: %s is the short id Git gives a version.
-#: src/ui/w42-versions.c:510 src/ui/w42-window.c:1472
+#: src/ui/w42-versions.c:510 src/ui/w42-window.c:1459
 #, c-format
 msgid "Saved, and kept as version %s."
 msgstr "सहेजा गया, और संस्करण %s के रूप में रखा गया।"
@@ -5247,106 +5267,97 @@ msgstr "यह लिंक खोलें?"
 
 #. Translators: the AutoComplete tip over the caret; %s is the
 #. * start of the AutoText entry or date offered, cut short.
-#: src/ui/w42-view.c:4344
+#: src/ui/w42-view.c:4372
 #, c-format
 msgid "%s…  (Press ENTER to Insert)"
 msgstr "%s…  (सम्मिलित करने के लिए ENTER दबाएँ)"
 
 #. Translators: the AutoComplete tip over the caret; %s is the
 #. * AutoText entry or date offered.
-#: src/ui/w42-view.c:4349
+#: src/ui/w42-view.c:4377
 #, c-format
 msgid "%s  (Press ENTER to Insert)"
 msgstr "%s  (सम्मिलित करने के लिए ENTER दबाएँ)"
 
-#: src/ui/w42-view.c:6042
+#: src/ui/w42-view.c:6083
 msgid "_Copy"
 msgstr "कॉपी करें(_C)"
 
-#: src/ui/w42-view.c:6043
+#: src/ui/w42-view.c:6084
 msgid "_Paste"
 msgstr "चिपकाएँ(_P)"
 
-#: src/ui/w42-view.c:6049
+#: src/ui/w42-view.c:6090
 msgid "_Bullets and Numbering..."
 msgstr "बुलेट और क्रमांकन(_B)..."
 
-#: src/ui/w42-view.c:6054
+#: src/ui/w42-view.c:6095
 msgid "Table P_roperties..."
 msgstr "तालिका गुण(_R)..."
 
 #. Translators: the window's title, "Document1 - Word42 0.9.0".  The
 #. * first %s is the document's name, the second an asterisk when it has
 #. * unsaved changes (else nothing), the third Word42's version.
-#: src/ui/w42-window.c:275
+#: src/ui/w42-window.c:274
 #, c-format
 msgid "%s%s - Word42 %s"
 msgstr "%s%s - Word42 %s"
 
-#. Translators: the title in Word42's own title bar, "Word42 0.9.0 -
-#. * Document1".  The first %s is Word42's version, the second the
-#. * document's name, the third an asterisk when it has unsaved
-#. * changes (else nothing).
-#: src/ui/w42-window.c:287
-#, c-format
-msgid "Word42 %s - %s%s"
-msgstr "Word42 %s - %s%s"
-
-#: src/ui/w42-window.c:344
+#: src/ui/w42-window.c:331
 msgid ""
 "All Documents (*.doc, *.rtf, *.docx, *.odt, *.abw, *.wpd, *.txt, *.pdf, *."
 "html)"
 msgstr ""
 "सभी दस्तावेज़ (*.doc, *.rtf, *.docx, *.odt, *.abw, *.wpd, *.txt, *.pdf, *.html)"
 
-#: src/ui/w42-window.c:347
+#: src/ui/w42-window.c:334
 msgid ""
 "All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.wpd, *.txt, *.pdf, *."
 "html)"
 msgstr ""
 "सभी दस्तावेज़ (*.rtf, *.docx, *.doc, *.odt, *.abw, *.wpd, *.txt, *.pdf, *.html)"
 
-#: src/ui/w42-window.c:349
+#: src/ui/w42-window.c:336
 msgid "Word 97 (*.doc)"
 msgstr "Word 97 (*.doc)"
 
-#: src/ui/w42-window.c:351
+#: src/ui/w42-window.c:338
 msgid "Word Document (*.docx)"
 msgstr "Word दस्तावेज़ (*.docx)"
 
-#: src/ui/w42-window.c:352
+#: src/ui/w42-window.c:339
 msgid "OpenDocument Text (*.odt)"
 msgstr "OpenDocument पाठ (*.odt)"
 
-#: src/ui/w42-window.c:353
+#: src/ui/w42-window.c:340
 msgid "AbiWord (*.abw, *.zabw)"
 msgstr "AbiWord (*.abw, *.zabw)"
 
-#: src/ui/w42-window.c:354
+#: src/ui/w42-window.c:341
 msgid "WordPerfect 6 (*.wpd)"
 msgstr "WordPerfect 6 (*.wpd)"
 
-#: src/ui/w42-window.c:354
+#: src/ui/w42-window.c:341
 msgid "WordPerfect (*.wpd, *.wp)"
 msgstr "WordPerfect (*.wpd, *.wp)"
 
-#: src/ui/w42-window.c:356
+#: src/ui/w42-window.c:343
 msgid "LaTeX (*.tex)"
 msgstr "LaTeX (*.tex)"
 
-#: src/ui/w42-window.c:357 src/ui/w42-window.c:3019
+#: src/ui/w42-window.c:344 src/ui/w42-window.c:3006
 msgid "Web Pages (*.html)"
 msgstr "वेब पृष्ठ (*.html)"
 
-#: src/ui/w42-window.c:358 src/ui/w42-window.c:3160
+#: src/ui/w42-window.c:345 src/ui/w42-window.c:3147
 msgid "Presentations (*.pptx)"
 msgstr "प्रस्तुतियाँ (*.pptx)"
 
-#: src/ui/w42-window.c:359
+#: src/ui/w42-window.c:346
 msgid "Text Documents (*.txt)"
 msgstr "पाठ दस्तावेज़ (*.txt)"
 
-#: src/ui/w42-window.c:362
+#: src/ui/w42-window.c:349
 msgid "All Files"
 msgstr "सभी फ़ाइलें"
 
@@ -5354,18 +5365,18 @@ msgstr "सभी फ़ाइलें"
 #. * backup copy keeps beside a file; %s is the file's own name.  It is a
 #. * file name: no slashes, backslashes or colons, and %s last, so that the
 #. * copy keeps the file's extension and opens as the file does.
-#: src/ui/w42-window.c:629
+#: src/ui/w42-window.c:616
 #, c-format
 msgid "Backup of %s"
 msgstr "बैकअप - %s"
 
 #. Translators: %s is the recovered document's name.
-#: src/ui/w42-window.c:703
+#: src/ui/w42-window.c:690
 #, c-format
 msgid "Word42 recovered “%s”."
 msgstr "Word42 ने “%s” को पुनर्प्राप्त किया।"
 
-#: src/ui/w42-window.c:706
+#: src/ui/w42-window.c:693
 msgid ""
 "It was not saved when Word42 last stopped. Save it to keep it; close it to "
 "let it go."
@@ -5375,7 +5386,7 @@ msgstr ""
 
 #. Translators: %d is how many autosaved copies could not be read,
 #. * %s the folder they are kept in.
-#: src/ui/w42-window.c:751
+#: src/ui/w42-window.c:738
 #, c-format
 msgid ""
 "%d document left when Word42 last stopped could not be read. It is kept in "
@@ -5390,63 +5401,63 @@ msgstr[1] ""
 "Word42 के पिछली बार बंद होने पर छूटे %d दस्तावेज़ पढ़े नहीं जा सके। उन्हें %s में .bad से "
 "समाप्त होने वाले नामों के साथ रखा गया है।"
 
-#: src/ui/w42-window.c:761
+#: src/ui/w42-window.c:748
 msgid "Word42 could not recover everything."
 msgstr "Word42 सब कुछ पुनर्प्राप्त नहीं कर सका।"
 
-#: src/ui/w42-window.c:978 src/ui/w42-window.c:1235 src/ui/w42-window.c:1253
-#: src/ui/w42-window.c:1352 src/ui/w42-window.c:5773
+#: src/ui/w42-window.c:965 src/ui/w42-window.c:1222 src/ui/w42-window.c:1240
+#: src/ui/w42-window.c:1339 src/ui/w42-window.c:5629
 msgid "Word42 could not open that file."
 msgstr "Word42 वह फ़ाइल नहीं खोल सका।"
 
 #. Translators: %s is the file's name.
-#: src/ui/w42-window.c:1109
+#: src/ui/w42-window.c:1096
 #, c-format
 msgid "“%s” is protected with a password."
 msgstr "“%s” पासवर्ड से सुरक्षित है।"
 
-#: src/ui/w42-window.c:1112
+#: src/ui/w42-window.c:1099
 msgid ""
 "The password is not correct. Passwords tell capital letters from small ones."
 msgstr "पासवर्ड सही नहीं है। पासवर्ड बड़े और छोटे अक्षरों में अंतर करते हैं।"
 
-#: src/ui/w42-window.c:1114 src/ui/w42-window.c:1151
+#: src/ui/w42-window.c:1101 src/ui/w42-window.c:1138
 msgid "_Password:"
 msgstr "पासवर्ड(_P):"
 
-#: src/ui/w42-window.c:1141
+#: src/ui/w42-window.c:1128
 msgid "_Read Only"
 msgstr "केवल पढ़ने के लिए(_R)"
 
 #. Translators: %s is the file's name.
-#: src/ui/w42-window.c:1144
+#: src/ui/w42-window.c:1131
 #, c-format
 msgid "“%s” is reserved: it allows no changes without its password to modify."
 msgstr "“%s” आरक्षित है: इसके संशोधन पासवर्ड के बिना कोई बदलाव नहीं किया जा सकता।"
 
-#: src/ui/w42-window.c:1148
+#: src/ui/w42-window.c:1135
 msgid ""
 "That is not its password to modify. Enter the password, or open the PDF read "
 "only."
 msgstr ""
 "यह इसका संशोधन पासवर्ड नहीं है। पासवर्ड दर्ज करें, या PDF को केवल पढ़ने के लिए खोलें।"
 
-#: src/ui/w42-window.c:1150
+#: src/ui/w42-window.c:1137
 msgid "Enter the password to modify it, or open it read only."
 msgstr "इसे संशोधित करने के लिए पासवर्ड दर्ज करें, या इसे केवल पढ़ने के लिए खोलें।"
 
 #. Translators: the title of a document opened read only; %s is its
 #. * name.
-#: src/ui/w42-window.c:1171
+#: src/ui/w42-window.c:1158
 #, c-format
 msgid "%s (Read-Only)"
 msgstr "%s (केवल पढ़ने के लिए)"
 
-#: src/ui/w42-window.c:1177
+#: src/ui/w42-window.c:1164
 msgid "Opened read only. File ▸ Save As saves it under a name of its own."
 msgstr "केवल पढ़ने के लिए खोला गया। फ़ाइल ▸ इस रूप में सहेजें इसे इसके अपने नाम से सहेजता है।"
 
-#: src/ui/w42-window.c:1194
+#: src/ui/w42-window.c:1181
 msgid ""
 "This PDF is signed. Saved again it is a new file, which the signature does "
 "not cover: File ▸ PDF Options signs it anew."
@@ -5454,7 +5465,7 @@ msgstr ""
 "इस PDF पर हस्ताक्षर हैं। फिर से सहेजने पर यह एक नई फ़ाइल होगी, जिस पर हस्ताक्षर लागू "
 "नहीं होते: फ़ाइल ▸ PDF विकल्प इस पर फिर से हस्ताक्षर करता है।"
 
-#: src/ui/w42-window.c:1198
+#: src/ui/w42-window.c:1185
 msgid ""
 "Another program has changed this PDF since Word42 saved it. What is open is "
 "the document as Word42 saved it."
@@ -5462,7 +5473,7 @@ msgstr ""
 "Word42 के सहेजने के बाद किसी दूसरे प्रोग्राम ने इस PDF को बदला है। जो खुला है वह दस्तावेज़ "
 "वैसा है जैसा Word42 ने सहेजा था।"
 
-#: src/ui/w42-window.c:1201
+#: src/ui/w42-window.c:1188
 msgid ""
 "Word42 read this PDF from its pages. Saving it writes the pages again, with "
 "the document inside for next time."
@@ -5471,7 +5482,7 @@ msgstr ""
 "के लिए भीतर दस्तावेज़ रहता है।"
 
 #. Translators: %s is the name of the file exported to.
-#: src/ui/w42-window.c:1302
+#: src/ui/w42-window.c:1289
 #, c-format
 msgid ""
 "Exported as %s. The document itself is not saved there: Word42 cannot read "
@@ -5480,61 +5491,61 @@ msgstr ""
 "%s के रूप में निर्यात किया गया। दस्तावेज़ स्वयं वहाँ सहेजा नहीं गया है: Word42 उस प्रारूप को "
 "मूल रूप में वापस नहीं पढ़ सकता।"
 
-#: src/ui/w42-window.c:1394
+#: src/ui/w42-window.c:1381
 msgid ""
 "This document has not been saved yet, so there is nothing to go back to."
 msgstr "यह दस्तावेज़ अभी तक सहेजा नहीं गया है, इसलिए वापस लौटने के लिए कुछ नहीं है।"
 
-#: src/ui/w42-window.c:1400
+#: src/ui/w42-window.c:1387
 msgid "The document has no unsaved changes."
 msgstr "दस्तावेज़ में कोई बिना सहेजा परिवर्तन नहीं है।"
 
 #. Translators: %s is the document's name.
-#: src/ui/w42-window.c:1406
+#: src/ui/w42-window.c:1393
 #, c-format
 msgid "Revert “%s” to the saved version?"
 msgstr "“%s” को सहेजे गए संस्करण पर वापस लौटाएँ?"
 
-#: src/ui/w42-window.c:1408
+#: src/ui/w42-window.c:1395
 msgid "The changes made since the document was last saved will be lost."
 msgstr "दस्तावेज़ को पिछली बार सहेजने के बाद किए गए परिवर्तन खो जाएँगे।"
 
-#: src/ui/w42-window.c:1462
+#: src/ui/w42-window.c:1449
 msgid "Word42 saved the document but could not keep it as a version."
 msgstr "Word42 ने दस्तावेज़ सहेज लिया, लेकिन उसे संस्करण के रूप में नहीं रख सका।"
 
 #. Translators: %s is what Git said went wrong.
-#: src/ui/w42-window.c:1466
+#: src/ui/w42-window.c:1453
 #, c-format
 msgid "Saved, but Git could not keep it as a version: %s"
 msgstr "सहेजा गया, लेकिन Git उसे संस्करण के रूप में नहीं रख सका: %s"
 
 #. Translators: %s is a file name.
-#: src/ui/w42-window.c:1572
+#: src/ui/w42-window.c:1559
 #, c-format
 msgid "“%s” already exists. Replace it?"
 msgstr "“%s” पहले से मौजूद है। क्या इसे बदलें?"
 
-#: src/ui/w42-window.c:1579
+#: src/ui/w42-window.c:1566
 msgid "The file that is there now will be lost."
 msgstr "अभी वहाँ मौजूद फ़ाइल खो जाएगी।"
 
-#: src/ui/w42-window.c:1600 src/ui/w42-window.c:1606 src/ui/w42-window.c:1628
-#: src/ui/w42-window.c:1758 src/ui/w42-window.c:1784 src/ui/w42-window.c:5679
+#: src/ui/w42-window.c:1587 src/ui/w42-window.c:1593 src/ui/w42-window.c:1615
+#: src/ui/w42-window.c:1745 src/ui/w42-window.c:1771 src/ui/w42-window.c:5535
 msgid "Word42 could not save that file."
 msgstr "Word42 वह फ़ाइल सहेज नहीं सका।"
 
-#: src/ui/w42-window.c:1645
+#: src/ui/w42-window.c:1632
 msgid "Save As"
 msgstr "इस रूप में सहेजें"
 
 #. Translators: %s is the PDF's file name.
-#: src/ui/w42-window.c:1728
+#: src/ui/w42-window.c:1715
 #, c-format
 msgid "Replace “%s” with Word42's pages?"
 msgstr "क्या “%s” को Word42 के पृष्ठों से बदलें?"
 
-#: src/ui/w42-window.c:1731
+#: src/ui/w42-window.c:1718
 msgid ""
 "Word42 read this PDF from its pages, not from a document of its own. Saved, "
 "the PDF is laid out again by Word42, with the document inside it so that it "
@@ -5544,57 +5555,57 @@ msgstr ""
 "फिर से व्यवस्थित करता है, भीतर दस्तावेज़ के साथ ताकि वह वैसा ही खुले जैसा अभी है; इसके "
 "मौजूदा पृष्ठ नहीं रखे जाते।"
 
-#: src/ui/w42-window.c:1835 src/ui/w42-window.c:1853
+#: src/ui/w42-window.c:1822 src/ui/w42-window.c:1840
 msgid "Word42 could not save that template."
 msgstr "Word42 वह टेम्पलेट सहेज नहीं सका।"
 
-#: src/ui/w42-window.c:1837
+#: src/ui/w42-window.c:1824
 msgid "Saved as a template.  File > New from Template lists it."
 msgstr "टेम्पलेट के रूप में सहेजा गया।  फ़ाइल > टेम्पलेट से नया में यह सूचीबद्ध है।"
 
-#: src/ui/w42-window.c:1878
+#: src/ui/w42-window.c:1865
 msgid "Save as Template"
 msgstr "टेम्पलेट के रूप में सहेजें"
 
-#: src/ui/w42-window.c:1937
+#: src/ui/w42-window.c:1924
 msgid "Don't Save"
 msgstr "न सहेजें"
 
 #. Translators: %s is the document's name.
-#: src/ui/w42-window.c:1950
+#: src/ui/w42-window.c:1937
 #, c-format
 msgid "Save changes to “%s”?"
 msgstr "“%s” में परिवर्तन सहेजें?"
 
-#: src/ui/w42-window.c:1953
+#: src/ui/w42-window.c:1940
 msgid "If you close without saving, the changes you have made will be lost."
 msgstr "यदि आप सहेजे बिना बंद करते हैं, तो आपके द्वारा किए गए परिवर्तन खो जाएँगे।"
 
-#: src/ui/w42-window.c:2654 src/ui/w42-window.c:5192
+#: src/ui/w42-window.c:2641 src/ui/w42-window.c:5048
 msgid "Font"
 msgstr "फ़ॉन्ट"
 
-#: src/ui/w42-window.c:2724
+#: src/ui/w42-window.c:2711
 msgid "Word42 could not insert that picture."
 msgstr "Word42 वह चित्र सम्मिलित नहीं कर सका।"
 
-#: src/ui/w42-window.c:2732
+#: src/ui/w42-window.c:2719
 msgid "Word42 could not open that picture."
 msgstr "Word42 वह चित्र नहीं खोल सका।"
 
-#: src/ui/w42-window.c:2752
+#: src/ui/w42-window.c:2739
 msgid "Pictures"
 msgstr "चित्र"
 
-#: src/ui/w42-window.c:2756 src/ui/w42-window.c:4702
+#: src/ui/w42-window.c:2743 src/ui/w42-window.c:4558
 msgid "Insert Picture"
 msgstr "चित्र सम्मिलित करें"
 
-#: src/ui/w42-window.c:2778
+#: src/ui/w42-window.c:2765
 msgid "No scanner can be reached from here."
 msgstr "यहाँ से किसी स्कैनर तक नहीं पहुँचा जा सकता।"
 
-#: src/ui/w42-window.c:2779
+#: src/ui/w42-window.c:2766
 msgid ""
 "Word42 scans through Windows Image Acquisition on Windows and through SANE's "
 "scanimage on Linux; neither was found."
@@ -5602,31 +5613,31 @@ msgstr ""
 "Word42 Windows पर Windows Image Acquisition के माध्यम से और Linux पर SANE के "
 "scanimage के माध्यम से स्कैन करता है; दोनों में से कोई नहीं मिला।"
 
-#: src/ui/w42-window.c:2792
+#: src/ui/w42-window.c:2779
 msgid "The scanner sent a picture Word42 cannot read."
 msgstr "स्कैनर ने ऐसा चित्र भेजा जिसे Word42 नहीं पढ़ सकता।"
 
-#: src/ui/w42-window.c:2796
+#: src/ui/w42-window.c:2783
 msgid "Word42 could not scan."
 msgstr "Word42 स्कैन नहीं कर सका।"
 
-#: src/ui/w42-window.c:2829 src/ui/w42-window.c:2838
+#: src/ui/w42-window.c:2816 src/ui/w42-window.c:2825
 msgid "Word42 could not export the PDF."
 msgstr "Word42 PDF निर्यात नहीं कर सका।"
 
-#: src/ui/w42-window.c:2862 src/ui/w42-window.c:2867
+#: src/ui/w42-window.c:2849 src/ui/w42-window.c:2854
 msgid "Word42 could not export the web page."
 msgstr "Word42 वेब पृष्ठ निर्यात नहीं कर सका।"
 
-#: src/ui/w42-window.c:2892
+#: src/ui/w42-window.c:2879
 msgid "LaTeX mode: Export as PDF typesets with LaTeX."
 msgstr "LaTeX मोड: PDF के रूप में निर्यात करें LaTeX से टाइपसेट करता है।"
 
-#: src/ui/w42-window.c:2894
+#: src/ui/w42-window.c:2881
 msgid "LaTeX mode is on, but no TeX engine is installed."
 msgstr "LaTeX मोड चालू है, लेकिन कोई TeX इंजन स्थापित नहीं है।"
 
-#: src/ui/w42-window.c:2895
+#: src/ui/w42-window.c:2882
 msgid ""
 "Install Tectonic (tectonic-typesetting.github.io), which fetches what it "
 "needs by itself, or MiKTeX (miktex.org) or TeX Live (tug.org/texlive). Until "
@@ -5636,43 +5647,43 @@ msgstr ""
 "कर लेता है, या MiKTeX (miktex.org) या TeX Live (tug.org/texlive)। तब तक, फ़ाइल "
 "> इस रूप में सहेजें अब भी दस्तावेज़ को LaTeX (.tex) के रूप में लिख सकता है।"
 
-#: src/ui/w42-window.c:2901
+#: src/ui/w42-window.c:2888
 msgid "LaTeX mode is off: Word42 makes the PDFs itself."
 msgstr "LaTeX मोड बंद है: Word42 PDF स्वयं बनाता है।"
 
-#: src/ui/w42-window.c:2995
+#: src/ui/w42-window.c:2982
 msgid "Word42 could not write the web page to preview."
 msgstr "Word42 पूर्वावलोकन के लिए वेब पृष्ठ नहीं लिख सका।"
 
-#: src/ui/w42-window.c:3020
+#: src/ui/w42-window.c:3007
 msgid "Export as Web Page"
 msgstr "वेब पृष्ठ के रूप में निर्यात करें"
 
-#: src/ui/w42-window.c:3051 src/ui/w42-window.c:3058
+#: src/ui/w42-window.c:3038 src/ui/w42-window.c:3045
 msgid "Word42 could not export the e-book."
 msgstr "Word42 ई-बुक निर्यात नहीं कर सका।"
 
-#: src/ui/w42-window.c:3053
+#: src/ui/w42-window.c:3040
 msgid "The e-book is written."
 msgstr "ई-बुक लिख दी गई है।"
 
-#: src/ui/w42-window.c:3081
+#: src/ui/w42-window.c:3068
 msgid "E-books (*.epub)"
 msgstr "ई-बुक (*.epub)"
 
-#: src/ui/w42-window.c:3082
+#: src/ui/w42-window.c:3069
 msgid "Export as E-book"
 msgstr "ई-बुक के रूप में निर्यात करें"
 
-#: src/ui/w42-window.c:3110 src/ui/w42-window.c:3115
+#: src/ui/w42-window.c:3097 src/ui/w42-window.c:3102
 msgid "Word42 could not export the presentation."
 msgstr "Word42 प्रस्तुति निर्यात नहीं कर सका।"
 
-#: src/ui/w42-window.c:3142
+#: src/ui/w42-window.c:3129
 msgid "There is nothing to make slides of."
 msgstr "स्लाइड बनाने के लिए कुछ नहीं है।"
 
-#: src/ui/w42-window.c:3143
+#: src/ui/w42-window.c:3130
 msgid ""
 "A slide is a heading and the lines under it: give the document's headings "
 "the Heading 1 style, or a Title."
@@ -5680,30 +5691,30 @@ msgstr ""
 "स्लाइड एक शीर्षक और उसके नीचे की पंक्तियाँ होती है: दस्तावेज़ के शीर्षकों को Heading 1 शैली "
 "दें, या Title शैली।"
 
-#: src/ui/w42-window.c:3148
+#: src/ui/w42-window.c:3135
 #, c-format
 msgid "%u slide."
 msgid_plural "%u slides."
 msgstr[0] "%u स्लाइड।"
 msgstr[1] "%u स्लाइड।"
 
-#: src/ui/w42-window.c:3161
+#: src/ui/w42-window.c:3148
 msgid "Export as Presentation"
 msgstr "प्रस्तुति के रूप में निर्यात करें"
 
-#: src/ui/w42-window.c:3193
+#: src/ui/w42-window.c:3180
 msgid "Export as PDF"
 msgstr "PDF के रूप में निर्यात करें"
 
-#: src/ui/w42-window.c:3402
+#: src/ui/w42-window.c:3389
 msgid "The caret is in the first row: there is nothing above it to split off."
 msgstr "कैरट पहली पंक्ति में है: इसके ऊपर अलग करने के लिए कुछ नहीं है।"
 
-#: src/ui/w42-window.c:3430
+#: src/ui/w42-window.c:3417
 msgid "There is nothing to convert here."
 msgstr "यहाँ कनवर्ट करने के लिए कुछ नहीं है।"
 
-#: src/ui/w42-window.c:3431
+#: src/ui/w42-window.c:3418
 msgid ""
 "In a table this makes paragraphs with tabs between the cells; on selected "
 "paragraphs it makes a table, split at their tabs."
@@ -5711,16 +5722,16 @@ msgstr ""
 "तालिका में यह कक्षों के बीच टैब वाले अनुच्छेद बनाता है; चयनित अनुच्छेदों पर यह उनके टैब पर "
 "विभाजित करके एक तालिका बनाता है।"
 
-#: src/ui/w42-window.c:3479 src/ui/w42-window.c:3499 src/ui/w42-window.c:3521
-#: src/ui/w42-window.c:3947 src/ui/w42-window.c:3963 src/ui/w42-window.c:4187
+#: src/ui/w42-window.c:3466 src/ui/w42-window.c:3486 src/ui/w42-window.c:3508
+#: src/ui/w42-window.c:3934 src/ui/w42-window.c:3950 src/ui/w42-window.c:4174
 msgid "The caret is in a note: put it in the body of the document first."
 msgstr "कैरट एक नोट में है: पहले इसे दस्तावेज़ के मुख्य भाग में रखें।"
 
-#: src/ui/w42-window.c:3485
+#: src/ui/w42-window.c:3472
 msgid "There is nothing marked for the index."
 msgstr "अनुक्रमणिका के लिए कुछ भी चिह्नित नहीं है।"
 
-#: src/ui/w42-window.c:3486
+#: src/ui/w42-window.c:3473
 msgid ""
 "Select a word and use Insert ▸ Index Entry to mark it, then ask for the "
 "index again."
@@ -5728,11 +5739,11 @@ msgstr ""
 "एक शब्द का चयन करें और उसे चिह्नित करने के लिए सम्मिलित करें ▸ अनुक्रमणिका प्रविष्टि का "
 "उपयोग करें, फिर अनुक्रमणिका दोबारा बनाएँ।"
 
-#: src/ui/w42-window.c:3505
+#: src/ui/w42-window.c:3492
 msgid "There are no captions to list."
 msgstr "सूचीबद्ध करने के लिए कोई कैप्शन नहीं है।"
 
-#: src/ui/w42-window.c:3506
+#: src/ui/w42-window.c:3493
 msgid ""
 "Insert ▸ Caption puts a caption under a picture, and the table of figures "
 "lists them."
@@ -5740,27 +5751,27 @@ msgstr ""
 "सम्मिलित करें ▸ कैप्शन चित्र के नीचे कैप्शन लगाता है, और चित्रों की तालिका उन्हें सूचीबद्ध "
 "करती है।"
 
-#: src/ui/w42-window.c:3527
+#: src/ui/w42-window.c:3514
 msgid "There are no headings to list."
 msgstr "सूचीबद्ध करने के लिए कोई शीर्षक नहीं है।"
 
-#: src/ui/w42-window.c:3528
+#: src/ui/w42-window.c:3515
 msgid "Give the document's headings the Heading 1, 2 or 3 style and try again."
 msgstr "दस्तावेज़ के शीर्षकों को Heading 1, 2 या 3 शैली दें और फिर से प्रयास करें।"
 
-#: src/ui/w42-window.c:3575
+#: src/ui/w42-window.c:3562
 msgid "There is no table of contents to update."
 msgstr "अद्यतन करने के लिए कोई विषय-सूची नहीं है।"
 
-#: src/ui/w42-window.c:3576
+#: src/ui/w42-window.c:3563
 msgid "Insert > Table of Contents puts one in."
 msgstr "सम्मिलित करें > विषय-सूची से एक विषय-सूची जोड़ी जाती है।"
 
-#: src/ui/w42-window.c:3612
+#: src/ui/w42-window.c:3599
 msgid "No hyphenation dictionary was found."
 msgstr "कोई हायफ़नेशन शब्दकोश नहीं मिला।"
 
-#: src/ui/w42-window.c:3613
+#: src/ui/w42-window.c:3600
 msgid ""
 "Hyphenation needs libhyphen and a hyph_*.dic pattern file for your language, "
 "the ones LibreOffice uses."
@@ -5768,22 +5779,22 @@ msgstr ""
 "हायफ़नेशन के लिए libhyphen और आपकी भाषा के लिए hyph_*.dic पैटर्न फ़ाइल आवश्यक है, वही "
 "जो LibreOffice उपयोग करता है।"
 
-#: src/ui/w42-window.c:3616
+#: src/ui/w42-window.c:3603
 msgid "There is nothing to hyphenate."
 msgstr "हायफ़नेट करने के लिए कुछ नहीं है।"
 
-#: src/ui/w42-window.c:3628
+#: src/ui/w42-window.c:3615
 #, c-format
 msgid "%d hyphen removed."
 msgid_plural "%d hyphens removed."
 msgstr[0] "%d हायफ़न निकाला गया।"
 msgstr[1] "%d हायफ़न निकाले गए।"
 
-#: src/ui/w42-window.c:3631
+#: src/ui/w42-window.c:3618
 msgid "There are no soft hyphens to remove."
 msgstr "निकालने के लिए कोई सॉफ़्ट हायफ़न नहीं है।"
 
-#: src/ui/w42-window.c:3784
+#: src/ui/w42-window.c:3771
 msgid ""
 "Type the name of an AutoText entry, then press Ctrl+F3.  Edit > AutoText "
 "makes one from the selection."
@@ -5791,14 +5802,14 @@ msgstr ""
 "किसी स्वतः पाठ प्रविष्टि का नाम टाइप करें, फिर Ctrl+F3 दबाएँ।  संपादन > स्वतः पाठ "
 "चयन से एक प्रविष्टि बनाता है।"
 
-#: src/ui/w42-window.c:3825
+#: src/ui/w42-window.c:3812
 #, c-format
 msgid "%d field updated."
 msgid_plural "%d fields updated."
 msgstr[0] "%d फ़ील्ड अद्यतन किया गया।"
 msgstr[1] "%d फ़ील्ड अद्यतन किए गए।"
 
-#: src/ui/w42-window.c:3828
+#: src/ui/w42-window.c:3815
 msgid "There are no fields in this document."
 msgstr "इस दस्तावेज़ में कोई फ़ील्ड नहीं है।"
 
@@ -5806,20 +5817,20 @@ msgstr "इस दस्तावेज़ में कोई फ़ील्�
 #. * the figure's number.  Keep a word before the number, and keep %d as
 #. * it is: the captions already there are counted by what comes before
 #. * it.
-#: src/ui/w42-window.c:3898 src/ui/w42-window.c:3914
+#: src/ui/w42-window.c:3885 src/ui/w42-window.c:3901
 #, c-format
 msgid "Figure %d: "
 msgstr "चित्र %d: "
 
-#: src/ui/w42-window.c:3977
+#: src/ui/w42-window.c:3964
 msgid "Put the caret at a note's mark, or in the note itself."
 msgstr "कैरट को किसी नोट के चिह्न पर, या स्वयं नोट में रखें।"
 
-#: src/ui/w42-window.c:4059
+#: src/ui/w42-window.c:4046
 msgid "No thesaurus was found."
 msgstr "कोई पर्यायवाची कोश नहीं मिला।"
 
-#: src/ui/w42-window.c:4060
+#: src/ui/w42-window.c:4047
 msgid ""
 "The thesaurus needs a MyThes file for the language of the text -- "
 "th_en_US_v2.dat and its .idx for English, th_nb_NO_v2 for Norwegian, the "
@@ -5829,34 +5840,34 @@ msgstr ""
 "अंग्रेज़ी के लिए th_en_US_v2.dat और उसकी .idx, नॉर्वेजियन के लिए th_nb_NO_v2, वही जो "
 "LibreOffice उपयोग करता है।"
 
-#: src/ui/w42-window.c:4067
+#: src/ui/w42-window.c:4054
 msgid "Put the caret in a word to look it up in the thesaurus."
 msgstr "पर्यायवाची कोश में खोजने के लिए कैरट को किसी शब्द में रखें।"
 
-#: src/ui/w42-window.c:4079
+#: src/ui/w42-window.c:4066
 msgid "No spelling dictionary was found."
 msgstr "कोई वर्तनी शब्दकोश नहीं मिला।"
 
-#: src/ui/w42-window.c:4080
+#: src/ui/w42-window.c:4067
 msgid "Install a Hunspell dictionary for your language and start Word42 again."
 msgstr "अपनी भाषा के लिए Hunspell शब्दकोश स्थापित करें और Word42 फिर से प्रारंभ करें।"
 
-#: src/ui/w42-window.c:4133
+#: src/ui/w42-window.c:4120
 msgid "Revisions accepted."
 msgstr "संशोधन स्वीकार किए गए।"
 
-#: src/ui/w42-window.c:4135 src/ui/w42-window.c:4147
+#: src/ui/w42-window.c:4122 src/ui/w42-window.c:4134
 msgid "There are no revision marks in this document."
 msgstr "इस दस्तावेज़ में कोई संशोधन चिह्न नहीं हैं।"
 
-#: src/ui/w42-window.c:4145
+#: src/ui/w42-window.c:4132
 msgid "Revisions rejected."
 msgstr "संशोधन अस्वीकार किए गए।"
 
 #. Translators: the Windows version in the About box, as "Windows
 #. * 10.0 build 19045 (Windows 10)": the major and minor version, the
 #. * build number, then the release's name in brackets or nothing.
-#: src/ui/w42-window.c:4258
+#: src/ui/w42-window.c:4245
 #, c-format
 msgid "Windows %lu.%lu build %lu%s"
 msgstr "Windows %lu.%lu बिल्ड %lu%s"
@@ -5867,7 +5878,7 @@ msgstr "Windows %lu.%lu बिल्ड %lu%s"
 #. * the one built against; GLib's; Pango's, Cairo's and GdkPixbuf's;
 #. * the operating system; then the spelling, hyphenation and PDF
 #. * import libraries, or "none".
-#: src/ui/w42-window.c:4289
+#: src/ui/w42-window.c:4276
 #, c-format
 msgid ""
 "Word42 %s\n"
@@ -5883,26 +5894,26 @@ msgstr ""
 "वर्तनी: %s  ·  हायफ़नेशन: %s  ·  PDF आयात: %s"
 
 #. Translators: no library for this, in the About box.
-#: src/ui/w42-window.c:4304 src/ui/w42-window.c:4310 src/ui/w42-window.c:4316
+#: src/ui/w42-window.c:4291 src/ui/w42-window.c:4297 src/ui/w42-window.c:4303
 msgctxt "library"
 msgid "none"
 msgstr "कोई नहीं"
 
-#: src/ui/w42-window.c:4348
+#: src/ui/w42-window.c:4335
 msgid "About Word42"
 msgstr "Word42 के बारे में"
 
 #. Translators: %s is Word42's version number.
-#: src/ui/w42-window.c:4371
+#: src/ui/w42-window.c:4358
 #, c-format
 msgid "Version %s"
 msgstr "संस्करण %s"
 
-#: src/ui/w42-window.c:4382
+#: src/ui/w42-window.c:4369
 msgid "Written in C on GTK 4, Pango and Cairo."
 msgstr "GTK 4, Pango और Cairo पर C में लिखा गया।"
 
-#: src/ui/w42-window.c:4415
+#: src/ui/w42-window.c:4402
 msgid ""
 "Copyright (C) 2026 Andreas Røsdal.\n"
 "\n"
@@ -5930,84 +5941,76 @@ msgstr ""
 "\n"
 "मैक्रो Tony Wang के MY-BASIC पर चलते हैं, जिसका उपयोग MIT लाइसेंस के अंतर्गत किया गया है।"
 
-#: src/ui/w42-window.c:4564
-msgid "Minimize"
-msgstr "छोटा करें"
-
-#: src/ui/w42-window.c:4567
-msgid "Maximize"
-msgstr "बड़ा करें"
-
-#: src/ui/w42-window.c:4687
+#: src/ui/w42-window.c:4543
 msgid "New"
 msgstr "नया"
 
-#: src/ui/w42-window.c:4689
+#: src/ui/w42-window.c:4545
 msgid "Save"
 msgstr "सहेजें"
 
-#: src/ui/w42-window.c:4695
+#: src/ui/w42-window.c:4551
 msgid "Cut"
 msgstr "काटें"
 
-#: src/ui/w42-window.c:4696
+#: src/ui/w42-window.c:4552
 msgid "Copy"
 msgstr "कॉपी करें"
 
-#: src/ui/w42-window.c:4697
+#: src/ui/w42-window.c:4553
 msgid "Paste"
 msgstr "चिपकाएँ"
 
-#: src/ui/w42-window.c:4699
+#: src/ui/w42-window.c:4555
 msgid "Undo"
 msgstr "पूर्ववत करें"
 
-#: src/ui/w42-window.c:4700
+#: src/ui/w42-window.c:4556
 msgid "Redo"
 msgstr "फिर से करें"
 
-#: src/ui/w42-window.c:4703
+#: src/ui/w42-window.c:4559
 msgid "Show as Slide Show"
 msgstr "स्लाइड शो के रूप में दिखाएँ"
 
-#: src/ui/w42-window.c:4724
+#: src/ui/w42-window.c:4580
 msgid "Zoom Control"
 msgstr "ज़ूम नियंत्रण"
 
-#: src/ui/w42-window.c:5079
+#: src/ui/w42-window.c:4935
 msgid "Font Color"
 msgstr "फ़ॉन्ट रंग"
 
-#: src/ui/w42-window.c:5151
+#: src/ui/w42-window.c:5007
 msgid "Align Left"
 msgstr "बाएँ संरेखित करें"
 
-#: src/ui/w42-window.c:5154
+#: src/ui/w42-window.c:5010
 msgid "Align Right"
 msgstr "दाएँ संरेखित करें"
 
-#: src/ui/w42-window.c:5154
+#: src/ui/w42-window.c:5010
 msgid "Justify"
 msgstr "औचित्य सिद्ध करें"
 
-#: src/ui/w42-window.c:5207
+#: src/ui/w42-window.c:5063
 msgid "Font Size"
 msgstr "फ़ॉन्ट आकार"
 
-#: src/ui/w42-window.c:5214
+#: src/ui/w42-window.c:5070
 msgid "Bold"
 msgstr "बोल्ड"
 
-#: src/ui/w42-window.c:5215
+#: src/ui/w42-window.c:5071
 msgid "Italic"
 msgstr "इटैलिक"
 
-#: src/ui/w42-window.c:5244
+#: src/ui/w42-window.c:5100
 msgid "Bullets"
 msgstr "बुलेट"
 
 #. Translators: the status bar's page number.
-#: src/ui/w42-window.c:5275 src/ui/w42-window.c:6111
+#: src/ui/w42-window.c:5131 src/ui/w42-window.c:5967
 #, c-format
 msgid "Page %d"
 msgstr "पृष्ठ %d"
@@ -6015,20 +6018,20 @@ msgstr "पृष्ठ %d"
 #. Translators: the status bar's reading of how far down the page
 #. * the caret is, "At" short for "at so far from the top": %.1f is
 #. * the distance, %s the unit, already translated (" or cm).
-#: src/ui/w42-window.c:5277 src/ui/w42-window.c:6137
+#: src/ui/w42-window.c:5133 src/ui/w42-window.c:5993
 #, c-format
 msgid "At %.1f%s"
 msgstr "%.1f%s पर"
 
 #. Translators: the status bar's line number, "Ln" short for Line.
-#: src/ui/w42-window.c:5279 src/ui/w42-window.c:6119
+#: src/ui/w42-window.c:5135 src/ui/w42-window.c:5975
 #, c-format
 msgid "Ln %d"
 msgstr "पंक्ति %d"
 
 #. Translators: the status bar's column number, "Col" short for
 #. * Column: how many characters in from the start of the line.
-#: src/ui/w42-window.c:5281 src/ui/w42-window.c:6123
+#: src/ui/w42-window.c:5137 src/ui/w42-window.c:5979
 #, c-format
 msgid "Col %d"
 msgstr "स्तंभ %d"
@@ -6036,7 +6039,7 @@ msgstr "स्तंभ %d"
 #. Translators: the status bar's word count toward the goal set in
 #. * Tools > Word Count Goal: "12,000 of 80,000 words".  The first %s
 #. * is the words written, the second the goal.
-#: src/ui/w42-window.c:5384
+#: src/ui/w42-window.c:5240
 #, c-format
 msgid "%s of %s word"
 msgid_plural "%s of %s words"
@@ -6045,7 +6048,7 @@ msgstr[1] "%s / %s शब्द"
 
 #. Translators: the status bar's word count; %s is the number, with
 #. * thousands separators.
-#: src/ui/w42-window.c:5392
+#: src/ui/w42-window.c:5248
 #, c-format
 msgid "%s word"
 msgid_plural "%s words"
@@ -6054,7 +6057,7 @@ msgstr[1] "%s शब्द"
 
 #. Translators: in the word count's tooltip; %d%% is how far
 #. * toward the goal the document is, as "40%".
-#: src/ui/w42-window.c:5403
+#: src/ui/w42-window.c:5259
 #, c-format
 msgid "%d%% of the goal."
 msgstr "लक्ष्य का %d%%।"
@@ -6062,26 +6065,26 @@ msgstr "लक्ष्य का %d%%।"
 #. Translators: in the word count's tooltip; %ld is the words
 #. * written since the document was opened, which can be less than
 #. * nothing when more was deleted.
-#: src/ui/w42-window.c:5414
+#: src/ui/w42-window.c:5270
 #, c-format
 msgid "Written since the document was opened: %ld word."
 msgid_plural "Written since the document was opened: %ld words."
 msgstr[0] "दस्तावेज़ खोलने के बाद लिखे गए: %ld शब्द।"
 msgstr[1] "दस्तावेज़ खोलने के बाद लिखे गए: %ld शब्द।"
 
-#: src/ui/w42-window.c:5420
+#: src/ui/w42-window.c:5276
 msgid "Tools ▸ Word Count Goal sets the goal."
 msgstr "उपकरण ▸ शब्द गणना लक्ष्य से लक्ष्य सेट होता है।"
 
-#: src/ui/w42-window.c:5685
+#: src/ui/w42-window.c:5541
 msgid "The rest are saved."
 msgstr "बाकी सहेज दिए गए हैं।"
 
-#: src/ui/w42-window.c:5685
+#: src/ui/w42-window.c:5541
 msgid "Nothing was saved."
 msgstr "कुछ भी सहेजा नहीं गया।"
 
-#: src/ui/w42-window.c:5686
+#: src/ui/w42-window.c:5542
 msgid ""
 "A document that has never been saved, or that came from a format Word42 does "
 "not write back, needs a name: use File > Save As for it."
@@ -6089,30 +6092,30 @@ msgstr ""
 "जो दस्तावेज़ कभी सहेजा नहीं गया है, या ऐसे प्रारूप से आया है जिसे Word42 वापस नहीं लिखता, "
 "उसे एक नाम चाहिए: उसके लिए फ़ाइल > इस रूप में सहेजें का उपयोग करें।"
 
-#: src/ui/w42-window.c:5725 src/ui/w42-window.c:5767
+#: src/ui/w42-window.c:5581 src/ui/w42-window.c:5623
 msgid "Word42 could not read that file."
 msgstr "Word42 वह फ़ाइल नहीं पढ़ सका।"
 
-#: src/ui/w42-window.c:5761
+#: src/ui/w42-window.c:5617
 msgid "The two documents are the same."
 msgstr "दोनों दस्तावेज़ एक जैसे हैं।"
 
-#: src/ui/w42-window.c:5763
+#: src/ui/w42-window.c:5619
 #, c-format
 msgid "%d change marked."
 msgid_plural "%d changes marked."
 msgstr[0] "%d परिवर्तन चिह्नित किया गया।"
 msgstr[1] "%d परिवर्तन चिह्नित किए गए।"
 
-#: src/ui/w42-window.c:5787
+#: src/ui/w42-window.c:5643
 msgid "Compare Documents: the original"
 msgstr "दस्तावेज़ों की तुलना करें: मूल दस्तावेज़"
 
-#: src/ui/w42-window.c:5803
+#: src/ui/w42-window.c:5659
 msgid "Insert File"
 msgstr "फ़ाइल सम्मिलित करें"
 
-#: src/ui/w42-window.c:6146
+#: src/ui/w42-window.c:6002
 msgid "Modified"
 msgstr "संशोधित"
 
@@ -6334,6 +6337,16 @@ msgstr "अफ़्रीकांस"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(दस्तावेज़ डिफ़ॉल्ट)"
+
+#, c-format
+#~ msgid "Word42 %s - %s%s"
+#~ msgstr "Word42 %s - %s%s"
+
+#~ msgid "Minimize"
+#~ msgstr "छोटा करें"
+
+#~ msgid "Maximize"
+#~ msgstr "बड़ा करें"
 
 #, c-format
 #~ msgid ""

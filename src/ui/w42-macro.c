@@ -1994,6 +1994,7 @@ NATIVE (n_find_execute)
   opts.whole_word = whole_word;
   opts.backwards = !forward;
   opts.wrap = wrap != 0;
+  opts.regex = FALSE;         /* Word's wildcards are not these */
 
   if (replace == 1)
     found = replace_one (c, text, with, &opts);

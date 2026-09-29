@@ -107,13 +107,209 @@ on_word_boundary (const char *text, const char *start, const char *end)
   return TRUE;
 }
 
+/* ---- regular expressions ------------------------------------------- */
+
+/* A needle that is a regular expression, compiled for the options: case
+ * folded unless they match case, and UTF-8 throughout.  A paragraph is
+ * the text it runs over, so ^ and $ are the paragraph's ends. */
+static GRegex *
+compile_regex (const char *needle, const W42SearchOptions *options, GError **error)
+{
+  GRegexCompileFlags flags = G_REGEX_OPTIMIZE;
+
+  if (!options->match_case)
+    flags |= G_REGEX_CASELESS;
+  return g_regex_new (needle, flags, G_REGEX_MATCH_DEFAULT, error);
+}
+
+/* A paragraph's text with its soft hyphens taken out, for a regular
+ * expression to run over -- "vanskelige" finds "van-ske-lige", as the
+ * plain search finds it -- and where each of its bytes was. */
+typedef struct {
+  const char *str;
+  gsize       len;
+  GString    *own;      /* the copy, when there were soft hyphens */
+  GArray     *at;       /* gsize: each byte's offset in the text, and one
+                         * past its end; NULL when they are the same */
+} Clean;
+
+static void
+clean_init (Clean *c, const GString *text)
+{
+  memset (c, 0, sizeof *c);
+  c->str = text->str;
+  c->len = text->len;
+  if (g_strstr_len (text->str, (gssize) text->len, "\302\255") == NULL)
+    return;
+
+  c->own = g_string_sized_new (text->len);
+  c->at = g_array_sized_new (FALSE, FALSE, sizeof (gsize), (guint) text->len + 1);
+  for (const char *p = text->str; p < text->str + text->len; )
+    {
+      const char *next = g_utf8_next_char (p);
+
+      if (g_utf8_get_char (p) != SOFT_HYPHEN)
+        for (const char *q = p; q < next; q++)
+          {
+            gsize off = (gsize) (q - text->str);
+
+            g_string_append_c (c->own, *q);
+            g_array_append_val (c->at, off);
+          }
+      p = next;
+    }
+  {
+    gsize end = text->len;
+
+    g_array_append_val (c->at, end);
+  }
+  c->str = c->own->str;
+  c->len = c->own->len;
+}
+
+static void
+clean_free (Clean *c)
+{
+  if (c->own != NULL)
+    g_string_free (c->own, TRUE);
+  if (c->at != NULL)
+    g_array_free (c->at, TRUE);
+}
+
+/* The text's offset of the clean text's byte `i`. */
+static gsize
+clean_to_text (const Clean *c, gsize i)
+{
+  return c->at != NULL ? g_array_index (c->at, gsize, MIN (i, c->len)) : i;
+}
+
+/* The first byte of the clean text at or after the text's offset `off`. */
+static gsize
+text_to_clean (const Clean *c, gsize off)
+{
+  gsize lo = 0, hi = c->len;
+
+  if (c->at == NULL)
+    return MIN (off, c->len);
+  while (lo < hi)
+    {
+      gsize mid = lo + (hi - lo) / 2;
+
+      if (g_array_index (c->at, gsize, mid) < off)
+        lo = mid + 1;
+      else
+        hi = mid;
+    }
+  return lo;
+}
+
+/* The regular expression's hits in one paragraph between two byte
+ * offsets: the first, or when searching up the last.  A match of nothing
+ * counts only when `empty` says so, which Replace All does -- ^ puts
+ * something in front of every paragraph -- and Find does not, having
+ * nothing to select.  With `expanded`, the replacement for the hit, with
+ * what its groups hold put in for their names. */
+static gboolean
+regex_search_block (const W42Block         *block,
+                    gsize                   from_byte,
+                    gsize                   to_byte,
+                    GRegex                 *re,
+                    const W42SearchOptions *options,
+                    gboolean                empty,
+                    const char             *replacement,
+                    char                  **expanded,
+                    gsize                  *hit_start,
+                    gsize                  *hit_end)
+{
+  const char *text = block->text->str;
+  gboolean found = FALSE;
+  Clean c;
+  gsize pos;
+
+  if (from_byte > block->text->len)
+    return FALSE;
+
+  clean_init (&c, block->text);
+  pos = text_to_clean (&c, from_byte);
+  while (pos <= c.len)
+    {
+      GMatchInfo *mi = NULL;
+      gint ms = 0, me = 0;
+      gsize ts, te;
+
+      if (!g_regex_match_full (re, c.str, (gssize) c.len, (gint) pos, 0, &mi, NULL))
+        {
+          g_match_info_free (mi);
+          break;
+        }
+      g_match_info_fetch_pos (mi, 0, &ms, &me);
+      ts = clean_to_text (&c, (gsize) ms);
+      te = me > ms ? clean_to_text (&c, (gsize) me - 1) + 1 : ts;
+      if (ts > to_byte || (ts == to_byte && me > ms))
+        {
+          g_match_info_free (mi);
+          break;
+        }
+      if ((me > ms || empty) && te <= to_byte &&
+          (!options->whole_word || on_word_boundary (text, text + ts, text + te)))
+        {
+          *hit_start = ts;
+          *hit_end = te;
+          found = TRUE;
+          if (expanded != NULL)
+            {
+              char *with = g_match_info_expand_references (mi, replacement != NULL ? replacement : "",
+                                                           NULL);
+
+              /* A name the pattern has no group for: the replacement as
+               * it was typed. */
+              g_free (*expanded);
+              *expanded = with != NULL ? with : g_strdup (replacement != NULL ? replacement : "");
+            }
+          if (!options->backwards)
+            {
+              g_match_info_free (mi);
+              break;
+            }
+        }
+      g_match_info_free (mi);
+      /* On from the character after where it started: a later start may
+       * still end in range, or be the last one there. */
+      pos = (gsize) ms < c.len ? (gsize) (g_utf8_next_char (c.str + ms) - c.str) : c.len + 1;
+    }
+  clean_free (&c);
+  return found;
+}
+
+gboolean
+w42_search_check (const char             *needle,
+                  const W42SearchOptions *options,
+                  GError                **error)
+{
+  GRegex *re;
+
+  g_return_val_if_fail (options != NULL, FALSE);
+
+  if (needle == NULL || needle_is_empty (needle))
+    return FALSE;
+  if (!options->regex)
+    return TRUE;
+  re = compile_regex (needle, options, error);
+  if (re == NULL)
+    return FALSE;
+  g_regex_unref (re);
+  return TRUE;
+}
+
 /* Searches one paragraph between two byte offsets.  Returns the byte offsets
- * of the hit, or FALSE. */
+ * of the hit, or FALSE.  `re` is the needle compiled, when it is a regular
+ * expression. */
 static gboolean
 search_block (const W42Block         *block,
               gsize                   from_byte,
               gsize                   to_byte,
               const char             *needle,
+              GRegex                 *re,
               const W42SearchOptions *options,
               gsize                  *hit_start,
               gsize                  *hit_end)
@@ -123,6 +319,9 @@ search_block (const W42Block         *block,
   const char *p;
   gboolean found = FALSE;
 
+  if (re != NULL)
+    return regex_search_block (block, from_byte, to_byte, re, options, FALSE, NULL, NULL,
+                               hit_start, hit_end);
   if (from_byte > block->text->len)
     return FALSE;
 
@@ -198,9 +397,94 @@ w42_search_is_match (const char             *text,
   if (text == NULL || needle == NULL || needle_is_empty (needle))
     return FALSE;
 
+  if (options->regex)
+    {
+      /* The whole of it, one match. */
+      GRegex *re = compile_regex (needle, options, NULL);
+      GMatchInfo *mi = NULL;
+      gboolean all = FALSE;
+
+      if (re == NULL)
+        return FALSE;
+      if (g_regex_match_full (re, text, -1, 0, G_REGEX_MATCH_ANCHORED, &mi, NULL))
+        {
+          gint ms = 0, me = 0;
+
+          g_match_info_fetch_pos (mi, 0, &ms, &me);
+          all = me > ms && (gsize) me == strlen (text);
+        }
+      g_match_info_free (mi);
+      g_regex_unref (re);
+      return all;
+    }
+
   text = skip_soft_hyphens (text);
   return match_at (text, needle, options->match_case, &end) &&
          *skip_soft_hyphens (end) == '\0';
+}
+
+char *
+w42_search_replacement_at (W42PieceTable          *pt,
+                           gsize                   start,
+                           gsize                   end,
+                           const char             *needle,
+                           const char             *replacement,
+                           const W42SearchOptions *options)
+{
+  W42SearchOptions forward;
+  GPtrArray *blocks;
+  GRegex *re;
+  char *expanded = NULL;
+
+  g_return_val_if_fail (pt != NULL, NULL);
+  g_return_val_if_fail (options != NULL, NULL);
+
+  if (needle == NULL || needle_is_empty (needle) || end <= start)
+    return NULL;
+  if (replacement == NULL)
+    replacement = "";
+
+  if (!options->regex)
+    {
+      char *text = w42_pt_get_text (pt, start, end - start);
+      gboolean ok = w42_search_is_match (text, needle, options);
+
+      g_free (text);
+      return ok ? g_strdup (replacement) : NULL;
+    }
+
+  re = compile_regex (needle, options, NULL);
+  if (re == NULL)
+    return NULL;
+  forward = *options;
+  forward.backwards = FALSE;
+
+  /* Run over the paragraph from the start, so that what comes before --
+   * a \b, a look behind -- is seen as the search saw it. */
+  blocks = w42_pt_snapshot_blocks (pt);
+  for (guint b = 0; b < blocks->len; b++)
+    {
+      const W42Block *block = g_ptr_array_index (blocks, b);
+      gsize first = block->start_pos + 1;
+      gsize n_chars;
+      gsize from, to, hs = 0, he = 0;
+
+      if (start < first)
+        break;
+      n_chars = (gsize) g_utf8_strlen (block->text->str, (gssize) block->text->len);
+      if (end > first + n_chars)
+        continue;
+      from = block_pos_to_byte (block, start);
+      to = block_pos_to_byte (block, end);
+      if (!regex_search_block (block, from, to, re, &forward, FALSE, replacement, &expanded,
+                               &hs, &he) ||
+          hs != from || he != to)
+        g_clear_pointer (&expanded, g_free);
+      break;
+    }
+  g_ptr_array_free (blocks, TRUE);
+  g_regex_unref (re);
+  return expanded;
 }
 
 gboolean
@@ -212,6 +496,7 @@ w42_search_find (W42PieceTable          *pt,
                  gsize                  *match_end)
 {
   GPtrArray *blocks;
+  GRegex *re = NULL;
   int start_block = 0;
   gboolean found = FALSE;
 
@@ -220,11 +505,14 @@ w42_search_find (W42PieceTable          *pt,
 
   if (needle == NULL || needle_is_empty (needle))
     return FALSE;
+  if (options->regex && (re = compile_regex (needle, options, NULL)) == NULL)
+    return FALSE;
 
   blocks = w42_pt_snapshot_blocks (pt);
   if (blocks->len == 0)
     {
       g_ptr_array_free (blocks, TRUE);
+      g_clear_pointer (&re, g_regex_unref);
       return FALSE;
     }
 
@@ -282,7 +570,7 @@ w42_search_find (W42PieceTable          *pt,
             }
 
           if (lo <= hi &&
-              search_block (block, lo, hi, needle, options, &hs, &he))
+              search_block (block, lo, hi, needle, re, options, &hs, &he))
             {
               *match_start = block_byte_to_pos (block, hs);
               *match_end   = block_byte_to_pos (block, he);
@@ -296,6 +584,7 @@ w42_search_find (W42PieceTable          *pt,
     }
 
   g_ptr_array_free (blocks, TRUE);
+  g_clear_pointer (&re, g_regex_unref);
   return found;
 }
 
@@ -308,6 +597,9 @@ w42_search_replace_all (W42PieceTable          *pt,
   W42SearchOptions sweep;
   GPtrArray *blocks;
   GArray *hits;                     /* gsize pairs: start, end */
+  GPtrArray *withs = NULL;          /* char*: each hit's replacement, for a
+                                     * regular expression */
+  GRegex *re = NULL;
   gsize count = 0;
 
   g_return_val_if_fail (pt != NULL, 0);
@@ -318,6 +610,13 @@ w42_search_replace_all (W42PieceTable          *pt,
 
   if (replacement == NULL)
     replacement = "";
+  if (options->regex)
+    {
+      re = compile_regex (needle, options, NULL);
+      if (re == NULL)
+        return 0;
+      withs = g_ptr_array_new_with_free_func (g_free);
+    }
 
   sweep = *options;
   sweep.backwards = FALSE;
@@ -334,8 +633,46 @@ w42_search_replace_all (W42PieceTable          *pt,
       const W42Block *block = g_ptr_array_index (blocks, b);
       gsize from = 0, hs = 0, he = 0;
 
+      if (re != NULL)
+        {
+          /* A match of nothing replaces too -- ^ puts something before
+           * every paragraph -- but not one just where the last match
+           * ended, which would put it in twice. */
+          gsize last_end = (gsize) -1;
+          char *with = NULL;
+
+          while (from <= block->text->len &&
+                 regex_search_block (block, from, block->text->len, re, &sweep, TRUE,
+                                     replacement, &with, &hs, &he))
+            {
+              gsize at, to;
+
+              if (he == hs && hs == last_end)
+                {
+                  if (hs >= block->text->len)
+                    break;
+                  from = (gsize) (g_utf8_next_char (block->text->str + hs) - block->text->str);
+                  continue;
+                }
+              at = block_byte_to_pos (block, hs);
+              to = block_byte_to_pos (block, he);
+              g_array_append_val (hits, at);
+              g_array_append_val (hits, to);
+              g_ptr_array_add (withs, with);
+              with = NULL;
+              last_end = he;
+              if (he > hs)
+                from = he;
+              else if (hs >= block->text->len)
+                break;
+              else
+                from = (gsize) (g_utf8_next_char (block->text->str + hs) - block->text->str);
+            }
+          g_free (with);
+          continue;
+        }
       while (from < block->text->len &&
-             search_block (block, from, block->text->len, needle, &sweep, &hs, &he))
+             search_block (block, from, block->text->len, needle, NULL, &sweep, &hs, &he))
         {
           gsize at = block_byte_to_pos (block, hs), to = block_byte_to_pos (block, he);
 
@@ -351,16 +688,23 @@ w42_search_replace_all (W42PieceTable          *pt,
     {
       gsize start = g_array_index (hits, gsize, i - 2);
       gsize end = g_array_index (hits, gsize, i - 1);
-      /* The formatting of the text being replaced. */
-      W42ApIdx ap = w42_pt_ap_at (pt, start + 1);
+      const char *with = withs != NULL ? g_ptr_array_index (withs, i / 2 - 1) : replacement;
+      /* The formatting of the text being replaced: of the character
+       * before, for a match of nothing. */
+      W42ApIdx ap = w42_pt_ap_at (pt, end > start ? start + 1 : start);
 
-      w42_pt_delete (pt, start, end - start);
-      if (*replacement != '\0')
-        w42_pt_insert_text (pt, start, replacement, ap);
-      count++;
+      if (end > start)
+        w42_pt_delete (pt, start, end - start);
+      if (*with != '\0')
+        w42_pt_insert_text (pt, start, with, ap);
+      if (end > start || *with != '\0')
+        count++;
     }
   w42_pt_end_group (pt);
   g_array_free (hits, TRUE);
+  if (withs != NULL)
+    g_ptr_array_free (withs, TRUE);
+  g_clear_pointer (&re, g_regex_unref);
 
   return count;
 }

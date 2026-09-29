@@ -20,7 +20,7 @@ yardstick.
 | Cut/copy/paste | rich (RTF, HTML and text out; RTF, pictures and text in) | rich | rich (RTF/HTML/images) |
 | Spike (cut several things, paste them together) | no | yes | no |
 | Drag-and-drop text | yes (move; Ctrl copies; one undo step) | yes | yes |
-| Find/Replace (case, whole word, wrap, replace all) | full | full + formats and wildcards | full + regex |
+| Find/Replace (case, whole word, wrap, replace all, regular expressions with groups in the replacement) | full | full + formats and wildcards | full + regex |
 | Go To (page, line, bookmark) | full | full | full |
 | Change Case | full | full | full |
 | Spelling as you type + dialog (Enchant) | full, and only the script the dictionary is for | full | full |

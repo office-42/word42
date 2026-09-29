@@ -12,6 +12,12 @@
   .doc and .docx, OpenDocument, RTF, HTML and AbiWord files keep them both
   ways; LaTeX sets them as tabulars in the cell, and WordPerfect, which
   has none, gets their text as the cell's paragraphs.
+- **Regular expressions in Find and Replace.** Use Regular Expressions
+  looks for a pattern -- `\d+`, `colou?r`, `^Chapter \w+` -- within a
+  paragraph, and in the replacement `\0` puts back what was found and
+  `\1` to `\9` what the pattern's groups matched, so `(\w+), (\w+)`
+  replaced with `\2 \1` turns "Twain, Mark" into "Mark Twain". A pattern
+  that is not one says what is wrong with it.
 
 ## 1.0.8
 

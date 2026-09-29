@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: word42\n"
 "Report-Msgid-Bugs-To: https://github.com/office-42/word42/issues\n"
-"POT-Creation-Date: 2026-09-27 21:32+0000\n"
+"POT-Creation-Date: 2026-09-29 11:59+0000\n"
 "PO-Revision-Date: 2026-09-25 12:00+0000\n"
 "Last-Translator: Word42 translators\n"
 "Language-Team: Chinese (Simplified)\n"
@@ -47,12 +47,12 @@ msgstr "打开(_O)..."
 msgid "_Close"
 msgstr "关闭(_C)"
 
-#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6930 src/ui/w42-window.c:1725
-#: src/ui/w42-window.c:1937
+#: data/ui/menus.ui:31 src/ui/w42-dialogs.c:6930 src/ui/w42-window.c:1712
+#: src/ui/w42-window.c:1924
 msgid "_Save"
 msgstr "保存(_S)"
 
-#: data/ui/menus.ui:35 src/ui/w42-window.c:1725
+#: data/ui/menus.ui:35 src/ui/w42-window.c:1712
 msgid "Save _As..."
 msgstr "另存为(_A)..."
 
@@ -60,7 +60,7 @@ msgstr "另存为(_A)..."
 msgid "Save as Temp_late..."
 msgstr "另存为模板(_L)..."
 
-#: data/ui/menus.ui:43 src/ui/w42-window.c:1387
+#: data/ui/menus.ui:43 src/ui/w42-window.c:1374
 msgid "_Revert"
 msgstr "还原(_R)"
 
@@ -140,7 +140,7 @@ msgstr "恢复(_D)"
 msgid "_Repeat"
 msgstr "重复(_R)"
 
-#: data/ui/menus.ui:133 src/ui/w42-view.c:6041
+#: data/ui/menus.ui:133 src/ui/w42-view.c:6082
 msgid "Cu_t"
 msgstr "剪切(_T)"
 
@@ -324,7 +324,7 @@ msgstr "转到注释(_G)"
 msgid "Boo_kmark..."
 msgstr "书签(_K)..."
 
-#: data/ui/menus.ui:343 src/ui/w42-view.c:6050
+#: data/ui/menus.ui:343 src/ui/w42-view.c:6091
 msgid "_Hyperlink..."
 msgstr "超链接(_H)..."
 
@@ -388,11 +388,11 @@ msgstr "文件(_F)..."
 msgid "F_ormat"
 msgstr "格式(_O)"
 
-#: data/ui/menus.ui:415 src/ui/w42-view.c:6047
+#: data/ui/menus.ui:415 src/ui/w42-view.c:6088
 msgid "_Font..."
 msgstr "字体(_F)..."
 
-#: data/ui/menus.ui:419 src/ui/w42-view.c:6048
+#: data/ui/menus.ui:419 src/ui/w42-view.c:6089
 msgid "P_aragraph..."
 msgstr "段落(_A)..."
 
@@ -759,20 +759,20 @@ msgid "_About Word42"
 msgstr "关于 Word42(_A)"
 
 #. Translators: %s says what the fault is.
-#: src/io/w42-abw.c:1640
+#: src/io/w42-abw.c:1679
 #, c-format
 msgid "The compressed AbiWord file is damaged: %s"
 msgstr "压缩的 AbiWord 文件已损坏：%s"
 
-#: src/io/w42-abw.c:1648
+#: src/io/w42-abw.c:1687
 msgid "The compressed AbiWord file unpacks to more than 256 MB."
 msgstr "压缩的 AbiWord 文件解压后超过 256 MB。"
 
-#: src/io/w42-abw.c:1665
+#: src/io/w42-abw.c:1704
 msgid "The compressed AbiWord file is cut short."
 msgstr "压缩的 AbiWord 文件不完整。"
 
-#: src/io/w42-abw.c:2959
+#: src/io/w42-abw.c:3063
 msgid "The document could not be compressed."
 msgstr "无法压缩该文档。"
 
@@ -820,42 +820,42 @@ msgstr "OLE 迷你流 %s 已损坏"
 msgid "The document has no %s stream."
 msgstr "文档中没有 %s 流。"
 
-#: src/io/w42-doc.c:538
+#: src/io/w42-doc.c:542
 msgid "The document has no piece table."
 msgstr "文档中没有片段表。"
 
-#: src/io/w42-doc.c:546 src/io/w42-doc.c:550 src/io/w42-doc.c:555
+#: src/io/w42-doc.c:550 src/io/w42-doc.c:554 src/io/w42-doc.c:559
 msgid "Piece table is damaged"
 msgstr "片段表已损坏"
 
-#: src/io/w42-doc.c:602
+#: src/io/w42-doc.c:606
 msgid "The document has no text pieces."
 msgstr "文档中没有文本片段。"
 
-#: src/io/w42-doc.c:3792
+#: src/io/w42-doc.c:3932
 msgid "The document's text is out of reach."
 msgstr "无法读取文档的文本。"
 
 #. Translators: WordDocument is the name of the part of
 #. * a Word 97 file that holds its text; keep it as it is.
-#: src/io/w42-doc.c:3854
+#: src/io/w42-doc.c:3994
 #, c-format
 msgid "The WordDocument stream is too short to be one."
 msgstr "WordDocument 流太短，不是有效的 WordDocument 流。"
 
-#: src/io/w42-doc.c:3864
+#: src/io/w42-doc.c:4004
 #, c-format
 msgid "This is not a Word document."
 msgstr "这不是 Word 文档。"
 
-#: src/io/w42-doc.c:3876
+#: src/io/w42-doc.c:4016
 #, c-format
 msgid "The document is encrypted, and Word42 cannot open encrypted documents."
 msgstr "该文档已加密，Word42 无法打开加密的文档。"
 
 #. Translators: word/document.xml is the name of a file
 #. * inside a .docx; keep it as it is.
-#: src/io/w42-docx.c:4076
+#: src/io/w42-docx.c:4208
 #, c-format
 msgid "The file is not a Word document: it has no word/document.xml."
 msgstr "该文件不是 Word 文档：其中没有 word/document.xml。"
@@ -904,14 +904,14 @@ msgstr "文档所在的文件夹不在 Git 仓库中。"
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
-#: src/io/w42-htmlin.c:3608
+#: src/io/w42-htmlin.c:3719
 #, c-format
 msgid "The page nests its elements too deeply to be a document."
 msgstr "该网页的元素嵌套过深，无法作为文档打开。"
 
 #. Translators: "the page" is the web page (HTML file)
 #. * being opened.
-#: src/io/w42-htmlin.c:3622
+#: src/io/w42-htmlin.c:3733
 #, c-format
 msgid "The page could not be parsed."
 msgstr "无法解析该网页。"
@@ -943,7 +943,7 @@ msgstr "无法创建临时文件。"
 
 #. Translators: content.xml is the name of a file inside
 #. * an .odt; keep it as it is.
-#: src/io/w42-odt.c:2710
+#: src/io/w42-odt.c:2823
 #, c-format
 msgid "The file is not an OpenDocument text: it has no content.xml."
 msgstr "该文件不是 OpenDocument 文本：其中没有 content.xml。"
@@ -1066,7 +1066,7 @@ msgstr "幻灯片"
 msgid "That file is not a presentation: it has no ppt/presentation.xml."
 msgstr "该文件不是演示文稿：其中没有 ppt/presentation.xml。"
 
-#: src/io/w42-rtf.c:3964
+#: src/io/w42-rtf.c:4397
 #, c-format
 msgid "That file does not begin like an RTF document."
 msgstr "该文件的开头不像 RTF 文档。"
@@ -1082,7 +1082,7 @@ msgid "The zip file is cut short."
 msgstr "zip 文件不完整。"
 
 #. Translators: %d is a line of the macro, %s what is wrong with it.
-#: src/macro/w42-vba.c:276 src/ui/w42-macro.c:2791
+#: src/macro/w42-vba.c:276 src/ui/w42-macro.c:2794
 #, c-format
 msgid "Line %d: %s"
 msgstr "第 %d 行：%s"
@@ -1742,7 +1742,7 @@ msgstr "default:LTR"
 
 #: src/ui/w42-dialogs.c:264 src/ui/w42-dialogs.c:318 src/ui/w42-dialogs.c:1264
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:402 src/ui/w42-versions.c:610
-#: src/ui/w42-window.c:1106 src/ui/w42-window.c:1141 src/ui/w42-window.c:4433
+#: src/ui/w42-window.c:1093 src/ui/w42-window.c:1128 src/ui/w42-window.c:4420
 msgid "_OK"
 msgstr "确定(_O)"
 
@@ -1750,9 +1750,9 @@ msgstr "确定(_O)"
 #: src/ui/w42-macro.c:367 src/ui/w42-macro.c:369 src/ui/w42-macro.c:370
 #: src/ui/w42-macro.c:402 src/ui/w42-print.c:379 src/ui/w42-print.c:883
 #: src/ui/w42-thesaurus-dialog.c:360 src/ui/w42-versions.c:409
-#: src/ui/w42-versions.c:611 src/ui/w42-view.c:1273 src/ui/w42-window.c:1106
-#: src/ui/w42-window.c:1141 src/ui/w42-window.c:1387 src/ui/w42-window.c:1569
-#: src/ui/w42-window.c:1725 src/ui/w42-window.c:1937
+#: src/ui/w42-versions.c:611 src/ui/w42-view.c:1273 src/ui/w42-window.c:1093
+#: src/ui/w42-window.c:1128 src/ui/w42-window.c:1374 src/ui/w42-window.c:1556
+#: src/ui/w42-window.c:1712 src/ui/w42-window.c:1924
 msgid "Cancel"
 msgstr "取消"
 
@@ -2009,7 +2009,7 @@ msgstr "字符样式(仅应用于所选文本)(_C)"
 msgid "Based on %s."
 msgstr "基于 %s。"
 
-#: src/ui/w42-dialogs.c:1154 src/ui/w42-window.c:5164
+#: src/ui/w42-dialogs.c:1154 src/ui/w42-window.c:5020
 msgid "Style"
 msgstr "样式"
 
@@ -2101,7 +2101,7 @@ msgid "Save the definition and apply the style to the selected paragraphs."
 msgstr "保存定义，并将该样式应用于所选段落。"
 
 #. Translators: the tooltip of the button that centres the paragraph.
-#: src/ui/w42-dialogs.c:1303 src/ui/w42-window.c:5153
+#: src/ui/w42-dialogs.c:1303 src/ui/w42-window.c:5009
 msgctxt "alignment"
 msgid "Center"
 msgstr "居中"
@@ -2177,7 +2177,7 @@ msgstr "位置"
 msgid "_Position:"
 msgstr "位置(_P):"
 
-#: src/ui/w42-dialogs.c:1588 src/ui/w42-window.c:5243
+#: src/ui/w42-dialogs.c:1588 src/ui/w42-window.c:5099
 msgid "Numbering"
 msgstr "编号"
 
@@ -2332,9 +2332,8 @@ msgstr "符号"
 
 #: src/ui/w42-dialogs.c:2076 src/ui/w42-dialogs.c:3190
 #: src/ui/w42-dialogs.c:3675 src/ui/w42-dialogs.c:4065
-#: src/ui/w42-dialogs.c:7256 src/ui/w42-find-dialog.c:316
+#: src/ui/w42-dialogs.c:7256 src/ui/w42-find-dialog.c:362
 #: src/ui/w42-spell-dialog.c:401 src/ui/w42-versions.c:800
-#: src/ui/w42-window.c:4570
 msgid "Close"
 msgstr "关闭"
 
@@ -2359,7 +2358,7 @@ msgstr ""
 "直引号替换为弯引号，更正单词开头的两个连续大写字母，句首字母大写，两个连字符"
 "替换为破折号，并更正下列单词。"
 
-#: src/ui/w42-dialogs.c:2137 src/ui/w42-find-dialog.c:240
+#: src/ui/w42-dialogs.c:2137 src/ui/w42-find-dialog.c:276
 msgid "Replace"
 msgstr "替换"
 
@@ -2473,7 +2472,7 @@ msgid "Annotations and revisions carry this name in the files you save."
 msgstr "在您保存的文件中，批注和修订将带有此姓名。"
 
 #: src/ui/w42-dialogs.c:2499 src/ui/w42-spell-dialog.c:319
-#: src/ui/w42-window.c:4693
+#: src/ui/w42-window.c:4549
 msgid "Spelling"
 msgstr "拼写"
 
@@ -2515,108 +2514,108 @@ msgstr "分钟"
 
 #: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
 #: src/ui/w42-dialogs.c:3239 src/ui/w42-dialogs.c:4173
-#: src/ui/w42-dialogs.c:5255 src/ui/w42-window.c:4898
+#: src/ui/w42-dialogs.c:5255 src/ui/w42-window.c:4754
 msgctxt "colour"
 msgid "Black"
 msgstr "黑色"
 
 #: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
 #: src/ui/w42-dialogs.c:3229 src/ui/w42-dialogs.c:3239
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4898
-#: src/ui/w42-window.c:4911
+#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4754
+#: src/ui/w42-window.c:4767
 msgctxt "colour"
 msgid "Blue"
 msgstr "蓝色"
 
 #: src/ui/w42-dialogs.c:2570 src/ui/w42-dialogs.c:2585
-#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4898
+#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4754
 msgctxt "colour"
 msgid "Cyan"
 msgstr "青色"
 
 #: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
 #: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3240
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4899
-#: src/ui/w42-window.c:4912
+#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4755
+#: src/ui/w42-window.c:4768
 msgctxt "colour"
 msgid "Green"
 msgstr "绿色"
 
 #: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
-#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4899
+#: src/ui/w42-dialogs.c:3240 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4755
 msgctxt "colour"
 msgid "Magenta"
 msgstr "洋红"
 
 #: src/ui/w42-dialogs.c:2571 src/ui/w42-dialogs.c:2586
 #: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3241
-#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4899
-#: src/ui/w42-window.c:4911
+#: src/ui/w42-dialogs.c:4174 src/ui/w42-dialogs.c:5252 src/ui/w42-window.c:4755
+#: src/ui/w42-window.c:4767
 msgctxt "colour"
 msgid "Red"
 msgstr "红色"
 
 #: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
 #: src/ui/w42-dialogs.c:3228 src/ui/w42-dialogs.c:3241
-#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4900
-#: src/ui/w42-window.c:4910
+#: src/ui/w42-dialogs.c:4175 src/ui/w42-dialogs.c:5251 src/ui/w42-window.c:4756
+#: src/ui/w42-window.c:4766
 msgctxt "colour"
 msgid "Yellow"
 msgstr "黄色"
 
 #: src/ui/w42-dialogs.c:2572 src/ui/w42-dialogs.c:2587
-#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:4173 src/ui/w42-window.c:4900
+#: src/ui/w42-dialogs.c:3241 src/ui/w42-dialogs.c:4173 src/ui/w42-window.c:4756
 msgctxt "colour"
 msgid "White"
 msgstr "白色"
 
 #: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
 #: src/ui/w42-dialogs.c:3230 src/ui/w42-dialogs.c:3242
-#: src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4900 src/ui/w42-window.c:4912
+#: src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4756 src/ui/w42-window.c:4768
 msgctxt "colour"
 msgid "Dark Blue"
 msgstr "深蓝"
 
 #: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4901
+#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4757
 msgctxt "colour"
 msgid "Dark Cyan"
 msgstr "深青"
 
 #: src/ui/w42-dialogs.c:2573 src/ui/w42-dialogs.c:2588
-#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4901
+#: src/ui/w42-dialogs.c:3242 src/ui/w42-dialogs.c:5253 src/ui/w42-window.c:4757
 msgctxt "colour"
 msgid "Dark Green"
 msgstr "深绿"
 
 #: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
-#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4901
+#: src/ui/w42-dialogs.c:3243 src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4757
 msgctxt "colour"
 msgid "Dark Magenta"
 msgstr "深洋红"
 
 #: src/ui/w42-dialogs.c:2574 src/ui/w42-dialogs.c:2589
 #: src/ui/w42-dialogs.c:3231 src/ui/w42-dialogs.c:3243
-#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4902 src/ui/w42-window.c:4913
+#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4758 src/ui/w42-window.c:4769
 msgctxt "colour"
 msgid "Dark Red"
 msgstr "深红"
 
 #: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
 #: src/ui/w42-dialogs.c:3232 src/ui/w42-dialogs.c:3243
-#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4902 src/ui/w42-window.c:4913
+#: src/ui/w42-dialogs.c:5254 src/ui/w42-window.c:4758 src/ui/w42-window.c:4769
 msgctxt "colour"
 msgid "Dark Yellow"
 msgstr "深黄"
 
 #: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4902
+#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4758
 msgctxt "colour"
 msgid "Dark Gray"
 msgstr "深灰"
 
 #: src/ui/w42-dialogs.c:2575 src/ui/w42-dialogs.c:2590
-#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4903
+#: src/ui/w42-dialogs.c:3244 src/ui/w42-dialogs.c:5250 src/ui/w42-window.c:4759
 msgctxt "colour"
 msgid "Light Gray"
 msgstr "浅灰"
@@ -2624,7 +2623,7 @@ msgstr "浅灰"
 #. Translators: no colour.
 #. Translators: no highlight colour.
 #. Translators: no highlight colour, and the automatic text colour.
-#: src/ui/w42-dialogs.c:2584 src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:5105
+#: src/ui/w42-dialogs.c:2584 src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4961
 msgctxt "colour"
 msgid "None"
 msgstr "无"
@@ -2896,43 +2895,43 @@ msgctxt "underline"
 msgid "Wave"
 msgstr "波浪线"
 
-#: src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4910
+#: src/ui/w42-dialogs.c:3228 src/ui/w42-window.c:4766
 msgctxt "colour"
 msgid "Bright Green"
 msgstr "鲜绿"
 
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4910
+#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4766
 msgctxt "colour"
 msgid "Turquoise"
 msgstr "青绿"
 
-#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4911
+#: src/ui/w42-dialogs.c:3229 src/ui/w42-window.c:4767
 msgctxt "colour"
 msgid "Pink"
 msgstr "粉红"
 
-#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4912
+#: src/ui/w42-dialogs.c:3230 src/ui/w42-window.c:4768
 msgctxt "colour"
 msgid "Teal"
 msgstr "蓝绿"
 
-#: src/ui/w42-dialogs.c:3231 src/ui/w42-window.c:4913
+#: src/ui/w42-dialogs.c:3231 src/ui/w42-window.c:4769
 msgctxt "colour"
 msgid "Violet"
 msgstr "紫罗兰"
 
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4914
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4770
 msgctxt "colour"
 msgid "Gray 50%"
 msgstr "灰色-50%"
 
-#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4914
+#: src/ui/w42-dialogs.c:3232 src/ui/w42-window.c:4770
 msgctxt "colour"
 msgid "Gray 25%"
 msgstr "灰色-25%"
 
 #. Translators: the automatic text colour, which is black.
-#: src/ui/w42-dialogs.c:3239 src/ui/w42-window.c:5105
+#: src/ui/w42-dialogs.c:3239 src/ui/w42-window.c:4961
 msgctxt "colour"
 msgid "Auto"
 msgstr "自动"
@@ -2989,7 +2988,7 @@ msgstr "阳文(_B)"
 msgid "En_grave"
 msgstr "阴文(_G)"
 
-#: src/ui/w42-dialogs.c:3360 src/ui/w42-window.c:5216
+#: src/ui/w42-dialogs.c:3360 src/ui/w42-window.c:5072
 msgid "Underline"
 msgstr "下划线"
 
@@ -2997,7 +2996,7 @@ msgstr "下划线"
 msgid "_Underline:"
 msgstr "下划线线型(_U):"
 
-#: src/ui/w42-dialogs.c:3364 src/ui/w42-window.c:5079
+#: src/ui/w42-dialogs.c:3364 src/ui/w42-window.c:4935
 msgid "Highlight"
 msgstr "突出显示"
 
@@ -3148,7 +3147,7 @@ msgstr "Word42 无法打开合并后的文档。"
 msgid "The data source has no records."
 msgstr "数据源中没有记录。"
 
-#: src/ui/w42-dialogs.c:3983 src/ui/w42-window.c:350
+#: src/ui/w42-dialogs.c:3983 src/ui/w42-window.c:337
 msgid "Rich Text Format (*.rtf)"
 msgstr "RTF 格式 (*.rtf)"
 
@@ -4229,61 +4228,81 @@ msgstr[0] ""
 "%s\n"
 "%s 字"
 
-#: src/ui/w42-find-dialog.c:90 src/ui/w42-find-dialog.c:133
-#: src/ui/w42-find-dialog.c:179
+#: src/ui/w42-find-dialog.c:70 src/ui/w42-find-dialog.c:117
+#: src/ui/w42-find-dialog.c:163 src/ui/w42-find-dialog.c:213
 msgid "Type what to look for."
 msgstr "请键入要查找的内容。"
 
-#: src/ui/w42-find-dialog.c:100
+#. Translators: the %s is GLib's own account of what is wrong with it,
+#. * which comes in English.
+#: src/ui/w42-find-dialog.c:75
+#, c-format
+msgid "That is not a regular expression: %s"
+msgstr "这不是正则表达式：%s"
+
+#: src/ui/w42-find-dialog.c:129
 msgid ""
 "Word42 has finished searching the document. The search item was not found."
 msgstr "Word42 已完成对文档的搜索，未找到搜索项。"
 
-#: src/ui/w42-find-dialog.c:194
+#: src/ui/w42-find-dialog.c:230
 #, c-format
 msgid "%lu replacement made."
 msgid_plural "%lu replacements made."
 msgstr[0] "已完成 %lu 处替换。"
 
-#: src/ui/w42-find-dialog.c:198
+#: src/ui/w42-find-dialog.c:234
 msgid "The search item was not found."
 msgstr "未找到搜索项。"
 
-#: src/ui/w42-find-dialog.c:240 src/ui/w42-find-dialog.c:271
-#: src/ui/w42-window.c:4705
+#: src/ui/w42-find-dialog.c:276 src/ui/w42-find-dialog.c:307
+#: src/ui/w42-window.c:4561
 msgid "Find"
 msgstr "查找"
 
-#: src/ui/w42-find-dialog.c:289
+#: src/ui/w42-find-dialog.c:325
 msgid "Fi_nd What:"
 msgstr "查找内容(_N):"
 
-#: src/ui/w42-find-dialog.c:292
+#: src/ui/w42-find-dialog.c:328
 msgid "Re_place With:"
 msgstr "替换为(_P):"
 
-#: src/ui/w42-find-dialog.c:296
+#: src/ui/w42-find-dialog.c:334
 msgid "Match _Case"
 msgstr "区分大小写(_C)"
 
-#: src/ui/w42-find-dialog.c:297
+#: src/ui/w42-find-dialog.c:335
 msgid "Find _Whole Words Only"
 msgstr "全字匹配(_W)"
 
-#: src/ui/w42-find-dialog.c:298
+#: src/ui/w42-find-dialog.c:336
 msgid "Search _Up"
 msgstr "向上搜索(_U)"
 
-#: src/ui/w42-find-dialog.c:315
+#: src/ui/w42-find-dialog.c:339
+msgid "Use Regular E_xpressions"
+msgstr "使用正则表达式(_X)"
+
+#: src/ui/w42-find-dialog.c:341
+msgid ""
+"Find what matches a pattern: . any character, \\d a digit, \\w a letter, * "
+"+ ? to repeat, ( ) to group. In the replacement, \\0 is what was found and "
+"\\1 to \\9 its groups."
+msgstr ""
+"查找与模式匹配的内容：. 任意字符，\\d 数字，\\w 字母，* + ? 表示重复，( ) 表"
+"示分组。在替换内容中，\\0 是找到的内容，\\1 到 \\9 是其分组。"
+
+#: src/ui/w42-find-dialog.c:361
 msgid "_Find Next"
 msgstr "查找下一处(_F)"
 
-#: src/ui/w42-find-dialog.c:318 src/ui/w42-thesaurus-dialog.c:358
-#: src/ui/w42-window.c:1569
+#: src/ui/w42-find-dialog.c:364 src/ui/w42-thesaurus-dialog.c:358
+#: src/ui/w42-window.c:1556
 msgid "_Replace"
 msgstr "替换(_R)"
 
-#: src/ui/w42-find-dialog.c:319
+#: src/ui/w42-find-dialog.c:365
 msgid "Replace _All"
 msgstr "全部替换(_A)"
 
@@ -4428,7 +4447,7 @@ msgid "The LaTeX source they were set from"
 msgstr "排版这些页面所用的 LaTeX 源代码"
 
 #: src/ui/w42-latex-preview.c:791 src/ui/w42-view.c:1273
-#: src/ui/w42-window.c:1424 src/ui/w42-window.c:4688
+#: src/ui/w42-window.c:1411 src/ui/w42-window.c:4544
 msgid "Open"
 msgstr "打开"
 
@@ -4530,7 +4549,7 @@ msgstr "是(_Y)"
 msgid "_No"
 msgstr "否(_N)"
 
-#: src/ui/w42-macro.c:393 src/ui/w42-macro.c:417 src/ui/w42-macro.c:2687
+#: src/ui/w42-macro.c:393 src/ui/w42-macro.c:417 src/ui/w42-macro.c:2690
 msgid "The document was closed while the macro ran"
 msgstr "宏运行期间文档已被关闭"
 
@@ -4565,71 +4584,71 @@ msgstr "没有名为 %s 的样式"
 
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2113
+#: src/ui/w42-macro.c:2114
 msgid "The document has never been saved: use ActiveDocument.SaveAs \"name\""
 msgstr "文档从未保存过：请使用 ActiveDocument.SaveAs \"文件名\""
 
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2120
+#: src/ui/w42-macro.c:2121
 msgid ""
 "The document came from a format Word42 does not write back as it was: use "
 "ActiveDocument.SaveAs \"name\""
 msgstr ""
 "文档来自 Word42 无法按原样写回的格式：请使用 ActiveDocument.SaveAs \"文件名\""
 
-#: src/ui/w42-macro.c:2124 src/ui/w42-macro.c:2178 src/ui/w42-macro.c:2226
+#: src/ui/w42-macro.c:2125 src/ui/w42-macro.c:2179 src/ui/w42-macro.c:2227
 msgid "The document could not be saved"
 msgstr "无法保存文档"
 
 #. Translators: "SaveAs" is a name in the macro language: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2153
+#: src/ui/w42-macro.c:2154
 msgid "SaveAs needs a file name"
 msgstr "SaveAs 需要文件名"
 
 #. Translators: ActiveDocument.SaveAs is macro code: keep it in
 #. * English.
-#: src/ui/w42-macro.c:2222
+#: src/ui/w42-macro.c:2223
 msgid ""
 "The document has no file to be saved to: use ActiveDocument.SaveAs \"name\" "
 "first"
 msgstr "文档没有可保存到的文件：请先使用 ActiveDocument.SaveAs \"文件名\""
 
-#: src/ui/w42-macro.c:2449
+#: src/ui/w42-macro.c:2452
 msgid "A new document could not be made"
 msgstr "无法创建新文档"
 
 #. Translators: "Open" is Documents.Open, a name in the macro
 #. * language: keep it in English.
-#: src/ui/w42-macro.c:2486
+#: src/ui/w42-macro.c:2489
 msgid "Open needs a file name"
 msgstr "Open 需要文件名"
 
 #. Translators: %s is a file name.
-#: src/ui/w42-macro.c:2493
+#: src/ui/w42-macro.c:2496
 #, c-format
 msgid "There is no file %s"
 msgstr "文件 %s 不存在"
 
-#: src/ui/w42-macro.c:2504
+#: src/ui/w42-macro.c:2507
 msgid "The file could not be opened"
 msgstr "无法打开该文件"
 
-#: src/ui/w42-macro.c:2664
+#: src/ui/w42-macro.c:2667
 msgid "Error"
 msgstr "错误"
 
-#: src/ui/w42-macro.c:2684
+#: src/ui/w42-macro.c:2687
 msgid "The macro ran too long and was stopped"
 msgstr "宏运行时间过长，已被停止"
 
-#: src/ui/w42-macro.c:2732
+#: src/ui/w42-macro.c:2735
 msgid "A macro is running already: answer its box first."
 msgstr "已有宏正在运行：请先响应其对话框。"
 
 #. Translators: %s is the macro's name.
-#: src/ui/w42-macro.c:2930
+#: src/ui/w42-macro.c:2933
 #, c-format
 msgid "The macro %s could not be deleted."
 msgstr "无法删除宏 %s。"
@@ -4660,7 +4679,7 @@ msgstr "整页"
 msgid "Two Pages"
 msgstr "双页"
 
-#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4692
+#: src/ui/w42-preview.c:562 src/ui/w42-window.c:4548
 msgid "Print Preview"
 msgstr "打印预览"
 
@@ -4712,8 +4731,8 @@ msgstr "没有可用的打印后端。"
 msgid "Word42 could not write the PDF."
 msgstr "Word42 无法写入 PDF。"
 
-#: src/ui/w42-print.c:351 src/ui/w42-print.c:687 src/ui/w42-window.c:361
-#: src/ui/w42-window.c:3192
+#: src/ui/w42-print.c:351 src/ui/w42-print.c:687 src/ui/w42-window.c:348
+#: src/ui/w42-window.c:3179
 msgid "PDF Documents (*.pdf)"
 msgstr "PDF 文档 (*.pdf)"
 
@@ -4768,7 +4787,7 @@ msgstr "奇数页"
 msgid "Even pages"
 msgstr "偶数页"
 
-#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4691
+#: src/ui/w42-print.c:754 src/ui/w42-print.c:839 src/ui/w42-window.c:4547
 msgid "Print"
 msgstr "打印"
 
@@ -5073,7 +5092,7 @@ msgstr "所有已保存的版本都会保留在列表中，保存后此版本将
 
 #. Translators: the comment kept with the first version of a document
 #. * once versions are kept of it; %s is its file name.
-#: src/ui/w42-versions.c:446 src/ui/w42-window.c:1458
+#: src/ui/w42-versions.c:446 src/ui/w42-window.c:1445
 #, c-format
 msgid "Saved %s"
 msgstr "已保存 %s"
@@ -5097,7 +5116,7 @@ msgid ""
 msgstr "保存文档时不再保存版本。已保存的版本仍会保留。"
 
 #. Translators: %s is the short id Git gives a version.
-#: src/ui/w42-versions.c:510 src/ui/w42-window.c:1472
+#: src/ui/w42-versions.c:510 src/ui/w42-window.c:1459
 #, c-format
 msgid "Saved, and kept as version %s."
 msgstr "已保存，并保存为版本 %s。"
@@ -5192,106 +5211,97 @@ msgstr "是否打开此链接？"
 
 #. Translators: the AutoComplete tip over the caret; %s is the
 #. * start of the AutoText entry or date offered, cut short.
-#: src/ui/w42-view.c:4344
+#: src/ui/w42-view.c:4372
 #, c-format
 msgid "%s…  (Press ENTER to Insert)"
 msgstr "%s…  (按 Enter 插入)"
 
 #. Translators: the AutoComplete tip over the caret; %s is the
 #. * AutoText entry or date offered.
-#: src/ui/w42-view.c:4349
+#: src/ui/w42-view.c:4377
 #, c-format
 msgid "%s  (Press ENTER to Insert)"
 msgstr "%s  (按 Enter 插入)"
 
-#: src/ui/w42-view.c:6042
+#: src/ui/w42-view.c:6083
 msgid "_Copy"
 msgstr "复制(_C)"
 
-#: src/ui/w42-view.c:6043
+#: src/ui/w42-view.c:6084
 msgid "_Paste"
 msgstr "粘贴(_P)"
 
-#: src/ui/w42-view.c:6049
+#: src/ui/w42-view.c:6090
 msgid "_Bullets and Numbering..."
 msgstr "项目符号和编号(_B)..."
 
-#: src/ui/w42-view.c:6054
+#: src/ui/w42-view.c:6095
 msgid "Table P_roperties..."
 msgstr "表格属性(_R)..."
 
 #. Translators: the window's title, "Document1 - Word42 0.9.0".  The
 #. * first %s is the document's name, the second an asterisk when it has
 #. * unsaved changes (else nothing), the third Word42's version.
-#: src/ui/w42-window.c:275
+#: src/ui/w42-window.c:274
 #, c-format
 msgid "%s%s - Word42 %s"
 msgstr "%s%s - Word42 %s"
 
-#. Translators: the title in Word42's own title bar, "Word42 0.9.0 -
-#. * Document1".  The first %s is Word42's version, the second the
-#. * document's name, the third an asterisk when it has unsaved
-#. * changes (else nothing).
-#: src/ui/w42-window.c:287
-#, c-format
-msgid "Word42 %s - %s%s"
-msgstr "Word42 %s - %s%s"
-
-#: src/ui/w42-window.c:344
+#: src/ui/w42-window.c:331
 msgid ""
 "All Documents (*.doc, *.rtf, *.docx, *.odt, *.abw, *.wpd, *.txt, *.pdf, *."
 "html)"
 msgstr ""
 "所有文档 (*.doc, *.rtf, *.docx, *.odt, *.abw, *.wpd, *.txt, *.pdf, *.html)"
 
-#: src/ui/w42-window.c:347
+#: src/ui/w42-window.c:334
 msgid ""
 "All Documents (*.rtf, *.docx, *.doc, *.odt, *.abw, *.wpd, *.txt, *.pdf, *."
 "html)"
 msgstr ""
 "所有文档 (*.rtf, *.docx, *.doc, *.odt, *.abw, *.wpd, *.txt, *.pdf, *.html)"
 
-#: src/ui/w42-window.c:349
+#: src/ui/w42-window.c:336
 msgid "Word 97 (*.doc)"
 msgstr "Word 97 文档 (*.doc)"
 
-#: src/ui/w42-window.c:351
+#: src/ui/w42-window.c:338
 msgid "Word Document (*.docx)"
 msgstr "Word 文档 (*.docx)"
 
-#: src/ui/w42-window.c:352
+#: src/ui/w42-window.c:339
 msgid "OpenDocument Text (*.odt)"
 msgstr "OpenDocument 文本 (*.odt)"
 
-#: src/ui/w42-window.c:353
+#: src/ui/w42-window.c:340
 msgid "AbiWord (*.abw, *.zabw)"
 msgstr "AbiWord 文档 (*.abw, *.zabw)"
 
-#: src/ui/w42-window.c:354
+#: src/ui/w42-window.c:341
 msgid "WordPerfect 6 (*.wpd)"
 msgstr "WordPerfect 6 文档 (*.wpd)"
 
-#: src/ui/w42-window.c:354
+#: src/ui/w42-window.c:341
 msgid "WordPerfect (*.wpd, *.wp)"
 msgstr "WordPerfect 文档 (*.wpd, *.wp)"
 
-#: src/ui/w42-window.c:356
+#: src/ui/w42-window.c:343
 msgid "LaTeX (*.tex)"
 msgstr "LaTeX 文档 (*.tex)"
 
-#: src/ui/w42-window.c:357 src/ui/w42-window.c:3019
+#: src/ui/w42-window.c:344 src/ui/w42-window.c:3006
 msgid "Web Pages (*.html)"
 msgstr "网页 (*.html)"
 
-#: src/ui/w42-window.c:358 src/ui/w42-window.c:3160
+#: src/ui/w42-window.c:345 src/ui/w42-window.c:3147
 msgid "Presentations (*.pptx)"
 msgstr "演示文稿 (*.pptx)"
 
-#: src/ui/w42-window.c:359
+#: src/ui/w42-window.c:346
 msgid "Text Documents (*.txt)"
 msgstr "文本文档 (*.txt)"
 
-#: src/ui/w42-window.c:362
+#: src/ui/w42-window.c:349
 msgid "All Files"
 msgstr "所有文件"
 
@@ -5299,18 +5309,18 @@ msgstr "所有文件"
 #. * backup copy keeps beside a file; %s is the file's own name.  It is a
 #. * file name: no slashes, backslashes or colons, and %s last, so that the
 #. * copy keeps the file's extension and opens as the file does.
-#: src/ui/w42-window.c:629
+#: src/ui/w42-window.c:616
 #, c-format
 msgid "Backup of %s"
 msgstr "备份属于 %s"
 
 #. Translators: %s is the recovered document's name.
-#: src/ui/w42-window.c:703
+#: src/ui/w42-window.c:690
 #, c-format
 msgid "Word42 recovered “%s”."
 msgstr "Word42 已恢复“%s”。"
 
-#: src/ui/w42-window.c:706
+#: src/ui/w42-window.c:693
 msgid ""
 "It was not saved when Word42 last stopped. Save it to keep it; close it to "
 "let it go."
@@ -5319,7 +5329,7 @@ msgstr ""
 
 #. Translators: %d is how many autosaved copies could not be read,
 #. * %s the folder they are kept in.
-#: src/ui/w42-window.c:751
+#: src/ui/w42-window.c:738
 #, c-format
 msgid ""
 "%d document left when Word42 last stopped could not be read. It is kept in "
@@ -5331,62 +5341,62 @@ msgstr[0] ""
 "上次 Word42 停止运行时遗留的 %d 个文档无法读取。它们保存在 %s 中，名称以 ."
 "bad 结尾。"
 
-#: src/ui/w42-window.c:761
+#: src/ui/w42-window.c:748
 msgid "Word42 could not recover everything."
 msgstr "Word42 无法恢复全部内容。"
 
-#: src/ui/w42-window.c:978 src/ui/w42-window.c:1235 src/ui/w42-window.c:1253
-#: src/ui/w42-window.c:1352 src/ui/w42-window.c:5773
+#: src/ui/w42-window.c:965 src/ui/w42-window.c:1222 src/ui/w42-window.c:1240
+#: src/ui/w42-window.c:1339 src/ui/w42-window.c:5629
 msgid "Word42 could not open that file."
 msgstr "Word42 无法打开该文件。"
 
 #. Translators: %s is the file's name.
-#: src/ui/w42-window.c:1109
+#: src/ui/w42-window.c:1096
 #, c-format
 msgid "“%s” is protected with a password."
 msgstr "“%s”受密码保护。"
 
-#: src/ui/w42-window.c:1112
+#: src/ui/w42-window.c:1099
 msgid ""
 "The password is not correct. Passwords tell capital letters from small ones."
 msgstr "密码不正确。密码区分大小写。"
 
-#: src/ui/w42-window.c:1114 src/ui/w42-window.c:1151
+#: src/ui/w42-window.c:1101 src/ui/w42-window.c:1138
 msgid "_Password:"
 msgstr "密码(_P):"
 
-#: src/ui/w42-window.c:1141
+#: src/ui/w42-window.c:1128
 msgid "_Read Only"
 msgstr "只读(_R)"
 
 #. Translators: %s is the file's name.
-#: src/ui/w42-window.c:1144
+#: src/ui/w42-window.c:1131
 #, c-format
 msgid "“%s” is reserved: it allows no changes without its password to modify."
 msgstr "“%s”已被保留：没有修改密码，不允许任何更改。"
 
-#: src/ui/w42-window.c:1148
+#: src/ui/w42-window.c:1135
 msgid ""
 "That is not its password to modify. Enter the password, or open the PDF read "
 "only."
 msgstr "这不是它的修改密码。请输入密码，或以只读方式打开 PDF。"
 
-#: src/ui/w42-window.c:1150
+#: src/ui/w42-window.c:1137
 msgid "Enter the password to modify it, or open it read only."
 msgstr "请输入修改密码，或以只读方式打开。"
 
 #. Translators: the title of a document opened read only; %s is its
 #. * name.
-#: src/ui/w42-window.c:1171
+#: src/ui/w42-window.c:1158
 #, c-format
 msgid "%s (Read-Only)"
 msgstr "%s（只读）"
 
-#: src/ui/w42-window.c:1177
+#: src/ui/w42-window.c:1164
 msgid "Opened read only. File ▸ Save As saves it under a name of its own."
 msgstr "已以只读方式打开。“文件 ▸ 另存为”可将其以新名称保存。"
 
-#: src/ui/w42-window.c:1194
+#: src/ui/w42-window.c:1181
 msgid ""
 "This PDF is signed. Saved again it is a new file, which the signature does "
 "not cover: File ▸ PDF Options signs it anew."
@@ -5394,14 +5404,14 @@ msgstr ""
 "此 PDF 已签名。再次保存后即为新文件，签名不再适用：可在“文件 ▸ PDF 选项”中重"
 "新签署。"
 
-#: src/ui/w42-window.c:1198
+#: src/ui/w42-window.c:1185
 msgid ""
 "Another program has changed this PDF since Word42 saved it. What is open is "
 "the document as Word42 saved it."
 msgstr ""
 "自 Word42 保存以来，另一个程序已更改了此 PDF。打开的是 Word42 保存时的文档。"
 
-#: src/ui/w42-window.c:1201
+#: src/ui/w42-window.c:1188
 msgid ""
 "Word42 read this PDF from its pages. Saving it writes the pages again, with "
 "the document inside for next time."
@@ -5410,68 +5420,68 @@ msgstr ""
 "次使用。"
 
 #. Translators: %s is the name of the file exported to.
-#: src/ui/w42-window.c:1302
+#: src/ui/w42-window.c:1289
 #, c-format
 msgid ""
 "Exported as %s. The document itself is not saved there: Word42 cannot read "
 "that format back as it was."
 msgstr "已导出为 %s。文档本身并未保存到该文件：Word42 无法按原样读回该格式。"
 
-#: src/ui/w42-window.c:1394
+#: src/ui/w42-window.c:1381
 msgid ""
 "This document has not been saved yet, so there is nothing to go back to."
 msgstr "此文档尚未保存，因此没有可还原到的版本。"
 
-#: src/ui/w42-window.c:1400
+#: src/ui/w42-window.c:1387
 msgid "The document has no unsaved changes."
 msgstr "文档没有未保存的更改。"
 
 #. Translators: %s is the document's name.
-#: src/ui/w42-window.c:1406
+#: src/ui/w42-window.c:1393
 #, c-format
 msgid "Revert “%s” to the saved version?"
 msgstr "是否将“%s”还原为已保存的版本？"
 
-#: src/ui/w42-window.c:1408
+#: src/ui/w42-window.c:1395
 msgid "The changes made since the document was last saved will be lost."
 msgstr "自上次保存以来对文档所做的更改将会丢失。"
 
-#: src/ui/w42-window.c:1462
+#: src/ui/w42-window.c:1449
 msgid "Word42 saved the document but could not keep it as a version."
 msgstr "Word42 已保存文档，但无法将其保存为版本。"
 
 #. Translators: %s is what Git said went wrong.
-#: src/ui/w42-window.c:1466
+#: src/ui/w42-window.c:1453
 #, c-format
 msgid "Saved, but Git could not keep it as a version: %s"
 msgstr "已保存，但 Git 无法将其保存为版本：%s"
 
 #. Translators: %s is a file name.
-#: src/ui/w42-window.c:1572
+#: src/ui/w42-window.c:1559
 #, c-format
 msgid "“%s” already exists. Replace it?"
 msgstr "“%s”已存在。是否替换？"
 
-#: src/ui/w42-window.c:1579
+#: src/ui/w42-window.c:1566
 msgid "The file that is there now will be lost."
 msgstr "现有文件将会丢失。"
 
-#: src/ui/w42-window.c:1600 src/ui/w42-window.c:1606 src/ui/w42-window.c:1628
-#: src/ui/w42-window.c:1758 src/ui/w42-window.c:1784 src/ui/w42-window.c:5679
+#: src/ui/w42-window.c:1587 src/ui/w42-window.c:1593 src/ui/w42-window.c:1615
+#: src/ui/w42-window.c:1745 src/ui/w42-window.c:1771 src/ui/w42-window.c:5535
 msgid "Word42 could not save that file."
 msgstr "Word42 无法保存该文件。"
 
-#: src/ui/w42-window.c:1645
+#: src/ui/w42-window.c:1632
 msgid "Save As"
 msgstr "另存为"
 
 #. Translators: %s is the PDF's file name.
-#: src/ui/w42-window.c:1728
+#: src/ui/w42-window.c:1715
 #, c-format
 msgid "Replace “%s” with Word42's pages?"
 msgstr "是否用 Word42 的页面替换“%s”？"
 
-#: src/ui/w42-window.c:1731
+#: src/ui/w42-window.c:1718
 msgid ""
 "Word42 read this PDF from its pages, not from a document of its own. Saved, "
 "the PDF is laid out again by Word42, with the document inside it so that it "
@@ -5481,57 +5491,57 @@ msgstr ""
 "Word42 重新排版，并在其中保留文档，以便下次打开时与现在一样；PDF 现有的页面将"
 "不再保留。"
 
-#: src/ui/w42-window.c:1835 src/ui/w42-window.c:1853
+#: src/ui/w42-window.c:1822 src/ui/w42-window.c:1840
 msgid "Word42 could not save that template."
 msgstr "Word42 无法保存该模板。"
 
-#: src/ui/w42-window.c:1837
+#: src/ui/w42-window.c:1824
 msgid "Saved as a template.  File > New from Template lists it."
 msgstr "已另存为模板。“文件 > 根据模板新建”中会列出该模板。"
 
-#: src/ui/w42-window.c:1878
+#: src/ui/w42-window.c:1865
 msgid "Save as Template"
 msgstr "另存为模板"
 
-#: src/ui/w42-window.c:1937
+#: src/ui/w42-window.c:1924
 msgid "Don't Save"
 msgstr "不保存"
 
 #. Translators: %s is the document's name.
-#: src/ui/w42-window.c:1950
+#: src/ui/w42-window.c:1937
 #, c-format
 msgid "Save changes to “%s”?"
 msgstr "是否保存对“%s”的更改？"
 
-#: src/ui/w42-window.c:1953
+#: src/ui/w42-window.c:1940
 msgid "If you close without saving, the changes you have made will be lost."
 msgstr "如果不保存就关闭，您所做的更改将会丢失。"
 
-#: src/ui/w42-window.c:2654 src/ui/w42-window.c:5192
+#: src/ui/w42-window.c:2641 src/ui/w42-window.c:5048
 msgid "Font"
 msgstr "字体"
 
-#: src/ui/w42-window.c:2724
+#: src/ui/w42-window.c:2711
 msgid "Word42 could not insert that picture."
 msgstr "Word42 无法插入该图片。"
 
-#: src/ui/w42-window.c:2732
+#: src/ui/w42-window.c:2719
 msgid "Word42 could not open that picture."
 msgstr "Word42 无法打开该图片。"
 
-#: src/ui/w42-window.c:2752
+#: src/ui/w42-window.c:2739
 msgid "Pictures"
 msgstr "图片"
 
-#: src/ui/w42-window.c:2756 src/ui/w42-window.c:4702
+#: src/ui/w42-window.c:2743 src/ui/w42-window.c:4558
 msgid "Insert Picture"
 msgstr "插入图片"
 
-#: src/ui/w42-window.c:2778
+#: src/ui/w42-window.c:2765
 msgid "No scanner can be reached from here."
 msgstr "无法连接到任何扫描仪。"
 
-#: src/ui/w42-window.c:2779
+#: src/ui/w42-window.c:2766
 msgid ""
 "Word42 scans through Windows Image Acquisition on Windows and through SANE's "
 "scanimage on Linux; neither was found."
@@ -5539,31 +5549,31 @@ msgstr ""
 "Word42 在 Windows 上通过 Windows 图像采集 (WIA) 扫描，在 Linux 上通过 SANE "
 "的 scanimage 扫描；但两者均未找到。"
 
-#: src/ui/w42-window.c:2792
+#: src/ui/w42-window.c:2779
 msgid "The scanner sent a picture Word42 cannot read."
 msgstr "扫描仪发送的图片 Word42 无法读取。"
 
-#: src/ui/w42-window.c:2796
+#: src/ui/w42-window.c:2783
 msgid "Word42 could not scan."
 msgstr "Word42 无法扫描。"
 
-#: src/ui/w42-window.c:2829 src/ui/w42-window.c:2838
+#: src/ui/w42-window.c:2816 src/ui/w42-window.c:2825
 msgid "Word42 could not export the PDF."
 msgstr "Word42 无法导出 PDF。"
 
-#: src/ui/w42-window.c:2862 src/ui/w42-window.c:2867
+#: src/ui/w42-window.c:2849 src/ui/w42-window.c:2854
 msgid "Word42 could not export the web page."
 msgstr "Word42 无法导出网页。"
 
-#: src/ui/w42-window.c:2892
+#: src/ui/w42-window.c:2879
 msgid "LaTeX mode: Export as PDF typesets with LaTeX."
 msgstr "LaTeX 模式：“导出为 PDF”将用 LaTeX 排版。"
 
-#: src/ui/w42-window.c:2894
+#: src/ui/w42-window.c:2881
 msgid "LaTeX mode is on, but no TeX engine is installed."
 msgstr "LaTeX 模式已打开，但未安装 TeX 引擎。"
 
-#: src/ui/w42-window.c:2895
+#: src/ui/w42-window.c:2882
 msgid ""
 "Install Tectonic (tectonic-typesetting.github.io), which fetches what it "
 "needs by itself, or MiKTeX (miktex.org) or TeX Live (tug.org/texlive). Until "
@@ -5573,43 +5583,43 @@ msgstr ""
 "安装 MiKTeX (miktex.org) 或 TeX Live (tug.org/texlive)。在此之前，仍可使用“文"
 "件 > 另存为”将文档写为 LaTeX (.tex)。"
 
-#: src/ui/w42-window.c:2901
+#: src/ui/w42-window.c:2888
 msgid "LaTeX mode is off: Word42 makes the PDFs itself."
 msgstr "LaTeX 模式已关闭：Word42 将自行生成 PDF。"
 
-#: src/ui/w42-window.c:2995
+#: src/ui/w42-window.c:2982
 msgid "Word42 could not write the web page to preview."
 msgstr "Word42 无法写入用于预览的网页。"
 
-#: src/ui/w42-window.c:3020
+#: src/ui/w42-window.c:3007
 msgid "Export as Web Page"
 msgstr "导出为网页"
 
-#: src/ui/w42-window.c:3051 src/ui/w42-window.c:3058
+#: src/ui/w42-window.c:3038 src/ui/w42-window.c:3045
 msgid "Word42 could not export the e-book."
 msgstr "Word42 无法导出电子书。"
 
-#: src/ui/w42-window.c:3053
+#: src/ui/w42-window.c:3040
 msgid "The e-book is written."
 msgstr "电子书已写入。"
 
-#: src/ui/w42-window.c:3081
+#: src/ui/w42-window.c:3068
 msgid "E-books (*.epub)"
 msgstr "电子书 (*.epub)"
 
-#: src/ui/w42-window.c:3082
+#: src/ui/w42-window.c:3069
 msgid "Export as E-book"
 msgstr "导出为电子书"
 
-#: src/ui/w42-window.c:3110 src/ui/w42-window.c:3115
+#: src/ui/w42-window.c:3097 src/ui/w42-window.c:3102
 msgid "Word42 could not export the presentation."
 msgstr "Word42 无法导出演示文稿。"
 
-#: src/ui/w42-window.c:3142
+#: src/ui/w42-window.c:3129
 msgid "There is nothing to make slides of."
 msgstr "没有可以制作成幻灯片的内容。"
 
-#: src/ui/w42-window.c:3143
+#: src/ui/w42-window.c:3130
 msgid ""
 "A slide is a heading and the lines under it: give the document's headings "
 "the Heading 1 style, or a Title."
@@ -5617,29 +5627,29 @@ msgstr ""
 "每张幻灯片由一个标题及其下方的各行组成：请为文档中的标题应用 Heading 1 样式"
 "或 Title 样式。"
 
-#: src/ui/w42-window.c:3148
+#: src/ui/w42-window.c:3135
 #, c-format
 msgid "%u slide."
 msgid_plural "%u slides."
 msgstr[0] "%u 张幻灯片。"
 
-#: src/ui/w42-window.c:3161
+#: src/ui/w42-window.c:3148
 msgid "Export as Presentation"
 msgstr "导出为演示文稿"
 
-#: src/ui/w42-window.c:3193
+#: src/ui/w42-window.c:3180
 msgid "Export as PDF"
 msgstr "导出为 PDF"
 
-#: src/ui/w42-window.c:3402
+#: src/ui/w42-window.c:3389
 msgid "The caret is in the first row: there is nothing above it to split off."
 msgstr "插入点位于第一行：其上方没有可拆分出去的内容。"
 
-#: src/ui/w42-window.c:3430
+#: src/ui/w42-window.c:3417
 msgid "There is nothing to convert here."
 msgstr "此处没有可转换的内容。"
 
-#: src/ui/w42-window.c:3431
+#: src/ui/w42-window.c:3418
 msgid ""
 "In a table this makes paragraphs with tabs between the cells; on selected "
 "paragraphs it makes a table, split at their tabs."
@@ -5647,52 +5657,52 @@ msgstr ""
 "在表格中，此命令将表格转换为段落，单元格之间以制表符分隔；对于所选段落，则按"
 "制表符拆分并转换为表格。"
 
-#: src/ui/w42-window.c:3479 src/ui/w42-window.c:3499 src/ui/w42-window.c:3521
-#: src/ui/w42-window.c:3947 src/ui/w42-window.c:3963 src/ui/w42-window.c:4187
+#: src/ui/w42-window.c:3466 src/ui/w42-window.c:3486 src/ui/w42-window.c:3508
+#: src/ui/w42-window.c:3934 src/ui/w42-window.c:3950 src/ui/w42-window.c:4174
 msgid "The caret is in a note: put it in the body of the document first."
 msgstr "插入点位于注释中：请先将其移到文档正文中。"
 
-#: src/ui/w42-window.c:3485
+#: src/ui/w42-window.c:3472
 msgid "There is nothing marked for the index."
 msgstr "没有标记任何索引项。"
 
-#: src/ui/w42-window.c:3486
+#: src/ui/w42-window.c:3473
 msgid ""
 "Select a word and use Insert ▸ Index Entry to mark it, then ask for the "
 "index again."
 msgstr "请选择一个词语，使用“插入 ▸ 标记索引项”进行标记，然后重新插入索引。"
 
-#: src/ui/w42-window.c:3505
+#: src/ui/w42-window.c:3492
 msgid "There are no captions to list."
 msgstr "没有可列出的题注。"
 
-#: src/ui/w42-window.c:3506
+#: src/ui/w42-window.c:3493
 msgid ""
 "Insert ▸ Caption puts a caption under a picture, and the table of figures "
 "lists them."
 msgstr "“插入 ▸ 题注”可在图片下方添加题注，图表目录会列出这些题注。"
 
-#: src/ui/w42-window.c:3527
+#: src/ui/w42-window.c:3514
 msgid "There are no headings to list."
 msgstr "没有可列出的标题。"
 
-#: src/ui/w42-window.c:3528
+#: src/ui/w42-window.c:3515
 msgid "Give the document's headings the Heading 1, 2 or 3 style and try again."
 msgstr "请为文档中的标题应用 Heading 1、2 或 3 样式，然后重试。"
 
-#: src/ui/w42-window.c:3575
+#: src/ui/w42-window.c:3562
 msgid "There is no table of contents to update."
 msgstr "没有可更新的目录。"
 
-#: src/ui/w42-window.c:3576
+#: src/ui/w42-window.c:3563
 msgid "Insert > Table of Contents puts one in."
 msgstr "可使用“插入 > 目录”插入目录。"
 
-#: src/ui/w42-window.c:3612
+#: src/ui/w42-window.c:3599
 msgid "No hyphenation dictionary was found."
 msgstr "未找到断字词典。"
 
-#: src/ui/w42-window.c:3613
+#: src/ui/w42-window.c:3600
 msgid ""
 "Hyphenation needs libhyphen and a hyph_*.dic pattern file for your language, "
 "the ones LibreOffice uses."
@@ -5700,21 +5710,21 @@ msgstr ""
 "断字功能需要 libhyphen 以及适用于您的语言的 hyph_*.dic 模式文件(即 "
 "LibreOffice 所使用的文件)。"
 
-#: src/ui/w42-window.c:3616
+#: src/ui/w42-window.c:3603
 msgid "There is nothing to hyphenate."
 msgstr "没有需要断字的内容。"
 
-#: src/ui/w42-window.c:3628
+#: src/ui/w42-window.c:3615
 #, c-format
 msgid "%d hyphen removed."
 msgid_plural "%d hyphens removed."
 msgstr[0] "已删除 %d 个连字符。"
 
-#: src/ui/w42-window.c:3631
+#: src/ui/w42-window.c:3618
 msgid "There are no soft hyphens to remove."
 msgstr "没有可删除的可选连字符。"
 
-#: src/ui/w42-window.c:3784
+#: src/ui/w42-window.c:3771
 msgid ""
 "Type the name of an AutoText entry, then press Ctrl+F3.  Edit > AutoText "
 "makes one from the selection."
@@ -5722,13 +5732,13 @@ msgstr ""
 "请键入自动图文集词条的名称，然后按 Ctrl+F3。“编辑 > 自动图文集”可根据所选内容"
 "创建词条。"
 
-#: src/ui/w42-window.c:3825
+#: src/ui/w42-window.c:3812
 #, c-format
 msgid "%d field updated."
 msgid_plural "%d fields updated."
 msgstr[0] "已更新 %d 个域。"
 
-#: src/ui/w42-window.c:3828
+#: src/ui/w42-window.c:3815
 msgid "There are no fields in this document."
 msgstr "此文档中没有域。"
 
@@ -5736,20 +5746,20 @@ msgstr "此文档中没有域。"
 #. * the figure's number.  Keep a word before the number, and keep %d as
 #. * it is: the captions already there are counted by what comes before
 #. * it.
-#: src/ui/w42-window.c:3898 src/ui/w42-window.c:3914
+#: src/ui/w42-window.c:3885 src/ui/w42-window.c:3901
 #, c-format
 msgid "Figure %d: "
 msgstr "图 %d: "
 
-#: src/ui/w42-window.c:3977
+#: src/ui/w42-window.c:3964
 msgid "Put the caret at a note's mark, or in the note itself."
 msgstr "请将插入点置于注释引用标记处或注释中。"
 
-#: src/ui/w42-window.c:4059
+#: src/ui/w42-window.c:4046
 msgid "No thesaurus was found."
 msgstr "未找到同义词库。"
 
-#: src/ui/w42-window.c:4060
+#: src/ui/w42-window.c:4047
 msgid ""
 "The thesaurus needs a MyThes file for the language of the text -- "
 "th_en_US_v2.dat and its .idx for English, th_nb_NO_v2 for Norwegian, the "
@@ -5759,34 +5769,34 @@ msgstr ""
 "使用的文件)，例如英语的 th_en_US_v2.dat 及其 .idx 文件，挪威语的 "
 "th_nb_NO_v2。"
 
-#: src/ui/w42-window.c:4067
+#: src/ui/w42-window.c:4054
 msgid "Put the caret in a word to look it up in the thesaurus."
 msgstr "请将插入点置于要在同义词库中查找的单词中。"
 
-#: src/ui/w42-window.c:4079
+#: src/ui/w42-window.c:4066
 msgid "No spelling dictionary was found."
 msgstr "未找到拼写词典。"
 
-#: src/ui/w42-window.c:4080
+#: src/ui/w42-window.c:4067
 msgid "Install a Hunspell dictionary for your language and start Word42 again."
 msgstr "请安装适用于您的语言的 Hunspell 词典，然后重新启动 Word42。"
 
-#: src/ui/w42-window.c:4133
+#: src/ui/w42-window.c:4120
 msgid "Revisions accepted."
 msgstr "已接受修订。"
 
-#: src/ui/w42-window.c:4135 src/ui/w42-window.c:4147
+#: src/ui/w42-window.c:4122 src/ui/w42-window.c:4134
 msgid "There are no revision marks in this document."
 msgstr "此文档中没有修订标记。"
 
-#: src/ui/w42-window.c:4145
+#: src/ui/w42-window.c:4132
 msgid "Revisions rejected."
 msgstr "已拒绝修订。"
 
 #. Translators: the Windows version in the About box, as "Windows
 #. * 10.0 build 19045 (Windows 10)": the major and minor version, the
 #. * build number, then the release's name in brackets or nothing.
-#: src/ui/w42-window.c:4258
+#: src/ui/w42-window.c:4245
 #, c-format
 msgid "Windows %lu.%lu build %lu%s"
 msgstr "Windows %lu.%lu 内部版本 %lu%s"
@@ -5797,7 +5807,7 @@ msgstr "Windows %lu.%lu 内部版本 %lu%s"
 #. * the one built against; GLib's; Pango's, Cairo's and GdkPixbuf's;
 #. * the operating system; then the spelling, hyphenation and PDF
 #. * import libraries, or "none".
-#: src/ui/w42-window.c:4289
+#: src/ui/w42-window.c:4276
 #, c-format
 msgid ""
 "Word42 %s\n"
@@ -5813,26 +5823,26 @@ msgstr ""
 "拼写：%s  ·  断字：%s  ·  PDF 导入：%s"
 
 #. Translators: no library for this, in the About box.
-#: src/ui/w42-window.c:4304 src/ui/w42-window.c:4310 src/ui/w42-window.c:4316
+#: src/ui/w42-window.c:4291 src/ui/w42-window.c:4297 src/ui/w42-window.c:4303
 msgctxt "library"
 msgid "none"
 msgstr "无"
 
-#: src/ui/w42-window.c:4348
+#: src/ui/w42-window.c:4335
 msgid "About Word42"
 msgstr "关于 Word42"
 
 #. Translators: %s is Word42's version number.
-#: src/ui/w42-window.c:4371
+#: src/ui/w42-window.c:4358
 #, c-format
 msgid "Version %s"
 msgstr "版本 %s"
 
-#: src/ui/w42-window.c:4382
+#: src/ui/w42-window.c:4369
 msgid "Written in C on GTK 4, Pango and Cairo."
 msgstr "使用 C 语言基于 GTK 4、Pango 和 Cairo 编写。"
 
-#: src/ui/w42-window.c:4415
+#: src/ui/w42-window.c:4402
 msgid ""
 "Copyright (C) 2026 Andreas Røsdal.\n"
 "\n"
@@ -5858,84 +5868,76 @@ msgstr ""
 "\n"
 "宏运行于 Tony Wang 开发的 MY-BASIC 之上，依据 MIT 许可证使用。"
 
-#: src/ui/w42-window.c:4564
-msgid "Minimize"
-msgstr "最小化"
-
-#: src/ui/w42-window.c:4567
-msgid "Maximize"
-msgstr "最大化"
-
-#: src/ui/w42-window.c:4687
+#: src/ui/w42-window.c:4543
 msgid "New"
 msgstr "新建"
 
-#: src/ui/w42-window.c:4689
+#: src/ui/w42-window.c:4545
 msgid "Save"
 msgstr "保存"
 
-#: src/ui/w42-window.c:4695
+#: src/ui/w42-window.c:4551
 msgid "Cut"
 msgstr "剪切"
 
-#: src/ui/w42-window.c:4696
+#: src/ui/w42-window.c:4552
 msgid "Copy"
 msgstr "复制"
 
-#: src/ui/w42-window.c:4697
+#: src/ui/w42-window.c:4553
 msgid "Paste"
 msgstr "粘贴"
 
-#: src/ui/w42-window.c:4699
+#: src/ui/w42-window.c:4555
 msgid "Undo"
 msgstr "撤消"
 
-#: src/ui/w42-window.c:4700
+#: src/ui/w42-window.c:4556
 msgid "Redo"
 msgstr "恢复"
 
-#: src/ui/w42-window.c:4703
+#: src/ui/w42-window.c:4559
 msgid "Show as Slide Show"
 msgstr "以幻灯片放映显示"
 
-#: src/ui/w42-window.c:4724
+#: src/ui/w42-window.c:4580
 msgid "Zoom Control"
 msgstr "显示比例"
 
-#: src/ui/w42-window.c:5079
+#: src/ui/w42-window.c:4935
 msgid "Font Color"
 msgstr "字体颜色"
 
-#: src/ui/w42-window.c:5151
+#: src/ui/w42-window.c:5007
 msgid "Align Left"
 msgstr "左对齐"
 
-#: src/ui/w42-window.c:5154
+#: src/ui/w42-window.c:5010
 msgid "Align Right"
 msgstr "右对齐"
 
-#: src/ui/w42-window.c:5154
+#: src/ui/w42-window.c:5010
 msgid "Justify"
 msgstr "两端对齐"
 
-#: src/ui/w42-window.c:5207
+#: src/ui/w42-window.c:5063
 msgid "Font Size"
 msgstr "字号"
 
-#: src/ui/w42-window.c:5214
+#: src/ui/w42-window.c:5070
 msgid "Bold"
 msgstr "加粗"
 
-#: src/ui/w42-window.c:5215
+#: src/ui/w42-window.c:5071
 msgid "Italic"
 msgstr "倾斜"
 
-#: src/ui/w42-window.c:5244
+#: src/ui/w42-window.c:5100
 msgid "Bullets"
 msgstr "项目符号"
 
 #. Translators: the status bar's page number.
-#: src/ui/w42-window.c:5275 src/ui/w42-window.c:6111
+#: src/ui/w42-window.c:5131 src/ui/w42-window.c:5967
 #, c-format
 msgid "Page %d"
 msgstr "%d 页"
@@ -5943,20 +5945,20 @@ msgstr "%d 页"
 #. Translators: the status bar's reading of how far down the page
 #. * the caret is, "At" short for "at so far from the top": %.1f is
 #. * the distance, %s the unit, already translated (" or cm).
-#: src/ui/w42-window.c:5277 src/ui/w42-window.c:6137
+#: src/ui/w42-window.c:5133 src/ui/w42-window.c:5993
 #, c-format
 msgid "At %.1f%s"
 msgstr "位置 %.1f%s"
 
 #. Translators: the status bar's line number, "Ln" short for Line.
-#: src/ui/w42-window.c:5279 src/ui/w42-window.c:6119
+#: src/ui/w42-window.c:5135 src/ui/w42-window.c:5975
 #, c-format
 msgid "Ln %d"
 msgstr "%d 行"
 
 #. Translators: the status bar's column number, "Col" short for
 #. * Column: how many characters in from the start of the line.
-#: src/ui/w42-window.c:5281 src/ui/w42-window.c:6123
+#: src/ui/w42-window.c:5137 src/ui/w42-window.c:5979
 #, c-format
 msgid "Col %d"
 msgstr "%d 列"
@@ -5964,7 +5966,7 @@ msgstr "%d 列"
 #. Translators: the status bar's word count toward the goal set in
 #. * Tools > Word Count Goal: "12,000 of 80,000 words".  The first %s
 #. * is the words written, the second the goal.
-#: src/ui/w42-window.c:5384
+#: src/ui/w42-window.c:5240
 #, c-format
 msgid "%s of %s word"
 msgid_plural "%s of %s words"
@@ -5972,7 +5974,7 @@ msgstr[0] "%s / %s 字"
 
 #. Translators: the status bar's word count; %s is the number, with
 #. * thousands separators.
-#: src/ui/w42-window.c:5392
+#: src/ui/w42-window.c:5248
 #, c-format
 msgid "%s word"
 msgid_plural "%s words"
@@ -5980,7 +5982,7 @@ msgstr[0] "%s 字"
 
 #. Translators: in the word count's tooltip; %d%% is how far
 #. * toward the goal the document is, as "40%".
-#: src/ui/w42-window.c:5403
+#: src/ui/w42-window.c:5259
 #, c-format
 msgid "%d%% of the goal."
 msgstr "已完成目标的 %d%%。"
@@ -5988,25 +5990,25 @@ msgstr "已完成目标的 %d%%。"
 #. Translators: in the word count's tooltip; %ld is the words
 #. * written since the document was opened, which can be less than
 #. * nothing when more was deleted.
-#: src/ui/w42-window.c:5414
+#: src/ui/w42-window.c:5270
 #, c-format
 msgid "Written since the document was opened: %ld word."
 msgid_plural "Written since the document was opened: %ld words."
 msgstr[0] "文档打开后已写入：%ld 字。"
 
-#: src/ui/w42-window.c:5420
+#: src/ui/w42-window.c:5276
 msgid "Tools ▸ Word Count Goal sets the goal."
 msgstr "“工具 ▸ 字数目标”可设置目标。"
 
-#: src/ui/w42-window.c:5685
+#: src/ui/w42-window.c:5541
 msgid "The rest are saved."
 msgstr "其余文档已保存。"
 
-#: src/ui/w42-window.c:5685
+#: src/ui/w42-window.c:5541
 msgid "Nothing was saved."
 msgstr "没有保存任何文档。"
 
-#: src/ui/w42-window.c:5686
+#: src/ui/w42-window.c:5542
 msgid ""
 "A document that has never been saved, or that came from a format Word42 does "
 "not write back, needs a name: use File > Save As for it."
@@ -6014,29 +6016,29 @@ msgstr ""
 "从未保存过的文档，或来自 Word42 无法写回的格式的文档，需要指定名称：请对其使"
 "用“文件 > 另存为”。"
 
-#: src/ui/w42-window.c:5725 src/ui/w42-window.c:5767
+#: src/ui/w42-window.c:5581 src/ui/w42-window.c:5623
 msgid "Word42 could not read that file."
 msgstr "Word42 无法读取该文件。"
 
-#: src/ui/w42-window.c:5761
+#: src/ui/w42-window.c:5617
 msgid "The two documents are the same."
 msgstr "两个文档完全相同。"
 
-#: src/ui/w42-window.c:5763
+#: src/ui/w42-window.c:5619
 #, c-format
 msgid "%d change marked."
 msgid_plural "%d changes marked."
 msgstr[0] "已标记 %d 处更改。"
 
-#: src/ui/w42-window.c:5787
+#: src/ui/w42-window.c:5643
 msgid "Compare Documents: the original"
 msgstr "比较文档：原始文档"
 
-#: src/ui/w42-window.c:5803
+#: src/ui/w42-window.c:5659
 msgid "Insert File"
 msgstr "插入文件"
 
-#: src/ui/w42-window.c:6146
+#: src/ui/w42-window.c:6002
 msgid "Modified"
 msgstr "已修改"
 
@@ -6258,6 +6260,16 @@ msgstr "南非荷兰语"
 #: src/util/w42-lang.c:142
 msgid "(document default)"
 msgstr "(文档默认值)"
+
+#, c-format
+#~ msgid "Word42 %s - %s%s"
+#~ msgstr "Word42 %s - %s%s"
+
+#~ msgid "Minimize"
+#~ msgstr "最小化"
+
+#~ msgid "Maximize"
+#~ msgstr "最大化"
 
 #, c-format
 #~ msgid ""

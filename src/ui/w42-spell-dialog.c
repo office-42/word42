@@ -205,7 +205,7 @@ on_change_all (GtkButton *button, gpointer data)
   W42SpellDialog *self = data;
   W42Document *doc = w42_view_get_document (self->view);
   const char *with = gtk_editable_get_text (GTK_EDITABLE (self->change_entry));
-  W42SearchOptions options = { TRUE, TRUE, FALSE, TRUE };
+  W42SearchOptions options = { TRUE, TRUE, FALSE, TRUE, FALSE };
 
   (void) button;
 

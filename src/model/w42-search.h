@@ -19,7 +19,18 @@ typedef struct {
   gboolean whole_word;
   gboolean backwards;
   gboolean wrap;
+  gboolean regex;       /* the needle is a regular expression, Perl's as
+                         * GLib has them, matched within one paragraph;
+                         * the replacement may name what it matched, \0
+                         * all of it, \1 to \99 or \g<name> a group */
 } W42SearchOptions;
+
+/* Whether `needle` can be searched for with `options`: FALSE, with
+ * `error` saying why, for a regular expression that is not one.  A search
+ * with such a needle finds nothing. */
+gboolean w42_search_check (const char             *needle,
+                           const W42SearchOptions *options,
+                           GError                **error);
 
 /* A soft hyphen (U+00AD), which Tools > Hyphenation puts inside words, is
  * looked through: "vanskelige" finds a hyphenated "van-ske-lige", and the
@@ -41,6 +52,17 @@ gboolean w42_search_find (W42PieceTable         *pt,
 gboolean w42_search_is_match (const char             *text,
                               const char             *needle,
                               const W42SearchOptions *options);
+
+/* When [start, end) is a match for `needle` -- what Find Next selected --
+ * the text that replaces it: `replacement` itself, or for a regular
+ * expression with what the match's groups hold put in for their names.
+ * NULL when it is not a match.  Free with g_free(). */
+char *w42_search_replacement_at (W42PieceTable          *pt,
+                                 gsize                   start,
+                                 gsize                   end,
+                                 const char             *needle,
+                                 const char             *replacement,
+                                 const W42SearchOptions *options);
 
 /* Replaces every occurrence, as one undo step.  Returns how many. */
 gsize w42_search_replace_all (W42PieceTable          *pt,

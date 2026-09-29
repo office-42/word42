@@ -409,6 +409,21 @@ one. **Edit ▸ Replace** (Ctrl+H) replaces one at a time or all of them. Both
 pick up the word at the caret when you open them, so finding another
 occurrence of the word you are looking at takes two keys.
 
+**Use Regular Expressions** makes what you look for a pattern rather than
+the words themselves, in the syntax Perl and most programs use: `.` is any
+character, `\d` a digit, `\w` a letter or digit, `\s` a space, `[aeiou]`
+one of those letters, `*` `+` and `?` repeat what comes before them,
+`{2,4}` from two to four times, and `( )` group. `^` and `$` are the start
+and end of a paragraph, since a match never runs from one paragraph into
+the next. In the replacement, `\0` stands for what was found and `\1` to
+`\9` for what each group in it matched: looking for `(\d+)-(\d+)` and
+replacing with `\2-\1` turns 555-1234 into 1234-555, and replacing `^`
+with `> ` puts "> " in front of every paragraph. `\U` and `\L` make what
+follows upper or lower case, and `\n` is a line break. A pattern that is
+not one says what is wrong with it rather than finding nothing. Match
+Case and Find Whole Words Only still apply, and a soft hyphen in a word
+is looked through as it is in an ordinary search.
+
 Right-clicking in the text opens a menu of the commands you want most:
 Cut, Copy, Paste, and the formatting of the paragraph you clicked in.
 Shift+F10, or the Menu key, opens the same menu at the caret.

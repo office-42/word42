@@ -266,7 +266,7 @@ w42_merge_to_file (W42PieceTable *pt, const W42PageSetup *page,
       char *copy_rtf = NULL;
       gsize copy_len = 0;
       const char *copy_body;
-      W42SearchOptions options = { TRUE, FALSE, FALSE, TRUE };
+      W42SearchOptions options = { TRUE, FALSE, FALSE, TRUE, FALSE };
 
       if (!w42_rtf_load (copy, &pg, tmp, NULL))
         {
