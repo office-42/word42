@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.9 (in development)
+## 1.0.9
 
 ### New
 
